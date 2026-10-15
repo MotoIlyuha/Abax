@@ -153,10 +153,12 @@ export function initController(canvas: HTMLCanvasElement): void {
         break;
       case 'shape': finishShape(); break;
       case 'move':
+        state.liveEdit = false;
         if (a.moved) pushHistory(a.pre);
         update();
         break;
       case 'handle':
+        state.liveEdit = false;
         if (a.changed) pushHistory(a.pre);
         update();
         break;
@@ -228,6 +230,7 @@ export function initController(canvas: HTMLCanvasElement): void {
             const r = HANDLE_HIT_PX / state.camera.zoom;
             for (const hp of hs) {
               if (Math.hypot(hp.x - s.x, hp.y - s.y) <= r) {
+                state.liveEdit = true;
                 if (sel.type === 'poly' && hp.h.kind === 'insert') {
                   // вставка узла на месте ручки — и сразу тянем его
                   const withNode = insertPolyNode(sel, hp.h.i, { x: s.x, y: s.y, p: 0.5 });
@@ -262,6 +265,7 @@ export function initController(canvas: HTMLCanvasElement): void {
             if (el) orig.set(id, el);
           }
           action = { pid: e.pointerId, kind: 'move', pre: state.board.elements, start: s, orig, moved: false };
+          state.liveEdit = true;
         } else {
           if (!e.shiftKey) setSelection([]);
           action = { pid: e.pointerId, kind: 'marquee' };

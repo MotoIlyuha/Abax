@@ -40,6 +40,8 @@ export interface AppState {
   liveNote: LiveNote | null;
   /** id элемента, скрытого на время редактирования текста. */
   hideElId: string | null;
+  /** Идёт активное перетаскивание/правка выделенного — рисуем его поверх. */
+  liveEdit: boolean;
   /** Рамка выделения в экранных координатах. */
   marquee: { x0: number; y0: number; x1: number; y1: number } | null;
   /** Позиция курсора в экранных координатах (для ластика). */
@@ -80,6 +82,7 @@ export const state: AppState = {
   livePoly: null,
   liveNote: null,
   hideElId: null,
+  liveEdit: false,
   marquee: null,
   hover: null,
   laserPts: [],
@@ -184,6 +187,7 @@ export function setTool(tool: ToolId): void {
   state.liveStroke = null;
   state.liveShape = null;
   state.livePoly = null;
+  state.liveEdit = false;
   update();
 }
 
@@ -280,6 +284,7 @@ export function openProject(project: Project, pageId?: string, view: 'home' | 'b
   state.liveShape = null;
   state.livePoly = null;
   state.liveNote = null;
+  state.liveEdit = false;
   state.marquee = null;
   undoStack = [];
   redoStack = [];
@@ -303,6 +308,7 @@ export function switchPage(pageId: string): void {
   state.liveShape = null;
   state.livePoly = null;
   state.liveNote = null;
+  state.liveEdit = false;
   state.marquee = null;
   undoStack = [];
   redoStack = [];

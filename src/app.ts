@@ -396,7 +396,8 @@ function canChangeLayer(): boolean {
 
 function updateQuickMenu(): void {
   const qm = quickMenuEl();
-  if (state.view !== 'board' || state.selection.size === 0 || editing) {
+  const selEls = state.board.elements.filter(e => state.selection.has(e.id));
+  if (state.view !== 'board' || selEls.length === 0 || editing) {
     qm.hidden = true;
     return;
   }

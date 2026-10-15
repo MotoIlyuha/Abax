@@ -146,35 +146,43 @@ function drawCoordAxes(ctx: CanvasRenderingContext2D, cam: Camera, w: number, h:
     ctx.fillText('x', w - 10, oy - 6);
   }
   if (xVisible && yVisible) ctx.fillText('0', ox - 12, oy + 14);
-  // риски каждые GRID_STEP юнитов сцены
+  // риски: шаг подстраивается под зум (LOD)
   ctx.lineWidth = 1;
   ctx.beginPath();
-  const sx0 = Math.ceil(cam.x / GRID_STEP) * GRID_STEP;
-  for (let x = sx0; x <= cam.x + w / z; x += GRID_STEP) {
+  let tstep = GRID_STEP;
+  while (tstep * z < 18) tstep *= 4;
+  const tx0 = Math.ceil(cam.x / tstep) * tstep;
+  for (let x = tx0; x <= cam.x + w / z; x += tstep) {
     if (x === 0) continue;
     const sx = (x - cam.x) * z;
     ctx.moveTo(sx, oy - 3);
     ctx.lineTo(sx, oy + 3);
   }
-  const sy0 = Math.ceil(cam.y / GRID_STEP) * GRID_STEP;
-  for (let y = sy0; y <= cam.y + h / z; y += GRID_STEP) {
+  const ty0 = Math.ceil(cam.y / tstep) * tstep;
+  for (let y = ty0; y <= cam.y + h / z; y += tstep) {
     if (y === 0) continue;
     const sy = (y - cam.y) * z;
     ctx.moveTo(ox - 3, sy);
     ctx.lineTo(ox + 3, sy);
   }
   ctx.stroke();
-  // числовые деления: интервал подстраивается под зум, чтобы подписи не слипались
+  // числовые деления в математических единицах (клетка = 1):
+  // наименьший удобочитаемый шаг, минимум 0.25 единицы (четверть клетки)
   if (!state.settings.coordLabels) return;
-  let lstep = GRID_STEP;
-  while (lstep * z < 48) lstep *= 2;
+  let lstep = GRID_STEP / 4; // 0.25 единицы
+  while (lstep * z < 34 && lstep < GRID_STEP * 4096) lstep *= 2;
+  const fmt = (v: number): string => {
+    const n = v / GRID_STEP;
+    if (Number.isInteger(n)) return String(n);
+    return String(Math.round(n * 100) / 100);
+  };
   ctx.font = '11px "Segoe UI", system-ui, sans-serif';
   if (xVisible) {
     const lx0 = Math.ceil(cam.x / lstep) * lstep;
     for (let x = lx0; x <= cam.x + w / z; x += lstep) {
       if (x === 0) continue;
       const sx = (x - cam.x) * z;
-      ctx.fillText(String(Math.round(x)), sx + 3, oy + 14);
+      ctx.fillText(fmt(x), sx + 3, oy + 14);
     }
   }
   if (yVisible) {
@@ -183,7 +191,7 @@ function drawCoordAxes(ctx: CanvasRenderingContext2D, cam: Camera, w: number, h:
     for (let y = ly0; y <= cam.y + h / z; y += lstep) {
       if (y === 0) continue;
       const sy = (y - cam.y) * z;
-      ctx.fillText(String(Math.round(y)), ox - 5, sy + 4);
+      ctx.fillText(fmt(y), ox - 5, sy + 4);
     }
     ctx.textAlign = 'left';
   }
@@ -360,7 +368,7 @@ let cacheArr: Element[] | null = null;
 let cacheGrid: GridMode = 'none';
 let cacheCoordLabels = true;
 let cacheStale = false;
-let cacheSel: Set<string> | null = null;
+let cacheLiveEdit = false;
 let lastCamRef: Camera | null = null;
 let lastCamChange = 0;
 let settleTimer = 0;
@@ -417,14 +425,17 @@ function isPrefixExtension(newArr: Element[], oldArr: Element[]): boolean {
 function rebuildCache(): void {
   if (!cacheCtx) return;
   const cam = state.camera;
-  const excl = new Set(state.selection);
+  // выделение исключается из кэша только на время перетаскивания,
+  // иначе выбранный элемент выпадает из своего слоя
+  const excl = new Set<string>();
+  if (state.liveEdit) for (const id of state.selection) excl.add(id);
   if (state.hideElId) excl.add(state.hideElId);
   renderScene(cacheCtx, state.board.elements, cam, cssW, cssH, dpr, state.board.grid, excl.size ? excl : undefined);
   cacheCam = { ...cam };
   cacheArr = state.board.elements;
   cacheGrid = state.board.grid;
   cacheCoordLabels = state.settings.coordLabels;
-  cacheSel = state.selection;
+  cacheLiveEdit = state.liveEdit;
   cacheHideId = state.hideElId;
   cacheStale = false;
 }
@@ -526,7 +537,7 @@ function draw(): void {
     lastCamChange = performance.now();
     cacheStale = true;
   }
-  if (state.board.grid !== cacheGrid || state.settings.coordLabels !== cacheCoordLabels || state.selection !== cacheSel || state.hideElId !== cacheHideId) cacheStale = true;
+  if (state.board.grid !== cacheGrid || state.settings.coordLabels !== cacheCoordLabels || state.liveEdit !== cacheLiveEdit || state.hideElId !== cacheHideId) cacheStale = true;
 
   const arr = state.board.elements;
   const arrRefChanged = arr !== cacheArr;
@@ -552,8 +563,9 @@ function draw(): void {
 
   if (cacheCam) {
     blitCache();
-    // выделенные элементы исключены из кэша — рисуем их поверх (двигаются без инвалидации)
-    if (state.selection.size > 0) {
+    // во время перетаскивания выделенное исключено из кэша — рисуем поверх;
+    // в покое выделенный рендерится в кэше на своём слое
+    if (state.liveEdit && state.selection.size > 0) {
       const zx0 = dpr * cam.zoom;
       ctx.setTransform(zx0, 0, 0, zx0, -cam.x * zx0, -cam.y * zx0);
       const ex0 = cam.x, ey0 = cam.y;
