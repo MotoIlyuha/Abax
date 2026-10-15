@@ -1,0 +1,425 @@
+import type { Camera, Element, Pt, ShapeEl, ToolId } from './types';
+import {
+  state, update, onChange, beginStroke, extendStroke, endStroke, pushHistory, replaceElements,
+  addElement, setSelection, deleteSelected, undo, redo, setTool, uid,
+} from './state';
+import { hitTest, aabbIntersects, elementAABB } from './geom';
+import { eraseRadius } from './renderer';
+import { beginTextEdit, exportPng, fitContent, saveNow, toggleSidebar } from './app';
+
+const SELECT_TOL = 6; // px экрана
+const CURSORS: Record<ToolId, string> = {
+  select: 'default', pen: 'crosshair', highlighter: 'crosshair', eraser: 'none',
+  pan: 'grab', text: 'text', note: 'crosshair', rect: 'crosshair',
+  ellipse: 'crosshair', line: 'crosshair', arrow: 'crosshair',
+};
+const TOOL_BY_CODE: Record<string, ToolId> = {
+  KeyV: 'select', KeyP: 'pen', KeyM: 'highlighter', KeyE: 'eraser', KeyH: 'pan',
+  KeyT: 'text', KeyN: 'note', KeyR: 'rect', KeyO: 'ellipse', KeyL: 'line', KeyA: 'arrow',
+};
+const ZOOM_MIN = 0.05;
+const ZOOM_MAX = 32;
+const MOVE_THRESHOLD_PX = 3;
+
+type Action = { pid: number } & (
+  | { kind: 'draw' }
+  | { kind: 'erase'; pre: Element[]; removed: Element[] }
+  | { kind: 'shape' }
+  | { kind: 'move'; pre: Element[]; start: Pt; orig: Map<string, Element>; moved: boolean }
+  | { kind: 'marquee' }
+  | { kind: 'pan'; sx: number; sy: number; cam: Camera }
+  | { kind: 'click'; x: number; y: number; target: 'text' | 'note' }
+);
+
+interface Ptr { x: number; y: number; type: string }
+
+export function initController(canvas: HTMLCanvasElement): void {
+  const pointers = new Map<number, Ptr>();
+  let gesture: { dist: number; mx: number; my: number; cam: Camera } | null = null;
+  let touchBlocked = false; // после жеста оставшийся палец не должен рисовать
+  let action: Action | null = null;
+  let spacePan = false;
+
+  onChange(() => { canvas.style.cursor = spacePan ? 'grab' : CURSORS[state.tool]; });
+
+  // clientX - rect вместо offsetX: одинаковая семантика, но работает с pointer capture
+  // за пределами канваса и не зависит от способа создания события.
+  function localPos(e: { clientX: number; clientY: number }): { x: number; y: number } {
+    const r = canvas.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+
+  const toScene = (sx: number, sy: number): Pt => ({
+    x: sx / state.camera.zoom + state.camera.x,
+    y: sy / state.camera.zoom + state.camera.y,
+    p: 0.5,
+  });
+  const activeTool = (): ToolId => (spacePan ? 'pan' : state.tool);
+  const touchPtrs = (): Ptr[] => [...pointers.values()].filter(p => p.type === 'touch');
+
+  const topHit = (x: number, y: number): Element | null => {
+    const tol = SELECT_TOL / state.camera.zoom;
+    const els = state.board.elements;
+    for (let i = els.length - 1; i >= 0; i--) {
+      if (hitTest(els[i], x, y, tol)) return els[i];
+    }
+    return null;
+  };
+
+  function zoomAtScreen(sx: number, sy: number, factor: number): void {
+    const cam = state.camera;
+    const zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, cam.zoom * factor));
+    const sceneX = sx / cam.zoom + cam.x;
+    const sceneY = sy / cam.zoom + cam.y;
+    state.camera = { zoom, x: sceneX - sx / zoom, y: sceneY - sy / zoom };
+    update();
+  }
+
+  function zoomAtCenter(factor: number): void {
+    const r = canvas.getBoundingClientRect();
+    zoomAtScreen(r.width / 2, r.height / 2, factor);
+  }
+
+  function translateEl(el: Element, dx: number, dy: number): Element {
+    if (el.type === 'stroke') {
+      return { ...el, pts: el.pts.map(p => ({ x: p.x + dx, y: p.y + dy, p: p.p })) };
+    }
+    return { ...el, x: el.x + dx, y: el.y + dy };
+  }
+
+  function eraseAt(x: number, y: number, a: Extract<Action, { kind: 'erase' }>): void {
+    const r = eraseRadius / state.camera.zoom;
+    const before = state.board.elements;
+    const next: Element[] = [];
+    let removedNow = 0;
+    for (const el of before) {
+      if (hitTest(el, x, y, r)) { a.removed.push(el); removedNow++; }
+      else next.push(el);
+    }
+    if (removedNow) replaceElements(next);
+  }
+
+  function finishShape(): void {
+    const ls = state.liveShape;
+    state.liveShape = null;
+    if (!ls) { update(); return; }
+    const w = ls.x1 - ls.x0;
+    const h = ls.y1 - ls.y0;
+    if (Math.hypot(w, h) * state.camera.zoom < 3) { update(); return; } // случайный клик
+    let el: ShapeEl = { id: uid(), type: 'shape', shape: ls.shape, x: ls.x0, y: ls.y0, w, h, color: ls.color, width: ls.width };
+    if (ls.shape === 'rect' || ls.shape === 'ellipse') {
+      el = { ...el, x: Math.min(ls.x0, ls.x1), y: Math.min(ls.y0, ls.y1), w: Math.abs(w), h: Math.abs(h) };
+    }
+    addElement(el);
+  }
+
+  function finishMarquee(): void {
+    const m = state.marquee;
+    state.marquee = null;
+    if (!m) { update(); return; }
+    const s0x = Math.min(m.x0, m.x1) / state.camera.zoom + state.camera.x;
+    const s0y = Math.min(m.y0, m.y1) / state.camera.zoom + state.camera.y;
+    const s1x = Math.max(m.x0, m.x1) / state.camera.zoom + state.camera.x;
+    const s1y = Math.max(m.y0, m.y1) / state.camera.zoom + state.camera.y;
+    const rect = { x0: s0x, y0: s0y, x1: s1x, y1: s1y };
+    setSelection(
+      state.board.elements
+        .filter(el => aabbIntersects(elementAABB(el), rect))
+        .map(el => el.id),
+    );
+  }
+
+  function finishAction(): void {
+    const a = action;
+    action = null;
+    if (!a) return;
+    switch (a.kind) {
+      case 'draw': endStroke(); break;
+      case 'erase':
+        if (a.removed.length) pushHistory(a.pre);
+        update();
+        break;
+      case 'shape': finishShape(); break;
+      case 'move':
+        if (a.moved) pushHistory(a.pre);
+        update();
+        break;
+      case 'marquee': finishMarquee(); break;
+      case 'click': beginTextEdit({ at: { x: a.x, y: a.y }, target: a.target }); break;
+      case 'pan':
+        canvas.style.cursor = CURSORS[activeTool()];
+        update();
+        break;
+    }
+  }
+
+  function onPointerDown(e: PointerEvent): void {
+    canvas.setPointerCapture(e.pointerId);
+    const lp = localPos(e);
+    pointers.set(e.pointerId, { x: lp.x, y: lp.y, type: e.pointerType });
+
+    if (e.pointerType === 'touch' && touchBlocked) return;
+
+    const touches = touchPtrs();
+    if (e.pointerType === 'touch' && touches.length === 2) {
+      finishAction(); // жест двумя пальцами прерывает текущее действие
+      const [a, b] = touches;
+      gesture = {
+        dist: Math.hypot(a.x - b.x, a.y - b.y) || 1,
+        mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2,
+        cam: { ...state.camera },
+      };
+      return;
+    }
+    if (gesture || action) return;
+
+    if (e.button === 1 || activeTool() === 'pan') {
+      e.preventDefault();
+      action = { pid: e.pointerId, kind: 'pan', sx: lp.x, sy: lp.y, cam: { ...state.camera } };
+      canvas.style.cursor = 'grabbing';
+      return;
+    }
+    if (e.button !== 0) return;
+
+    const s = toScene(lp.x, lp.y);
+    const tool = activeTool();
+    switch (tool) {
+      case 'pen':
+      case 'highlighter':
+        beginStroke(tool, { x: s.x, y: s.y, p: pressureOf(e) });
+        action = { pid: e.pointerId, kind: 'draw' };
+        break;
+      case 'eraser': {
+        const a: Extract<Action, { kind: 'erase' }> = { pid: e.pointerId, kind: 'erase', pre: state.board.elements, removed: [] };
+        action = a;
+        eraseAt(s.x, s.y, a);
+        break;
+      }
+      case 'rect':
+      case 'ellipse':
+      case 'line':
+      case 'arrow':
+        state.liveShape = { shape: tool, x0: s.x, y0: s.y, x1: s.x, y1: s.y, color: state.style.color, width: state.style.width * 1.3 };
+        action = { pid: e.pointerId, kind: 'shape' };
+        update();
+        break;
+      case 'select': {
+        const hit = topHit(s.x, s.y);
+        if (hit) {
+          if (e.shiftKey) {
+            const sel = new Set(state.selection);
+            if (sel.has(hit.id)) sel.delete(hit.id); else sel.add(hit.id);
+            setSelection([...sel]);
+          } else if (!state.selection.has(hit.id)) {
+            setSelection([hit.id]);
+          }
+          const orig = new Map<string, Element>();
+          for (const id of state.selection) {
+            const el = state.board.elements.find(x => x.id === id);
+            if (el) orig.set(id, el);
+          }
+          action = { pid: e.pointerId, kind: 'move', pre: state.board.elements, start: s, orig, moved: false };
+        } else {
+          if (!e.shiftKey) setSelection([]);
+          action = { pid: e.pointerId, kind: 'marquee' };
+          state.marquee = { x0: lp.x, y0: lp.y, x1: lp.x, y1: lp.y };
+          update();
+        }
+        break;
+      }
+      case 'text':
+        action = { pid: e.pointerId, kind: 'click', x: s.x, y: s.y, target: 'text' };
+        break;
+      case 'note':
+        action = { pid: e.pointerId, kind: 'click', x: s.x, y: s.y, target: 'note' };
+        break;
+    }
+  }
+
+  function applyGesture(): void {
+    const touches = touchPtrs();
+    if (!gesture || touches.length < 2) return;
+    const [a, b] = touches;
+    const dist = Math.hypot(a.x - b.x, a.y - b.y) || 1;
+    const mx = (a.x + b.x) / 2;
+    const my = (a.y + b.y) / 2;
+    const zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, gesture.cam.zoom * (dist / gesture.dist)));
+    // сцена под стартовой серединой остаётся под текущей серединой
+    const smx = gesture.mx / gesture.cam.zoom + gesture.cam.x;
+    const smy = gesture.my / gesture.cam.zoom + gesture.cam.y;
+    state.camera = { zoom, x: smx - mx / zoom, y: smy - my / zoom };
+    update();
+  }
+
+  function coalesced(e: PointerEvent): PointerEvent[] {
+    const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [];
+    return evs.length ? evs : [e];
+  }
+
+  function onPointerMove(e: PointerEvent): void {
+    const lp = localPos(e);
+    const ptr = pointers.get(e.pointerId);
+    if (ptr) { ptr.x = lp.x; ptr.y = lp.y; }
+    state.hover = { x: lp.x, y: lp.y };
+    if (state.tool === 'eraser') update();
+
+    if (gesture) { applyGesture(); return; }
+    if (touchBlocked && e.pointerType === 'touch') return;
+    const a = action;
+    if (!a || a.pid !== e.pointerId) return;
+
+    switch (a.kind) {
+      case 'pan': {
+        const zoom = a.cam.zoom;
+        state.camera = {
+          ...a.cam,
+          x: a.cam.x - (lp.x - a.sx) / zoom,
+          y: a.cam.y - (lp.y - a.sy) / zoom,
+        };
+        update();
+        break;
+      }
+      case 'draw':
+        for (const ev of coalesced(e)) {
+          const c = localPos(ev);
+          const s = toScene(c.x, c.y);
+          extendStroke({ x: s.x, y: s.y, p: pressureOf(ev) });
+        }
+        break;
+      case 'erase':
+        for (const ev of coalesced(e)) {
+          const c = localPos(ev);
+          const s = toScene(c.x, c.y);
+          eraseAt(s.x, s.y, a);
+        }
+        break;
+      case 'shape': {
+        const s = toScene(lp.x, lp.y);
+        if (state.liveShape) { state.liveShape.x1 = s.x; state.liveShape.y1 = s.y; }
+        update();
+        break;
+      }
+      case 'move': {
+        const s = toScene(lp.x, lp.y);
+        const dx = s.x - a.start.x;
+        const dy = s.y - a.start.y;
+        if (!a.moved && Math.hypot(dx, dy) * state.camera.zoom < MOVE_THRESHOLD_PX) break;
+        a.moved = true;
+        replaceElements(
+          state.board.elements.map(el => (a.orig.has(el.id) ? translateEl(a.orig.get(el.id)!, dx, dy) : el)),
+        );
+        break;
+      }
+      case 'marquee':
+        if (state.marquee) { state.marquee.x1 = lp.x; state.marquee.y1 = lp.y; }
+        update();
+        break;
+    }
+  }
+
+  function onPointerUp(e: PointerEvent): void {
+    pointers.delete(e.pointerId);
+    if (gesture) {
+      if (touchPtrs().length < 2) {
+        gesture = null;
+        if (touchPtrs().length > 0) touchBlocked = true;
+      }
+      return;
+    }
+    if (touchBlocked && touchPtrs().length === 0) touchBlocked = false;
+    if (action && action.pid !== e.pointerId) return;
+    finishAction();
+  }
+
+  function onPointerLeave(): void {
+    state.hover = null;
+    if (state.tool === 'eraser') update();
+  }
+
+  function onDblClick(e: MouseEvent): void {
+    if (activeTool() !== 'select') return;
+    const lp = localPos(e);
+    const s = toScene(lp.x, lp.y);
+    const hit = topHit(s.x, s.y);
+    if (hit && (hit.type === 'text' || hit.type === 'note')) beginTextEdit({ el: hit });
+  }
+
+  function onWheel(e: WheelEvent): void {
+    e.preventDefault();
+    const lp = localPos(e);
+    const k = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 100 : 1;
+    if (e.ctrlKey) {
+      // pinch жест точпада приходит как ctrl+wheel
+      zoomAtScreen(lp.x, lp.y, Math.exp(-e.deltaY * k * 0.0022));
+    } else {
+      let dx = e.deltaX * k;
+      let dy = e.deltaY * k;
+      if (e.shiftKey && dx === 0) { dx = dy; dy = 0; }
+      state.camera = {
+        ...state.camera,
+        x: state.camera.x + dx / state.camera.zoom,
+        y: state.camera.y + dy / state.camera.zoom,
+      };
+      update();
+    }
+  }
+
+  function isTypingTarget(t: EventTarget | null): boolean {
+    return t instanceof HTMLElement && (
+      t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable
+    );
+  }
+
+  function onKeyDown(e: KeyboardEvent): void {
+    if (isTypingTarget(e.target)) return;
+    if (e.ctrlKey || e.metaKey) {
+      switch (e.code) {
+        case 'KeyZ': e.preventDefault(); if (e.shiftKey) redo(); else undo(); return;
+        case 'KeyY': e.preventDefault(); redo(); return;
+        case 'KeyS': e.preventDefault(); void saveNow(); return;
+        case 'KeyE': e.preventDefault(); void exportPng(); return;
+      }
+      return;
+    }
+    switch (e.code) {
+      case 'Space':
+        e.preventDefault();
+        if (!spacePan) { spacePan = true; canvas.style.cursor = 'grab'; }
+        break;
+      case 'Escape': finishAction(); break;
+      case 'Delete':
+      case 'Backspace': e.preventDefault(); deleteSelected(); break;
+      case 'Equal': zoomAtCenter(1.25); break;
+      case 'Minus': zoomAtCenter(1 / 1.25); break;
+      case 'Digit0': fitContent(); break;
+      case 'KeyB': toggleSidebar(); break;
+      default: {
+        const tool = TOOL_BY_CODE[e.code];
+        if (tool) setTool(tool);
+      }
+    }
+  }
+
+  function onKeyUp(e: KeyboardEvent): void {
+    if (e.code === 'Space') {
+      spacePan = false;
+      canvas.style.cursor = CURSORS[state.tool];
+    }
+  }
+
+  canvas.addEventListener('pointerdown', onPointerDown);
+  canvas.addEventListener('pointermove', onPointerMove);
+  canvas.addEventListener('pointerup', onPointerUp);
+  canvas.addEventListener('pointercancel', onPointerUp);
+  canvas.addEventListener('pointerleave', onPointerLeave);
+  canvas.addEventListener('dblclick', onDblClick);
+  canvas.addEventListener('wheel', onWheel, { passive: false });
+  canvas.addEventListener('contextmenu', e => e.preventDefault());
+  window.addEventListener('keydown', onKeyDown);
+  window.addEventListener('keyup', onKeyUp);
+}
+
+function pressureOf(e: PointerEvent): number {
+  if (e.pointerType === 'mouse') return 0.5;
+  return e.pressure > 0 ? e.pressure : 0.5;
+}
