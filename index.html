@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Доска</title>
+</head>
+<body>
+  <div id="topbar">
+    <button id="btn-sidebar" class="icon" title="Доски (B)"></button>
+    <input id="board-name" title="Название доски" spellcheck="false" />
+    <div class="sep"></div>
+    <button id="btn-undo" class="icon" title="Отменить (Ctrl+Z)"></button>
+    <button id="btn-redo" class="icon" title="Повторить (Ctrl+Y)"></button>
+    <div class="sep"></div>
+    <select id="grid-mode" title="Фон доски">
+      <option value="none">Без фона</option>
+      <option value="dots">Точки</option>
+      <option value="square" selected>Клетка</option>
+    </select>
+    <div class="spacer"></div>
+    <span id="zoom-label" title="Масштаб">100%</span>
+    <button id="btn-fit" class="icon" title="Показать всё содержимое (0)"></button>
+    <button id="btn-export" class="icon" title="Экспорт в PNG (Ctrl+E)"></button>
+  </div>
+  <div id="main">
+    <aside id="sidebar">
+      <div class="sidebar-head">
+        <span>Доски</span>
+        <button id="btn-new-board" title="Новая доска">+</button>
+      </div>
+      <div id="boards-list"></div>
+    </aside>
+    <div id="canvas-wrap">
+      <div id="toolbar"></div>
+      <canvas id="board"></canvas>
+      <div id="overlay"></div>
+      <div id="zoom-pill" hidden>100%</div>
+    </div>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

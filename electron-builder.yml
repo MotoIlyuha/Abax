@@ -1,0 +1,17 @@
+appId: ru.doska.app
+productName: Doska
+directories:
+  output: release
+files:
+  - dist/**
+  - electron/**
+  - package.json
+win:
+  target:
+    - nsis
+    - portable
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  shortcutName: Doska
