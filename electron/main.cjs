@@ -3,6 +3,9 @@ const path = require('path');
 const fs = require('fs/promises');
 const fss = require('fs');
 const { createShareServer, MAX_EDITORS } = require('./share.cjs');
+
+const isDev = !app.isPackaged;
+
 async function createWindow() {
   const win = new BrowserWindow({
     width: 1440,
@@ -20,8 +23,20 @@ async function createWindow() {
   if (isDev) {
     win.loadURL('http://localhost:5173');
   } else {
-    win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+    win.loadFile(path.join(__dirname, '..', 'dist', 'index.html')).catch(err => {
+      console.error('[doska] loadFile failed:', err);
+      dialog.showErrorBox('Doska — ошибка загрузки', String(err));
+    });
   }
+  win.webContents.on('did-fail-load', (_e, code, desc, url) => {
+    console.error(`[doska] did-fail-load: ${code} ${desc} ${url}`);
+  });
+  win.webContents.on('render-process-gone', (_e, details) => {
+    console.error('[doska] renderer gone:', details.reason);
+  });
+  win.webContents.on('console-message', (_e, level, message, line, sourceId) => {
+    if (level >= 2) console.error(`[doska:renderer] ${message} (${sourceId}:${line})`);
+  });
 }
 
 function boardsDir() {
