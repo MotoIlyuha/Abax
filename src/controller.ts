@@ -31,8 +31,8 @@ const ZOOM_MAX = 32;
 type Action = { pid: number } & (
   | { kind: 'draw' }
   | { kind: 'erase'; pre: Element[]; removed: Element[] }
+  | { kind: 'move'; pre: Element[]; start: Pt; orig: Map<string, Element>; moved: boolean; deselectOnUp: boolean }
   | { kind: 'shape' }
-  | { kind: 'move'; pre: Element[]; start: Pt; orig: Map<string, Element>; moved: boolean }
   | { kind: 'handle'; el: Element; h: Handle; pre: Element[]; changed: boolean }
   | { kind: 'marquee' }
   | { kind: 'pan'; sx: number; sy: number; cam: Camera }
@@ -155,6 +155,7 @@ export function initController(canvas: HTMLCanvasElement): void {
       case 'move':
         state.liveEdit = false;
         if (a.moved) pushHistory(a.pre);
+        else if (a.deselectOnUp) setSelection([]);
         update();
         break;
       case 'handle':
@@ -249,6 +250,8 @@ export function initController(canvas: HTMLCanvasElement): void {
         const hit = topHit(s.x, s.y);
         if (hit) {
           const groupIds = expandSelectionWithGroups(new Set([hit.id]));
+          // был ли элемент уже выделен ДО этого клика (для снятия по повторному клику)
+          const wasSelected = !e.shiftKey && state.selection.has(hit.id) && groupIds.length === state.selection.size && groupIds.every(id => state.selection.has(id));
           if (e.shiftKey) {
             const sel = new Set(state.selection);
             const removing = sel.has(hit.id);
@@ -264,7 +267,7 @@ export function initController(canvas: HTMLCanvasElement): void {
             const el = state.board.elements.find(x => x.id === id);
             if (el) orig.set(id, el);
           }
-          action = { pid: e.pointerId, kind: 'move', pre: state.board.elements, start: s, orig, moved: false };
+          action = { pid: e.pointerId, kind: 'move', pre: state.board.elements, start: s, orig, moved: false, deselectOnUp: wasSelected };
           state.liveEdit = true;
         } else {
           if (!e.shiftKey) setSelection([]);

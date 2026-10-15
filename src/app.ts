@@ -127,8 +127,20 @@ function chooseColor(c: string): void {
   setStyleColor(c);
   addCustomColor(c);
   persistStyle();
-  if (ctxKind === 'color') openCtxPanel('color'); // перерисовать список кастомных
+  // панель не пересобираем: живой HSV-пикер должен остаться на месте;
+  // обновляем только активность свотчей
+  if (ctxKind === 'color') updateSwatchActive();
   refresh();
+}
+
+/** Подсвечивает текущий цвет в открытой панели цвета без её пересборки. */
+function updateSwatchActive(): void {
+  const grid = ctxPanelEl().querySelector('.ctx-swatches');
+  if (!grid) return;
+  for (const b of Array.from(grid.children)) {
+    const btn = b as HTMLButtonElement;
+    if (btn.dataset.c) btn.classList.toggle('active', btn.dataset.c === state.style.color);
+  }
 }
 
 /** Выбор толщины: применяется к выделению (если есть) и становится текущей. */
@@ -164,6 +176,8 @@ export function beginTextEdit(opts: { el?: TextEl | NoteEl; at?: { x: number; y:
   }
   if (target === 'note' && !el && opts.at) {
     state.liveNote = { x: opts.at.x - NOTE_W / 2, y: opts.at.y - NOTE_H / 2, w: NOTE_W, h: NOTE_H, color: state.noteColor };
+    // сразу возвращаем выделение, чтобы случайные клики не плодили стикеры
+    if (state.tool === 'note') setTool('select');
   }
   document.getElementById('overlay')!.appendChild(ta);
   editing = { el, at: opts.at ?? null, target, ta };
@@ -174,7 +188,8 @@ export function beginTextEdit(opts: { el?: TextEl | NoteEl; at?: { x: number; y:
   ta.addEventListener('keydown', e => {
     e.stopPropagation();
     if (e.key === 'Escape') { e.preventDefault(); closeEditor(false); }
-    else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); closeEditor(true); }
+    else if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); closeEditor(true); }
+    // Shift+Enter — перевод строки (стандартное поведение textarea)
   });
   ta.addEventListener('input', () => positionEditor());
   ta.addEventListener('blur', () => closeEditor(true));
@@ -297,14 +312,19 @@ function buildColorPanel(p: HTMLElement): void {
   p.appendChild(title);
   const grid = document.createElement('div');
   grid.className = 'ctx-swatches';
-  for (const c of [...PALETTE, ...loadCustomColors()]) {
-    const b = document.createElement('button');
-    b.className = 'ctx-swatch' + (c === state.style.color ? ' active' : '');
-    b.style.background = c;
-    b.title = c;
-    b.addEventListener('click', () => chooseColor(c));
-    grid.appendChild(b);
-  }
+  const fillSwatches = () => {
+    grid.textContent = '';
+    for (const c of [...PALETTE, ...loadCustomColors()]) {
+      const b = document.createElement('button');
+      b.className = 'ctx-swatch' + (c === state.style.color ? ' active' : '');
+      b.dataset.c = c;
+      b.style.background = c;
+      b.title = c;
+      b.addEventListener('click', () => chooseColor(c));
+      grid.appendChild(b);
+    }
+  };
+  fillSwatches();
   p.appendChild(grid);
   const custom = document.createElement('button');
   custom.className = 'ctx-custom-btn';
@@ -314,6 +334,9 @@ function buildColorPanel(p: HTMLElement): void {
   pickerHost.hidden = true;
   custom.addEventListener('click', () => {
     if (pickerHost.hidden) {
+      // текущий цвет (если не из палитры) сразу становится квадратиком
+      addCustomColor(state.style.color);
+      fillSwatches();
       buildCustomColorPicker(pickerHost, state.style.color, c => chooseColor(c));
       pickerHost.hidden = false;
       positionCtxPanel();
