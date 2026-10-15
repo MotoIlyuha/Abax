@@ -13,7 +13,9 @@ async function boot(): Promise<void> {
   const q = new URLSearchParams(location.search);
   const roomCode = q.get('room');
   if (roomCode) {
-    const name = window.prompt('Ваше имя для совместной работы:', `Гость`) || 'Гость';
+    // имя из URL (тестовое окно) или автогенерация — БЕЗ window.prompt,
+    // который блокирует boot в Electron BrowserWindow
+    const name = q.get('name') || `Гость ${Math.floor(Math.random() * 90 + 10)}`;
     await startCollab(`ws://${location.host}/ws`, false, name);
     setStorage(netStorage);
     initRenderer(canvas);
@@ -49,7 +51,6 @@ async function boot(): Promise<void> {
 
   // отладочный доступ для smoke-тестов
   (window as unknown as Record<string, unknown>).__doska = { state, undo, redo, requestRender, importPdfFromDataUrl };
-
 }
 
 void boot();
