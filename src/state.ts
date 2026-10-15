@@ -9,6 +9,9 @@ export interface LiveStroke {
 
 export interface LiveShape {
   shape: 'rect' | 'ellipse' | 'line' | 'arrow';
+  /** Якорь — точка старта (не меняется модификаторами). */
+  ax0: number; ay0: number;
+  /** Текущие углы с учётом модификаторов. */
   x0: number; y0: number; x1: number; y1: number;
   color: string;
   width: number;

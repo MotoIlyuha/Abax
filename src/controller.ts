@@ -218,7 +218,7 @@ export function initController(canvas: HTMLCanvasElement): void {
       case 'ellipse':
       case 'line':
       case 'arrow':
-        state.liveShape = { shape: tool, x0: s.x, y0: s.y, x1: s.x, y1: s.y, color: state.style.color, width: state.style.width * 1.3 };
+        state.liveShape = { shape: tool, ax0: s.x, ay0: s.y, x0: s.x, y0: s.y, x1: s.x, y1: s.y, color: state.style.color, width: state.style.width * 1.3 };
         action = { pid: e.pointerId, kind: 'shape' };
         update();
         break;
@@ -384,7 +384,36 @@ export function initController(canvas: HTMLCanvasElement): void {
         break;
       case 'shape': {
         const s = toScene(lp.x, lp.y);
-        if (state.liveShape) { state.liveShape.x1 = s.x; state.liveShape.y1 = s.y; }
+        const ls = state.liveShape;
+        if (ls) {
+          // модификаторы как при resize: Alt — от центра, Shift/Ctrl — пропорции/45°
+          let dx = s.x - ls.ax0, dy = s.y - ls.ay0;
+          if (e.shiftKey || e.ctrlKey) {
+            if (ls.shape === 'rect' || ls.shape === 'ellipse') {
+              const m = Math.max(Math.abs(dx), Math.abs(dy));
+              const sgnX = Math.sign(dx) || 1, sgnY = Math.sign(dy) || 1;
+              dx = sgnX * m;
+              dy = sgnY * m;
+            } else {
+              // линия/стрелка: примагничивание к кратным 45°
+              const len = Math.hypot(dx, dy);
+              const a = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4);
+              dx = Math.cos(a) * len;
+              dy = Math.sin(a) * len;
+            }
+          }
+          if (e.altKey) {
+            ls.x0 = ls.ax0 - dx;
+            ls.y0 = ls.ay0 - dy;
+            ls.x1 = ls.ax0 + dx;
+            ls.y1 = ls.ay0 + dy;
+          } else {
+            ls.x0 = ls.ax0;
+            ls.y0 = ls.ay0;
+            ls.x1 = ls.ax0 + dx;
+            ls.y1 = ls.ay0 + dy;
+          }
+        }
         update();
         break;
       }
