@@ -1516,8 +1516,13 @@ async function openShareDialog(): Promise<void> {
       start.textContent = 'Включить совместную работу';
       start.addEventListener('click', async () => {
         const r = await api.shareStart();
+        if (!r.ok || !r.port || !r.code) {
+          alert((r as { error?: string }).error || 'Не удалось запустить сервер совместной работы');
+          await render();
+          return;
+        }
         await saveNow();
-        await startHostConnection(r.port!, r.code!, 'Автор');
+        await startHostConnection(r.port, r.code, 'Автор');
         await render();
       });
       dlg!.appendChild(start);

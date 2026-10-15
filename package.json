@@ -1,6 +1,6 @@
 {
   "name": "doska",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "private": true,
   "description": "Локальная доска для занятий по математике",
   "main": "electron/main.cjs",

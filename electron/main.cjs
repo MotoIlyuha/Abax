@@ -142,7 +142,16 @@ function shareInfo() {
 ipcMain.handle('share:start', async () => {
   if (share) return { ok: true, ...shareInfo(), users: share.users() };
   const code = Math.random().toString(36).slice(2, 8).toUpperCase();
-  share = await createShareServer({ port: SHARE_PORT, code });
+  // пробуем базовый порт, затем следующие — не падаем от EADDRINUSE
+  for (let p = SHARE_PORT; p < SHARE_PORT + 20; p++) {
+    try {
+      share = await createShareServer({ port: p, code });
+      break;
+    } catch (e) {
+      if (e.code !== 'EADDRINUSE') throw e;
+    }
+  }
+  if (!share) return { ok: false, error: 'Не удалось найти свободный порт' };
   share.setDistDir(path.join(__dirname, '..', 'dist'));
   return { ok: true, ...shareInfo(), users: share.users() };
 });

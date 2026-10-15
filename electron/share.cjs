@@ -146,12 +146,13 @@ function createShareServer({ port, code, openEdit = process.env.DOSKA_OPEN_EDIT 
     for (const c of room.clients.values()) { if (c.ws.readyState === 1) c.ws.send(users); }
   }
 
-  return new Promise(resolve => {
+  return new Promise((resolve, reject) => {
+    server.once('error', reject);
     server.listen(port, () => resolve({
       port: server.address().port, code, room,
       setDistDir(d) { distDir = d; },
       setRights: (uid, patch) => { const r = room.setRights(uid, patch); broadcastUsers(); pushRights(uid); return r; },
-      pushProject: (project) => { room.project = project; for (const c of room.clients.values()) if (c.readyState !== 1 || true) try { c.ws.send(JSON.stringify({ t: 'project', project, by: -1 })); } catch {} },
+      pushProject: (project) => { room.project = project; for (const c of room.clients.values()) try { c.ws.send(JSON.stringify({ t: 'project', project, by: -1 })); } catch {} },
       users: () => room.usersSnapshot(),
       close: () => { for (const c of room.clients.keys()) c.close(); wss.close(); server.close(); },
     }));
