@@ -95,7 +95,7 @@ const lsStorage: BoardsStorage = {
   },
 };
 
-export const storage: BoardsStorage = doskaApi
+export let storage: BoardsStorage = doskaApi
   ? {
       list: () => doskaApi.list(),
       load: async id => migrate(await doskaApi.load(id)),
@@ -103,3 +103,8 @@ export const storage: BoardsStorage = doskaApi
       remove: id => doskaApi.remove(id),
     }
   : lsStorage;
+
+/** Подмена хранилища (сетевой режим совместной работы). */
+export function setStorage(impl: BoardsStorage): void {
+  storage = impl;
+}

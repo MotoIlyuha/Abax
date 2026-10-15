@@ -12,6 +12,7 @@ import { elementAABB, NOTE_W, NOTE_H, NOTE_PAD, NOTE_FONT, NOTE_TEXT_COLOR, TEXT
 import * as pdfjsLib from 'pdfjs-dist';
 // ?worker&inline: воркер инлайнится в бандл и работает из file:// (Electron)
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker&inline';
+import { collabActive, isHost, startHostConnection, stopCollab } from './collab';
 
 pdfjsLib.GlobalWorkerOptions.workerPort = new PdfWorker();
 
@@ -1413,6 +1414,14 @@ function wireTopbar(): void {
   document.getElementById('btn-export')!.innerHTML = ICONS.export;
   document.getElementById('btn-import')!.innerHTML = ICONS.pdf;
   document.getElementById('btn-settings')!.innerHTML = ICONS.settings;
+  document.getElementById('btn-share')!.innerHTML = svg('<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/>');
+  document.getElementById('btn-share')!.addEventListener('click', () => { void openShareDialog(); });
+  // guest-режим: скрываем недоступные функции
+  if (collabActive() && !isHost()) {
+    for (const id of ['btn-home', 'btn-import', 'btn-image', 'btn-share']) {
+      document.getElementById(id)!.style.display = 'none';
+    }
+  }
 
   document.getElementById('btn-home')!.addEventListener('click', () => {
     void (async () => {
@@ -1465,6 +1474,134 @@ function wireTopbar(): void {
 
 export function toggleSidebar(): void {
   document.getElementById('sidebar')!.classList.toggle('hidden');
+}
+
+// ----- Совместная работа: диалог автора -----
+
+interface ShareUser { userId: number; name: string; color: string; host?: boolean; away?: boolean; rights?: { default?: string; pages?: Record<string, string> } }
+interface ShareStatus { active: boolean; url?: string; code?: string; port?: number; maxEditors?: number; users?: ShareUser[] }
+interface ShareApi {
+  shareStart(): Promise<{ ok: boolean; port?: number; code?: string }>;
+  shareStop(): Promise<{ ok: boolean }>;
+  shareStatus(): Promise<ShareStatus>;
+  shareSetRights(uid: number, patch: { pages?: Record<string, string>; default?: string; all?: string }): Promise<{ ok: boolean; error?: string }>;
+  shareOpenTestWindow(): Promise<{ ok: boolean }>;
+}
+
+async function collabApi(): Promise<ShareApi> {
+  return (window as unknown as { doskaAPI?: ShareApi }).doskaAPI!;
+}
+
+let shareInfo: ShareStatus = { active: false };
+
+async function openShareDialog(): Promise<void> {
+  const api = await collabApi();
+  let dlg = document.getElementById('share-dialog');
+  if (dlg) { dlg.remove(); return; }
+  dlg = document.createElement('div');
+  dlg.id = 'share-dialog';
+  document.body.appendChild(dlg);
+  const render = async () => {
+    const status = await api.shareStatus();
+    shareInfo = status; void shareInfo; // доступно другим частям UI
+    const users = (status.users || []).filter(u => !u.host);
+    dlg!.textContent = '';
+    const title = document.createElement('div');
+    title.className = 'ctx-title';
+    title.textContent = 'Совместная работа';
+    dlg!.appendChild(title);
+    if (!status.active) {
+      const start = document.createElement('button');
+      start.className = 'ctx-custom-btn';
+      start.textContent = 'Включить совместную работу';
+      start.addEventListener('click', async () => {
+        const r = await api.shareStart();
+        await saveNow();
+        await startHostConnection(r.port!, r.code!, 'Автор');
+        await render();
+      });
+      dlg!.appendChild(start);
+    } else {
+      const link = document.createElement('div');
+      link.className = 'share-link';
+      link.textContent = status.url || '';
+      link.title = 'Клик — скопировать ссылку';
+      link.addEventListener('click', () => {
+        void navigator.clipboard.writeText(status.url || '');
+        link.textContent = 'Ссылка скопирована';
+        setTimeout(() => { link.textContent = status.url || ''; }, 1200);
+      });
+      dlg!.appendChild(link);
+      const testBtn = document.createElement('button');
+      testBtn.className = 'ctx-custom-btn';
+      testBtn.textContent = '+ Тестовое окно гостя';
+      testBtn.addEventListener('click', () => { void api.shareOpenTestWindow(); });
+      dlg!.appendChild(testBtn);
+      const stopBtn = document.createElement('button');
+      stopBtn.className = 'ctx-custom-btn danger';
+      stopBtn.textContent = 'Выключить';
+      stopBtn.addEventListener('click', async () => { await api.shareStop(); stopCollab(); await render(); });
+      dlg!.appendChild(stopBtn);
+      if (users.length > 0) {
+        const h = document.createElement('div');
+        h.className = 'ctx-label';
+        h.textContent = `Участники (${users.length}) — права по страницам:`;
+        dlg!.appendChild(h);
+        const table = document.createElement('div');
+        table.className = 'share-table';
+        for (const u of users) {
+          const row = document.createElement('div');
+          row.className = 'share-user';
+          const head = document.createElement('div');
+          head.className = 'share-user-head';
+          const dot = document.createElement('i');
+          dot.style.background = u.away ? '#9aa0ab' : u.color;
+          head.append(dot);
+          const nm = document.createElement('span');
+          nm.textContent = u.name + (u.away ? ' · Отошёл' : '');
+          head.appendChild(nm);
+          row.appendChild(head);
+          for (const pg of state.project.pages) {
+            const sel = document.createElement('select');
+            const cur = u.rights?.pages?.[pg.id] || u.rights?.default || 'view';
+            for (const [v, lbl] of [['view', 'Просмотр'], ['edit', 'Редактирование']] as const) {
+              const opt = document.createElement('option');
+              opt.value = v;
+              opt.textContent = `${pg.name}: ${lbl}`;
+              if (cur === v) opt.selected = true;
+              sel.appendChild(opt);
+            }
+            sel.addEventListener('change', async () => {
+              const patch: Record<string, string> = {};
+              patch[pg.id] = sel.value;
+              const r = await api.shareSetRights(u.userId, { pages: patch });
+              if (!r.ok) alert(r.error || 'Не удалось изменить права');
+              await render();
+            });
+            row.appendChild(sel);
+          }
+          table.appendChild(row);
+        }
+        dlg!.appendChild(table);
+      } else {
+        const hint = document.createElement('div');
+        hint.className = 'ctx-label';
+        hint.textContent = 'Откройте ссылку на другом устройстве или в тестовом окне';
+        dlg!.appendChild(hint);
+      }
+    }
+    const close = document.createElement('button');
+    close.className = 'ctx-custom-btn';
+    close.textContent = 'Закрыть';
+    close.addEventListener('click', () => dlg!.remove());
+    dlg!.appendChild(close);
+  };
+  await render();
+  // периодическое обновление списка участников, пока диалог открыт
+  const timer = window.setInterval(() => {
+    if (!document.getElementById('share-dialog')) { clearInterval(timer); return; }
+    void render();
+  }, 2000);
 }
 
 function refresh(): void {

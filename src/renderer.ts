@@ -1,4 +1,5 @@
 import type { Camera, Element, GridMode, ImageEl, ShapeEl } from './types';
+import { foreignSelections } from './collab';
 import {
   elementAABB, elementHandles, wrapText, TEXT_FONT,
   NOTE_PAD, NOTE_FONT, NOTE_TEXT_COLOR,
@@ -680,6 +681,20 @@ function draw(): void {
     const y = Math.min(m.y0, m.y1);
     ctx.fillRect(x, y, Math.abs(m.x1 - m.x0), Math.abs(m.y1 - m.y0));
     ctx.strokeRect(x, y, Math.abs(m.x1 - m.x0), Math.abs(m.y1 - m.y0));
+  }
+  // выделения других участников совместной работы — рамки их цвета
+  for (const fs of foreignSelections()) {
+    ctx.strokeStyle = fs.color;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([5, 4]);
+    for (const el of state.board.elements) {
+      if (!fs.ids.includes(el.id)) continue;
+      const a = cacheOf(el).aabb;
+      const fx = (a.x0 - cam.x) * cam.zoom - 4;
+      const fy = (a.y0 - cam.y) * cam.zoom - 4;
+      ctx.strokeRect(fx, fy, (a.x1 - a.x0) * cam.zoom + 8, (a.y1 - a.y0) * cam.zoom + 8);
+    }
+    ctx.setLineDash([]);
   }
   if (state.tool === 'eraser' && state.hover) {
     ctx.strokeStyle = '#7a828e';

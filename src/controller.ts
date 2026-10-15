@@ -8,6 +8,7 @@ import {
   hitTest, aabbIntersects, elementAABB, elementHandles, applyHandle,
   insertPolyNode, removePolyNode, gridStepFor, snapValue,
 } from './geom';
+import { collabActive, noteCursor, readOnly } from './collab';
 import { eraseRadius } from './renderer';
 import { beginTextEdit, exportPng, fitContent, saveNow, toggleSidebar } from './app';
 
@@ -177,7 +178,9 @@ export function initController(canvas: HTMLCanvasElement): void {
     const lp = localPos(e);
     pointers.set(e.pointerId, { x: lp.x, y: lp.y, type: e.pointerType });
 
-    if (e.pointerType === 'touch' && touchBlocked) return;
+    // совместный режим: на странице без права edit правки запрещены
+    if (collabActive() && readOnly() && activeTool() !== 'pan' && e.button !== 1) return;
+
 
     const touches = touchPtrs();
     if (e.pointerType === 'touch' && touches.length === 2) {
@@ -339,6 +342,7 @@ export function initController(canvas: HTMLCanvasElement): void {
     const ptr = pointers.get(e.pointerId);
     if (ptr) { ptr.x = lp.x; ptr.y = lp.y; }
     state.hover = { x: lp.x, y: lp.y };
+    if (collabActive()) noteCursor(lp.x / state.camera.zoom + state.camera.x, lp.y / state.camera.zoom + state.camera.y);
     if (state.tool === 'eraser') update();
 
     if (gesture) { applyGesture(); return; }

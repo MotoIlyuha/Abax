@@ -500,5 +500,67 @@ select {
 }
 /* стикер редактируется на месте: без фона и рамок */
 #overlay textarea.inplace-edit { border: none; padding: 0; }
+
+/* ----- Совместная работа ----- */
+#share-dialog {
+  position: fixed;
+  top: 54px;
+  right: 12px;
+  width: 340px;
+  max-height: 80vh;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 14px;
+  z-index: 70;
+}
+.share-link {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  padding: 8px;
+  border: 1px dashed var(--border);
+  border-radius: 7px;
+  cursor: pointer;
+  word-break: break-all;
+  margin-bottom: 8px;
+}
+.share-link:hover { border-color: var(--accent); color: var(--accent); }
+.ctx-custom-btn.danger { color: var(--danger); border-color: #f3c1c1; }
+.share-table { display: flex; flex-direction: column; gap: 10px; }
+.share-user { display: flex; flex-direction: column; gap: 5px; }
+.share-user-head { display: flex; align-items: center; gap: 7px; font-weight: 600; }
+.share-user-head i { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.share-user select { font: inherit; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; background: #fff; }
+
+#remote-cursors { position: absolute; inset: 0; pointer-events: none; z-index: 9; }
+.remote-cursor {
+  position: absolute;
+  pointer-events: none;
+  transition: left 40ms linear, top 40ms linear;
+}
+.remote-cursor i {
+  position: absolute;
+  left: -3px;
+  top: -3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+}
+.remote-cursor span {
+  position: absolute;
+  left: 10px;
+  top: 8px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 99px;
+  white-space: nowrap;
+}
+.remote-cursor.away span { opacity: 0.75; }
+body.collab-guest #sidebar { display: none; }
 #overlay textarea.inplace-edit.note { background: transparent; box-shadow: none; }
 #overlay textarea.inplace-edit:not(.note) { background: rgba(255, 255, 255, 0.85); box-shadow: 0 0 0 1.5px rgba(50, 115, 245, 0.35); border-radius: 3px; }

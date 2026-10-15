@@ -1,6 +1,6 @@
 {
   "name": "doska",
-  "version": "0.4.4",
+  "version": "1.0.0",
   "private": true,
   "description": "Локальная доска для занятий по математике",
   "main": "electron/main.cjs",
@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "build": "npm run typecheck && vite build",
     "electron": "electron .",
-    "dist": "npm run build && electron-builder --win nsis portable"
+    "dist": "npm run build && electron-builder --win nsis portable",
+    "collab:demo": "node scripts/collab-demo.mjs"
   },
   "devDependencies": {
     "electron": "^33.2.0",
@@ -19,6 +20,8 @@
     "vite": "^5.4.11"
   },
   "dependencies": {
-    "pdfjs-dist": "^4.10.38"
+    "@types/ws": "^8.18.2",
+    "pdfjs-dist": "^4.10.38",
+    "ws": "^8.22.0"
   }
 }

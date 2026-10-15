@@ -2,10 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
 const fss = require('fs');
-
-const isDev = !app.isPackaged;
-app.setName('Doska');
-
+const { createShareServer, MAX_EDITORS } = require('./share.cjs');
 async function createWindow() {
   const win = new BrowserWindow({
     width: 1440,
@@ -107,3 +104,53 @@ ipcMain.handle('export:png', async (_e, { dataUrl, name }) => {
 
 app.whenReady().then(createWindow);
 app.on('window-all-closed', () => app.quit());
+
+// ----- Совместная работа -----
+let share = null;
+const SHARE_PORT = Number(process.env.DOSKA_SHARE_PORT || 4826);
+const os = require('os');
+
+function lanIp() {
+  for (const ifaces of Object.values(os.networkInterfaces())) {
+    for (const i of ifaces || []) {
+      if (i.family === 'IPv4' && !i.internal) return i.address;
+    }
+  }
+  return '127.0.0.1';
+}
+
+function shareInfo() {
+  const ip = lanIp();
+  return { port: share.port, code: share.code, url: `http://${ip}:${share.port}/?room=${share.code}`, maxEditors: MAX_EDITORS };
+}
+
+ipcMain.handle('share:start', async () => {
+  if (share) return { ok: true, ...shareInfo(), users: share.users() };
+  const code = Math.random().toString(36).slice(2, 8).toUpperCase();
+  share = await createShareServer({ port: SHARE_PORT, code });
+  share.setDistDir(path.join(__dirname, '..', 'dist'));
+  return { ok: true, ...shareInfo(), users: share.users() };
+});
+
+ipcMain.handle('share:stop', async () => {
+  if (share) { share.close(); share = null; }
+  return { ok: true };
+});
+
+ipcMain.handle('share:status', async () => share ? { active: true, ...shareInfo(), users: share.users() } : { active: false });
+
+ipcMain.handle('share:setRights', async (_e, { uid, patch }) => {
+  if (!share) return { ok: false, error: 'Совместная работа выключена' };
+  return share.setRights(uid, patch);
+});
+
+ipcMain.handle('share:openTestWindow', async () => {
+  if (!share) return { ok: false };
+  const w = new BrowserWindow({
+    width: 1100,
+    height: 720,
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: false },
+  });
+  await w.loadURL(`http://127.0.0.1:${share.port}/?room=${share.code}&name=${encodeURIComponent('Тест-гость')}`);
+  return { ok: true };
+});

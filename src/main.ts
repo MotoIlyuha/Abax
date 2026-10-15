@@ -3,10 +3,27 @@ import { initRenderer, requestRender } from './renderer';
 import { initController } from './controller';
 import { initApp, importPdfFromDataUrl } from './app';
 import { state, openProject, blankProject, projectMeta, onChange, undo, redo } from './state';
-import { storage } from './storage';
+import { storage, setStorage } from './storage';
+import { startCollab, netStorage } from './collab';
 
 async function boot(): Promise<void> {
   const canvas = document.getElementById('board') as HTMLCanvasElement;
+
+  // guest-режим: открыта ссылка совместной работы (?room=CODE)
+  const q = new URLSearchParams(location.search);
+  const roomCode = q.get('room');
+  if (roomCode) {
+    const name = window.prompt('Ваше имя для совместной работы:', `Гость`) || 'Гость';
+    await startCollab(`ws://${location.host}/ws`, false, name);
+    setStorage(netStorage);
+    initRenderer(canvas);
+    initApp(canvas);
+    initController(canvas);
+    onChange(() => requestRender());
+    document.body.classList.add('collab-guest');
+    (window as unknown as Record<string, unknown>).__doska = { state, undo, redo, requestRender };
+    return;
+  }
 
   let metas = await storage.list();
   let last: { pid?: string; pageId?: string } = {};
