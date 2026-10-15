@@ -560,7 +560,9 @@ select {
   border-radius: 99px;
   white-space: nowrap;
 }
-.remote-cursor.away span { opacity: 0.75; }
-body.collab-guest #sidebar { display: none; }
+body.collab-guest #sidebar { display: flex; }
+body.collab-guest #btn-new-page { display: none; }
+body.collab-guest .page-del { display: none !important; }
+body.collab-guest.readonly-mode #toolbar { display: none; }
 #overlay textarea.inplace-edit.note { background: transparent; box-shadow: none; }
 #overlay textarea.inplace-edit:not(.note) { background: rgba(255, 255, 255, 0.85); box-shadow: 0 0 0 1.5px rgba(50, 115, 245, 0.35); border-radius: 3px; }

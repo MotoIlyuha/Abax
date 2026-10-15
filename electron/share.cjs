@@ -35,9 +35,16 @@ class Room {
   }
   userPageRight(uid, pageId) {
     const info = [...this.clients.values()].find(c => c.uid === uid);
+    if (info && info.host) return 'edit';
     const r = this.rights.get(uid);
     if (!r) return 'view';
     return r.pages[pageId] || r.default || 'view';
+  }
+  visiblePages(uid) {
+    if (!this.project) return [];
+    const info = [...this.clients.values()].find(c => c.uid === uid);
+    if (info && info.host) return this.project.pages;
+    return this.project.pages.filter(pg => this.userPageRight(uid, pg.id) !== 'hidden');
   }
   setRights(uid, patch) {
     // patch: { pageId: 'edit'|'view' } | { default: ... } | { all: ... }
@@ -100,8 +107,8 @@ function createShareServer({ port, code, openEdit = process.env.DOSKA_OPEN_EDIT 
     else room.rights.set(uid, { default: openEdit ? 'edit' : 'view', pages: {} });
 
     const rightsOf = () => { const r = room.rights.get(uid); const pages = {}; if (room.project) for (const pg of room.project.pages) pages[pg.id] = room.userPageRight(uid, pg.id); return { default: r?.default || 'view', pages }; };
-    ws.send(JSON.stringify({ t: 'init', userId: uid, color: info.color, name: info.name, project: room.project, rights: rightsOf(), users: room.usersSnapshot() }));
-    broadcastUsers();
+    const projectFor = () => isHost ? room.project : (room.project ? { ...room.project, pages: room.visiblePages(uid) } : null);
+    ws.send(JSON.stringify({ t: 'init', userId: uid, color: info.color, name: info.name, project: projectFor(), rights: rightsOf(), users: room.usersSnapshot() }));
 
     ws.on('message', (raw) => {
       info.last = Date.now();
@@ -123,7 +130,10 @@ function createShareServer({ port, code, openEdit = process.env.DOSKA_OPEN_EDIT 
           room.project = merged;
         }
         for (const c of room.clients.values()) {
-          if (c.ws !== ws) c.ws.send(JSON.stringify({ t: 'project', project: room.project, by: uid }));
+          if (c.ws !== ws) {
+            const proj = c.host ? room.project : (room.project ? { ...room.project, pages: room.visiblePages(c.uid) } : null);
+            c.ws.send(JSON.stringify({ t: 'project', project: proj, by: uid }));
+          }
         }
         return;
       }

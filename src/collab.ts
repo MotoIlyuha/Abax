@@ -28,15 +28,15 @@ export function isHost(): boolean { return role === 'host'; }
 const cursorThrottle: { last: number; timer: number; pending: { x: number; y: number } | null } = { last: 0, timer: 0, pending: null };
 const projectThrottle: { timer: number } = { timer: 0 };
 
-/** Право на активной странице: edit только при явном разрешении. */
-export function pageRight(pageId: string): 'edit' | 'view' {
+/** Право на активной странице: edit / view / hidden. */
+export function pageRight(pageId: string): 'edit' | 'view' | 'hidden' {
   if (role === 'host') return 'edit';
-  const r = myRights.pages[pageId] ?? myRights.default ?? 'view';
-  return r === 'edit' ? 'edit' : 'view';
+  const r: string = myRights.pages[pageId] ?? myRights.default ?? 'view';
+  return r === 'edit' || r === 'hidden' ? r : 'view';
 }
 export function readOnly(pageId?: string): boolean {
   if (!connected || role === 'host') return false;
-  return pageRight(pageId ?? state.pageId) === 'view';
+  return pageRight(pageId ?? state.pageId) !== 'edit';
 }
 
 function send(obj: unknown): void {
@@ -63,6 +63,8 @@ export function startCollab(wsUrl: string, asHost: boolean, name: string): Promi
         renderRemoteCursors();
       } else if (m.t === 'rights') {
         myRights = (m.rights as typeof myRights) || myRights;
+        // перерисовываем UI — тулбар/сайдбар зависят от прав
+        setSelection([...state.selection]);
       } else if (m.t === 'project') {
         if ((m.by as number) !== myUserId) applyRemoteProject(m.project as Project);
       }

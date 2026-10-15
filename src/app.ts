@@ -12,7 +12,7 @@ import { elementAABB, NOTE_W, NOTE_H, NOTE_PAD, NOTE_FONT, NOTE_TEXT_COLOR, TEXT
 import * as pdfjsLib from 'pdfjs-dist';
 // ?worker&inline: воркер инлайнится в бандл и работает из file:// (Electron)
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker&inline';
-import { collabActive, isHost, startHostConnection, stopCollab } from './collab';
+import { collabActive, isHost, readOnly, startHostConnection, stopCollab } from './collab';
 
 pdfjsLib.GlobalWorkerOptions.workerPort = new PdfWorker();
 
@@ -1564,7 +1564,7 @@ async function openShareDialog(): Promise<void> {
           for (const pg of state.project.pages) {
             const sel = document.createElement('select');
             const cur = u.rights?.pages?.[pg.id] || u.rights?.default || 'view';
-            for (const [v, lbl] of [['view', 'Просмотр'], ['edit', 'Редактирование']] as const) {
+            for (const [v, lbl] of [['view', 'Просмотр'], ['edit', 'Редактирование'], ['hidden', 'Скрыть']] as const) {
               const opt = document.createElement('option');
               opt.value = v;
               opt.textContent = `${pg.name}: ${lbl}`;
@@ -1605,6 +1605,10 @@ async function openShareDialog(): Promise<void> {
 }
 
 function refresh(): void {
+  // совместный режим: скрываем тулбар на страницах без права edit
+  if (collabActive() && !isHost()) {
+    document.body.classList.toggle('readonly-mode', readOnly());
+  }
   const tb = document.getElementById('toolbar')!;
   for (const b of tb.querySelectorAll<HTMLButtonElement>('.tool[data-tool]')) {
     b.classList.toggle('active', b.dataset.tool === state.tool);
