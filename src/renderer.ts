@@ -387,6 +387,13 @@ export function initRenderer(c: HTMLCanvasElement): void {
   ctx = c.getContext('2d');
   cacheCtx = sceneCache.getContext('2d');
   new ResizeObserver(resize).observe(c.parentElement!);
+  // после разворота свёрнутого окна rAF заморожен и кадр не приходит — перерисовываем сами
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) {
+      rafId = 0;
+      requestRender();
+    }
+  });
   resize();
 }
 
