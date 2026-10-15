@@ -8,12 +8,13 @@ function mctx(): CanvasRenderingContext2D {
   return measureCtx;
 }
 
-export const TEXT_FONT = (size: number) => `${size}px "Segoe UI", "Inter", system-ui, sans-serif`;
+export const TEXT_FONT = (size: number, bold = false, italic = false) =>
+  `${italic ? 'italic ' : ''}${bold ? '700 ' : ''}${size}px "Segoe UI", "Inter", system-ui, sans-serif`;
 
 export function textSize(el: TextEl): { w: number; h: number } {
   const lines = el.text.split('\n');
   const ctx = mctx();
-  ctx.font = TEXT_FONT(el.size);
+  ctx.font = TEXT_FONT(el.size, el.bold, el.italic);
   let w = 0;
   for (const l of lines) w = Math.max(w, ctx.measureText(l || ' ').width);
   return { w, h: lines.length * el.size * 1.25 };
@@ -174,6 +175,8 @@ export function pointInPoly(x: number, y: number, pts: Pt[]): boolean {
 
 const ROT_HANDLE_OFF_PX = 30; // отступ ручки поворота над фигурой, px экрана
 const MIN_SHAPE_SIZE = 4;
+const MIN_NOTE_W = 80;
+const MIN_NOTE_H = 60;
 const ROT_SNAP = Math.PI / 45; // ~4°: примагничивание к кратным 45°
 
 /** Ручки редактирования элемента (координаты сцены); zoom нужен для экранных отступов. */
@@ -208,6 +211,19 @@ export function elementHandles(el: Element, zoom: number): HandlePos[] {
       for (let i = 0; i < last; i++) {
         const a = s.pts[i], b = s.pts[(i + 1) % n];
         out.push({ h: { kind: 'insert', i }, x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+      }
+      return out;
+    }
+    case 'note': {
+      // стикер масштабируется за края и углы, без поворота
+      const out: HandlePos[] = [];
+      const dirs: [number, number][] = [[-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0]];
+      for (const [dx, dy] of dirs) {
+        out.push({
+          h: { kind: 'resize', dx: dx as -1 | 0 | 1, dy: dy as -1 | 0 | 1 },
+          x: el.x + el.w / 2 + (dx * el.w) / 2,
+          y: el.y + el.h / 2 + (dy * el.h) / 2,
+        });
       }
       return out;
     }
@@ -262,6 +278,14 @@ export function applyHandle(el: Element, h: Handle, pt: Pt): Element {
       return { ...s, x: ncx - nw / 2, y: ncy - nh / 2, w: nw, h: nh };
     }
     return s;
+  }
+  if (el.type === 'note' && h.kind === 'resize') {
+    let left = el.x, right = el.x + el.w, top = el.y, bottom = el.y + el.h;
+    if (h.dx < 0) left = Math.min(pt.x, right - MIN_NOTE_W);
+    if (h.dx > 0) right = Math.max(pt.x, left + MIN_NOTE_W);
+    if (h.dy < 0) top = Math.min(pt.y, bottom - MIN_NOTE_H);
+    if (h.dy > 0) bottom = Math.max(pt.y, top + MIN_NOTE_H);
+    return { ...el, x: left, y: top, w: right - left, h: bottom - top };
   }
   if (el.type === 'poly' && h.kind === 'node') {
     const pts = el.pts.slice();

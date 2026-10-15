@@ -49,9 +49,10 @@ export interface TextEl {
   text: string;
   size: number;
   color: string;
+  bold?: boolean;
+  italic?: boolean;
   groupId?: string;
 }
-
 export interface NoteEl {
   id: string;
   type: 'note';

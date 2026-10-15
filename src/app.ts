@@ -309,12 +309,146 @@ function buildColorPanel(p: HTMLElement): void {
   const custom = document.createElement('button');
   custom.className = 'ctx-custom-btn';
   custom.textContent = 'Свой цвет…';
-  const input = document.createElement('input');
-  input.type = 'color';
-  input.style.display = 'none';
-  custom.addEventListener('click', () => input.click());
-  input.addEventListener('input', () => chooseColor(input.value));
-  p.append(custom, input);
+  const pickerHost = document.createElement('div');
+  pickerHost.className = 'ctx-picker';
+  pickerHost.hidden = true;
+  custom.addEventListener('click', () => {
+    if (pickerHost.hidden) {
+      buildCustomColorPicker(pickerHost, state.style.color, c => chooseColor(c));
+      pickerHost.hidden = false;
+      positionCtxPanel();
+    } else {
+      pickerHost.hidden = true;
+    }
+  });
+  p.append(custom, pickerHost);
+}
+
+// ----- Кастомный HSV-пикер -----
+
+function hsvToHex(h: number, s: number, v: number): string {
+  const f = (n: number) => {
+    const k = (n + h / 60) % 6;
+    const val = v - v * s * Math.max(0, Math.min(k, 4 - k, 1));
+    return Math.round(val * 255).toString(16).padStart(2, '0');
+  };
+  return `#${f(5)}${f(3)}${f(1)}`;
+}
+
+function hexToHsv(hex: string): { h: number; s: number; v: number } {
+  const n = parseInt(hex.slice(1), 16);
+  const r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  let h = 0;
+  if (d !== 0) {
+    if (max === r) h = 60 * (((g - b) / d) % 6);
+    else if (max === g) h = 60 * ((b - r) / d + 2);
+    else h = 60 * ((r - g) / d + 4);
+  }
+  if (h < 0) h += 360;
+  return { h, s: max === 0 ? 0 : d / max, v: max };
+}
+
+/** Собственный пикер: SV-квадрат + радужная полоса + hex. */
+function buildCustomColorPicker(host: HTMLElement, initial: string, onChange: (hex: string) => void): void {
+  host.textContent = '';
+  let { h, s, v } = hexToHsv(initial);
+  const sv = document.createElement('div');
+  sv.className = 'picker-sv';
+  const cursor = document.createElement('div');
+  cursor.className = 'picker-cursor';
+  sv.appendChild(cursor);
+  const hue = document.createElement('input');
+  hue.type = 'range';
+  hue.min = '0';
+  hue.max = '360';
+  hue.value = String(Math.round(h));
+  hue.className = 'picker-hue';
+  const hexRow = document.createElement('div');
+  hexRow.className = 'picker-hex';
+  const hexInput = document.createElement('input');
+  hexInput.value = initial;
+  hexInput.maxLength = 7;
+  const swatch = document.createElement('span');
+  swatch.className = 'picker-swatch';
+  hexRow.append(hexInput, swatch);
+  host.append(sv, hue, hexRow);
+
+  const apply = (emit: boolean) => {
+    const base = hsvToHex(h, 1, 1);
+    sv.style.background = `linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, ${base})`;
+    cursor.style.left = `${Math.round(s * 100)}%`;
+    cursor.style.top = `${Math.round((1 - v) * 100)}%`;
+    cursor.style.background = hsvToHex(h, s, v);
+    hue.value = String(Math.round(h));
+    const hex = hsvToHex(h, s, v);
+    if (hexInput.value.toLowerCase() !== hex) hexInput.value = hex;
+    swatch.style.background = hex;
+    if (emit) onChange(hex);
+  };
+  const pointToSv = (e: PointerEvent) => {
+    const r = sv.getBoundingClientRect();
+    s = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+    v = Math.max(0, Math.min(1, 1 - (e.clientY - r.top) / r.height));
+    apply(true);
+  };
+  sv.addEventListener('pointerdown', e => {
+    pointToSv(e);
+    try { sv.setPointerCapture(e.pointerId); } catch { /* синтетика/потерянный pointer — цвет уже применён */ }
+  });
+  sv.addEventListener('pointermove', e => {
+    if (e.buttons > 0) pointToSv(e);
+  });
+  hue.addEventListener('input', () => {
+    h = Number(hue.value);
+    apply(true);
+  });
+  hexInput.addEventListener('change', () => {
+    if (/^#[0-9a-fA-F]{6}$/.test(hexInput.value)) {
+      ({ h, s, v } = hexToHsv(hexInput.value.toLowerCase()));
+      apply(true);
+    }
+  });
+  apply(false);
+}
+
+// ----- Кастомный слайдер толщины «капля» -----
+
+const WIDTH_MIN = 0.5;
+const WIDTH_MAX = 14;
+
+/** Слайдер формы капли: слева узко, справа широко; ручка растёт с толщиной. */
+function buildDropSlider(host: HTMLElement, initial: number, onChange: (v: number) => void): void {
+  host.textContent = '';
+  let value = Math.min(WIDTH_MAX, Math.max(WIDTH_MIN, initial));
+  const track = document.createElement('div');
+  track.className = 'qs-track';
+  track.innerHTML = `<svg viewBox="0 0 120 24" preserveAspectRatio="none"><path d="M3 12a2.4 2.4 0 0 1 2.4-2.4C40 7.5 70 3.5 103 3.5a8.5 8.5 0 0 1 0 17C70 20.5 40 16.5 5.4 14.4A2.4 2.4 0 0 1 3 12Z"/></svg>`;
+  const thumb = document.createElement('div');
+  thumb.className = 'qs-thumb';
+  host.append(track, thumb);
+  const apply = (emit: boolean) => {
+    const frac = (value - WIDTH_MIN) / (WIDTH_MAX - WIDTH_MIN);
+    const d = 10 + frac * 14;
+    thumb.style.width = `${d}px`;
+    thumb.style.height = `${d}px`;
+    thumb.style.left = `calc(${(frac * 100).toFixed(1)}% - ${d / 2}px)`;
+    if (emit) onChange(Math.round(value * 2) / 2);
+  };
+  const pointToValue = (e: PointerEvent) => {
+    const r = track.getBoundingClientRect();
+    const frac = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+    value = WIDTH_MIN + frac * (WIDTH_MAX - WIDTH_MIN);
+    apply(true);
+  };
+  track.addEventListener('pointerdown', e => {
+    track.setPointerCapture(e.pointerId);
+    pointToValue(e);
+  });
+  track.addEventListener('pointermove', e => {
+    if (e.buttons > 0) pointToValue(e);
+  });
+  apply(false);
 }
 
 function buildWidthPanel(p: HTMLElement): void {
@@ -337,22 +471,10 @@ function buildWidthPanel(p: HTMLElement): void {
     presets.appendChild(b);
   }
   p.appendChild(presets);
-  const sliderRow = document.createElement('div');
-  sliderRow.className = 'ctx-slider';
-  const slider = document.createElement('input');
-  slider.type = 'range';
-  slider.min = '0.5';
-  slider.max = '14';
-  slider.step = '0.5';
-  slider.value = String(state.style.width);
-  const label = document.createElement('span');
-  label.textContent = String(state.style.width);
-  slider.addEventListener('input', () => {
-    label.textContent = slider.value;
-    chooseWidth(Number(slider.value));
-  });
-  sliderRow.append(slider, label);
-  p.appendChild(sliderRow);
+  const sliderHost = document.createElement('div');
+  sliderHost.className = 'ctx-drop-slider';
+  buildDropSlider(sliderHost, state.style.width, v => chooseWidth(v));
+  p.appendChild(sliderHost);
 }
 
 function buildNotePanel(p: HTMLElement): void {
@@ -416,20 +538,42 @@ function updateQuickMenu(): void {
     else openCtxPanel('color');
   });
   qm.appendChild(cBtn);
-  // толщина
-  const wBtn = document.createElement('button');
-  wBtn.className = 'qm-btn';
-  wBtn.title = 'Толщина';
-  const bar = document.createElement('i');
-  bar.className = 'qm-width-bar';
-  bar.style.height = `${Math.min(10, Math.max(1.5, state.style.width))}px`;
-  wBtn.appendChild(bar);
-  wBtn.addEventListener('mousedown', e => e.preventDefault());
-  wBtn.addEventListener('click', () => {
-    if (ctxKind === 'width') closeCtxPanel();
-    else openCtxPanel('width');
-  });
-  qm.appendChild(wBtn);
+  // толщина — только если среди выделенного есть «линейные» элементы
+  const inkEls = selEls.filter(e => e.type === 'stroke' || e.type === 'shape' || e.type === 'poly');
+  if (inkEls.length > 0) {
+    const wBtn = document.createElement('button');
+    wBtn.className = 'qm-btn';
+    wBtn.title = 'Толщина';
+    const bar = document.createElement('i');
+    bar.className = 'qm-width-bar';
+    bar.style.height = `${Math.min(10, Math.max(1.5, state.style.width))}px`;
+    wBtn.appendChild(bar);
+    wBtn.addEventListener('mousedown', e => e.preventDefault());
+    wBtn.addEventListener('click', () => {
+      if (ctxKind === 'width') closeCtxPanel();
+      else openCtxPanel('width');
+    });
+    qm.appendChild(wBtn);
+  }
+  // жирность/курсив — для текста
+  const textEls = selEls.filter(e => e.type === 'text');
+  if (textEls.length > 0) {
+    const allBold = textEls.every(e => e.bold);
+    const allItalic = textEls.every(e => e.italic);
+    const bBtn = document.createElement('button');
+    bBtn.className = 'qm-btn qm-text-b' + (allBold ? ' active' : '');
+    bBtn.title = 'Полужирный';
+    bBtn.textContent = 'B';
+    bBtn.addEventListener('mousedown', e => e.preventDefault());
+    bBtn.addEventListener('click', () => { applyStyleToSelection({ bold: !allBold }); });
+    const iBtn = document.createElement('button');
+    iBtn.className = 'qm-btn qm-text-i' + (allItalic ? ' active' : '');
+    iBtn.title = 'Курсив';
+    iBtn.textContent = 'I';
+    iBtn.addEventListener('mousedown', e => e.preventDefault());
+    iBtn.addEventListener('click', () => { applyStyleToSelection({ italic: !allItalic }); });
+    qm.append(bBtn, iBtn);
+  }
   // слои
   if (state.board.elements.length > 1 && canChangeLayer()) {
     const up = document.createElement('button');

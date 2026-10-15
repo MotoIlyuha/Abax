@@ -191,8 +191,8 @@ export function setTool(tool: ToolId): void {
   update();
 }
 
-/** Применяет цвет/толщину к выделенным элементам (запись в историю). */
-export function applyStyleToSelection(patch: { color?: string; width?: number }): void {
+/** Применяет цвет/толщину/начертание к выделенным элементам (запись в историю). */
+export function applyStyleToSelection(patch: { color?: string; width?: number; bold?: boolean; italic?: boolean }): void {
   if (state.selection.size === 0) return;
   const applicable = state.board.elements.some(e =>
     state.selection.has(e.id) && e.type !== 'note' && e.type !== 'image');
@@ -201,7 +201,14 @@ export function applyStyleToSelection(patch: { color?: string; width?: number })
   replaceElements(state.board.elements.map(el => {
     if (!state.selection.has(el.id)) return el;
     if (el.type === 'note' || el.type === 'image') return el;
-    if (el.type === 'text') return patch.color !== undefined ? { ...el, color: patch.color } : el;
+    if (el.type === 'text') {
+      return {
+        ...el,
+        ...(patch.color !== undefined ? { color: patch.color } : {}),
+        ...(patch.bold !== undefined ? { bold: patch.bold } : {}),
+        ...(patch.italic !== undefined ? { italic: patch.italic } : {}),
+      };
+    }
     return {
       ...el,
       ...(patch.color !== undefined ? { color: patch.color } : {}),

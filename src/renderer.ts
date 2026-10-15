@@ -252,7 +252,7 @@ function drawElement(
       drawShapeEl(ctx, el);
       break;
     case 'text': {
-      ctx.font = TEXT_FONT(el.size);
+      ctx.font = TEXT_FONT(el.size, el.bold, el.italic);
       ctx.fillStyle = el.color;
       ctx.textBaseline = 'alphabetic';
       const lh = el.size * 1.25;
@@ -352,6 +352,7 @@ let cacheHideId: string | null = null;
 // происходит через REBUILD_DELAY после остановки движения.
 
 const REBUILD_DELAY = 120; // мс покоя камеры до резкой перерисовки
+const HEAVY_BOARD = 1500; // элементов: выше — переносим выделенное поверх ради плавности
 
 let canvas: HTMLCanvasElement | null = null;
 let ctx: CanvasRenderingContext2D | null = null;
@@ -432,10 +433,12 @@ function isPrefixExtension(newArr: Element[], oldArr: Element[]): boolean {
 function rebuildCache(): void {
   if (!cacheCtx) return;
   const cam = state.camera;
-  // выделение исключается из кэша только на время перетаскивания,
-  // иначе выбранный элемент выпадает из своего слоя
+  // выделение исключается из кэша только на очень больших досках,
+  // где полная перерисовка каждый кадр переноса дорога; иначе честные слои
   const excl = new Set<string>();
-  if (state.liveEdit) for (const id of state.selection) excl.add(id);
+  if (state.liveEdit && state.board.elements.length > HEAVY_BOARD) {
+    for (const id of state.selection) excl.add(id);
+  }
   if (state.hideElId) excl.add(state.hideElId);
   renderScene(cacheCtx, state.board.elements, cam, cssW, cssH, dpr, state.board.grid, excl.size ? excl : undefined);
   cacheCam = { ...cam };
@@ -572,7 +575,7 @@ function draw(): void {
     blitCache();
     // во время перетаскивания выделенное исключено из кэша — рисуем поверх;
     // в покое выделенный рендерится в кэше на своём слое
-    if (state.liveEdit && state.selection.size > 0) {
+    if (state.liveEdit && state.board.elements.length > HEAVY_BOARD && state.selection.size > 0) {
       const zx0 = dpr * cam.zoom;
       ctx.setTransform(zx0, 0, 0, zx0, -cam.x * zx0, -cam.y * zx0);
       const ex0 = cam.x, ey0 = cam.y;

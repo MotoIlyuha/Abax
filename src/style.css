@@ -154,6 +154,8 @@ select {
 .page-del:hover { background: #f9e5e5; color: var(--danger); }
 .page-del svg { width: 12px; height: 12px; }
 /* (старые стили .board-item удалены вместе с досками) */
+/* display:flex у этих панелей перебивает [hidden] из UA-стилей — чиним явно */
+#quick-menu[hidden], #ctx-panel[hidden], #settings-popover[hidden], #home[hidden] { display: none !important; }
 
 #canvas-wrap { position: relative; flex: 1; min-width: 0; overflow: hidden; }
 #board { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; cursor: crosshair; }
@@ -262,6 +264,91 @@ select {
 .ctx-slider { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
 .ctx-slider input[type="range"] { flex: 1; }
 .ctx-slider span { min-width: 30px; text-align: right; color: var(--muted); }
+
+/* ----- Кастомный HSV-пикер ----- */
+.ctx-picker { margin-top: 10px; }
+.picker-sv {
+  position: relative;
+  width: 100%;
+  height: 120px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  cursor: crosshair;
+  touch-action: none;
+}
+.picker-cursor {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35), 0 1px 3px rgba(0, 0, 0, 0.3);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.picker-hue {
+  width: 100%;
+  margin-top: 10px;
+  height: 14px;
+  appearance: none;
+  border-radius: 99px;
+  background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+  outline: none;
+}
+.picker-hue::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--accent);
+  cursor: pointer;
+}
+.picker-hex { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.picker-hex input {
+  flex: 1;
+  font: inherit;
+  font-family: ui-monospace, Consolas, monospace;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  outline: none;
+}
+.picker-swatch {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  flex: none;
+}
+
+/* ----- Слайдер толщины «капля» ----- */
+.ctx-drop-slider { position: relative; height: 44px; margin-top: 12px; }
+.qs-track {
+  position: absolute;
+  inset: 10px 6px;
+  cursor: pointer;
+  touch-action: none;
+}
+.qs-track svg { display: block; width: 100%; height: 100%; }
+.qs-track path { fill: #dbe0e8; }
+.qs-track:hover path { fill: #cfd6e0; }
+.qs-thumb {
+  position: absolute;
+  top: 50%;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--accent);
+  box-shadow: 0 1px 4px rgba(16, 24, 40, 0.25);
+  transform: translateY(-50%);
+  cursor: grab;
+  pointer-events: none;
+}
+
+/* B/I в плавающем меню */
+.qm-text-b { font-weight: 800; font-size: 14px; }
+.qm-text-i { font-style: italic; font-weight: 600; font-family: Georgia, serif; font-size: 15px; }
+.qm-btn.active { background: var(--accent-soft); color: var(--accent); }
 
 /* ----- Плавающее меню выделения ----- */
 #quick-menu {
