@@ -336,7 +336,7 @@ function applyResizeMods(
  * Применяет перетаскивание ручки к элементу: возвращает клон с новой геометрией.
  * el — оригинал (без накопления ошибки), pt — позиция курсора в сцене.
  */
-export function applyHandle(el: Element, h: Handle, pt: Pt, mods?: ResizeMods): Element {
+export function applyHandle(el: Element, h: Handle, pt: Pt, mods?: ResizeMods, rotateAngle?: number): Element {
   if (el.type === 'shape') {
     const s = el as ShapeEl;
     if (h.kind === 'end') {
@@ -345,7 +345,7 @@ export function applyHandle(el: Element, h: Handle, pt: Pt, mods?: ResizeMods): 
     }
     if (h.kind === 'rotate') {
       const cx = s.x + s.w / 2, cy = s.y + s.h / 2;
-      let ang = Math.atan2(pt.y - cy, pt.x - cx) + Math.PI / 2;
+      let ang = rotateAngle !== undefined ? rotateAngle : Math.atan2(pt.y - cy, pt.x - cx) + Math.PI / 2;
       for (let k = 0; k < 8; k++) {
         const target = (k * Math.PI) / 4;
         let diff = ang - target;
@@ -384,7 +384,7 @@ export function applyHandle(el: Element, h: Handle, pt: Pt, mods?: ResizeMods): 
   if (el.type === 'image' && (h.kind === 'resize' || h.kind === 'rotate')) {
     if (h.kind === 'rotate') {
       const cx = el.x + el.w / 2, cy = el.y + el.h / 2;
-      let ang = Math.atan2(pt.y - cy, pt.x - cx) + Math.PI / 2;
+      let ang = rotateAngle !== undefined ? rotateAngle : Math.atan2(pt.y - cy, pt.x - cx) + Math.PI / 2;
       for (let k = 0; k < 8; k++) {
         const target = (k * Math.PI) / 4;
         let diff = ang - target;

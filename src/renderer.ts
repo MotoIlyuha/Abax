@@ -499,11 +499,19 @@ function drawHandles(ctx: CanvasRenderingContext2D, cam: Camera): void {
       ctx.stroke();
       continue;
     }
-    if (h.kind === 'rotate') {
-      // соединительная линия от верхней грани bbox к ручке
-      const a = elementAABB(el);
-      const topX = ((a.x0 + a.x1) / 2 - cam.x) * cam.zoom;
-      const topY = (a.y0 - cam.y) * cam.zoom;
+    if (h.kind === 'rotate' && (el.type === 'shape' || el.type === 'image')) {
+      // линия от центра верхней грани ФИГУРЫ (с учётом её поворота), не от AABB
+      const rot = el.rot ?? 0;
+      let anchorX = el.x + el.w / 2;
+      let anchorY = el.y;
+      if (rot) {
+        const cx = el.x + el.w / 2, cy = el.y + el.h / 2;
+        const cos = Math.cos(rot), sin = Math.sin(rot);
+        anchorX = cx + (el.h / 2) * sin;
+        anchorY = cy - (el.h / 2) * cos;
+      }
+      const topX = (anchorX - cam.x) * cam.zoom;
+      const topY = (anchorY - cam.y) * cam.zoom;
       ctx.beginPath();
       ctx.moveTo(topX, topY);
       ctx.lineTo(sx, sy);

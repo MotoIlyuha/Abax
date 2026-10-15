@@ -33,7 +33,7 @@ type Action = { pid: number } & (
   | { kind: 'erase'; pre: Element[]; removed: Element[] }
   | { kind: 'move'; pre: Element[]; start: Pt; orig: Map<string, Element>; moved: boolean; deselectOnUp: boolean }
   | { kind: 'shape' }
-  | { kind: 'handle'; el: Element; h: Handle; pre: Element[]; changed: boolean }
+  | { kind: 'handle'; el: Element; h: Handle; pre: Element[]; changed: boolean; rotBase?: { a0: number; rot0: number } }
   | { kind: 'marquee' }
   | { kind: 'pan'; sx: number; sy: number; cam: Camera }
   | { kind: 'click'; x: number; y: number; target: 'text' | 'note' }
@@ -242,6 +242,11 @@ export function initController(canvas: HTMLCanvasElement): void {
                   return;
                 }
                 action = { pid: e.pointerId, kind: 'handle', el: sel, h: hp.h, pre: state.board.elements, changed: false };
+                if (hp.h.kind === 'rotate' && (sel.type === 'shape' || sel.type === 'image')) {
+                  // базовый угол: поворот относительно позиции захвата, без скачка при старте
+                  const cx = sel.x + sel.w / 2, cy = sel.y + sel.h / 2;
+                  action.rotBase = { a0: Math.atan2(s.y - cy, s.x - cx), rot0: sel.rot ?? 0 };
+                }
                 return;
               }
             }
@@ -387,7 +392,14 @@ export function initController(canvas: HTMLCanvasElement): void {
         const s = toScene(lp.x, lp.y);
         const step = snapStepNow();
         const snapped = { x: snapValue(s.x, step), y: snapValue(s.y, step), p: s.p };
-        const next = applyHandle(a.el, a.h, snapped, { proportional: e.shiftKey || e.ctrlKey, fromCenter: e.altKey });
+        let rotateAngle: number | undefined;
+        if (a.h.kind === 'rotate' && a.rotBase && (a.el.type === 'shape' || a.el.type === 'image')) {
+          // относительный поворот: насколько курсор обошёл центр с момента захвата
+          const cx = a.el.x + a.el.w / 2, cy = a.el.y + a.el.h / 2;
+          const a1 = Math.atan2(snapped.y - cy, snapped.x - cx);
+          rotateAngle = a.rotBase.rot0 + (a1 - a.rotBase.a0);
+        }
+        const next = applyHandle(a.el, a.h, snapped, { proportional: e.shiftKey || e.ctrlKey, fromCenter: e.altKey }, rotateAngle);
         replaceElements(state.board.elements.map(x => (x.id === a.el.id ? next : x)));
         a.changed = true;
         break;
