@@ -387,7 +387,7 @@ export function initController(canvas: HTMLCanvasElement): void {
         const s = toScene(lp.x, lp.y);
         const step = snapStepNow();
         const snapped = { x: snapValue(s.x, step), y: snapValue(s.y, step), p: s.p };
-        const next = applyHandle(a.el, a.h, snapped);
+        const next = applyHandle(a.el, a.h, snapped, { proportional: e.shiftKey || e.ctrlKey, fromCenter: e.altKey });
         replaceElements(state.board.elements.map(x => (x.id === a.el.id ? next : x)));
         a.changed = true;
         break;

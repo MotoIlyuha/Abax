@@ -281,11 +281,62 @@ export function elementHandles(el: Element, zoom: number): HandlePos[] {
   }
 }
 
+export interface ResizeMods {
+  /** Shift/Ctrl: сохранять пропорции (для угловых ручек). */
+  proportional?: boolean;
+  /** Alt: изменение размера от центра. */
+  fromCenter?: boolean;
+}
+
+/**
+ * Пост-обработка краёв прямоугольника под модификаторы Photoshop:
+ * пропорции и/или рост от центра. Края задаются в локальной системе элемента.
+ */
+function applyResizeMods(
+  box: { left: number; right: number; top: number; bottom: number },
+  h: Extract<Handle, { kind: 'resize' }>,
+  mods: ResizeMods | undefined,
+  origW: number,
+  origH: number,
+  minSize: number,
+): void {
+  if (!mods) return;
+  if (mods.fromCenter) {
+    if (h.dx !== 0) {
+      // края заданы в локальной системе от центра: box.right/left ≈ позиция курсора
+      const half = Math.max(minSize / 2, Math.abs(h.dx > 0 ? box.right : box.left));
+      box.left = -half;
+      box.right = half;
+    }
+    if (h.dy !== 0) {
+      const half = Math.max(minSize / 2, Math.abs(h.dy > 0 ? box.bottom : box.top));
+      box.top = -half;
+      box.bottom = half;
+    }
+  }
+  if (mods.proportional && h.dx !== 0 && h.dy !== 0) {
+    const fX = (box.right - box.left) / origW;
+    const fY = (box.bottom - box.top) / origH;
+    let f = Math.max(fX, fY);
+    f = Math.max(f, Math.max(minSize / origW, minSize / origH));
+    const nw = origW * f, nh = origH * f;
+    if (mods.fromCenter) {
+      box.left = -nw / 2; box.right = nw / 2;
+      box.top = -nh / 2; box.bottom = nh / 2;
+    } else {
+      if (h.dx > 0) box.right = box.left + nw;
+      else if (h.dx < 0) box.left = box.right - nw;
+      if (h.dy > 0) box.bottom = box.top + nh;
+      else if (h.dy < 0) box.top = box.bottom - nh;
+    }
+  }
+}
+
 /**
  * Применяет перетаскивание ручки к элементу: возвращает клон с новой геометрией.
  * el — оригинал (без накопления ошибки), pt — позиция курсора в сцене.
  */
-export function applyHandle(el: Element, h: Handle, pt: Pt): Element {
+export function applyHandle(el: Element, h: Handle, pt: Pt, mods?: ResizeMods): Element {
   if (el.type === 'shape') {
     const s = el as ShapeEl;
     if (h.kind === 'end') {
@@ -313,11 +364,13 @@ export function applyHandle(el: Element, h: Handle, pt: Pt): Element {
       const dx = pt.x - cx, dy = pt.y - cy;
       const plx = dx * cos - dy * sin; // курсор в локальной системе
       const ply = dx * sin + dy * cos;
-      let left = -s.w / 2, right = s.w / 2, top = -s.h / 2, bottom = s.h / 2;
-      if (h.dx < 0) left = Math.min(plx, right - MIN_SHAPE_SIZE);
-      if (h.dx > 0) right = Math.max(plx, left + MIN_SHAPE_SIZE);
-      if (h.dy < 0) top = Math.min(ply, bottom - MIN_SHAPE_SIZE);
-      if (h.dy > 0) bottom = Math.max(ply, top + MIN_SHAPE_SIZE);
+      const box = { left: -s.w / 2, right: s.w / 2, top: -s.h / 2, bottom: s.h / 2 };
+      if (h.dx < 0) box.left = Math.min(plx, box.right - MIN_SHAPE_SIZE);
+      if (h.dx > 0) box.right = Math.max(plx, box.left + MIN_SHAPE_SIZE);
+      if (h.dy < 0) box.top = Math.min(ply, box.bottom - MIN_SHAPE_SIZE);
+      if (h.dy > 0) box.bottom = Math.max(ply, box.top + MIN_SHAPE_SIZE);
+      applyResizeMods(box, h, mods, s.w, s.h, MIN_SHAPE_SIZE);
+      const { left, right, top, bottom } = box;
       const nw = right - left, nh = bottom - top;
       // новый центр: сдвиг локального центра нового прямоугольника
       const offx = (left + right) / 2, offy = (top + bottom) / 2;
@@ -349,11 +402,13 @@ export function applyHandle(el: Element, h: Handle, pt: Pt): Element {
     const dx = pt.x - cx, dy = pt.y - cy;
     const plx = dx * cos - dy * sin;
     const ply = dx * sin + dy * cos;
-    let left = -el.w / 2, right = el.w / 2, top = -el.h / 2, bottom = el.h / 2;
-    if (h.dx < 0) left = Math.min(plx, right - MIN_SHAPE_SIZE);
-    if (h.dx > 0) right = Math.max(plx, left + MIN_SHAPE_SIZE);
-    if (h.dy < 0) top = Math.min(ply, bottom - MIN_SHAPE_SIZE);
-    if (h.dy > 0) bottom = Math.max(ply, top + MIN_SHAPE_SIZE);
+    const box = { left: -el.w / 2, right: el.w / 2, top: -el.h / 2, bottom: el.h / 2 };
+    if (h.dx < 0) box.left = Math.min(plx, box.right - MIN_SHAPE_SIZE);
+    if (h.dx > 0) box.right = Math.max(plx, box.left + MIN_SHAPE_SIZE);
+    if (h.dy < 0) box.top = Math.min(ply, box.bottom - MIN_SHAPE_SIZE);
+    if (h.dy > 0) box.bottom = Math.max(ply, box.top + MIN_SHAPE_SIZE);
+    applyResizeMods(box, h, mods, el.w, el.h, MIN_SHAPE_SIZE);
+    const { left, right, top, bottom } = box;
     const nw = right - left, nh = bottom - top;
     const offx = (left + right) / 2, offy = (top + bottom) / 2;
     const ccos = Math.cos(rot), csin = Math.sin(rot);
@@ -362,12 +417,16 @@ export function applyHandle(el: Element, h: Handle, pt: Pt): Element {
     return { ...el, x: ncx - nw / 2, y: ncy - nh / 2, w: nw, h: nh };
   }
   if (el.type === 'note' && h.kind === 'resize') {
-    let left = el.x, right = el.x + el.w, top = el.y, bottom = el.y + el.h;
-    if (h.dx < 0) left = Math.min(pt.x, right - MIN_NOTE_W);
-    if (h.dx > 0) right = Math.max(pt.x, left + MIN_NOTE_W);
-    if (h.dy < 0) top = Math.min(pt.y, bottom - MIN_NOTE_H);
-    if (h.dy > 0) bottom = Math.max(pt.y, top + MIN_NOTE_H);
-    return { ...el, x: left, y: top, w: right - left, h: bottom - top };
+    // приводим к центровой системе, чтобы модификаторы работали единообразно
+    const ncx = el.x + el.w / 2, ncy = el.y + el.h / 2;
+    const plx = pt.x - ncx, ply = pt.y - ncy;
+    const box = { left: -el.w / 2, right: el.w / 2, top: -el.h / 2, bottom: el.h / 2 };
+    if (h.dx < 0) box.left = Math.min(plx, box.right - MIN_NOTE_W);
+    if (h.dx > 0) box.right = Math.max(plx, box.left + MIN_NOTE_W);
+    if (h.dy < 0) box.top = Math.min(ply, box.bottom - MIN_NOTE_H);
+    if (h.dy > 0) box.bottom = Math.max(ply, box.top + MIN_NOTE_H);
+    applyResizeMods(box, h, mods, el.w, el.h, Math.min(MIN_NOTE_W, MIN_NOTE_H));
+    return { ...el, x: ncx + box.left, y: ncy + box.top, w: box.right - box.left, h: box.bottom - box.top };
   }
   if (el.type === 'poly' && h.kind === 'node') {
     const pts = el.pts.slice();
