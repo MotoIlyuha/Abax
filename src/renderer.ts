@@ -1,10 +1,24 @@
-import type { Camera, Element, GridMode, ShapeEl } from './types';
+import type { Camera, Element, GridMode, ImageEl, ShapeEl } from './types';
 import {
   elementAABB, wrapText, TEXT_FONT,
   NOTE_PAD, NOTE_FONT, NOTE_TEXT_COLOR,
 } from './geom';
 import { ribbonPath } from './stroke';
 import { state } from './state';
+
+// Кэш загруженных картинок (импортированные PDF-страницы).
+const imgCache = new WeakMap<ImageEl, HTMLImageElement>();
+
+function imageOf(el: ImageEl): HTMLImageElement {
+  let img = imgCache.get(el);
+  if (!img) {
+    img = new Image();
+    img.onload = () => requestRender();
+    img.src = el.src;
+    imgCache.set(el, img);
+  }
+  return img;
+}
 
 interface ElCacheEntry {
   aabb: { x0: number; y0: number; x1: number; y1: number };
@@ -33,6 +47,7 @@ function hexA(hex: string, a: number): string {
 
 const HIGHLIGHTER_ALPHA = 0.42;
 const GRID_STEP = 40; // юниты сцены
+const LASER_TTL = 800; // мс жизни следа указки
 
 function drawGrid(ctx: CanvasRenderingContext2D, cam: Camera, w: number, h: number, mode: GridMode): void {
   const z = cam.zoom;
@@ -89,6 +104,66 @@ function drawGrid(ctx: CanvasRenderingContext2D, cam: Camera, w: number, h: numb
     ctx.strokeStyle = '#dfe3ea';
     ctx.stroke();
   }
+  if (mode === 'coord') drawCoordAxes(ctx, cam, w, h);
+}
+
+/** Оси координат через сцену (0,0): линии, стрелки, риски, подписи. */
+function drawCoordAxes(ctx: CanvasRenderingContext2D, cam: Camera, w: number, h: number): void {
+  const z = cam.zoom;
+  const ox = (0 - cam.x) * z; // экранная позиция оси Y (сцена x=0)
+  const oy = (0 - cam.y) * z; // экранная позиция оси X (сцена y=0)
+  const yVisible = ox >= -20 && ox <= w + 20;
+  const xVisible = oy >= -20 && oy <= h + 20;
+  if (!yVisible && !xVisible) return;
+  ctx.strokeStyle = '#8a94a3';
+  ctx.fillStyle = '#8a94a3';
+  ctx.lineWidth = 1.5;
+  ctx.font = '12px "Segoe UI", system-ui, sans-serif';
+  ctx.textBaseline = 'alphabetic';
+  // стрелки на концах видимых осей
+  const arrow = (x: number, y: number, dx: number, dy: number) => {
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x - dx * 9 - dy * 4, y - dy * 9 + dx * 4);
+    ctx.lineTo(x - dx * 9 + dy * 4, y - dy * 9 - dx * 4);
+    ctx.closePath();
+    ctx.fill();
+  };
+  if (yVisible) {
+    ctx.beginPath();
+    ctx.moveTo(ox, 0);
+    ctx.lineTo(ox, h);
+    ctx.stroke();
+    arrow(ox, 0, 0, -1);
+    ctx.fillText('y', ox + 6, 12);
+  }
+  if (xVisible) {
+    ctx.beginPath();
+    ctx.moveTo(0, oy);
+    ctx.lineTo(w, oy);
+    ctx.stroke();
+    arrow(w, oy, 1, 0);
+    ctx.fillText('x', w - 10, oy - 6);
+  }
+  if (xVisible && yVisible) ctx.fillText('0', ox - 12, oy + 14);
+  // риски каждые GRID_STEP юнитов сцены
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  const sx0 = Math.ceil(cam.x / GRID_STEP) * GRID_STEP;
+  for (let x = sx0; x <= cam.x + w / z; x += GRID_STEP) {
+    if (x === 0) continue;
+    const sx = (x - cam.x) * z;
+    ctx.moveTo(sx, oy - 3);
+    ctx.lineTo(sx, oy + 3);
+  }
+  const sy0 = Math.ceil(cam.y / GRID_STEP) * GRID_STEP;
+  for (let y = sy0; y <= cam.y + h / z; y += GRID_STEP) {
+    if (y === 0) continue;
+    const sy = (y - cam.y) * z;
+    ctx.moveTo(ox - 3, sy);
+    ctx.lineTo(ox + 3, sy);
+  }
+  ctx.stroke();
 }
 
 function drawShapeEl(ctx: CanvasRenderingContext2D, el: ShapeEl): void {
@@ -166,6 +241,16 @@ function drawElement(
       ctx.restore();
       break;
     }
+    case 'image': {
+      const img = imageOf(el);
+      if (img.complete && img.naturalWidth > 0) {
+        ctx.drawImage(img, el.x, el.y, el.w, el.h);
+      } else {
+        ctx.fillStyle = '#f0f2f5';
+        ctx.fillRect(el.x, el.y, el.w, el.h);
+      }
+      break;
+    }
   }
 }
 
@@ -186,14 +271,19 @@ export function renderScene(
   const vy0 = cam.y;
   const vx1 = cam.x + wCss / cam.zoom;
   const vy1 = cam.y + hCss / cam.zoom;
-  // маркер рисуется первым — всегда под остальным
+  // сначала картинки (фон для аннотаций), затем маркер — всегда под остальным
+  for (const el of elements) {
+    if (el.type === 'image' && !exclude?.has(el.id)) {
+      drawElement(ctx, el, vx0, vy0, vx1, vy1);
+    }
+  }
   for (const el of elements) {
     if (el.type === 'stroke' && el.tool === 'highlighter' && !exclude?.has(el.id)) {
       drawElement(ctx, el, vx0, vy0, vx1, vy1);
     }
   }
   for (const el of elements) {
-    if (!(el.type === 'stroke' && el.tool === 'highlighter') && !exclude?.has(el.id)) {
+    if (el.type !== 'image' && !(el.type === 'stroke' && el.tool === 'highlighter') && !exclude?.has(el.id)) {
       drawElement(ctx, el, vx0, vy0, vx1, vy1);
     }
   }
@@ -302,8 +392,8 @@ function appendToCache(from: number): void {
   const arr = state.board.elements;
   for (let i = from; i < arr.length; i++) {
     const el = arr[i];
-    if (el.type === 'stroke' && el.tool === 'highlighter') {
-      // маркер должен лечь ПОД существующее — такой случай редкий, инвалидируем кэш
+    if ((el.type === 'stroke' && el.tool === 'highlighter') || el.type === 'image') {
+      // маркер/картинка должны лечь ПОД существующее — инвалидируем кэш
       cacheStale = true;
       return;
     }
@@ -424,6 +514,32 @@ function draw(): void {
     ctx.beginPath();
     ctx.arc(state.hover.x, state.hover.y, ERASE_R, 0, Math.PI * 2);
     ctx.stroke();
+  }
+  if (state.laserPts.length > 0) {
+    const now = performance.now();
+    const alive = state.laserPts.filter(p => now - p.t < LASER_TTL);
+    if (alive.length !== state.laserPts.length) state.laserPts = alive;
+    for (let i = 0; i < alive.length; i++) {
+      const p = alive[i];
+      const age = (now - p.t) / LASER_TTL; // 0..1
+      const sx = (p.x - cam.x) * cam.zoom;
+      const sy = (p.y - cam.y) * cam.zoom;
+      const isHead = i === alive.length - 1;
+      ctx.globalAlpha = (1 - age) * 0.9;
+      ctx.fillStyle = '#ff2d2d';
+      ctx.beginPath();
+      ctx.arc(sx, sy, isHead ? 6 : 4 - age * 2, 0, Math.PI * 2);
+      ctx.fill();
+      if (isHead) {
+        ctx.globalAlpha = 0.95;
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(sx, sy, 2.2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
+    if (state.laserPts.length > 0) requestRender(); // гоним кадры, пока след гаснет
   }
 }
 

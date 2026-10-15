@@ -50,6 +50,16 @@ ipcMain.handle('boards:list', async () => {
   return out;
 });
 
+
+ipcMain.handle('pdf:pick', async () => {
+  const r = await dialog.showOpenDialog({
+    properties: ['openFile'],
+    filters: [{ name: 'PDF', extensions: ['pdf'] }],
+  });
+  if (r.canceled || !r.filePaths[0]) return null;
+  const buf = await fs.readFile(r.filePaths[0]);
+  return 'data:application/pdf;base64,' + buf.toString('base64');
+});
 ipcMain.handle('boards:load', async (_e, id) => {
   try {
     return JSON.parse(await fs.readFile(boardPath(id), 'utf8'));

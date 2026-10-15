@@ -1,7 +1,7 @@
 import './style.css';
 import { initRenderer, requestRender } from './renderer';
 import { initController } from './controller';
-import { initApp } from './app';
+import { initApp, importPdfFromDataUrl } from './app';
 import { state, loadBoard, createBoard, boardMeta, onChange, undo, redo } from './state';
 import { storage } from './storage';
 
@@ -24,7 +24,7 @@ async function boot(): Promise<void> {
   onChange(() => requestRender());
 
   // отладочный доступ для smoke-тестов
-  (window as unknown as Record<string, unknown>).__doska = { state, undo, redo, requestRender };
+  (window as unknown as Record<string, unknown>).__doska = { state, undo, redo, requestRender, importPdfFromDataUrl };
 }
 
 void boot();

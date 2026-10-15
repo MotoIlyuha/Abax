@@ -6,4 +6,5 @@ contextBridge.exposeInMainWorld('doskaAPI', {
   save: (board) => ipcRenderer.invoke('boards:save', board),
   remove: (id) => ipcRenderer.invoke('boards:delete', id),
   exportPng: (dataUrl, name) => ipcRenderer.invoke('export:png', { dataUrl, name }),
+  pickPdf: () => ipcRenderer.invoke('pdf:pick'),
 });

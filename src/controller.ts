@@ -11,15 +11,16 @@ const SELECT_TOL = 6; // px экрана
 const CURSORS: Record<ToolId, string> = {
   select: 'default', pen: 'crosshair', highlighter: 'crosshair', eraser: 'none',
   pan: 'grab', text: 'text', note: 'crosshair', rect: 'crosshair',
-  ellipse: 'crosshair', line: 'crosshair', arrow: 'crosshair',
+  ellipse: 'crosshair', line: 'crosshair', arrow: 'crosshair', laser: 'none',
 };
 const TOOL_BY_CODE: Record<string, ToolId> = {
   KeyV: 'select', KeyP: 'pen', KeyM: 'highlighter', KeyE: 'eraser', KeyH: 'pan',
   KeyT: 'text', KeyN: 'note', KeyR: 'rect', KeyO: 'ellipse', KeyL: 'line', KeyA: 'arrow',
+  KeyI: 'laser',
 };
+const MOVE_THRESHOLD_PX = 3;
 const ZOOM_MIN = 0.05;
 const ZOOM_MAX = 32;
-const MOVE_THRESHOLD_PX = 3;
 
 type Action = { pid: number } & (
   | { kind: 'draw' }
@@ -233,6 +234,8 @@ export function initController(canvas: HTMLCanvasElement): void {
       case 'note':
         action = { pid: e.pointerId, kind: 'click', x: s.x, y: s.y, target: 'note' };
         break;
+      case 'laser':
+        break; // указка не создаёт действий — след рисуется в onPointerMove
     }
   }
 
@@ -265,6 +268,12 @@ export function initController(canvas: HTMLCanvasElement): void {
 
     if (gesture) { applyGesture(); return; }
     if (touchBlocked && e.pointerType === 'touch') return;
+    if (state.tool === 'laser') {
+      const sp = toScene(lp.x, lp.y);
+      state.laserPts.push({ x: sp.x, y: sp.y, t: performance.now() });
+      if (state.laserPts.length > 400) state.laserPts.splice(0, state.laserPts.length - 400);
+      update();
+    }
     const a = action;
     if (!a || a.pid !== e.pointerId) return;
 

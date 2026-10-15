@@ -1,6 +1,6 @@
 export type ToolId =
   | 'select' | 'pen' | 'highlighter' | 'eraser' | 'pan'
-  | 'text' | 'note' | 'rect' | 'ellipse' | 'line' | 'arrow';
+  | 'text' | 'note' | 'rect' | 'ellipse' | 'line' | 'arrow' | 'laser';
 
 /** Точка в координатах сцены; p — давление 0..1 (мышь даёт 0.5). */
 export interface Pt { x: number; y: number; p: number }
@@ -43,7 +43,16 @@ export interface NoteEl {
   color: string;
 }
 
-export type Element = StrokeEl | ShapeEl | TextEl | NoteEl;
+/** Импортированная страница PDF или картинка — фон для аннотирования. */
+export interface ImageEl {
+  id: string;
+  type: 'image';
+  x: number; y: number; w: number; h: number;
+  /** data:image/jpeg;base64,... */
+  src: string;
+}
+
+export type Element = StrokeEl | ShapeEl | TextEl | NoteEl | ImageEl;
 
 /** Экран = (сцена - камера) * zoom. */
 export interface Camera { x: number; y: number; zoom: number }
@@ -52,4 +61,7 @@ export interface BoardMeta { id: string; name: string; createdAt: number; update
 
 export interface Board extends BoardMeta { elements: Element[] }
 
-export type GridMode = 'none' | 'dots' | 'square';
+export type GridMode = 'none' | 'dots' | 'square' | 'coord';
+
+/** Точка лазерной указки в координатах сцены с меткой времени. */
+export interface LaserPt { x: number; y: number; t: number }

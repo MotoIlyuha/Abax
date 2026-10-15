@@ -13,6 +13,7 @@ export interface DoskaApi {
   save(board: Board): Promise<void>;
   remove(id: string): Promise<void>;
   exportPng(dataUrl: string, name: string): Promise<boolean>;
+  pickPdf(): Promise<string | null>;
 }
 // Граница IPC: preload кладёт doskaAPI на window; форма проверяется в рантайме.
 declare global {

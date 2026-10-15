@@ -28,6 +28,8 @@ export interface AppState {
   marquee: { x0: number; y0: number; x1: number; y1: number } | null;
   /** Позиция курсора в экранных координатах (для ластика). */
   hover: { x: number; y: number } | null;
+  /** След лазерной указки (координаты сцены + метка времени). */
+  laserPts: { x: number; y: number; t: number }[];
   /** Есть несохранённые изменения содержимого доски. */
   dirty: boolean;
 }
@@ -51,6 +53,7 @@ export const state: AppState = {
   liveShape: null,
   marquee: null,
   hover: null,
+  laserPts: [],
   dirty: false,
 };
 
@@ -72,8 +75,6 @@ export function update(markDirty = false): void {
   }
   notify();
 }
-
-// ----- История: массивы элементов иммутабельны, снапшот = ссылка на массив -----
 
 let undoStack: Element[][] = [];
 let redoStack: Element[][] = [];

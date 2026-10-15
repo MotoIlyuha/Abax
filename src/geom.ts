@@ -71,6 +71,8 @@ export function elementAABB(el: Element): AABB {
     }
     case 'note':
       return { x0: el.x, y0: el.y, x1: el.x + el.w, y1: el.y + el.h };
+    case 'image':
+      return { x0: el.x, y0: el.y, x1: el.x + el.w, y1: el.y + el.h };
   }
 }
 
@@ -112,6 +114,8 @@ export function hitTest(el: Element, x: number, y: number, tol: number): boolean
       return x >= a.x0 - tol && x <= a.x1 + tol && y >= a.y0 - tol && y <= a.y1 + tol;
     }
     case 'note':
+      return x >= el.x - tol && x <= el.x + el.w + tol && y >= el.y - tol && y <= el.y + el.h + tol;
+    case 'image':
       return x >= el.x - tol && x <= el.x + el.w + tol && y >= el.y - tol && y <= el.y + el.h + tol;
   }
 }

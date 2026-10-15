@@ -1,4 +1,4 @@
-import type { Element, GridMode, NoteEl, TextEl, ToolId } from './types';
+import type { Element, GridMode, ImageEl, NoteEl, TextEl, ToolId } from './types';
 import {
   state, update, onChange, undo, redo, canUndo, canRedo, setTool, setGrid, setStyleColor,
   setStyleWidth, addElement, replaceElements, pushHistory, loadBoard, createBoard, boardMeta, uid,
@@ -6,6 +6,11 @@ import {
 import { storage, doskaApi } from './storage';
 import { renderScene, contentBBox } from './renderer';
 import { NOTE_W, NOTE_H, NOTE_PAD, NOTE_FONT, TEXT_SIZE } from './geom';
+import * as pdfjsLib from 'pdfjs-dist';
+// ?worker&inline: воркер инлайнится в бандл и работает из file:// (Electron)
+import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker&inline';
+
+pdfjsLib.GlobalWorkerOptions.workerPort = new PdfWorker();
 
 const svg = (paths: string) =>
   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
@@ -16,6 +21,7 @@ const ICONS = {
   redo: svg('<path d="M20 10h-9a5 5 0 0 0 0 10h3"/><path d="M16 6l4 4-4 4"/>'),
   fit: svg('<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/>'),
   export: svg('<path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M4 19h16"/>'),
+  pdf: svg('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h4"/>'),
   del: svg('<path d="M6 6l12 12M18 6L6 18"/>'),
 };
 
@@ -31,6 +37,7 @@ const TOOLS: { id: ToolId; code: string; title: string; icon: string }[] = [
   { id: 'line', code: 'L', title: 'Линия', icon: svg('<path d="M5 19L19 5"/>') },
   { id: 'arrow', code: 'A', title: 'Стрелка', icon: svg('<path d="M5 19L18 6"/><path d="M12 6h6v6"/>') },
   { id: 'pan', code: 'H', title: 'Панорама', icon: svg('<path d="M12 3v18M3 12h18"/><path d="M9.5 5.5L12 3l2.5 2.5M9.5 18.5L12 21l2.5-2.5M5.5 9.5L3 12l2.5 2.5M18.5 9.5L21 12l-2.5 2.5"/>') },
+  { id: 'laser', code: 'I', title: 'Лазерная указка', icon: svg('<circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4"/>') },
 ];
 
 const PALETTE = ['#1f2329', '#e03131', '#1971c2', '#2f9e44', '#f08c00', '#9c36b5'];
@@ -158,6 +165,71 @@ export async function exportPng(): Promise<void> {
     a.href = dataUrl;
     a.download = name;
     a.click();
+  }
+}
+
+// ----- Импорт PDF -----
+
+function pickPdfViaInput(): Promise<string | null> {
+  const { promise, resolve } = Promise.withResolvers<string | null>();
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = 'application/pdf';
+  inp.onchange = () => {
+    const f = inp.files?.[0];
+    if (!f) { resolve(null); return; }
+    const fr = new FileReader();
+    fr.onload = () => resolve(String(fr.result));
+    fr.onerror = () => resolve(null);
+    fr.readAsDataURL(f);
+  };
+  inp.click();
+  return promise;
+}
+
+const PDF_PAGE_W = 900; // юниты сцены
+const PDF_PAGE_GAP = 48;
+const PDF_MAX_PAGES = 30;
+
+/** Импортирует PDF: каждая страница — картинка-фон на доске. */
+export async function importPdf(): Promise<void> {
+  const dataUrl = doskaApi?.pickPdf ? await doskaApi.pickPdf() : await pickPdfViaInput();
+  if (dataUrl) await importPdfFromDataUrl(dataUrl);
+}
+
+/** Рендерит страницы PDF в картинки и добавляет их на доску. */
+export async function importPdfFromDataUrl(dataUrl: string): Promise<void> {
+  try {
+    const base64 = dataUrl.slice(dataUrl.indexOf(',') + 1);
+    const bin = atob(base64);
+    const u8 = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+    const pdf = await pdfjsLib.getDocument({ data: u8 }).promise;
+    const x = state.camera.x + 40;
+    let y = state.camera.y + 40;
+    const imgs: ImageEl[] = [];
+    const pages = Math.min(pdf.numPages, PDF_MAX_PAGES);
+    for (let p = 1; p <= pages; p++) {
+      const page = await pdf.getPage(p);
+      const vp0 = page.getViewport({ scale: 1 });
+      const scale = PDF_PAGE_W / vp0.width;
+      const vp = page.getViewport({ scale: scale * 2 }); // 2x для чёткости
+      const cv = document.createElement('canvas');
+      cv.width = Math.ceil(vp.width);
+      cv.height = Math.ceil(vp.height);
+      const c2 = cv.getContext('2d')!;
+      c2.fillStyle = '#ffffff';
+      c2.fillRect(0, 0, cv.width, cv.height);
+      await page.render({ canvasContext: c2, viewport: vp }).promise;
+      const h = vp0.height * scale;
+      imgs.push({ id: uid(), type: 'image', src: cv.toDataURL('image/jpeg', 0.9), x, y, w: PDF_PAGE_W, h });
+      y += h + PDF_PAGE_GAP;
+    }
+    pushHistory(state.board.elements);
+    replaceElements([...state.board.elements, ...imgs]);
+    fitContent();
+  } catch (err) {
+    alert('Не удалось открыть PDF: ' + (err instanceof Error ? err.message : String(err)));
   }
 }
 
@@ -351,12 +423,14 @@ function wireTopbar(): void {
   document.getElementById('btn-redo')!.innerHTML = ICONS.redo;
   document.getElementById('btn-fit')!.innerHTML = ICONS.fit;
   document.getElementById('btn-export')!.innerHTML = ICONS.export;
+  document.getElementById('btn-import')!.innerHTML = ICONS.pdf;
 
   document.getElementById('btn-sidebar')!.addEventListener('click', toggleSidebar);
   document.getElementById('btn-undo')!.addEventListener('click', () => undo());
   document.getElementById('btn-redo')!.addEventListener('click', () => redo());
   document.getElementById('btn-fit')!.addEventListener('click', fitContent);
   document.getElementById('btn-export')!.addEventListener('click', () => { void exportPng(); });
+  document.getElementById('btn-import')!.addEventListener('click', () => { void importPdf(); });
 
   const nameInput = document.getElementById('board-name') as HTMLInputElement;
   nameInput.addEventListener('change', () => {
