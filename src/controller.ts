@@ -1,22 +1,27 @@
-import type { Camera, Element, Pt, ShapeEl, ToolId } from './types';
+import type { Camera, Element, Handle, Pt, ShapeEl, ToolId } from './types';
 import {
   state, update, onChange, beginStroke, extendStroke, endStroke, pushHistory, replaceElements,
-  addElement, setSelection, deleteSelected, undo, redo, setTool, uid,
+  addElement, setSelection, deleteSelected, undo, redo, setTool, uid, commitPoly,
 } from './state';
-import { hitTest, aabbIntersects, elementAABB } from './geom';
+import {
+  hitTest, aabbIntersects, elementAABB, elementHandles, applyHandle,
+  insertPolyNode, removePolyNode,
+} from './geom';
 import { eraseRadius } from './renderer';
 import { beginTextEdit, exportPng, fitContent, saveNow, toggleSidebar } from './app';
 
 const SELECT_TOL = 6; // px экрана
+const HANDLE_HIT_PX = 8;
+const POLY_SNAP_PX = 14; // радиус примагничивания к первой точке
 const CURSORS: Record<ToolId, string> = {
   select: 'default', pen: 'crosshair', highlighter: 'crosshair', eraser: 'none',
   pan: 'grab', text: 'text', note: 'crosshair', rect: 'crosshair',
-  ellipse: 'crosshair', line: 'crosshair', arrow: 'crosshair', laser: 'none',
+  ellipse: 'crosshair', line: 'crosshair', arrow: 'crosshair', poly: 'crosshair', laser: 'none',
 };
 const TOOL_BY_CODE: Record<string, ToolId> = {
   KeyV: 'select', KeyP: 'pen', KeyM: 'highlighter', KeyE: 'eraser', KeyH: 'pan',
   KeyT: 'text', KeyN: 'note', KeyR: 'rect', KeyO: 'ellipse', KeyL: 'line', KeyA: 'arrow',
-  KeyI: 'laser',
+  KeyI: 'laser', KeyK: 'poly',
 };
 const MOVE_THRESHOLD_PX = 3;
 const ZOOM_MIN = 0.05;
@@ -27,6 +32,7 @@ type Action = { pid: number } & (
   | { kind: 'erase'; pre: Element[]; removed: Element[] }
   | { kind: 'shape' }
   | { kind: 'move'; pre: Element[]; start: Pt; orig: Map<string, Element>; moved: boolean }
+  | { kind: 'handle'; el: Element; h: Handle; pre: Element[]; changed: boolean }
   | { kind: 'marquee' }
   | { kind: 'pan'; sx: number; sy: number; cam: Camera }
   | { kind: 'click'; x: number; y: number; target: 'text' | 'note' }
@@ -82,7 +88,7 @@ export function initController(canvas: HTMLCanvasElement): void {
   }
 
   function translateEl(el: Element, dx: number, dy: number): Element {
-    if (el.type === 'stroke') {
+    if (el.type === 'stroke' || el.type === 'poly') {
       return { ...el, pts: el.pts.map(p => ({ x: p.x + dx, y: p.y + dy, p: p.p })) };
     }
     return { ...el, x: el.x + dx, y: el.y + dy };
@@ -145,6 +151,10 @@ export function initController(canvas: HTMLCanvasElement): void {
         if (a.moved) pushHistory(a.pre);
         update();
         break;
+      case 'handle':
+        if (a.changed) pushHistory(a.pre);
+        update();
+        break;
       case 'marquee': finishMarquee(); break;
       case 'click': beginTextEdit({ at: { x: a.x, y: a.y }, target: a.target }); break;
       case 'pan':
@@ -205,6 +215,29 @@ export function initController(canvas: HTMLCanvasElement): void {
         update();
         break;
       case 'select': {
+        // сперва ручки редактирования у единственного выделенного
+        if (state.selection.size === 1) {
+          const sel = state.board.elements.find(e => state.selection.has(e.id));
+          if (sel) {
+            const hs = elementHandles(sel, state.camera.zoom);
+            const r = HANDLE_HIT_PX / state.camera.zoom;
+            for (const hp of hs) {
+              if (Math.hypot(hp.x - s.x, hp.y - s.y) <= r) {
+                if (sel.type === 'poly' && hp.h.kind === 'insert') {
+                  // вставка узла на месте ручки — и сразу тянем его
+                  const withNode = insertPolyNode(sel, hp.h.i, { x: s.x, y: s.y, p: 0.5 });
+                  const pre = state.board.elements;
+                  pushHistory(pre);
+                  replaceElements(state.board.elements.map(x => (x.id === sel.id ? withNode : x)));
+                  action = { pid: e.pointerId, kind: 'handle', el: withNode, h: { kind: 'node', i: hp.h.i + 1 }, pre, changed: false };
+                  return;
+                }
+                action = { pid: e.pointerId, kind: 'handle', el: sel, h: hp.h, pre: state.board.elements, changed: false };
+                return;
+              }
+            }
+          }
+        }
         const hit = topHit(s.x, s.y);
         if (hit) {
           if (e.shiftKey) {
@@ -234,6 +267,22 @@ export function initController(canvas: HTMLCanvasElement): void {
       case 'note':
         action = { pid: e.pointerId, kind: 'click', x: s.x, y: s.y, target: 'note' };
         break;
+      case 'poly': {
+        // клик-клик: добавление вершин; клик по первой точке замыкает контур
+        if (!state.livePoly) {
+          state.livePoly = { pts: [{ x: s.x, y: s.y, p: 0.5 }], cursor: { x: s.x, y: s.y, p: 0.5 } };
+        } else {
+          const first = state.livePoly.pts[0];
+          const distScreen = Math.hypot(first.x - s.x, first.y - s.y) * state.camera.zoom;
+          if (state.livePoly.pts.length >= 3 && distScreen <= POLY_SNAP_PX) {
+            commitPoly(true);
+          } else {
+            state.livePoly.pts.push({ x: s.x, y: s.y, p: 0.5 });
+          }
+        }
+        update();
+        break;
+      }
       case 'laser':
         break; // указка не создаёт действий — след рисуется в onPointerMove
     }
@@ -274,6 +323,11 @@ export function initController(canvas: HTMLCanvasElement): void {
       if (state.laserPts.length > 400) state.laserPts.splice(0, state.laserPts.length - 400);
       update();
     }
+    if (state.tool === 'poly' && state.livePoly) {
+      const sp = toScene(lp.x, lp.y);
+      state.livePoly.cursor = { x: sp.x, y: sp.y, p: 0.5 };
+      update();
+    }
     const a = action;
     if (!a || a.pid !== e.pointerId) return;
 
@@ -306,6 +360,13 @@ export function initController(canvas: HTMLCanvasElement): void {
         const s = toScene(lp.x, lp.y);
         if (state.liveShape) { state.liveShape.x1 = s.x; state.liveShape.y1 = s.y; }
         update();
+        break;
+      }
+      case 'handle': {
+        const s = toScene(lp.x, lp.y);
+        const next = applyHandle(a.el, a.h, s);
+        replaceElements(state.board.elements.map(x => (x.id === a.el.id ? next : x)));
+        a.changed = true;
         break;
       }
       case 'move': {
@@ -346,9 +407,31 @@ export function initController(canvas: HTMLCanvasElement): void {
   }
 
   function onDblClick(e: MouseEvent): void {
-    if (activeTool() !== 'select') return;
     const lp = localPos(e);
     const s = toScene(lp.x, lp.y);
+    if (activeTool() === 'poly') {
+      if (state.livePoly) commitPoly(false);
+      return;
+    }
+    if (activeTool() !== 'select') return;
+    // удаление узла ломаной двойным кликом по ручке
+    if (state.selection.size === 1) {
+      const sel = state.board.elements.find(el => state.selection.has(el.id));
+      if (sel && sel.type === 'poly') {
+        const hs = elementHandles(sel, state.camera.zoom);
+        const r = HANDLE_HIT_PX / state.camera.zoom;
+        for (const hp of hs) {
+          if (hp.h.kind === 'node' && Math.hypot(hp.x - s.x, hp.y - s.y) <= r) {
+            const reduced = removePolyNode(sel, hp.h.i);
+            if (reduced) {
+              pushHistory(state.board.elements);
+              replaceElements(state.board.elements.map(x => (x.id === sel.id ? (reduced as Element) : x)));
+            }
+            return;
+          }
+        }
+      }
+    }
     const hit = topHit(s.x, s.y);
     if (hit && (hit.type === 'text' || hit.type === 'note')) beginTextEdit({ el: hit });
   }
@@ -395,7 +478,13 @@ export function initController(canvas: HTMLCanvasElement): void {
         e.preventDefault();
         if (!spacePan) { spacePan = true; canvas.style.cursor = 'grab'; }
         break;
-      case 'Escape': finishAction(); break;
+      case 'Escape':
+        if (state.livePoly) { state.livePoly = null; update(); break; }
+        finishAction();
+        break;
+      case 'Enter':
+        if (state.livePoly) commitPoly(false);
+        break;
       case 'Delete':
       case 'Backspace': e.preventDefault(); deleteSelected(); break;
       case 'Equal': zoomAtCenter(1.25); break;
@@ -423,7 +512,10 @@ export function initController(canvas: HTMLCanvasElement): void {
   canvas.addEventListener('pointerleave', onPointerLeave);
   canvas.addEventListener('dblclick', onDblClick);
   canvas.addEventListener('wheel', onWheel, { passive: false });
-  canvas.addEventListener('contextmenu', e => e.preventDefault());
+  canvas.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    if (state.livePoly) commitPoly(false); // правая кнопка завершает открытую ломаную
+  });
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
 }

@@ -2,6 +2,7 @@ import type { Element, GridMode, ImageEl, NoteEl, TextEl, ToolId } from './types
 import {
   state, update, onChange, undo, redo, canUndo, canRedo, setTool, setGrid, setStyleColor,
   setStyleWidth, addElement, replaceElements, pushHistory, loadBoard, createBoard, boardMeta, uid,
+  applyStyleToSelection,
 } from './state';
 import { storage, doskaApi } from './storage';
 import { renderScene, contentBBox } from './renderer';
@@ -38,6 +39,7 @@ const TOOLS: { id: ToolId; code: string; title: string; icon: string }[] = [
   { id: 'arrow', code: 'A', title: 'Стрелка', icon: svg('<path d="M5 19L18 6"/><path d="M12 6h6v6"/>') },
   { id: 'pan', code: 'H', title: 'Панорама', icon: svg('<path d="M12 3v18M3 12h18"/><path d="M9.5 5.5L12 3l2.5 2.5M9.5 18.5L12 21l2.5-2.5M5.5 9.5L3 12l2.5 2.5M18.5 9.5L21 12l-2.5 2.5"/>') },
   { id: 'laser', code: 'I', title: 'Лазерная указка', icon: svg('<circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4"/>') },
+  { id: 'poly', code: 'K', title: 'Ломаная / многоугольник', icon: svg('<path d="M4 18l5-10 6 7 5-9"/>') },
 ];
 
 const PALETTE = ['#1f2329', '#e03131', '#1971c2', '#2f9e44', '#f08c00', '#9c36b5'];
@@ -374,25 +376,7 @@ function buildToolbar(): void {
 
   const swatches = document.createElement('div');
   swatches.className = 'swatches';
-  for (const c of PALETTE) {
-    const b = document.createElement('button');
-    b.className = 'swatch';
-    b.dataset.c = c;
-    b.style.background = c;
-    b.title = c;
-    b.addEventListener('click', () => setStyleColor(c));
-    swatches.appendChild(b);
-  }
-  const custom = document.createElement('button');
-  custom.className = 'swatch custom';
-  custom.title = 'Свой цвет';
-  const colorInput = document.createElement('input');
-  colorInput.type = 'color';
-  colorInput.style.display = 'none';
-  custom.addEventListener('click', () => colorInput.click());
-  colorInput.addEventListener('input', () => setStyleColor(colorInput.value));
-  swatches.appendChild(custom);
-  swatches.appendChild(colorInput);
+  renderSwatches(swatches);
   tb.appendChild(swatches);
   tb.appendChild(makeVsep());
 
@@ -404,10 +388,82 @@ function buildToolbar(): void {
     b.dataset.w = String(w);
     b.title = `Толщина ${w}`;
     b.innerHTML = '<i></i>';
-    b.addEventListener('click', () => setStyleWidth(w));
+    b.addEventListener('click', () => chooseWidth(w));
     widths.appendChild(b);
   }
   tb.appendChild(widths);
+}
+
+const CUSTOM_COLORS_KEY = 'doska.customColors';
+const STYLE_KEY = 'doska.style';
+
+function loadCustomColors(): string[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(CUSTOM_COLORS_KEY) || '[]');
+    return Array.isArray(v) ? v.filter(c => typeof c === 'string').slice(0, 6) : [];
+  } catch {
+    return [];
+  }
+}
+
+function addCustomColor(c: string): void {
+  if (PALETTE.includes(c)) return;
+  const list = [c, ...loadCustomColors().filter(x => x !== c)].slice(0, 6);
+  localStorage.setItem(CUSTOM_COLORS_KEY, JSON.stringify(list));
+}
+
+function persistStyle(): void {
+  localStorage.setItem(STYLE_KEY, JSON.stringify(state.style));
+}
+
+function restoreStyle(): void {
+  try {
+    const v = JSON.parse(localStorage.getItem(STYLE_KEY) || 'null');
+    if (v && typeof v.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(v.color) && typeof v.width === 'number') {
+      state.style = { color: v.color, width: Math.min(8, Math.max(2, v.width)) };
+    }
+  } catch { /* нет сохранённого стиля — дефолт */ }
+}
+
+/** Выбор цвета: применяется к выделению (если есть) и становится текущим. */
+function chooseColor(c: string): void {
+  if (state.selection.size > 0) applyStyleToSelection({ color: c });
+  setStyleColor(c);
+  addCustomColor(c);
+  persistStyle();
+  renderSwatches(document.querySelector('.swatches') as HTMLElement);
+  refresh();
+}
+
+/** Выбор толщины: применяется к выделению (если есть) и становится текущей. */
+function chooseWidth(w: number): void {
+  if (state.selection.size > 0) applyStyleToSelection({ width: w });
+  setStyleWidth(w);
+  persistStyle();
+  refresh();
+}
+
+function renderSwatches(container: HTMLElement): void {
+  container.textContent = '';
+  for (const c of [...PALETTE, ...loadCustomColors()]) {
+    const b = document.createElement('button');
+    b.className = 'swatch';
+    b.dataset.c = c;
+    b.style.background = c;
+    b.title = c;
+    b.addEventListener('click', () => chooseColor(c));
+    container.appendChild(b);
+  }
+  const custom = document.createElement('button');
+  custom.className = 'swatch custom';
+  custom.title = 'Свой цвет';
+  const colorInput = document.createElement('input');
+  colorInput.type = 'color';
+  colorInput.style.display = 'none';
+  custom.addEventListener('click', () => colorInput.click());
+  colorInput.addEventListener('input', () => chooseColor(colorInput.value));
+  container.appendChild(custom);
+  container.appendChild(colorInput);
 }
 
 function makeVsep(): HTMLElement {
@@ -487,7 +543,7 @@ function refresh(): void {
   for (const b of tb.querySelectorAll<HTMLButtonElement>('.tool')) {
     b.classList.toggle('active', b.dataset.tool === state.tool);
   }
-  const customActive = !PALETTE.includes(state.style.color);
+  const customActive = ![...PALETTE, ...loadCustomColors()].includes(state.style.color);
   for (const b of tb.querySelectorAll<HTMLButtonElement>('.swatch')) {
     const isCustom = b.classList.contains('custom');
     b.classList.toggle('active', isCustom ? customActive : b.dataset.c === state.style.color);
@@ -513,6 +569,7 @@ function refresh(): void {
 
 export function initApp(c: HTMLCanvasElement): void {
   canvas = c;
+  restoreStyle();
   buildToolbar();
   wireTopbar();
   refresh();

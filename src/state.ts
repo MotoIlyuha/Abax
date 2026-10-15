@@ -24,6 +24,8 @@ export interface AppState {
   selection: Set<string>;
   liveStroke: LiveStroke | null;
   liveShape: LiveShape | null;
+  /** Ломаная в процессе построения. */
+  livePoly: { pts: Pt[]; cursor: Pt | null } | null;
   /** Рамка выделения в экранных координатах. */
   marquee: { x0: number; y0: number; x1: number; y1: number } | null;
   /** Позиция курсора в экранных координатах (для ластика). */
@@ -51,6 +53,7 @@ export const state: AppState = {
   selection: new Set(),
   liveStroke: null,
   liveShape: null,
+  livePoly: null,
   marquee: null,
   hover: null,
   laserPts: [],
@@ -129,7 +132,22 @@ export function deleteSelected(): void {
 
 export function setSelection(ids: string[]): void {
   state.selection = new Set(ids);
+  syncStyleFromSelection();
   update();
+}
+
+/** Тулбар отражает стиль выделенного: единый цвет/толщина подхватываются как текущие. */
+function syncStyleFromSelection(): void {
+  const sel = state.board.elements.filter(e => state.selection.has(e.id));
+  const inked = sel.filter(e => e.type === 'stroke' || e.type === 'shape' || e.type === 'poly' || e.type === 'text');
+  if (inked.length === 0) return;
+  const colors = new Set(inked.map(e => e.color));
+  if (colors.size === 1) state.style.color = inked[0].color;
+  const sized = sel.filter(e => e.type === 'stroke' || e.type === 'shape' || e.type === 'poly');
+  if (sized.length > 0) {
+    const widths = new Set(sized.map(e => e.width));
+    if (widths.size === 1) state.style.width = sized[0].width;
+  }
 }
 
 export function setTool(tool: ToolId): void {
@@ -137,6 +155,7 @@ export function setTool(tool: ToolId): void {
   state.tool = tool;
   state.liveStroke = null;
   state.liveShape = null;
+  state.livePoly = null;
   update();
 }
 
@@ -149,6 +168,25 @@ export function setGrid(grid: GridMode): void { state.grid = grid; update(); }
 export function beginStroke(tool: 'pen' | 'highlighter', pt: Pt): void {
   state.liveStroke = { tool, color: state.style.color, width: state.style.width, pts: [pt] };
   update();
+}
+
+/** Применяет цвет/толщину к выделенным элементам (запись в историю). */
+export function applyStyleToSelection(patch: { color?: string; width?: number }): void {
+  if (state.selection.size === 0) return;
+  const applicable = state.board.elements.some(e =>
+    state.selection.has(e.id) && e.type !== 'note' && e.type !== 'image');
+  if (!applicable) return;
+  pushHistory(state.board.elements);
+  replaceElements(state.board.elements.map(el => {
+    if (!state.selection.has(el.id)) return el;
+    if (el.type === 'note' || el.type === 'image') return el;
+    if (el.type === 'text') return patch.color !== undefined ? { ...el, color: patch.color } : el;
+    return {
+      ...el,
+      ...(patch.color !== undefined ? { color: patch.color } : {}),
+      ...(patch.width !== undefined ? { width: patch.width } : {}),
+    };
+  }));
 }
 
 /** Добавляет точку с лёгким сглаживанием; слишком близкие точки сливает. */
@@ -190,9 +228,23 @@ export function loadBoard(board: Board, boards: BoardMeta[]): void {
   state.selection = new Set();
   state.liveStroke = null;
   state.liveShape = null;
+  state.livePoly = null;
   state.marquee = null;
   undoStack = [];
   redoStack = [];
   state.dirty = false;
   update();
+}
+
+/** Завершает построение ломаной: closed=true замыкает контур. */
+export function commitPoly(closed: boolean): void {
+  const lp = state.livePoly;
+  state.livePoly = null;
+  if (!lp) { update(); return; }
+  const pts = lp.pts.slice();
+  // убираем дубли в конце (двойной клик добавляет ту же точку дважды)
+  while (pts.length > 1 && Math.hypot(pts[pts.length - 1].x - pts[pts.length - 2].x, pts[pts.length - 1].y - pts[pts.length - 2].y) < 1) pts.pop();
+  const min = closed ? 3 : 2;
+  if (pts.length < min) { update(); return; }
+  addElement({ id: uid(), type: 'poly', closed, color: state.style.color, width: state.style.width * 1.1, pts });
 }

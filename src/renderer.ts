@@ -1,6 +1,6 @@
 import type { Camera, Element, GridMode, ImageEl, ShapeEl } from './types';
 import {
-  elementAABB, wrapText, TEXT_FONT,
+  elementAABB, elementHandles, wrapText, TEXT_FONT,
   NOTE_PAD, NOTE_FONT, NOTE_TEXT_COLOR,
 } from './geom';
 import { ribbonPath } from './stroke';
@@ -167,6 +167,15 @@ function drawCoordAxes(ctx: CanvasRenderingContext2D, cam: Camera, w: number, h:
 }
 
 function drawShapeEl(ctx: CanvasRenderingContext2D, el: ShapeEl): void {
+  const rot = el.rot ?? 0;
+  if (rot) {
+    const cx = el.x + el.w / 2;
+    const cy = el.y + el.h / 2;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(rot);
+    ctx.translate(-cx, -cy);
+  }
   ctx.strokeStyle = el.color;
   ctx.lineWidth = el.width;
   ctx.lineCap = 'round';
@@ -194,6 +203,7 @@ function drawShapeEl(ctx: CanvasRenderingContext2D, el: ShapeEl): void {
       ctx.stroke();
     }
   }
+  if (rot) ctx.restore();
 }
 
 function drawElement(
@@ -249,6 +259,19 @@ function drawElement(
         ctx.fillStyle = '#f0f2f5';
         ctx.fillRect(el.x, el.y, el.w, el.h);
       }
+      break;
+      break;
+    }
+    case 'poly': {
+      ctx.strokeStyle = el.color;
+      ctx.lineWidth = el.width;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(el.pts[0].x, el.pts[0].y);
+      for (let i = 1; i < el.pts.length; i++) ctx.lineTo(el.pts[i].x, el.pts[i].y);
+      if (el.closed) ctx.closePath();
+      ctx.stroke();
       break;
     }
   }
@@ -402,6 +425,55 @@ function appendToCache(from: number): void {
   cacheArr = arr;
 }
 
+/** Ручки редактирования единственного выделенного элемента (экранные координаты). */
+function drawHandles(ctx: CanvasRenderingContext2D, cam: Camera): void {
+  const el = state.board.elements.find(e => state.selection.has(e.id));
+  if (!el) return;
+  const hs = elementHandles(el, cam.zoom);
+  if (hs.length === 0) return;
+  for (const { h, x, y } of hs) {
+    const sx = (x - cam.x) * cam.zoom;
+    const sy = (y - cam.y) * cam.zoom;
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#3273f5';
+    ctx.lineWidth = 1.5;
+    if (h.kind === 'insert') {
+      ctx.beginPath();
+      ctx.arc(sx, sy, 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#3273f5';
+      ctx.fill();
+      continue;
+    }
+    if (h.kind === 'resize') {
+      ctx.beginPath();
+      ctx.rect(sx - 3.5, sy - 3.5, 7, 7);
+      ctx.fill();
+      ctx.stroke();
+      continue;
+    }
+    if (h.kind === 'rotate') {
+      // соединительная линия от верхней грани bbox к ручке
+      const a = elementAABB(el);
+      const topX = ((a.x0 + a.x1) / 2 - cam.x) * cam.zoom;
+      const topY = (a.y0 - cam.y) * cam.zoom;
+      ctx.beginPath();
+      ctx.moveTo(topX, topY);
+      ctx.lineTo(sx, sy);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(sx, sy, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      continue;
+    }
+    // end/node
+    ctx.beginPath();
+    ctx.arc(sx, sy, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+}
+
 function blitCache(): void {
   if (!ctx || !cacheCam) return;
   const cam = state.camera;
@@ -482,7 +554,40 @@ function draw(): void {
       color: ls.color, width: ls.width,
     });
   }
-
+  if (state.livePoly) {
+    const lp = state.livePoly;
+    ctx.strokeStyle = state.style.color;
+    ctx.lineWidth = state.style.width * 1.1;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    if (lp.pts.length > 1) {
+      ctx.beginPath();
+      ctx.moveTo(lp.pts[0].x, lp.pts[0].y);
+      for (let i = 1; i < lp.pts.length; i++) ctx.lineTo(lp.pts[i].x, lp.pts[i].y);
+      ctx.stroke();
+    }
+    if (lp.cursor && lp.pts.length > 0) {
+      // резинка до курсора
+      ctx.save();
+      ctx.setLineDash([6 / state.camera.zoom, 4 / state.camera.zoom]);
+      ctx.beginPath();
+      ctx.moveTo(lp.pts[lp.pts.length - 1].x, lp.pts[lp.pts.length - 1].y);
+      ctx.lineTo(lp.cursor.x, lp.cursor.y);
+      ctx.stroke();
+      ctx.restore();
+    }
+    // узлы: поставленные точки + колечко на первой (замыкание)
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#3273f5';
+    ctx.lineWidth = 1.5 / state.camera.zoom;
+    for (let i = 0; i < lp.pts.length; i++) {
+      const r = i === 0 ? 6 / state.camera.zoom : 4 / state.camera.zoom;
+      ctx.beginPath();
+      ctx.arc(lp.pts[i].x, lp.pts[i].y, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+  }
   // оверлеи в экранных координатах
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   if (state.selection.size > 0) {
@@ -497,6 +602,7 @@ function draw(): void {
       ctx.strokeRect(x, y, (a.x1 - a.x0) * cam.zoom + 8, (a.y1 - a.y0) * cam.zoom + 8);
     }
     ctx.setLineDash([]);
+    if (state.selection.size === 1) drawHandles(ctx, cam);
   }
   if (state.marquee) {
     const m = state.marquee;

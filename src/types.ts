@@ -1,6 +1,6 @@
 export type ToolId =
   | 'select' | 'pen' | 'highlighter' | 'eraser' | 'pan'
-  | 'text' | 'note' | 'rect' | 'ellipse' | 'line' | 'arrow' | 'laser';
+  | 'text' | 'note' | 'rect' | 'ellipse' | 'line' | 'arrow' | 'poly' | 'laser';
 
 /** Точка в координатах сцены; p — давление 0..1 (мышь даёт 0.5). */
 export interface Pt { x: number; y: number; p: number }
@@ -23,6 +23,18 @@ export interface ShapeEl {
   x: number; y: number; w: number; h: number;
   color: string;
   width: number;
+  /** Поворот вокруг центра в радианах (только rect/ellipse). */
+  rot?: number;
+}
+
+/** Ломаная: открытая или замкнутая (контур). */
+export interface PolyEl {
+  id: string;
+  type: 'poly';
+  closed: boolean;
+  color: string;
+  width: number;
+  pts: Pt[];
 }
 
 export interface TextEl {
@@ -52,7 +64,7 @@ export interface ImageEl {
   src: string;
 }
 
-export type Element = StrokeEl | ShapeEl | TextEl | NoteEl | ImageEl;
+export type Element = StrokeEl | ShapeEl | PolyEl | TextEl | NoteEl | ImageEl;
 
 /** Экран = (сцена - камера) * zoom. */
 export interface Camera { x: number; y: number; zoom: number }
@@ -65,3 +77,13 @@ export type GridMode = 'none' | 'dots' | 'square' | 'coord';
 
 /** Точка лазерной указки в координатах сцены с меткой времени. */
 export interface LaserPt { x: number; y: number; t: number }
+
+/** Ручка редактирования выделенного элемента. */
+export type Handle =
+  | { kind: 'end'; i: 0 | 1 }
+  | { kind: 'node'; i: number }
+  | { kind: 'insert'; i: number }
+  | { kind: 'resize'; dx: -1 | 0 | 1; dy: -1 | 0 | 1 }
+  | { kind: 'rotate' };
+
+export interface HandlePos { h: Handle; x: number; y: number }
