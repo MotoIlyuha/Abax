@@ -333,19 +333,10 @@ export function renderScene(
   const vy0 = cam.y;
   const vx1 = cam.x + wCss / cam.zoom;
   const vy1 = cam.y + hCss / cam.zoom;
-  // сначала картинки (фон для аннотаций), затем маркер — всегда под остальным
+  // честный z-порядок: элементы рисуются строго по порядку массива,
+  // слои (выше/ниже) работают одинаково для всех типов
   for (const el of elements) {
-    if (el.type === 'image' && !exclude?.has(el.id)) {
-      drawElement(ctx, el, vx0, vy0, vx1, vy1);
-    }
-  }
-  for (const el of elements) {
-    if (el.type === 'stroke' && el.tool === 'highlighter' && !exclude?.has(el.id)) {
-      drawElement(ctx, el, vx0, vy0, vx1, vy1);
-    }
-  }
-  for (const el of elements) {
-    if (el.type !== 'image' && !(el.type === 'stroke' && el.tool === 'highlighter') && !exclude?.has(el.id)) {
+    if (!exclude?.has(el.id)) {
       drawElement(ctx, el, vx0, vy0, vx1, vy1);
     }
   }

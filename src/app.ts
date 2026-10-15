@@ -657,12 +657,16 @@ function positionQuickMenu(): void {
     x1 = Math.max(x1, a.x1); y1 = Math.max(y1, a.y1);
   }
   if (x0 === Infinity) { qm.hidden = true; return; }
+  // над bbox может торчать ручка поворота (~44px) — оставляем ей место
+  const hasRotateHandle = state.selection.size === 1 && state.board.elements.some(e =>
+    state.selection.has(e.id) && ((e.type === 'shape' && (e.shape === 'rect' || e.shape === 'ellipse')) || e.type === 'image'));
+  const topGap = 10 + (hasRotateHandle ? 44 : 0);
   const sx = (x0 - cam.x) * cam.zoom;
   const sy = (y0 - cam.y) * cam.zoom;
   const sw = (x1 - x0) * cam.zoom;
   const qr = qm.getBoundingClientRect();
   let left = sx + sw / 2 - qr.width / 2;
-  let top = sy - qr.height - 10;
+  let top = sy - qr.height - topGap;
   if (top < 8) top = sy + 12;
   left = Math.max(8, Math.min(left, wr.width - qr.width - 8));
   qm.style.left = `${left}px`;
@@ -730,7 +734,7 @@ function openSettings(): void {
     persistSettings();
   });
   const span3 = document.createElement('span');
-  span3.textContent = 'Привязка к сетке (при перемещении и изменении размера)';
+  span3.textContent = 'Привязка к сетке';
   lbl3.append(cb3, span3);
   pop.appendChild(lbl3);
   const btn = document.getElementById('btn-settings')!;
@@ -1444,7 +1448,7 @@ function wireTopbar(): void {
   });
 
   // закрытие панелей по клику мимо / Esc
-  canvas.addEventListener('pointerdown', () => { closeCtxPanel(); }, { capture: true });
+  canvas.addEventListener('pointerdown', () => { closeCtxPanel(); closeSettings(); }, { capture: true });
   document.getElementById('canvas-wrap')!.addEventListener('pointerdown', e => {
     const qm = quickMenuEl();
     if (!qm.hidden && !qm.contains(e.target as Node)) { /* меню остаётся, клик по холсту обрабатывает контроллер */ }
