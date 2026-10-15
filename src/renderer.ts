@@ -284,13 +284,21 @@ function drawElement(
     }
     case 'image': {
       const img = imageOf(el);
+      const rot = el.rot ?? 0;
+      if (rot) {
+        const cx = el.x + el.w / 2, cy = el.y + el.h / 2;
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(rot);
+        ctx.translate(-cx, -cy);
+      }
       if (img.complete && img.naturalWidth > 0) {
         ctx.drawImage(img, el.x, el.y, el.w, el.h);
       } else {
         ctx.fillStyle = '#f0f2f5';
         ctx.fillRect(el.x, el.y, el.w, el.h);
       }
-      break;
+      if (rot) ctx.restore();
       break;
     }
     case 'poly': {

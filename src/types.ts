@@ -67,8 +67,10 @@ export interface ImageEl {
   id: string;
   type: 'image';
   x: number; y: number; w: number; h: number;
-  /** data:image/jpeg;base64,... */
+  /** data:image/jpeg;base64,... или data:image/png;base64,... */
   src: string;
+  /** Поворот вокруг центра в радианах. */
+  rot?: number;
   groupId?: string;
 }
 
@@ -124,4 +126,6 @@ export interface BoardSettings {
   toolbarPos: ToolbarPos;
   /** Подписи делений на координатной плоскости. */
   coordLabels: boolean;
+  /** Привязка перемещения/размеров к видимому шагу сетки. */
+  snapToGrid: boolean;
 }

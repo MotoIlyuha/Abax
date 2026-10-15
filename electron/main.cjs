@@ -63,6 +63,18 @@ ipcMain.handle('pdf:pick', async () => {
   const buf = await fs.readFile(r.filePaths[0]);
   return 'data:application/pdf;base64,' + buf.toString('base64');
 });
+
+ipcMain.handle('image:pick', async () => {
+  const r = await dialog.showOpenDialog({
+    properties: ['openFile'],
+    filters: [{ name: 'Изображения', extensions: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'] }],
+  });
+  if (r.canceled || !r.filePaths[0]) return null;
+  const buf = await fs.readFile(r.filePaths[0]);
+  const ext = path.extname(r.filePaths[0]).slice(1).toLowerCase();
+  const mime = ext === 'jpg' ? 'jpeg' : ext;
+  return `data:image/${mime};base64,` + buf.toString('base64');
+});
 ipcMain.handle('boards:load', async (_e, id) => {
   try {
     return JSON.parse(await fs.readFile(boardPath(id), 'utf8'));

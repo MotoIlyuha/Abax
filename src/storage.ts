@@ -14,6 +14,7 @@ export interface DoskaApi {
   remove(id: string): Promise<void>;
   exportPng(dataUrl: string, name: string): Promise<boolean>;
   pickPdf(): Promise<string | null>;
+  pickImage(): Promise<string | null>;
 }
 
 // Граница IPC: preload кладёт doskaAPI на window; форма проверяется в рантайме.
@@ -27,7 +28,7 @@ function resolveApi(): DoskaApi | undefined {
   const candidate = typeof window !== 'undefined' ? window.doskaAPI : undefined;
   if (typeof candidate !== 'object' || candidate === null) return undefined;
   const api = candidate as Record<string, unknown>; // форма проверяется ниже
-  for (const k of ['list', 'load', 'save', 'remove', 'exportPng', 'pickPdf']) {
+  for (const k of ['list', 'load', 'save', 'remove', 'exportPng', 'pickPdf', 'pickImage']) {
     if (typeof api[k] !== 'function') return undefined;
   }
   return candidate as DoskaApi;

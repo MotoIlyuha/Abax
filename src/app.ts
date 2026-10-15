@@ -2,7 +2,7 @@ import type { Element, GridMode, ImageEl, NoteEl, Page, Project, TextEl, ToolId,
 import {
   state, update, onChange, undo, redo, canUndo, canRedo, setTool, setGrid, setStyleColor,
   setStyleWidth, setNoteColor, addElement, replaceElements, pushHistory, uid,
-  applyStyleToSelection, setSettings, setView, switchPage, addPage, deletePage, renamePage,
+  applyStyleToSelection, setSettings, setView, switchPage, addPage, deletePage, renamePage, setSelection,
   openProject, blankProject, projectMeta, groupSelected, ungroupSelected,
   bringForward, sendBackward, deleteSelected,
 } from './state';
@@ -21,6 +21,7 @@ const svg = (paths: string) =>
 const ICONS = {
   home: svg('<path d="M3 11l9-8 9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/>'),
   sidebar: svg('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M9 5v14"/>'),
+  image: svg('<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M21 15l-5-5L5 19"/>'),
   undo: svg('<path d="M4 10h9a5 5 0 0 1 0 10h-3"/><path d="M8 6l-4 4 4 4"/>'),
   redo: svg('<path d="M20 10h-9a5 5 0 0 0 0 10h3"/><path d="M16 6l4 4-4 4"/>'),
   fit: svg('<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/>'),
@@ -112,6 +113,7 @@ function restoreSettings(): void {
       state.settings = {
         toolbarPos: v.toolbarPos as ToolbarPos,
         coordLabels: typeof v.coordLabels === 'boolean' ? v.coordLabels : true,
+        snapToGrid: typeof v.snapToGrid === 'boolean' ? v.snapToGrid : false,
       };
     }
   } catch { /* дефолт */ }
@@ -718,6 +720,19 @@ function openSettings(): void {
   span.textContent = 'Деления координатной плоскости';
   lbl2.append(cb, span);
   pop.appendChild(lbl2);
+  const lbl3 = document.createElement('label');
+  lbl3.className = 'ctx-check';
+  const cb3 = document.createElement('input');
+  cb3.type = 'checkbox';
+  cb3.checked = state.settings.snapToGrid;
+  cb3.addEventListener('change', () => {
+    setSettings({ snapToGrid: cb3.checked });
+    persistSettings();
+  });
+  const span3 = document.createElement('span');
+  span3.textContent = 'Привязка к сетке (при перемещении и изменении размера)';
+  lbl3.append(cb3, span3);
+  pop.appendChild(lbl3);
   const btn = document.getElementById('btn-settings')!;
   const br = btn.getBoundingClientRect();
   pop.style.left = `${Math.max(8, br.right - 260)}px`;
@@ -829,6 +844,91 @@ export async function importPdfFromDataUrl(dataUrl: string): Promise<void> {
   } catch (err) {
     alert('Не удалось открыть PDF: ' + (err instanceof Error ? err.message : String(err)));
   }
+}
+
+// ----- Вставка изображений -----
+
+function pickImageViaInput(): Promise<string | null> {
+  const { promise, resolve } = Promise.withResolvers<string | null>();
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  inp.accept = 'image/*';
+  inp.onchange = () => {
+    const f = inp.files?.[0];
+    if (!f) { resolve(null); return; }
+    const fr = new FileReader();
+    fr.onload = () => resolve(String(fr.result));
+    fr.onerror = () => resolve(null);
+    fr.readAsDataURL(f);
+  };
+  inp.click();
+  return promise;
+}
+
+/** Вставляет картинку по dataURL: центрирует на точке (или в центре экрана), вписывает в экран. */
+export function insertImageFromDataUrl(dataUrl: string, at?: { x: number; y: number }): void {
+  const probe = new Image();
+  probe.onload = () => {
+    const nw = probe.naturalWidth || 400;
+    const nh = probe.naturalHeight || 300;
+    const r = canvas.getBoundingClientRect();
+    const scale = Math.min(1, 800 / nw, (r.height * 0.6) / nh);
+    const w = Math.max(24, nw * scale);
+    const h = Math.max(24, nh * scale);
+    const cam = state.camera;
+    const cx = at ? at.x : cam.x + r.width / (2 * cam.zoom);
+    const cy = at ? at.y : cam.y + r.height / (2 * cam.zoom);
+    const el: ImageEl = { id: uid(), type: 'image', src: dataUrl, x: cx - w / 2, y: cy - h / 2, w, h };
+    pushHistory(state.board.elements);
+    replaceElements([...state.board.elements, el]);
+    setSelection([el.id]);
+  };
+  probe.onerror = () => alert('Не удалось прочитать изображение');
+  probe.src = dataUrl;
+}
+
+export async function insertImage(): Promise<void> {
+  const api = (window as { doskaAPI?: { pickImage(): Promise<string | null> } }).doskaAPI;
+  const dataUrl = api ? await api.pickImage() : await pickImageViaInput();
+  if (dataUrl) insertImageFromDataUrl(dataUrl);
+}
+
+function fileToDataUrl(f: File): Promise<string | null> {
+  const { promise, resolve } = Promise.withResolvers<string | null>();
+  const fr = new FileReader();
+  fr.onload = () => resolve(String(fr.result));
+  fr.onerror = () => resolve(null);
+  fr.readAsDataURL(f);
+  return promise;
+}
+
+function wireImageInput(): void {
+  document.getElementById('btn-image')!.addEventListener('click', () => { void insertImage(); });
+  // Ctrl+V из буфера обмена
+  document.addEventListener('paste', e => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (const it of items) {
+      if (it.kind === 'file' && it.type.startsWith('image/')) {
+        const f = it.getAsFile();
+        if (f) {
+          e.preventDefault();
+          void fileToDataUrl(f).then(d => { if (d) insertImageFromDataUrl(d); });
+          return;
+        }
+      }
+    }
+  });
+  // перетаскивание файла на доску
+  const wrap = document.getElementById('canvas-wrap')!;
+  wrap.addEventListener('dragover', e => e.preventDefault());
+  wrap.addEventListener('drop', e => {
+    e.preventDefault();
+    const f = e.dataTransfer?.files?.[0];
+    if (f && f.type.startsWith('image/')) {
+      void fileToDataUrl(f).then(d => { if (d) insertImageFromDataUrl(d); });
+    }
+  });
 }
 
 // ----- Камера -----
@@ -1413,6 +1513,7 @@ export function initApp(c: HTMLCanvasElement): void {
   buildToolbar();
   applyToolbarPos();
   wireTopbar();
+  wireImageInput();
   try { refresh(); } catch (err) { console.error('[doska] refresh failed:', err); }
   onChange(() => {
     refresh();

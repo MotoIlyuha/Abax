@@ -6,7 +6,7 @@ import {
 } from './state';
 import {
   hitTest, aabbIntersects, elementAABB, elementHandles, applyHandle,
-  insertPolyNode, removePolyNode,
+  insertPolyNode, removePolyNode, gridStepFor, snapValue,
 } from './geom';
 import { eraseRadius } from './renderer';
 import { beginTextEdit, exportPng, fitContent, saveNow, toggleSidebar } from './app';
@@ -324,6 +324,11 @@ export function initController(canvas: HTMLCanvasElement): void {
     return evs.length ? evs : [e];
   }
 
+  /** Шаг привязки к сетке с учётом текущего масштаба; 0 — привязка выключена. */
+  function snapStepNow(): number {
+    return state.settings.snapToGrid ? gridStepFor(state.camera.zoom) : 0;
+  }
+
   function onPointerMove(e: PointerEvent): void {
     const lp = localPos(e);
     const ptr = pointers.get(e.pointerId);
@@ -380,17 +385,28 @@ export function initController(canvas: HTMLCanvasElement): void {
       }
       case 'handle': {
         const s = toScene(lp.x, lp.y);
-        const next = applyHandle(a.el, a.h, s);
+        const step = snapStepNow();
+        const snapped = { x: snapValue(s.x, step), y: snapValue(s.y, step), p: s.p };
+        const next = applyHandle(a.el, a.h, snapped);
         replaceElements(state.board.elements.map(x => (x.id === a.el.id ? next : x)));
         a.changed = true;
         break;
       }
       case 'move': {
         const s = toScene(lp.x, lp.y);
-        const dx = s.x - a.start.x;
-        const dy = s.y - a.start.y;
+        let dx = s.x - a.start.x;
+        let dy = s.y - a.start.y;
         if (!a.moved && Math.hypot(dx, dy) * state.camera.zoom < MOVE_THRESHOLD_PX) break;
         a.moved = true;
+        const step = snapStepNow();
+        if (step > 0 && a.orig.size > 0) {
+          // дельта привязки считается по опорному элементу, взаимное расположение сохраняется
+          const ref = a.orig.values().next().value as Element;
+          const rx = ref.type === 'stroke' || ref.type === 'poly' ? ref.pts[0].x : ref.x;
+          const ry = ref.type === 'stroke' || ref.type === 'poly' ? ref.pts[0].y : ref.y;
+          dx = snapValue(rx + dx, step) - rx;
+          dy = snapValue(ry + dy, step) - ry;
+        }
         replaceElements(
           state.board.elements.map(el => (a.orig.has(el.id) ? translateEl(a.orig.get(el.id)!, dx, dy) : el)),
         );

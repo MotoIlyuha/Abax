@@ -75,7 +75,7 @@ export const state: AppState = {
   tool: 'pen',
   style: { color: '#1f2329', width: 4 },
   noteColor: '#ffe066',
-  settings: { toolbarPos: 'left', coordLabels: true },
+  settings: { toolbarPos: 'left', coordLabels: true, snapToGrid: false },
   selection: new Set(),
   liveStroke: null,
   liveShape: null,

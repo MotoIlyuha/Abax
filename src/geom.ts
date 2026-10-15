@@ -94,8 +94,21 @@ export function elementAABB(el: Element): AABB {
     }
     case 'note':
       return { x0: el.x, y0: el.y, x1: el.x + el.w, y1: el.y + el.h };
-    case 'image':
+    case 'image': {
+      if (el.rot) {
+        const cx = el.x + el.w / 2, cy = el.y + el.h / 2;
+        const cos = Math.cos(el.rot), sin = Math.sin(el.rot);
+        let bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity;
+        for (const [px, py] of [[el.x, el.y], [el.x + el.w, el.y], [el.x + el.w, el.y + el.h], [el.x, el.y + el.h]] as [number, number][]) {
+          const rx = cx + (px - cx) * cos - (py - cy) * sin;
+          const ry = cy + (px - cx) * sin + (py - cy) * cos;
+          bx0 = Math.min(bx0, rx); bx1 = Math.max(bx1, rx);
+          by0 = Math.min(by0, ry); by1 = Math.max(by1, ry);
+        }
+        return { x0: bx0, y0: by0, x1: bx1, y1: by1 };
+      }
       return { x0: el.x, y0: el.y, x1: el.x + el.w, y1: el.y + el.h };
+    }
   }
 }
 
@@ -159,8 +172,17 @@ export function hitTest(el: Element, x: number, y: number, tol: number): boolean
     }
     case 'note':
       return x >= el.x - tol && x <= el.x + el.w + tol && y >= el.y - tol && y <= el.y + el.h + tol;
-    case 'image':
-      return x >= el.x - tol && x <= el.x + el.w + tol && y >= el.y - tol && y <= el.y + el.h + tol;
+    case 'image': {
+      let px = x, py = y;
+      if (el.rot) {
+        const cx = el.x + el.w / 2, cy = el.y + el.h / 2;
+        const cos = Math.cos(-el.rot), sin = Math.sin(-el.rot);
+        const dx = x - cx, dy = y - cy;
+        px = cx + dx * cos - dy * sin;
+        py = cy + dx * sin + dy * cos;
+      }
+      return px >= el.x - tol && px <= el.x + el.w + tol && py >= el.y - tol && py <= el.y + el.h + tol;
+    }
   }
 }
 /** Луч с чётным числом пересечений = внутри (для замкнутого контура). */
@@ -178,6 +200,18 @@ const MIN_SHAPE_SIZE = 4;
 const MIN_NOTE_W = 80;
 const MIN_NOTE_H = 60;
 const ROT_SNAP = Math.PI / 45; // ~4°: примагничивание к кратным 45°
+
+/** Видимый шаг сетки при данном зуме (LOD как у рендера). */
+export function gridStepFor(zoom: number): number {
+  let s = 40;
+  while (s * zoom < 18) s *= 4;
+  return s;
+}
+
+/** Округляет координату к шагу сетки; step <= 0 — без привязки. */
+export function snapValue(v: number, step: number): number {
+  return step > 0 ? Math.round(v / step) * step : v;
+}
 
 /** Ручки редактирования элемента (координаты сцены); zoom нужен для экранных отступов. */
 export function elementHandles(el: Element, zoom: number): HandlePos[] {
@@ -225,6 +259,21 @@ export function elementHandles(el: Element, zoom: number): HandlePos[] {
           y: el.y + el.h / 2 + (dy * el.h) / 2,
         });
       }
+      return out;
+    }
+    case 'image': {
+      // картинка масштабируется и вращается как прямоугольник
+      const cx = el.x + el.w / 2, cy = el.y + el.h / 2;
+      const rot = el.rot ?? 0;
+      const cos = Math.cos(rot), sin = Math.sin(rot);
+      const out: HandlePos[] = [];
+      const dirs: [number, number][] = [[-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0]];
+      for (const [dx, dy] of dirs) {
+        const lx = (dx * el.w) / 2, ly = (dy * el.h) / 2;
+        out.push({ h: { kind: 'resize', dx: dx as -1 | 0 | 1, dy: dy as -1 | 0 | 1 }, x: cx + lx * cos - ly * sin, y: cy + lx * sin + ly * cos });
+      }
+      const lx = 0, ly = -el.h / 2 - ROT_HANDLE_OFF_PX / zoom;
+      out.push({ h: { kind: 'rotate' }, x: cx + lx * cos - ly * sin, y: cy + lx * sin + ly * cos });
       return out;
     }
     default:
@@ -278,6 +327,39 @@ export function applyHandle(el: Element, h: Handle, pt: Pt): Element {
       return { ...s, x: ncx - nw / 2, y: ncy - nh / 2, w: nw, h: nh };
     }
     return s;
+  }
+  if (el.type === 'image' && (h.kind === 'resize' || h.kind === 'rotate')) {
+    if (h.kind === 'rotate') {
+      const cx = el.x + el.w / 2, cy = el.y + el.h / 2;
+      let ang = Math.atan2(pt.y - cy, pt.x - cx) + Math.PI / 2;
+      for (let k = 0; k < 8; k++) {
+        const target = (k * Math.PI) / 4;
+        let diff = ang - target;
+        while (diff > Math.PI) diff -= 2 * Math.PI;
+        while (diff < -Math.PI) diff += 2 * Math.PI;
+        if (Math.abs(diff) < ROT_SNAP) { ang = target; break; }
+      }
+      while (ang > Math.PI) ang -= 2 * Math.PI;
+      while (ang < -Math.PI) ang += 2 * Math.PI;
+      return { ...el, rot: Math.abs(ang) < 0.002 ? undefined : ang };
+    }
+    const cx = el.x + el.w / 2, cy = el.y + el.h / 2;
+    const rot = el.rot ?? 0;
+    const cos = Math.cos(-rot), sin = Math.sin(-rot);
+    const dx = pt.x - cx, dy = pt.y - cy;
+    const plx = dx * cos - dy * sin;
+    const ply = dx * sin + dy * cos;
+    let left = -el.w / 2, right = el.w / 2, top = -el.h / 2, bottom = el.h / 2;
+    if (h.dx < 0) left = Math.min(plx, right - MIN_SHAPE_SIZE);
+    if (h.dx > 0) right = Math.max(plx, left + MIN_SHAPE_SIZE);
+    if (h.dy < 0) top = Math.min(ply, bottom - MIN_SHAPE_SIZE);
+    if (h.dy > 0) bottom = Math.max(ply, top + MIN_SHAPE_SIZE);
+    const nw = right - left, nh = bottom - top;
+    const offx = (left + right) / 2, offy = (top + bottom) / 2;
+    const ccos = Math.cos(rot), csin = Math.sin(rot);
+    const ncx = cx + offx * ccos - offy * csin;
+    const ncy = cy + offx * csin + offy * ccos;
+    return { ...el, x: ncx - nw / 2, y: ncy - nh / 2, w: nw, h: nh };
   }
   if (el.type === 'note' && h.kind === 'resize') {
     let left = el.x, right = el.x + el.w, top = el.y, bottom = el.y + el.h;
