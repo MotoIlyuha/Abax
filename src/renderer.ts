@@ -164,6 +164,29 @@ function drawCoordAxes(ctx: CanvasRenderingContext2D, cam: Camera, w: number, h:
     ctx.lineTo(ox + 3, sy);
   }
   ctx.stroke();
+  // числовые деления: интервал подстраивается под зум, чтобы подписи не слипались
+  if (!state.settings.coordLabels) return;
+  let lstep = GRID_STEP;
+  while (lstep * z < 48) lstep *= 2;
+  ctx.font = '11px "Segoe UI", system-ui, sans-serif';
+  if (xVisible) {
+    const lx0 = Math.ceil(cam.x / lstep) * lstep;
+    for (let x = lx0; x <= cam.x + w / z; x += lstep) {
+      if (x === 0) continue;
+      const sx = (x - cam.x) * z;
+      ctx.fillText(String(Math.round(x)), sx + 3, oy + 14);
+    }
+  }
+  if (yVisible) {
+    ctx.textAlign = 'right';
+    const ly0 = Math.ceil(cam.y / lstep) * lstep;
+    for (let y = ly0; y <= cam.y + h / z; y += lstep) {
+      if (y === 0) continue;
+      const sy = (y - cam.y) * z;
+      ctx.fillText(String(Math.round(y)), ox - 5, sy + 4);
+    }
+    ctx.textAlign = 'left';
+  }
 }
 
 function drawShapeEl(ctx: CanvasRenderingContext2D, el: ShapeEl): void {
@@ -313,7 +336,7 @@ export function renderScene(
 }
 
 // ----- Основной канвас с битмап-кэшем сцены -----
-//
+let cacheHideId: string | null = null;
 // Статика (фон + все элементы) рисуется в offscreen-канвас один раз и blit'ается
 // каждый кадр. Новые элементы дописываются в кэш инкрементально (префикс-проверка
 // массива). Изменение камеры НЕ инвалидирует кэш мгновенно: во время pan/zoom
@@ -335,6 +358,7 @@ let cacheCtx: CanvasRenderingContext2D | null = null;
 let cacheCam: Camera | null = null;
 let cacheArr: Element[] | null = null;
 let cacheGrid: GridMode = 'none';
+let cacheCoordLabels = true;
 let cacheStale = false;
 let cacheSel: Set<string> | null = null;
 let lastCamRef: Camera | null = null;
@@ -393,11 +417,15 @@ function isPrefixExtension(newArr: Element[], oldArr: Element[]): boolean {
 function rebuildCache(): void {
   if (!cacheCtx) return;
   const cam = state.camera;
-  renderScene(cacheCtx, state.board.elements, cam, cssW, cssH, dpr, state.grid, state.selection);
+  const excl = new Set(state.selection);
+  if (state.hideElId) excl.add(state.hideElId);
+  renderScene(cacheCtx, state.board.elements, cam, cssW, cssH, dpr, state.board.grid, excl.size ? excl : undefined);
   cacheCam = { ...cam };
   cacheArr = state.board.elements;
-  cacheGrid = state.grid;
+  cacheGrid = state.board.grid;
+  cacheCoordLabels = state.settings.coordLabels;
   cacheSel = state.selection;
+  cacheHideId = state.hideElId;
   cacheStale = false;
 }
 
@@ -498,7 +526,7 @@ function draw(): void {
     lastCamChange = performance.now();
     cacheStale = true;
   }
-  if (state.grid !== cacheGrid || state.selection !== cacheSel) cacheStale = true;
+  if (state.board.grid !== cacheGrid || state.settings.coordLabels !== cacheCoordLabels || state.selection !== cacheSel || state.hideElId !== cacheHideId) cacheStale = true;
 
   const arr = state.board.elements;
   const arrRefChanged = arr !== cacheArr;
@@ -531,7 +559,7 @@ function draw(): void {
       const ex0 = cam.x, ey0 = cam.y;
       const ex1 = cam.x + cssW / cam.zoom, ey1 = cam.y + cssH / cam.zoom;
       for (const el of state.board.elements) {
-        if (!state.selection.has(el.id)) continue;
+        if (!state.selection.has(el.id) || el.id === state.hideElId) continue;
         drawElement(ctx, el, ex0, ey0, ex1, ey1);
       }
     }
@@ -540,6 +568,16 @@ function draw(): void {
   // превью живых объектов — поверх blit, в координатах сцены
   const zx = dpr * cam.zoom;
   ctx.setTransform(zx, 0, 0, zx, -cam.x * zx, -cam.y * zx);
+  if (state.liveNote) {
+    const n = state.liveNote;
+    ctx.fillStyle = n.color;
+    ctx.beginPath();
+    ctx.roundRect(n.x, n.y, n.w, n.h, 6);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(74, 70, 51, 0.18)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
   if (state.liveStroke) {
     const ls = state.liveStroke;
     const base = ls.tool === 'highlighter' ? ls.width * 3.2 : ls.width;
@@ -595,7 +633,7 @@ function draw(): void {
     ctx.lineWidth = 1.5;
     ctx.setLineDash([5, 4]);
     for (const el of state.board.elements) {
-      if (!state.selection.has(el.id)) continue;
+      if (!state.selection.has(el.id) || el.id === state.hideElId) continue;
       const a = cacheOf(el).aabb;
       const x = (a.x0 - cam.x) * cam.zoom - 4;
       const y = (a.y0 - cam.y) * cam.zoom - 4;

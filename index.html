@@ -7,12 +7,14 @@
 </head>
 <body>
   <div id="topbar">
-    <button id="btn-sidebar" class="icon" title="Доски (B)"></button>
-    <input id="board-name" title="Название доски" spellcheck="false" />
+    <button id="btn-home" class="icon" title="Проекты (домашняя страница)"></button>
+    <button id="btn-sidebar" class="icon" title="Страницы (B)"></button>
+    <input id="page-name" title="Название страницы" spellcheck="false" />
     <div class="sep"></div>
     <button id="btn-undo" class="icon" title="Отменить (Ctrl+Z)"></button>
     <button id="btn-redo" class="icon" title="Повторить (Ctrl+Y)"></button>
-    <select id="grid-mode" title="Фон доски">
+    <div class="sep"></div>
+    <select id="grid-mode" title="Фон страницы">
       <option value="none">Без фона</option>
       <option value="dots">Точки</option>
       <option value="square" selected>Клетка</option>
@@ -22,23 +24,27 @@
     <div class="spacer"></div>
     <span id="zoom-label" title="Масштаб">100%</span>
     <button id="btn-fit" class="icon" title="Показать всё содержимое (0)"></button>
+    <button id="btn-settings" class="icon" title="Настройки доски"></button>
     <button id="btn-export" class="icon" title="Экспорт в PNG (Ctrl+E)"></button>
   </div>
   <div id="main">
     <aside id="sidebar">
       <div class="sidebar-head">
-        <span>Доски</span>
-        <button id="btn-new-board" title="Новая доска">+</button>
+        <span id="sidebar-project" title="Текущий проект">Проект</span>
+        <button id="btn-new-page" title="Новая страница">+</button>
       </div>
-      <div id="boards-list"></div>
+      <div id="pages-list"></div>
     </aside>
     <div id="canvas-wrap">
       <div id="toolbar"></div>
       <canvas id="board"></canvas>
       <div id="overlay"></div>
-      <div id="zoom-pill" hidden>100%</div>
+      <div id="ctx-panel" hidden></div>
+      <div id="quick-menu" hidden></div>
     </div>
   </div>
+  <div id="settings-popover" hidden></div>
+  <div id="home" hidden></div>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

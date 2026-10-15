@@ -1,4 +1,4 @@
-import type { Board, BoardMeta, Camera, Element, GridMode, Pt, ToolId } from './types';
+import type { BoardSettings, Element, GridMode, Page, Project, ProjectMeta, Pt, ToolId } from './types';
 
 export interface LiveStroke {
   tool: 'pen' | 'highlighter';
@@ -14,18 +14,32 @@ export interface LiveShape {
   width: number;
 }
 
+/** Стикер в процессе ввода текста — рисуется на холсте, элемент создаётся при подтверждении. */
+export interface LiveNote {
+  x: number; y: number; w: number; h: number;
+  color: string;
+}
+
 export interface AppState {
-  board: Board;
-  boards: BoardMeta[];
-  camera: Camera;
+  view: 'home' | 'board';
+  project: Project;
+  projects: ProjectMeta[];
+  pageId: string;
+  /** Активная страница проекта (мутации — только через replaceElements и т.п.). */
+  board: Page;
+  camera: { x: number; y: number; zoom: number };
   tool: ToolId;
   style: { color: string; width: number };
-  grid: GridMode;
+  /** Цвет новых стикеров. */
+  noteColor: string;
+  settings: BoardSettings;
   selection: Set<string>;
   liveStroke: LiveStroke | null;
   liveShape: LiveShape | null;
-  /** Ломаная в процессе построения. */
   livePoly: { pts: Pt[]; cursor: Pt | null } | null;
+  liveNote: LiveNote | null;
+  /** id элемента, скрытого на время редактирования текста. */
+  hideElId: string | null;
   /** Рамка выделения в экранных координатах. */
   marquee: { x0: number; y0: number; x1: number; y1: number } | null;
   /** Позиция курсора в экранных координатах (для ластика). */
@@ -43,17 +57,29 @@ export function uid(): string {
     : `id-${Date.now().toString(36)}-${seq++}`;
 }
 
+const blankPage = (name: string): Page => ({ id: uid(), name, grid: 'square', elements: [] });
+const blankProject = (name: string): Project => {
+  const now = Date.now();
+  return { id: uid(), name, createdAt: now, updatedAt: now, pages: [blankPage('Страница 1')] };
+};
+
 export const state: AppState = {
-  board: { id: 'boot', name: 'Доска', createdAt: 0, updatedAt: 0, elements: [] },
-  boards: [],
+  view: 'board',
+  project: blankProject('Проект 1'),
+  projects: [],
+  pageId: '',
+  board: blankPage('Страница 1'),
   camera: { x: 0, y: 0, zoom: 1 },
   tool: 'pen',
   style: { color: '#1f2329', width: 4 },
-  grid: 'square',
+  noteColor: '#ffe066',
+  settings: { toolbarPos: 'left', coordLabels: true },
   selection: new Set(),
   liveStroke: null,
   liveShape: null,
   livePoly: null,
+  liveNote: null,
+  hideElId: null,
   marquee: null,
   hover: null,
   laserPts: [],
@@ -74,10 +100,12 @@ function notify(): void {
 export function update(markDirty = false): void {
   if (markDirty) {
     state.dirty = true;
-    state.board.updatedAt = Date.now();
+    state.project.updatedAt = Date.now();
   }
   notify();
 }
+
+// ----- История: массивы элементов иммутабельны, снапшот = ссылка на массив -----
 
 let undoStack: Element[][] = [];
 let redoStack: Element[][] = [];
@@ -159,17 +187,6 @@ export function setTool(tool: ToolId): void {
   update();
 }
 
-export function setStyleColor(color: string): void { state.style.color = color; update(); }
-export function setStyleWidth(width: number): void { state.style.width = width; update(); }
-export function setGrid(grid: GridMode): void { state.grid = grid; update(); }
-
-// ----- Живой штрих -----
-
-export function beginStroke(tool: 'pen' | 'highlighter', pt: Pt): void {
-  state.liveStroke = { tool, color: state.style.color, width: state.style.width, pts: [pt] };
-  update();
-}
-
 /** Применяет цвет/толщину к выделенным элементам (запись в историю). */
 export function applyStyleToSelection(patch: { color?: string; width?: number }): void {
   if (state.selection.size === 0) return;
@@ -187,6 +204,27 @@ export function applyStyleToSelection(patch: { color?: string; width?: number })
       ...(patch.width !== undefined ? { width: patch.width } : {}),
     };
   }));
+}
+
+export function setStyleColor(color: string): void { state.style.color = color; update(); }
+export function setStyleWidth(width: number): void { state.style.width = width; update(); }
+export function setNoteColor(color: string): void { state.noteColor = color; update(); }
+
+export function setGrid(grid: GridMode): void {
+  state.board.grid = grid;
+  update(true);
+}
+
+export function setSettings(patch: Partial<BoardSettings>): void {
+  state.settings = { ...state.settings, ...patch };
+  update();
+}
+
+// ----- Живой штрих -----
+
+export function beginStroke(tool: 'pen' | 'highlighter', pt: Pt): void {
+  state.liveStroke = { tool, color: state.style.color, width: state.style.width, pts: [pt] };
+  update();
 }
 
 /** Добавляет точку с лёгким сглаживанием; слишком близкие точки сливает. */
@@ -211,31 +249,6 @@ export function endStroke(): void {
   addElement({ id: uid(), type: 'stroke', tool: ls.tool, color: ls.color, width: base, pts: ls.pts });
 }
 
-// ----- Доски -----
-
-export function createBoard(name: string): Board {
-  const now = Date.now();
-  return { id: uid(), name, createdAt: now, updatedAt: now, elements: [] };
-}
-
-export function boardMeta(b: Board): BoardMeta {
-  return { id: b.id, name: b.name, createdAt: b.createdAt, updatedAt: b.updatedAt };
-}
-
-export function loadBoard(board: Board, boards: BoardMeta[]): void {
-  state.board = board;
-  state.boards = boards;
-  state.selection = new Set();
-  state.liveStroke = null;
-  state.liveShape = null;
-  state.livePoly = null;
-  state.marquee = null;
-  undoStack = [];
-  redoStack = [];
-  state.dirty = false;
-  update();
-}
-
 /** Завершает построение ломаной: closed=true замыкает контур. */
 export function commitPoly(closed: boolean): void {
   const lp = state.livePoly;
@@ -247,4 +260,140 @@ export function commitPoly(closed: boolean): void {
   const min = closed ? 3 : 2;
   if (pts.length < min) { update(); return; }
   addElement({ id: uid(), type: 'poly', closed, color: state.style.color, width: state.style.width * 1.1, pts });
+}
+
+// ----- Проекты и страницы -----
+
+export { blankProject, blankPage };
+
+export function projectMeta(p: Project): ProjectMeta {
+  return { id: p.id, name: p.name, createdAt: p.createdAt, updatedAt: p.updatedAt, pageCount: p.pages.length };
+}
+
+/** Открывает проект на заданной (или первой) странице. */
+export function openProject(project: Project, pageId?: string, view: 'home' | 'board' = 'board'): void {
+  state.project = project;
+  state.pageId = pageId && project.pages.some(p => p.id === pageId) ? pageId : project.pages[0].id;
+  state.board = project.pages.find(p => p.id === state.pageId) ?? project.pages[0];
+  state.selection = new Set();
+  state.liveStroke = null;
+  state.liveShape = null;
+  state.livePoly = null;
+  state.liveNote = null;
+  state.marquee = null;
+  undoStack = [];
+  redoStack = [];
+  state.dirty = false;
+  state.view = view;
+  update();
+}
+
+export function setView(view: 'home' | 'board'): void {
+  state.view = view;
+  update();
+}
+
+export function switchPage(pageId: string): void {
+  const page = state.project.pages.find(p => p.id === pageId);
+  if (!page || pageId === state.pageId) return;
+  state.pageId = pageId;
+  state.board = page;
+  state.selection = new Set();
+  state.liveStroke = null;
+  state.liveShape = null;
+  state.livePoly = null;
+  state.liveNote = null;
+  state.marquee = null;
+  undoStack = [];
+  redoStack = [];
+  update();
+}
+
+export function addPage(): Page {
+  const page = blankPage(`Страница ${state.project.pages.length + 1}`);
+  state.project = { ...state.project, pages: [...state.project.pages, page] };
+  state.pageId = page.id;
+  state.board = page;
+  state.selection = new Set();
+  undoStack = [];
+  redoStack = [];
+  update(true);
+  return page;
+}
+
+export function deletePage(pageId: string): void {
+  let pages = state.project.pages.filter(p => p.id !== pageId);
+  if (pages.length === 0) pages = [blankPage('Страница 1')];
+  state.project = { ...state.project, pages };
+  if (state.pageId === pageId) {
+    state.pageId = pages[0].id;
+    state.board = pages[0];
+    undoStack = [];
+    redoStack = [];
+  }
+  update(true);
+}
+
+export function renamePage(pageId: string, name: string): void {
+  state.project = {
+    ...state.project,
+    pages: state.project.pages.map(p => (p.id === pageId ? { ...p, name } : p)),
+  };
+  update(true);
+}
+
+// ----- Слои и группы -----
+
+/** Поднимает выделенные элементы на один слой выше. */
+export function bringForward(): void {
+  const arr = state.board.elements.slice();
+  for (let i = arr.length - 2; i >= 0; i--) {
+    if (state.selection.has(arr[i].id) && !state.selection.has(arr[i + 1].id)) {
+      [arr[i], arr[i + 1]] = [arr[i + 1], arr[i]];
+    }
+  }
+  pushHistory(state.board.elements);
+  replaceElements(arr);
+}
+
+/** Опускает выделенные элементы на один слой ниже. */
+export function sendBackward(): void {
+  const arr = state.board.elements.slice();
+  for (let i = 1; i < arr.length; i++) {
+    if (state.selection.has(arr[i].id) && !state.selection.has(arr[i - 1].id)) {
+      [arr[i], arr[i - 1]] = [arr[i - 1], arr[i]];
+    }
+  }
+  pushHistory(state.board.elements);
+  replaceElements(arr);
+}
+
+/** Объединяет выделенные элементы в группу. */
+export function groupSelected(): void {
+  if (state.selection.size < 2) return;
+  const gid = uid();
+  pushHistory(state.board.elements);
+  replaceElements(state.board.elements.map(el => (state.selection.has(el.id) ? { ...el, groupId: gid } : el)));
+}
+
+/** Разъединяет группу(ы) выделенных элементов. */
+export function ungroupSelected(): void {
+  const hasGroup = state.board.elements.some(e => state.selection.has(e.id) && e.groupId);
+  if (!hasGroup) return;
+  pushHistory(state.board.elements);
+  replaceElements(state.board.elements.map(el => {
+    if (!state.selection.has(el.id) || !el.groupId) return el;
+    const copy = { ...el };
+    delete copy.groupId;
+    return copy;
+  }));
+}
+
+/** Расширяет набор id до полных групп (для клика и рамки). */
+export function expandSelectionWithGroups(ids: Set<string>): string[] {
+  const gids = new Set(
+    state.board.elements.filter(e => e.groupId && ids.has(e.id)).map(e => e.groupId!),
+  );
+  if (gids.size === 0) return [...ids];
+  return state.board.elements.filter(e => ids.has(e.id) || (e.groupId && gids.has(e.groupId))).map(e => e.id);
 }

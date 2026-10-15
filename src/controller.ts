@@ -2,6 +2,7 @@ import type { Camera, Element, Handle, Pt, ShapeEl, ToolId } from './types';
 import {
   state, update, onChange, beginStroke, extendStroke, endStroke, pushHistory, replaceElements,
   addElement, setSelection, deleteSelected, undo, redo, setTool, uid, commitPoly,
+  expandSelectionWithGroups, groupSelected, ungroupSelected,
 } from './state';
 import {
   hitTest, aabbIntersects, elementAABB, elementHandles, applyHandle,
@@ -130,9 +131,13 @@ export function initController(canvas: HTMLCanvasElement): void {
     const s1y = Math.max(m.y0, m.y1) / state.camera.zoom + state.camera.y;
     const rect = { x0: s0x, y0: s0y, x1: s1x, y1: s1y };
     setSelection(
-      state.board.elements
-        .filter(el => aabbIntersects(elementAABB(el), rect))
-        .map(el => el.id),
+      expandSelectionWithGroups(
+        new Set(
+          state.board.elements
+            .filter(el => aabbIntersects(elementAABB(el), rect))
+            .map(el => el.id),
+        ),
+      ),
     );
   }
 
@@ -240,12 +245,16 @@ export function initController(canvas: HTMLCanvasElement): void {
         }
         const hit = topHit(s.x, s.y);
         if (hit) {
+          const groupIds = expandSelectionWithGroups(new Set([hit.id]));
           if (e.shiftKey) {
             const sel = new Set(state.selection);
-            if (sel.has(hit.id)) sel.delete(hit.id); else sel.add(hit.id);
+            const removing = sel.has(hit.id);
+            for (const id of groupIds) {
+              if (removing) sel.delete(id); else sel.add(id);
+            }
             setSelection([...sel]);
           } else if (!state.selection.has(hit.id)) {
-            setSelection([hit.id]);
+            setSelection(groupIds);
           }
           const orig = new Map<string, Element>();
           for (const id of state.selection) {
@@ -469,6 +478,10 @@ export function initController(canvas: HTMLCanvasElement): void {
         case 'KeyZ': e.preventDefault(); if (e.shiftKey) redo(); else undo(); return;
         case 'KeyY': e.preventDefault(); redo(); return;
         case 'KeyS': e.preventDefault(); void saveNow(); return;
+        case 'KeyG':
+          e.preventDefault();
+          if (e.shiftKey) ungroupSelected(); else groupSelected();
+          return;
         case 'KeyE': e.preventDefault(); void exportPng(); return;
       }
       return;

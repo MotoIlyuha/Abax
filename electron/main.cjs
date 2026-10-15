@@ -43,7 +43,10 @@ ipcMain.handle('boards:list', async () => {
     if (!f.endsWith('.json')) continue;
     try {
       const b = JSON.parse(await fs.readFile(path.join(boardsDir(), f), 'utf8'));
-      out.push({ id: b.id, name: b.name, createdAt: b.createdAt, updatedAt: b.updatedAt });
+      out.push({
+        id: b.id, name: b.name, createdAt: b.createdAt, updatedAt: b.updatedAt,
+        pageCount: Array.isArray(b.pages) ? b.pages.length : 1,
+      });
     } catch { /* битый файл пропускаем */ }
   }
   out.sort((a, b) => b.updatedAt - a.updatedAt);

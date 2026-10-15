@@ -2,21 +2,28 @@ import './style.css';
 import { initRenderer, requestRender } from './renderer';
 import { initController } from './controller';
 import { initApp, importPdfFromDataUrl } from './app';
-import { state, loadBoard, createBoard, boardMeta, onChange, undo, redo } from './state';
+import { state, openProject, blankProject, projectMeta, onChange, undo, redo } from './state';
 import { storage } from './storage';
 
 async function boot(): Promise<void> {
   const canvas = document.getElementById('board') as HTMLCanvasElement;
 
   let metas = await storage.list();
-  const lastId = localStorage.getItem('doska.last') || metas[0]?.id || null;
-  let board = lastId ? await storage.load(lastId) : null;
-  if (!board) {
-    board = createBoard('Доска 1');
-    await storage.save(board);
-    metas = [boardMeta(board)];
+  let last: { pid?: string; pageId?: string } = {};
+  try {
+    last = JSON.parse(localStorage.getItem('doska.last') || '{}');
+  } catch { /* нет сохранённой позиции */ }
+  let project = last.pid ? await storage.load(last.pid) : null;
+  if (!project && metas.length > 0) project = await storage.load(metas[0].id);
+  if (!project) {
+    project = blankProject('Проект 1');
+    await storage.save(project);
   }
-  loadBoard(board, metas);
+  if (!metas.some(m => m.id === project!.id)) {
+    metas = [projectMeta(project), ...metas];
+  }
+  state.projects = metas;
+  openProject(project, last.pageId, 'board');
 
   initRenderer(canvas);
   initApp(canvas);
@@ -25,6 +32,7 @@ async function boot(): Promise<void> {
 
   // отладочный доступ для smoke-тестов
   (window as unknown as Record<string, unknown>).__doska = { state, undo, redo, requestRender, importPdfFromDataUrl };
+
 }
 
 void boot();

@@ -13,6 +13,8 @@ export interface StrokeEl {
   /** Базовая толщина в юнитах сцены (умножается на давление при рендере). */
   width: number;
   pts: Pt[];
+  /** Идентификатор группы, если элемент сгруппирован. */
+  groupId?: string;
 }
 
 export interface ShapeEl {
@@ -25,6 +27,7 @@ export interface ShapeEl {
   width: number;
   /** Поворот вокруг центра в радианах (только rect/ellipse). */
   rot?: number;
+  groupId?: string;
 }
 
 /** Ломаная: открытая или замкнутая (контур). */
@@ -35,6 +38,7 @@ export interface PolyEl {
   color: string;
   width: number;
   pts: Pt[];
+  groupId?: string;
 }
 
 export interface TextEl {
@@ -45,6 +49,7 @@ export interface TextEl {
   text: string;
   size: number;
   color: string;
+  groupId?: string;
 }
 
 export interface NoteEl {
@@ -53,6 +58,7 @@ export interface NoteEl {
   x: number; y: number; w: number; h: number;
   text: string;
   color: string;
+  groupId?: string;
 }
 
 /** Импортированная страница PDF или картинка — фон для аннотирования. */
@@ -62,6 +68,7 @@ export interface ImageEl {
   x: number; y: number; w: number; h: number;
   /** data:image/jpeg;base64,... */
   src: string;
+  groupId?: string;
 }
 
 export type Element = StrokeEl | ShapeEl | PolyEl | TextEl | NoteEl | ImageEl;
@@ -69,9 +76,30 @@ export type Element = StrokeEl | ShapeEl | PolyEl | TextEl | NoteEl | ImageEl;
 /** Экран = (сцена - камера) * zoom. */
 export interface Camera { x: number; y: number; zoom: number }
 
-export interface BoardMeta { id: string; name: string; createdAt: number; updatedAt: number }
+/** Страница — один холст: свой фон и набор элементов. */
+export interface Page {
+  id: string;
+  name: string;
+  grid: GridMode;
+  elements: Element[];
+}
 
-export interface Board extends BoardMeta { elements: Element[] }
+/** Проект — набор страниц. */
+export interface Project {
+  id: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+  pages: Page[];
+}
+
+export interface ProjectMeta {
+  id: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+  pageCount: number;
+}
 
 export type GridMode = 'none' | 'dots' | 'square' | 'coord';
 
@@ -87,3 +115,12 @@ export type Handle =
   | { kind: 'rotate' };
 
 export interface HandlePos { h: Handle; x: number; y: number }
+
+/** Позиция панели инструментов. */
+export type ToolbarPos = 'left' | 'right' | 'top' | 'bottom';
+
+export interface BoardSettings {
+  toolbarPos: ToolbarPos;
+  /** Подписи делений на координатной плоскости. */
+  coordLabels: boolean;
+}

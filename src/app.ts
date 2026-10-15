@@ -1,12 +1,14 @@
-import type { Element, GridMode, ImageEl, NoteEl, TextEl, ToolId } from './types';
+import type { Element, GridMode, ImageEl, NoteEl, Page, Project, TextEl, ToolId, ToolbarPos } from './types';
 import {
   state, update, onChange, undo, redo, canUndo, canRedo, setTool, setGrid, setStyleColor,
-  setStyleWidth, addElement, replaceElements, pushHistory, loadBoard, createBoard, boardMeta, uid,
-  applyStyleToSelection,
+  setStyleWidth, setNoteColor, addElement, replaceElements, pushHistory, uid,
+  applyStyleToSelection, setSettings, setView, switchPage, addPage, deletePage, renamePage,
+  openProject, blankProject, projectMeta, groupSelected, ungroupSelected,
+  bringForward, sendBackward, deleteSelected,
 } from './state';
-import { storage, doskaApi } from './storage';
+import { storage } from './storage';
 import { renderScene, contentBBox } from './renderer';
-import { NOTE_W, NOTE_H, NOTE_PAD, NOTE_FONT, TEXT_SIZE } from './geom';
+import { elementAABB, NOTE_W, NOTE_H, NOTE_PAD, NOTE_FONT, NOTE_TEXT_COLOR, TEXT_SIZE } from './geom';
 import * as pdfjsLib from 'pdfjs-dist';
 // ?worker&inline: воркер инлайнится в бандл и работает из file:// (Electron)
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker&inline';
@@ -17,6 +19,7 @@ const svg = (paths: string) =>
   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
 
 const ICONS = {
+  home: svg('<path d="M3 11l9-8 9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/>'),
   sidebar: svg('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M9 5v14"/>'),
   undo: svg('<path d="M4 10h9a5 5 0 0 1 0 10h-3"/><path d="M8 6l-4 4 4 4"/>'),
   redo: svg('<path d="M20 10h-9a5 5 0 0 0 0 10h3"/><path d="M16 6l4 4-4 4"/>'),
@@ -24,6 +27,19 @@ const ICONS = {
   export: svg('<path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M4 19h16"/>'),
   pdf: svg('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h4"/>'),
   del: svg('<path d="M6 6l12 12M18 6L6 18"/>'),
+  settings: svg('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.1-1.55 1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1.1 1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h.01a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/>'),
+  up: svg('<path d="M12 19V5"/><path d="M5 12l7-7 7 7"/>'),
+  down: svg('<path d="M12 5v14"/><path d="M19 12l-7 7-7-7"/>'),
+  group: svg('<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/><path d="M11 11l2 2"/>'),
+  ungroup: svg('<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/><path d="M13 6h4M15 4v4M7 13v4M5 15h4"/>'),
+  trash: svg('<path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/>'),
+};
+
+const GRID_ICONS: Record<GridMode, string> = {
+  none: svg('<circle cx="12" cy="12" r="8"/><path d="M6.5 17.5l11-11"/>'),
+  dots: svg('<circle cx="6" cy="6" r="1.2"/><circle cx="12" cy="6" r="1.2"/><circle cx="18" cy="6" r="1.2"/><circle cx="6" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="18" cy="12" r="1.2"/><circle cx="6" cy="18" r="1.2"/><circle cx="12" cy="18" r="1.2"/><circle cx="18" cy="18" r="1.2"/>'),
+  square: svg('<rect x="4" y="4" width="7" height="7"/><rect x="13" y="4" width="7" height="7"/><rect x="4" y="13" width="7" height="7"/><rect x="13" y="13" width="7" height="7"/>'),
+  coord: svg('<path d="M5 19V5M5 19h14"/><path d="M5 5l-2 3M5 5l2 3M19 19l-3-2M19 19l-3 2"/><circle cx="12" cy="12" r="1"/>'),
 };
 
 const TOOLS: { id: ToolId; code: string; title: string; icon: string }[] = [
@@ -37,20 +53,94 @@ const TOOLS: { id: ToolId; code: string; title: string; icon: string }[] = [
   { id: 'ellipse', code: 'O', title: 'Эллипс', icon: svg('<ellipse cx="12" cy="12" rx="8.5" ry="6.5"/>') },
   { id: 'line', code: 'L', title: 'Линия', icon: svg('<path d="M5 19L19 5"/>') },
   { id: 'arrow', code: 'A', title: 'Стрелка', icon: svg('<path d="M5 19L18 6"/><path d="M12 6h6v6"/>') },
+  { id: 'poly', code: 'K', title: 'Ломаная / многоугольник', icon: svg('<path d="M4 18l5-10 6 7 5-9"/>') },
   { id: 'pan', code: 'H', title: 'Панорама', icon: svg('<path d="M12 3v18M3 12h18"/><path d="M9.5 5.5L12 3l2.5 2.5M9.5 18.5L12 21l2.5-2.5M5.5 9.5L3 12l2.5 2.5M18.5 9.5L21 12l-2.5 2.5"/>') },
   { id: 'laser', code: 'I', title: 'Лазерная указка', icon: svg('<circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4"/>') },
-  { id: 'poly', code: 'K', title: 'Ломаная / многоугольник', icon: svg('<path d="M4 18l5-10 6 7 5-9"/>') },
 ];
 
 const PALETTE = ['#1f2329', '#e03131', '#1971c2', '#2f9e44', '#f08c00', '#9c36b5'];
-const WIDTHS = [2, 4, 8];
-const NOTE_COLOR = '#ffe066';
+const NOTE_PASTELS = ['#ffe066', '#ffd6a5', '#ffd5d5', '#d3f9d8', '#a9def9', '#e4c1f9', '#fde4cf', '#d8f3dc'];
+const WIDTH_PRESETS = [1.5, 3, 4.5, 6, 9];
 
 let canvas: HTMLCanvasElement;
 let saveTimer = 0;
-let lastBoardsKey = '';
+let lastPagesKey = '';
+let lastHomeKey = '';
 
-// ----- Редактор текста/стикеров -----
+// ----- Персистентность стиля и настроек -----
+
+const CUSTOM_COLORS_KEY = 'doska.customColors';
+const STYLE_KEY = 'doska.style';
+const SETTINGS_KEY = 'doska.settings';
+
+function loadCustomColors(): string[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(CUSTOM_COLORS_KEY) || '[]');
+    return Array.isArray(v) ? v.filter(c => typeof c === 'string').slice(0, 6) : [];
+  } catch {
+    return [];
+  }
+}
+
+function addCustomColor(c: string): void {
+  if (PALETTE.includes(c)) return;
+  const list = [c, ...loadCustomColors().filter(x => x !== c)].slice(0, 6);
+  localStorage.setItem(CUSTOM_COLORS_KEY, JSON.stringify(list));
+}
+
+function persistStyle(): void {
+  localStorage.setItem(STYLE_KEY, JSON.stringify({ ...state.style, noteColor: state.noteColor }));
+}
+
+function restoreStyle(): void {
+  try {
+    const v = JSON.parse(localStorage.getItem(STYLE_KEY) || 'null');
+    if (v && typeof v.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(v.color) && typeof v.width === 'number') {
+      state.style = { color: v.color, width: Math.min(14, Math.max(0.5, v.width)) };
+    }
+    if (v && typeof v.noteColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(v.noteColor)) {
+      state.noteColor = v.noteColor;
+    }
+  } catch { /* нет сохранённого стиля — дефолт */ }
+}
+
+function restoreSettings(): void {
+  try {
+    const v = JSON.parse(localStorage.getItem(SETTINGS_KEY) || 'null');
+    const pos = ['left', 'right', 'top', 'bottom'] as const;
+    if (v && pos.includes(v.toolbarPos)) {
+      state.settings = {
+        toolbarPos: v.toolbarPos as ToolbarPos,
+        coordLabels: typeof v.coordLabels === 'boolean' ? v.coordLabels : true,
+      };
+    }
+  } catch { /* дефолт */ }
+}
+
+function persistSettings(): void {
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings));
+}
+
+/** Выбор цвета: применяется к выделению (если есть) и становится текущим. */
+function chooseColor(c: string): void {
+  if (state.selection.size > 0) applyStyleToSelection({ color: c });
+  setStyleColor(c);
+  addCustomColor(c);
+  persistStyle();
+  if (ctxKind === 'color') openCtxPanel('color'); // перерисовать список кастомных
+  refresh();
+}
+
+/** Выбор толщины: применяется к выделению (если есть) и становится текущей. */
+function chooseWidth(w: number): void {
+  const clamped = Math.min(14, Math.max(0.5, Math.round(w * 2) / 2));
+  if (state.selection.size > 0) applyStyleToSelection({ width: clamped });
+  setStyleWidth(clamped);
+  persistStyle();
+  refresh();
+}
+
+// ----- Редактор текста/стикеров (in-place) -----
 
 interface Editing {
   el: TextEl | NoteEl | null;
@@ -67,11 +157,18 @@ export function beginTextEdit(opts: { el?: TextEl | NoteEl; at?: { x: number; y:
   const ta = document.createElement('textarea');
   ta.rows = 1;
   ta.spellcheck = false;
-  if (target === 'note') ta.className = 'note-edit';
-  if (el) ta.value = el.text;
+  ta.className = target === 'note' ? 'inplace-edit note' : 'inplace-edit';
+  if (el) {
+    ta.value = el.text;
+    state.hideElId = el.id; // прячем канвасную версию, текст живёт в редакторе
+  }
+  if (target === 'note' && !el && opts.at) {
+    state.liveNote = { x: opts.at.x - NOTE_W / 2, y: opts.at.y - NOTE_H / 2, w: NOTE_W, h: NOTE_H, color: state.noteColor };
+  }
   document.getElementById('overlay')!.appendChild(ta);
   editing = { el, at: opts.at ?? null, target, ta };
   positionEditor();
+  update();
   ta.focus();
   ta.setSelectionRange(ta.value.length, ta.value.length);
   ta.addEventListener('keydown', e => {
@@ -89,12 +186,16 @@ function positionEditor(): void {
   const cam = state.camera;
   const z = cam.zoom;
   const ta = e.ta;
-  if (e.el && e.el.type === 'note') {
-    const n = e.el as NoteEl;
+  if (e.target === 'note') {
+    const n = (e.el as NoteEl | null) ?? state.liveNote;
+    if (!n) return;
     ta.style.left = `${(n.x + NOTE_PAD - cam.x) * z}px`;
     ta.style.top = `${(n.y + NOTE_PAD - cam.y) * z}px`;
     ta.style.width = `${(n.w - NOTE_PAD * 2) * z}px`;
     ta.style.fontSize = `${NOTE_FONT * z}px`;
+    ta.style.lineHeight = '1.35';
+    ta.style.color = NOTE_TEXT_COLOR;
+    ta.style.maxHeight = `${(n.h - NOTE_PAD * 2) * z}px`;
   } else {
     const x = e.el ? e.el.x : e.at!.x;
     const y = e.el ? e.el.y : e.at!.y;
@@ -102,7 +203,9 @@ function positionEditor(): void {
     ta.style.left = `${(x - cam.x) * z}px`;
     ta.style.top = `${(y - cam.y) * z}px`;
     ta.style.fontSize = `${size * z}px`;
-    // автоширина по содержимому
+    ta.style.lineHeight = '1.25';
+    ta.style.width = 'auto';
+    ta.style.color = e.el && e.el.type === 'text' ? (e.el as TextEl).color : state.style.color;
     ta.style.width = '10px';
     ta.style.width = `${Math.max(60, ta.scrollWidth + 12)}px`;
   }
@@ -116,6 +219,9 @@ export function closeEditor(commit: boolean): void {
   editing = null;
   const text = e.ta.value.replace(/[ \t]+$/gm, '').replace(/\s+$/, '');
   e.ta.remove();
+  state.hideElId = null;
+  const liveNote = state.liveNote;
+  state.liveNote = null;
   if (!commit || text === '') {
     if (commit && e.el) {
       // очистили текст существующего элемента — удаляем его
@@ -132,9 +238,328 @@ export function closeEditor(commit: boolean): void {
     replaceElements(state.board.elements.map(x => (x.id === el.id ? ({ ...el, text } as Element) : x)));
   } else if (e.target === 'text') {
     addElement({ id: uid(), type: 'text', x: e.at!.x, y: e.at!.y, text, size: TEXT_SIZE, color: state.style.color });
-  } else {
-    addElement({ id: uid(), type: 'note', x: e.at!.x - NOTE_W / 2, y: e.at!.y - NOTE_H / 2, w: NOTE_W, h: NOTE_H, text, color: NOTE_COLOR });
+  } else if (liveNote) {
+    addElement({ id: uid(), type: 'note', x: liveNote.x, y: liveNote.y, w: liveNote.w, h: liveNote.h, text, color: liveNote.color });
   }
+}
+
+// ----- Контекстная панель (цвета / толщина / стикеры) -----
+
+type CtxKind = 'color' | 'width' | 'note';
+let ctxKind: CtxKind | null = null;
+
+function ctxPanelEl(): HTMLElement {
+  return document.getElementById('ctx-panel')!;
+}
+
+export function closeCtxPanel(): void {
+  ctxKind = null;
+  ctxPanelEl().hidden = true;
+}
+
+function openCtxPanel(kind: CtxKind): void {
+  const p = ctxPanelEl();
+  ctxKind = kind;
+  p.hidden = false;
+  p.textContent = '';
+  if (kind === 'color') buildColorPanel(p);
+  else if (kind === 'width') buildWidthPanel(p);
+  else buildNotePanel(p);
+  positionCtxPanel();
+}
+
+function positionCtxPanel(): void {
+  if (!ctxKind) return;
+  const p = ctxPanelEl();
+  const toolbar = document.getElementById('toolbar')!;
+  const wrap = document.getElementById('canvas-wrap')!;
+  const tr = toolbar.getBoundingClientRect();
+  const wr = wrap.getBoundingClientRect();
+  const pr = p.getBoundingClientRect();
+  const pos = state.settings.toolbarPos;
+  let left: number;
+  let top: number;
+  if (pos === 'left') { left = tr.right - wr.left + 10; top = tr.top - wr.top; }
+  else if (pos === 'right') { left = tr.left - wr.left - pr.width - 10; top = tr.top - wr.top; }
+  else if (pos === 'top') { left = tr.left - wr.left; top = tr.bottom - wr.top + 10; }
+  else { left = tr.left - wr.left; top = tr.top - wr.top - pr.height - 10; }
+  left = Math.max(8, Math.min(left, wr.width - pr.width - 8));
+  top = Math.max(8, Math.min(top, wr.height - pr.height - 8));
+  p.style.left = `${left}px`;
+  p.style.top = `${top}px`;
+}
+
+function buildColorPanel(p: HTMLElement): void {
+  p.dataset.kind = 'color';
+  const title = document.createElement('div');
+  title.className = 'ctx-title';
+  title.textContent = 'Цвет';
+  p.appendChild(title);
+  const grid = document.createElement('div');
+  grid.className = 'ctx-swatches';
+  for (const c of [...PALETTE, ...loadCustomColors()]) {
+    const b = document.createElement('button');
+    b.className = 'ctx-swatch' + (c === state.style.color ? ' active' : '');
+    b.style.background = c;
+    b.title = c;
+    b.addEventListener('click', () => chooseColor(c));
+    grid.appendChild(b);
+  }
+  p.appendChild(grid);
+  const custom = document.createElement('button');
+  custom.className = 'ctx-custom-btn';
+  custom.textContent = 'Свой цвет…';
+  const input = document.createElement('input');
+  input.type = 'color';
+  input.style.display = 'none';
+  custom.addEventListener('click', () => input.click());
+  input.addEventListener('input', () => chooseColor(input.value));
+  p.append(custom, input);
+}
+
+function buildWidthPanel(p: HTMLElement): void {
+  p.dataset.kind = 'width';
+  const title = document.createElement('div');
+  title.className = 'ctx-title';
+  title.textContent = 'Толщина';
+  p.appendChild(title);
+  const presets = document.createElement('div');
+  presets.className = 'ctx-widths';
+  for (const w of WIDTH_PRESETS) {
+    const b = document.createElement('button');
+    b.className = 'ctx-width' + (Math.abs(w - state.style.width) < 0.01 ? ' active' : '');
+    b.title = String(w);
+    const i = document.createElement('i');
+    i.style.height = `${Math.min(10, Math.max(1.5, w))}px`;
+    i.style.width = `${Math.min(46, 16 + w * 3)}px`;
+    b.appendChild(i);
+    b.addEventListener('click', () => { chooseWidth(w); openCtxPanel('width'); });
+    presets.appendChild(b);
+  }
+  p.appendChild(presets);
+  const sliderRow = document.createElement('div');
+  sliderRow.className = 'ctx-slider';
+  const slider = document.createElement('input');
+  slider.type = 'range';
+  slider.min = '0.5';
+  slider.max = '14';
+  slider.step = '0.5';
+  slider.value = String(state.style.width);
+  const label = document.createElement('span');
+  label.textContent = String(state.style.width);
+  slider.addEventListener('input', () => {
+    label.textContent = slider.value;
+    chooseWidth(Number(slider.value));
+  });
+  sliderRow.append(slider, label);
+  p.appendChild(sliderRow);
+}
+
+function buildNotePanel(p: HTMLElement): void {
+  p.dataset.kind = 'note';
+  const title = document.createElement('div');
+  title.className = 'ctx-title';
+  title.textContent = 'Цвет стикера';
+  p.appendChild(title);
+  const grid = document.createElement('div');
+  grid.className = 'ctx-swatches';
+  for (const c of NOTE_PASTELS) {
+    const b = document.createElement('button');
+    b.className = 'ctx-swatch note' + (c === state.noteColor ? ' active' : '');
+    b.style.background = c;
+    b.title = c;
+    b.addEventListener('click', () => {
+      setNoteColor(c);
+      persistStyle();
+      openCtxPanel('note');
+    });
+    grid.appendChild(b);
+  }
+  p.appendChild(grid);
+}
+
+// ----- Плавающее меню быстрых настроек выделения -----
+
+function quickMenuEl(): HTMLElement {
+  return document.getElementById('quick-menu')!;
+}
+
+function canChangeLayer(): boolean {
+  const arr = state.board.elements;
+  for (let i = 0; i < arr.length; i++) {
+    const sel = state.selection.has(arr[i].id);
+    if (i > 0 && sel && !state.selection.has(arr[i - 1].id)) return true;
+    if (i < arr.length - 1 && sel && !state.selection.has(arr[i + 1].id)) return true;
+  }
+  return false;
+}
+
+function updateQuickMenu(): void {
+  const qm = quickMenuEl();
+  if (state.view !== 'board' || state.selection.size === 0 || editing) {
+    qm.hidden = true;
+    return;
+  }
+  qm.hidden = false;
+  qm.textContent = '';
+  // цвет
+  const cBtn = document.createElement('button');
+  cBtn.className = 'qm-btn qm-color';
+  cBtn.title = 'Цвет';
+  const dot = document.createElement('i');
+  dot.style.background = state.style.color;
+  cBtn.appendChild(dot);
+  cBtn.addEventListener('mousedown', e => e.preventDefault());
+  cBtn.addEventListener('click', () => {
+    if (ctxKind === 'color') closeCtxPanel();
+    else openCtxPanel('color');
+  });
+  qm.appendChild(cBtn);
+  // толщина
+  const wBtn = document.createElement('button');
+  wBtn.className = 'qm-btn';
+  wBtn.title = 'Толщина';
+  const bar = document.createElement('i');
+  bar.className = 'qm-width-bar';
+  bar.style.height = `${Math.min(10, Math.max(1.5, state.style.width))}px`;
+  wBtn.appendChild(bar);
+  wBtn.addEventListener('mousedown', e => e.preventDefault());
+  wBtn.addEventListener('click', () => {
+    if (ctxKind === 'width') closeCtxPanel();
+    else openCtxPanel('width');
+  });
+  qm.appendChild(wBtn);
+  // слои
+  if (state.board.elements.length > 1 && canChangeLayer()) {
+    const up = document.createElement('button');
+    up.className = 'qm-btn';
+    up.title = 'Выше (слой)';
+    up.innerHTML = ICONS.up;
+    up.addEventListener('click', () => { bringForward(); });
+    const down = document.createElement('button');
+    down.className = 'qm-btn';
+    down.title = 'Ниже (слой)';
+    down.innerHTML = ICONS.down;
+    down.addEventListener('click', () => { sendBackward(); });
+    qm.append(up, down);
+  }
+  // группы
+  const sel = state.board.elements.filter(e => state.selection.has(e.id));
+  const allGrouped = sel.length > 0 && sel.every(e => e.groupId === sel[0].groupId && e.groupId);
+  if (state.selection.size >= 2 && !allGrouped) {
+    const g = document.createElement('button');
+    g.className = 'qm-btn';
+    g.title = 'Сгруппировать (Ctrl+G)';
+    g.innerHTML = ICONS.group;
+    g.addEventListener('click', () => { groupSelected(); });
+    qm.appendChild(g);
+  }
+  if (allGrouped) {
+    const ug = document.createElement('button');
+    ug.className = 'qm-btn';
+    ug.title = 'Разгруппировать (Ctrl+Shift+G)';
+    ug.innerHTML = ICONS.ungroup;
+    ug.addEventListener('click', () => { ungroupSelected(); });
+    qm.appendChild(ug);
+  }
+  // удаление
+  const del = document.createElement('button');
+  del.className = 'qm-btn';
+  del.title = 'Удалить (Del)';
+  del.innerHTML = ICONS.trash;
+  del.addEventListener('click', () => {
+    deleteSelected();
+  });
+  qm.appendChild(del);
+  positionQuickMenu();
+}
+
+function positionQuickMenu(): void {
+  const qm = quickMenuEl();
+  const wrap = document.getElementById('canvas-wrap')!;
+  const wr = wrap.getBoundingClientRect();
+  const cam = state.camera;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const el of state.board.elements) {
+    if (!state.selection.has(el.id)) continue;
+    const a = elementAABB(el);
+    x0 = Math.min(x0, a.x0); y0 = Math.min(y0, a.y0);
+    x1 = Math.max(x1, a.x1); y1 = Math.max(y1, a.y1);
+  }
+  if (x0 === Infinity) { qm.hidden = true; return; }
+  const sx = (x0 - cam.x) * cam.zoom;
+  const sy = (y0 - cam.y) * cam.zoom;
+  const sw = (x1 - x0) * cam.zoom;
+  const qr = qm.getBoundingClientRect();
+  let left = sx + sw / 2 - qr.width / 2;
+  let top = sy - qr.height - 10;
+  if (top < 8) top = sy + 12;
+  left = Math.max(8, Math.min(left, wr.width - qr.width - 8));
+  qm.style.left = `${left}px`;
+  qm.style.top = `${top}px`;
+}
+
+// ----- Настройки доски (поповер) -----
+
+function settingsPopover(): HTMLElement {
+  return document.getElementById('settings-popover')!;
+}
+
+function closeSettings(): void {
+  settingsPopover().hidden = true;
+}
+
+function openSettings(): void {
+  const pop = settingsPopover();
+  pop.hidden = false;
+  pop.textContent = '';
+  const title = document.createElement('div');
+  title.className = 'ctx-title';
+  title.textContent = 'Настройки доски';
+  pop.appendChild(title);
+  const lbl1 = document.createElement('div');
+  lbl1.className = 'ctx-label';
+  lbl1.textContent = 'Панель инструментов';
+  pop.appendChild(lbl1);
+  const row = document.createElement('div');
+  row.className = 'ctx-toolbar-pos';
+  for (const pos of (['left', 'top', 'right', 'bottom'] as ToolbarPos[])) {
+    const b = document.createElement('button');
+    const names: Record<ToolbarPos, string> = { left: 'Слева', top: 'Сверху', right: 'Справа', bottom: 'Снизу' };
+    b.textContent = names[pos];
+    b.className = state.settings.toolbarPos === pos ? 'active' : '';
+    b.addEventListener('click', () => {
+      setSettings({ toolbarPos: pos });
+      persistSettings();
+      applyToolbarPos();
+      openSettings();
+    });
+    row.appendChild(b);
+  }
+  pop.appendChild(row);
+  const lbl2 = document.createElement('label');
+  lbl2.className = 'ctx-check';
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.checked = state.settings.coordLabels;
+  cb.addEventListener('change', () => {
+    setSettings({ coordLabels: cb.checked });
+    persistSettings();
+  });
+  const span = document.createElement('span');
+  span.textContent = 'Деления координатной плоскости';
+  lbl2.append(cb, span);
+  pop.appendChild(lbl2);
+  const btn = document.getElementById('btn-settings')!;
+  const br = btn.getBoundingClientRect();
+  pop.style.left = `${Math.max(8, br.right - 260)}px`;
+  pop.style.top = `${br.bottom + 8}px`;
+}
+
+function applyToolbarPos(): void {
+  const tb = document.getElementById('toolbar')!;
+  tb.dataset.pos = state.settings.toolbarPos;
+  positionCtxPanel();
 }
 
 // ----- Экспорт PNG -----
@@ -144,7 +569,7 @@ export async function exportPng(): Promise<void> {
     ? state.board.elements.filter(e => state.selection.has(e.id))
     : state.board.elements;
   if (els.length === 0) {
-    alert('Доска пуста — нечего экспортировать');
+    alert('Страница пуста — нечего экспортировать');
     return;
   }
   const bb = contentBBox(els);
@@ -159,13 +584,14 @@ export async function exportPng(): Promise<void> {
   if (!c) return;
   renderScene(c, els, { x: bb.x0 - pad, y: bb.y0 - pad, zoom: 1 }, bw, bh, scale, 'none');
   const dataUrl = cv.toDataURL('image/png');
-  const name = `${state.board.name.trim() || 'doska'}.png`;
-  if (doskaApi) {
-    await doskaApi.exportPng(dataUrl, name);
+  const name = `${state.project.name.trim() || 'doska'} — ${state.board.name.trim() || 'стр'}.png`;
+  const api = (window as { doskaAPI?: { exportPng(d: string, n: string): Promise<boolean> } }).doskaAPI;
+  if (api) {
+    await api.exportPng(dataUrl, name);
   } else {
     const a = document.createElement('a');
     a.href = dataUrl;
-    a.download = name;
+    a.download = name.replace(/—/g, '-');
     a.click();
   }
 }
@@ -195,7 +621,9 @@ const PDF_MAX_PAGES = 30;
 
 /** Импортирует PDF: каждая страница — картинка-фон на доске. */
 export async function importPdf(): Promise<void> {
-  const dataUrl = doskaApi?.pickPdf ? await doskaApi.pickPdf() : await pickPdfViaInput();
+  const dataUrl = (window as { doskaAPI?: { pickPdf(): Promise<string | null> } }).doskaAPI
+    ? await (window as unknown as { doskaAPI: { pickPdf(): Promise<string | null> } }).doskaAPI.pickPdf()
+    : await pickPdfViaInput();
   if (dataUrl) await importPdfFromDataUrl(dataUrl);
 }
 
@@ -255,17 +683,17 @@ export function fitContent(): void {
   update();
 }
 
-// ----- Сохранение и доски -----
+// ----- Сохранение -----
 
 export async function saveNow(): Promise<void> {
   clearTimeout(saveTimer);
   if (!state.dirty) return;
   state.dirty = false;
-  await storage.save({ ...state.board });
-  const meta = boardMeta(state.board);
-  state.boards = [meta, ...state.boards.filter(m => m.id !== meta.id)];
-  localStorage.setItem('doska.last', meta.id);
-  renderBoards();
+  await storage.save(state.project);
+  const meta = projectMeta(state.project);
+  state.projects = [meta, ...state.projects.filter(m => m.id !== meta.id)];
+  localStorage.setItem('doska.last', JSON.stringify({ pid: state.project.id, pageId: state.pageId }));
+  renderPages();
 }
 
 function scheduleSave(): void {
@@ -274,64 +702,113 @@ function scheduleSave(): void {
   saveTimer = window.setTimeout(() => { void saveNow(); }, 600);
 }
 
-async function switchBoard(id: string): Promise<void> {
-  if (id === state.board.id) return;
+// ----- Страницы и проекты -----
+
+async function switchPageHandler(pageId: string): Promise<void> {
+  if (pageId === state.pageId || state.view !== 'board') return;
   await saveNow();
-  const b = await storage.load(id);
-  if (!b) return;
-  loadBoard(b, state.boards);
-  localStorage.setItem('doska.last', id);
+  switchPage(pageId);
   refresh();
   fitContent();
 }
 
-async function newBoard(): Promise<void> {
+async function newPageHandler(): Promise<void> {
   await saveNow();
-  const b = createBoard(`Доска ${state.boards.length + 1}`);
-  await storage.save(b);
-  state.boards = [boardMeta(b), ...state.boards];
-  loadBoard(b, state.boards);
+  addPage();
   refresh();
   fitContent();
 }
 
-async function deleteBoard(id: string): Promise<void> {
-  const meta = state.boards.find(m => m.id === id);
-  if (!meta || !confirm(`Удалить доску «${meta.name}»? Действие необратимо.`)) return;
-  await storage.remove(id);
-  state.boards = state.boards.filter(m => m.id !== id);
-  if (state.board.id === id) {
-    if (state.boards.length > 0) {
-      await switchBoard(state.boards[0].id);
-    } else {
-      const b = createBoard('Доска 1');
-      await storage.save(b);
-      state.boards = [boardMeta(b)];
-      loadBoard(b, state.boards);
-      fitContent();
-    }
-  }
-  renderBoards();
+async function deletePageHandler(pageId: string): Promise<void> {
+  const page = state.project.pages.find(p => p.id === pageId);
+  if (!page || !confirm(`Удалить страницу «${page.name}»?`)) return;
+  await saveNow();
+  deletePage(pageId);
+  refresh();
+  fitContent();
 }
 
-async function renameBoard(id: string, name: string): Promise<void> {
-  if (id === state.board.id) {
-    state.board.name = name;
-    update(true);
-    await saveNow();
-  } else {
-    const b = await storage.load(id);
-    if (b) {
-      b.name = name;
-      await storage.save(b);
-      state.boards = state.boards.map(m => (m.id === id ? { ...m, name } : m));
-      renderBoards();
-    }
-  }
+async function renamePageHandler(pageId: string, name: string): Promise<void> {
+  renamePage(pageId, name);
+  await saveNow();
 }
 
-function startRename(item: HTMLElement, id: string, oldName: string): void {
-  const nameEl = item.querySelector('.name')!;
+/** Мини-превью страницы: вписывает содержимое в карточку. */
+function renderPageThumb(page: Page, cv: HTMLCanvasElement): void {
+  const W = 148;
+  const H = 92;
+  cv.width = W * 2;
+  cv.height = H * 2;
+  cv.style.width = `${W}px`;
+  cv.style.height = `${H}px`;
+  const c = cv.getContext('2d');
+  if (!c) return;
+  if (page.elements.length === 0) {
+    renderScene(c, [], { x: -W / 2, y: -H / 2, zoom: 1 }, W, H, 2, 'none');
+    return;
+  }
+  const bb = contentBBox(page.elements);
+  const zoom = Math.max(0.02, Math.min(1, Math.min(W / (bb.w + 40), H / (bb.h + 40))));
+  const cam = {
+    zoom,
+    x: bb.x0 + bb.w / 2 - W / (2 * zoom),
+    y: bb.y0 + bb.h / 2 - H / (2 * zoom),
+  };
+  renderScene(c, page.elements, cam, W, H, 2, page.grid === 'coord' ? 'none' : page.grid);
+}
+
+function pagesKey(): string {
+  return [
+    state.project.id,
+    state.pageId,
+    state.projects.length,
+    state.project.updatedAt,
+    state.project.pages.map(p => `${p.id}:${p.name}:${p.grid}:${p.elements.length}`).join('|'),
+  ].join('#');
+}
+
+function renderPages(): void {
+  try {
+  const list = document.getElementById('pages-list')!;
+  list.textContent = '';
+  document.getElementById('sidebar-project')!.textContent = state.project.name;
+  for (const page of state.project.pages) {
+    const item = document.createElement('div');
+    item.className = `page-item${page.id === state.pageId ? ' active' : ''}`;
+    const thumb = document.createElement('canvas');
+    renderPageThumb(page, thumb);
+    const row = document.createElement('div');
+    row.className = 'page-row';
+    const gicon = document.createElement('span');
+    gicon.className = 'page-grid-icon';
+    gicon.innerHTML = GRID_ICONS[page.grid];
+    gicon.title = 'Фон страницы';
+    const name = document.createElement('span');
+    name.className = 'page-name';
+    name.textContent = page.name;
+    name.title = 'Двойной клик — переименовать';
+    const del = document.createElement('button');
+    del.className = 'page-del';
+    del.title = 'Удалить страницу';
+    del.innerHTML = ICONS.del;
+    row.append(gicon, name, del);
+    item.append(thumb, row);
+    item.addEventListener('click', e => {
+      if ((e.target as HTMLElement).closest('.page-del')) return;
+      void switchPageHandler(page.id);
+    });
+    name.addEventListener('dblclick', () => startPageRename(item, page.id, page.name));
+    del.addEventListener('click', e => {
+      e.stopPropagation();
+      void deletePageHandler(page.id);
+    });
+    list.appendChild(item);
+  }
+  } catch (err) { console.error('[doska] renderPages failed:', err); }
+}
+
+function startPageRename(item: HTMLElement, pageId: string, oldName: string): void {
+  const nameEl = item.querySelector('.page-name')!;
   const input = document.createElement('input');
   input.value = oldName;
   input.spellcheck = false;
@@ -343,25 +820,276 @@ function startRename(item: HTMLElement, id: string, oldName: string): void {
     if (done) return;
     done = true;
     const v = input.value.trim();
-    if (v && v !== oldName) void renameBoard(id, v);
-    else renderBoards();
+    if (v && v !== oldName) void renamePageHandler(pageId, v);
+    else renderPages();
   };
   input.addEventListener('blur', commit);
   input.addEventListener('keydown', e => {
     e.stopPropagation();
     if (e.key === 'Enter') commit();
-    if (e.key === 'Escape') { done = true; renderBoards(); }
+    if (e.key === 'Escape') { done = true; renderPages(); }
   });
 }
 
-// ----- DOM -----
+// ----- Домашняя страница: проекты -----
+
+async function openProjectHandler(project: Project, pageId?: string): Promise<void> {
+  await saveNow();
+  openProject(project, pageId);
+  localStorage.setItem('doska.last', JSON.stringify({ pid: project.id, pageId: state.pageId }));
+  refresh();
+  fitContent();
+}
+
+async function newProjectHandler(): Promise<void> {
+  await saveNow();
+  const p = blankProject(`Проект ${state.projects.length + 1}`);
+  await storage.save(p);
+  state.projects = [projectMeta(p), ...state.projects];
+  openProject(p);
+  refresh();
+  fitContent();
+}
+
+async function deleteProjectHandler(id: string): Promise<void> {
+  const meta = state.projects.find(m => m.id === id);
+  if (!meta || !confirm(`Удалить проект «${meta.name}» со всеми страницами?`)) return;
+  await storage.remove(id);
+  state.projects = state.projects.filter(m => m.id !== id);
+  if (state.project.id === id) {
+    if (state.projects.length > 0) {
+      const p = await storage.load(state.projects[0].id);
+      if (p) { openProject(p); fitContent(); }
+    } else {
+      const p = blankProject('Проект 1');
+      await storage.save(p);
+      state.projects = [projectMeta(p)];
+      openProject(p);
+      fitContent();
+    }
+  }
+  renderHome();
+}
+
+async function renameProjectHandler(id: string, name: string): Promise<void> {
+  const meta = state.projects.find(m => m.id === id);
+  if (!meta) return;
+  meta.name = name;
+  state.projects = [...state.projects];
+  if (state.project.id === id) {
+    state.project = { ...state.project, name };
+    await storage.save(state.project);
+  } else {
+    const p = await storage.load(id);
+    if (p) {
+      p.name = name;
+      await storage.save(p);
+    }
+  }
+  renderHome();
+  renderPages();
+}
+
+async function homeAddPage(projectId: string): Promise<void> {
+  const p = state.project.id === projectId
+    ? state.project
+    : await storage.load(projectId);
+  if (!p) return;
+  if (state.project.id === projectId) {
+    await saveNow();
+    addPage();
+    await saveNow();
+  } else {
+    p.pages = [...p.pages, { id: uid(), name: `Страница ${p.pages.length + 1}`, grid: 'square', elements: [] }];
+    p.updatedAt = Date.now();
+    await storage.save(p);
+    state.projects = state.projects.map(m => (m.id === projectId ? { ...m, pageCount: p.pages.length, updatedAt: p.updatedAt } : m));
+  }
+  renderHome();
+}
+
+async function homeDeletePage(projectId: string, pageId: string): Promise<void> {
+  if (state.project.id === projectId) {
+    const page = state.project.pages.find(p => p.id === pageId);
+    if (!page || !confirm(`Удалить страницу «${page.name}»?`)) return;
+    await saveNow();
+    deletePage(pageId);
+    await saveNow();
+    renderHome();
+    return;
+  }
+  const p = await storage.load(projectId);
+  if (!p || p.pages.length <= 1) return;
+  p.pages = p.pages.filter(pg => pg.id !== pageId);
+  p.updatedAt = Date.now();
+  await storage.save(p);
+  state.projects = state.projects.map(m => (m.id === projectId ? { ...m, pageCount: p.pages.length, updatedAt: p.updatedAt } : m));
+  renderHome();
+}
+
+async function homeRenamePage(projectId: string, pageId: string, name: string): Promise<void> {
+  if (state.project.id === projectId) {
+    renamePage(pageId, name);
+    await saveNow();
+    renderHome();
+    return;
+  }
+  const p = await storage.load(projectId);
+  if (!p) return;
+  p.pages = p.pages.map(pg => (pg.id === pageId ? { ...pg, name } : pg));
+  p.updatedAt = Date.now();
+  await storage.save(p);
+  renderHome();
+}
+
+function homeKey(): string {
+  return state.projects.map(m => `${m.id}:${m.name}:${m.updatedAt}:${m.pageCount}`).join('#') + `@${state.project.id}`;
+}
+
+function renderHome(): void {
+  const home = document.getElementById('home')!;
+  home.textContent = '';
+  const head = document.createElement('div');
+  head.className = 'home-head';
+  const h = document.createElement('h1');
+  h.textContent = 'Проекты';
+  head.appendChild(h);
+  home.appendChild(head);
+  const grid = document.createElement('div');
+  grid.className = 'home-grid';
+  for (const meta of state.projects) {
+    const card = document.createElement('div');
+    card.className = 'project-card';
+    const title = document.createElement('div');
+    title.className = 'project-title';
+    const name = document.createElement('span');
+    name.className = 'project-name';
+    name.textContent = meta.name;
+    name.title = 'Двойной клик — переименовать';
+    const openBtn = document.createElement('button');
+    openBtn.className = 'project-open';
+    openBtn.textContent = 'Открыть';
+    const delBtn = document.createElement('button');
+    delBtn.className = 'icon';
+    delBtn.title = 'Удалить проект';
+    delBtn.innerHTML = ICONS.trash;
+    title.append(name, openBtn, delBtn);
+    const info = document.createElement('div');
+    info.className = 'project-info';
+    info.textContent = `Страниц: ${meta.pageCount} · ${new Date(meta.updatedAt).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`;
+    const pages = document.createElement('div');
+    pages.className = 'project-pages';
+    if (state.project.id === meta.id) {
+      for (const pg of state.project.pages) {
+        const row = document.createElement('div');
+        row.className = 'home-page-row';
+        const gi = document.createElement('span');
+        gi.className = 'page-grid-icon';
+        gi.innerHTML = GRID_ICONS[pg.grid];
+        const pn = document.createElement('span');
+        pn.className = 'home-page-name';
+        pn.textContent = pg.name;
+        pn.title = 'Двойной клик — переименовать';
+        const pd = document.createElement('button');
+        pd.className = 'page-del';
+        pd.title = 'Удалить страницу';
+        pd.innerHTML = ICONS.del;
+        row.append(gi, pn, pd);
+        row.addEventListener('click', () => { void openProjectHandler(state.project, pg.id); });
+        pn.addEventListener('dblclick', e => {
+          e.stopPropagation();
+          startHomePageRename(row, meta.id, pg.id, pg.name);
+        });
+        pd.addEventListener('click', e => {
+          e.stopPropagation();
+          void homeDeletePage(meta.id, pg.id);
+        });
+        pages.appendChild(row);
+      }
+    } else {
+      const hint = document.createElement('div');
+      hint.className = 'home-pages-hint';
+      hint.textContent = 'Откройте проект, чтобы управлять страницами';
+      pages.appendChild(hint);
+    }
+    const addPage = document.createElement('button');
+    addPage.className = 'home-add-page';
+    addPage.textContent = '+ Страница';
+    card.append(title, info, pages, addPage);
+    openBtn.addEventListener('click', () => {
+      void (async () => {
+        const p = state.project.id === meta.id ? state.project : await storage.load(meta.id);
+        if (p) await openProjectHandler(p);
+      })();
+    });
+    name.addEventListener('dblclick', () => startProjectRename(card, meta.id, meta.name));
+    delBtn.addEventListener('click', () => { void deleteProjectHandler(meta.id); });
+    addPage.addEventListener('click', () => { void homeAddPage(meta.id); });
+    grid.appendChild(card);
+  }
+  const newCard = document.createElement('button');
+  newCard.className = 'new-project';
+  newCard.textContent = '+ Новый проект';
+  newCard.addEventListener('click', () => { void newProjectHandler(); });
+  grid.appendChild(newCard);
+  home.appendChild(grid);
+}
+
+function startProjectRename(card: HTMLElement, projectId: string, oldName: string): void {
+  const nameEl = card.querySelector('.project-name')!;
+  const input = document.createElement('input');
+  input.value = oldName;
+  input.spellcheck = false;
+  nameEl.replaceWith(input);
+  input.focus();
+  input.select();
+  let done = false;
+  const commit = () => {
+    if (done) return;
+    done = true;
+    const v = input.value.trim();
+    if (v && v !== oldName) void renameProjectHandler(projectId, v);
+    else renderHome();
+  };
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if (e.key === 'Enter') commit();
+    if (e.key === 'Escape') { done = true; renderHome(); }
+  });
+}
+
+function startHomePageRename(row: HTMLElement, projectId: string, pageId: string, oldName: string): void {
+  const nameEl = row.querySelector('.home-page-name')!;
+  const input = document.createElement('input');
+  input.value = oldName;
+  input.spellcheck = false;
+  nameEl.replaceWith(input);
+  input.focus();
+  input.select();
+  let done = false;
+  const commit = () => {
+    if (done) return;
+    done = true;
+    const v = input.value.trim();
+    if (v && v !== oldName) void homeRenamePage(projectId, pageId, v);
+    else renderHome();
+  };
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if (e.key === 'Enter') commit();
+    if (e.key === 'Escape') { done = true; renderHome(); }
+  });
+}
+
+// ----- Тулбар -----
 
 function buildToolbar(): void {
   const tb = document.getElementById('toolbar')!;
+  tb.textContent = '';
   const tools = document.createElement('div');
-  tools.style.display = 'flex';
-  tools.style.flexDirection = 'column';
-  tools.style.gap = '2px';
+  tools.className = 'tool-group';
   for (const t of TOOLS) {
     const b = document.createElement('button');
     b.className = 'tool';
@@ -374,96 +1102,28 @@ function buildToolbar(): void {
   tb.appendChild(tools);
   tb.appendChild(makeVsep());
 
-  const swatches = document.createElement('div');
-  swatches.className = 'swatches';
-  renderSwatches(swatches);
-  tb.appendChild(swatches);
-  tb.appendChild(makeVsep());
-
-  const widths = document.createElement('div');
-  widths.className = 'widths';
-  for (const w of WIDTHS) {
-    const b = document.createElement('button');
-    b.className = 'width-opt';
-    b.dataset.w = String(w);
-    b.title = `Толщина ${w}`;
-    b.innerHTML = '<i></i>';
-    b.addEventListener('click', () => chooseWidth(w));
-    widths.appendChild(b);
-  }
-  tb.appendChild(widths);
-}
-
-const CUSTOM_COLORS_KEY = 'doska.customColors';
-const STYLE_KEY = 'doska.style';
-
-function loadCustomColors(): string[] {
-  try {
-    const v = JSON.parse(localStorage.getItem(CUSTOM_COLORS_KEY) || '[]');
-    return Array.isArray(v) ? v.filter(c => typeof c === 'string').slice(0, 6) : [];
-  } catch {
-    return [];
-  }
-}
-
-function addCustomColor(c: string): void {
-  if (PALETTE.includes(c)) return;
-  const list = [c, ...loadCustomColors().filter(x => x !== c)].slice(0, 6);
-  localStorage.setItem(CUSTOM_COLORS_KEY, JSON.stringify(list));
-}
-
-function persistStyle(): void {
-  localStorage.setItem(STYLE_KEY, JSON.stringify(state.style));
-}
-
-function restoreStyle(): void {
-  try {
-    const v = JSON.parse(localStorage.getItem(STYLE_KEY) || 'null');
-    if (v && typeof v.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(v.color) && typeof v.width === 'number') {
-      state.style = { color: v.color, width: Math.min(8, Math.max(2, v.width)) };
-    }
-  } catch { /* нет сохранённого стиля — дефолт */ }
-}
-
-/** Выбор цвета: применяется к выделению (если есть) и становится текущим. */
-function chooseColor(c: string): void {
-  if (state.selection.size > 0) applyStyleToSelection({ color: c });
-  setStyleColor(c);
-  addCustomColor(c);
-  persistStyle();
-  renderSwatches(document.querySelector('.swatches') as HTMLElement);
-  refresh();
-}
-
-/** Выбор толщины: применяется к выделению (если есть) и становится текущей. */
-function chooseWidth(w: number): void {
-  if (state.selection.size > 0) applyStyleToSelection({ width: w });
-  setStyleWidth(w);
-  persistStyle();
-  refresh();
-}
-
-function renderSwatches(container: HTMLElement): void {
-  container.textContent = '';
-  for (const c of [...PALETTE, ...loadCustomColors()]) {
-    const b = document.createElement('button');
-    b.className = 'swatch';
-    b.dataset.c = c;
-    b.style.background = c;
-    b.title = c;
-    b.addEventListener('click', () => chooseColor(c));
-    container.appendChild(b);
-  }
-  const custom = document.createElement('button');
-  custom.className = 'swatch custom';
-  custom.title = 'Свой цвет';
-  const colorInput = document.createElement('input');
-  colorInput.type = 'color';
-  colorInput.style.display = 'none';
-  custom.addEventListener('click', () => colorInput.click());
-  colorInput.addEventListener('input', () => chooseColor(colorInput.value));
-  container.appendChild(custom);
-  container.appendChild(colorInput);
+  const styleGroup = document.createElement('div');
+  styleGroup.className = 'tool-group';
+  const cBtn = document.createElement('button');
+  cBtn.className = 'tool style-btn';
+  cBtn.id = 'btn-style-color';
+  cBtn.title = 'Цвет';
+  cBtn.innerHTML = '<i class="color-dot"></i>';
+  cBtn.addEventListener('click', () => {
+    if (ctxKind === 'color') closeCtxPanel();
+    else openCtxPanel('color');
+  });
+  const wBtn = document.createElement('button');
+  wBtn.className = 'tool style-btn';
+  wBtn.id = 'btn-style-width';
+  wBtn.title = 'Толщина';
+  wBtn.innerHTML = '<i class="width-bar"></i>';
+  wBtn.addEventListener('click', () => {
+    if (ctxKind === 'width') closeCtxPanel();
+    else openCtxPanel('width');
+  });
+  styleGroup.append(cBtn, wBtn);
+  tb.appendChild(styleGroup);
 }
 
 function makeVsep(): HTMLElement {
@@ -473,109 +1133,123 @@ function makeVsep(): HTMLElement {
 }
 
 function wireTopbar(): void {
+  document.getElementById('btn-home')!.innerHTML = ICONS.home;
   document.getElementById('btn-sidebar')!.innerHTML = ICONS.sidebar;
-  document.getElementById('btn-new-board')!.addEventListener('click', () => { void newBoard(); });
   document.getElementById('btn-undo')!.innerHTML = ICONS.undo;
   document.getElementById('btn-redo')!.innerHTML = ICONS.redo;
   document.getElementById('btn-fit')!.innerHTML = ICONS.fit;
   document.getElementById('btn-export')!.innerHTML = ICONS.export;
   document.getElementById('btn-import')!.innerHTML = ICONS.pdf;
+  document.getElementById('btn-settings')!.innerHTML = ICONS.settings;
 
+  document.getElementById('btn-home')!.addEventListener('click', () => {
+    void (async () => {
+      await saveNow();
+      setView(state.view === 'home' ? 'board' : 'home');
+    })();
+  });
   document.getElementById('btn-sidebar')!.addEventListener('click', toggleSidebar);
   document.getElementById('btn-undo')!.addEventListener('click', () => undo());
   document.getElementById('btn-redo')!.addEventListener('click', () => redo());
   document.getElementById('btn-fit')!.addEventListener('click', fitContent);
   document.getElementById('btn-export')!.addEventListener('click', () => { void exportPng(); });
   document.getElementById('btn-import')!.addEventListener('click', () => { void importPdf(); });
+  document.getElementById('btn-settings')!.addEventListener('click', () => {
+    if (settingsPopover().hidden) openSettings();
+    else closeSettings();
+  });
+  document.getElementById('btn-new-page')!.addEventListener('click', () => { void newPageHandler(); });
 
-  const nameInput = document.getElementById('board-name') as HTMLInputElement;
+  const nameInput = document.getElementById('page-name') as HTMLInputElement;
   nameInput.addEventListener('change', () => {
     const v = nameInput.value.trim();
     if (v && v !== state.board.name) {
-      state.board.name = v;
-      update(true);
+      renamePage(state.pageId, v);
       void saveNow();
     }
   });
 
   const gridSelect = document.getElementById('grid-mode') as HTMLSelectElement;
-  gridSelect.addEventListener('change', () => setGrid(gridSelect.value as GridMode));
+  gridSelect.addEventListener('change', () => {
+    setGrid(gridSelect.value as GridMode);
+    void saveNow();
+  });
+
+  // закрытие панелей по клику мимо / Esc
+  canvas.addEventListener('pointerdown', () => { closeCtxPanel(); }, { capture: true });
+  document.getElementById('canvas-wrap')!.addEventListener('pointerdown', e => {
+    const qm = quickMenuEl();
+    if (!qm.hidden && !qm.contains(e.target as Node)) { /* меню остаётся, клик по холсту обрабатывает контроллер */ }
+    const p = ctxPanelEl();
+    if (!p.hidden && !p.contains(e.target as Node)) closeCtxPanel();
+  }, { capture: true });
+  window.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      if (!settingsPopover().hidden) { closeSettings(); return; }
+      if (ctxKind) { closeCtxPanel(); return; }
+    }
+  }, { capture: true });
 }
 
 export function toggleSidebar(): void {
   document.getElementById('sidebar')!.classList.toggle('hidden');
 }
 
-function renderBoards(): void {
-  const list = document.getElementById('boards-list')!;
-  list.textContent = '';
-  for (const m of state.boards) {
-    const item = document.createElement('div');
-    item.className = `board-item${m.id === state.board.id ? ' active' : ''}`;
-    item.dataset.id = m.id;
-    const name = document.createElement('span');
-    name.className = 'name';
-    name.textContent = m.name;
-    name.title = 'Двойной клик — переименовать';
-    const date = document.createElement('span');
-    date.className = 'date';
-    date.textContent = new Date(m.updatedAt).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-    const del = document.createElement('button');
-    del.className = 'del';
-    del.title = 'Удалить доску';
-    del.innerHTML = ICONS.del;
-    item.append(name, date, del);
-    item.addEventListener('click', e => {
-      if ((e.target as HTMLElement).closest('.del')) return;
-      void switchBoard(m.id);
-    });
-    del.addEventListener('click', e => {
-      e.stopPropagation();
-      void deleteBoard(m.id);
-    });
-    name.addEventListener('dblclick', () => startRename(item, m.id, m.name));
-    list.appendChild(item);
-  }
-}
-
 function refresh(): void {
   const tb = document.getElementById('toolbar')!;
-  for (const b of tb.querySelectorAll<HTMLButtonElement>('.tool')) {
+  for (const b of tb.querySelectorAll<HTMLButtonElement>('.tool[data-tool]')) {
     b.classList.toggle('active', b.dataset.tool === state.tool);
   }
-  const customActive = ![...PALETTE, ...loadCustomColors()].includes(state.style.color);
-  for (const b of tb.querySelectorAll<HTMLButtonElement>('.swatch')) {
-    const isCustom = b.classList.contains('custom');
-    b.classList.toggle('active', isCustom ? customActive : b.dataset.c === state.style.color);
-  }
-  for (const b of tb.querySelectorAll<HTMLButtonElement>('.width-opt')) {
-    b.classList.toggle('active', Number(b.dataset.w) === state.style.width);
-  }
+  const colorDot = tb.querySelector<HTMLElement>('#btn-style-color .color-dot');
+  if (colorDot) colorDot.style.background = state.style.color;
+  const widthBar = tb.querySelector<HTMLElement>('#btn-style-width .width-bar');
+  if (widthBar) widthBar.style.height = `${Math.min(10, Math.max(1.5, state.style.width))}px`;
+  // панель стикеров открывается автоматически с инструментом
+  if (state.tool === 'note' && !ctxKind && state.view === 'board') openCtxPanel('note');
+  if (state.tool !== 'note' && ctxKind === 'note') closeCtxPanel();
+
   (document.getElementById('btn-undo') as HTMLButtonElement).disabled = !canUndo();
   (document.getElementById('btn-redo') as HTMLButtonElement).disabled = !canRedo();
   document.getElementById('zoom-label')!.textContent = `${Math.round(state.camera.zoom * 100)}%`;
   const gridSelect = document.getElementById('grid-mode') as HTMLSelectElement;
-  if (gridSelect.value !== state.grid) gridSelect.value = state.grid;
-  const nameInput = document.getElementById('board-name') as HTMLInputElement;
+  if (gridSelect.value !== state.board.grid) gridSelect.value = state.board.grid;
+  const nameInput = document.getElementById('page-name') as HTMLInputElement;
   if (document.activeElement !== nameInput && nameInput.value !== state.board.name) {
     nameInput.value = state.board.name;
   }
-  const key = `${state.board.id}|${state.boards.map(m => `${m.id}:${m.updatedAt}:${m.name}`).join('|')}`;
-  if (key !== lastBoardsKey) {
-    lastBoardsKey = key;
-    renderBoards();
+
+  // вид домашней страницы
+  const home = document.getElementById('home')!;
+  const isHome = state.view === 'home';
+  if (home.hidden === isHome) home.hidden = !isHome;
+  if (isHome) {
+    const hk = homeKey();
+    if (hk !== lastHomeKey) {
+      lastHomeKey = hk;
+      renderHome();
+    }
   }
+
+  const key = pagesKey();
+  if (key !== lastPagesKey) {
+    lastPagesKey = key;
+    renderPages();
+  }
+  updateQuickMenu();
 }
 
 export function initApp(c: HTMLCanvasElement): void {
   canvas = c;
   restoreStyle();
+  restoreSettings();
   buildToolbar();
+  applyToolbarPos();
   wireTopbar();
-  refresh();
+  try { refresh(); } catch (err) { console.error('[doska] refresh failed:', err); }
   onChange(() => {
     refresh();
     scheduleSave();
     if (editing) positionEditor();
+    if (ctxKind) positionCtxPanel();
   });
 }
