@@ -213,6 +213,16 @@ select {
   background: currentColor;
 }
 
+/* ----- Группа «Фигуры» ----- */
+#toolbar .tool-shapes { position: relative; }
+/* уголок-индикатор: у кнопки есть всплывающая панель */
+#toolbar .tool-shapes::after {
+  content: ''; position: absolute; right: 3px; bottom: 3px;
+  border: 3px solid transparent; border-right-color: currentColor; border-bottom-color: currentColor;
+  opacity: 0.55;
+}
+.ctx-shapes { display: grid; grid-template-columns: repeat(3, auto); gap: 4px; justify-content: start; }
+
 /* ----- Контекстная панель ----- */
 #ctx-panel {
   position: absolute;

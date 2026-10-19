@@ -51,14 +51,22 @@ const TOOLS: { id: ToolId; code: string; title: string; icon: string }[] = [
   { id: 'eraser', code: 'E', title: 'Ластик', icon: svg('<path d="M20 20H8.5L3.6 15.1a2 2 0 0 1 0-2.8l8.6-8.6a2 2 0 0 1 2.8 0l6 6a2 2 0 0 1 0 2.8L13.5 19"/><path d="M7 10.5l6.5 6.5"/>') },
   { id: 'text', code: 'T', title: 'Текст', icon: svg('<path d="M5 7V5h14v2"/><path d="M12 5v14"/><path d="M9 19h6"/>') },
   { id: 'note', code: 'N', title: 'Стикер', icon: svg('<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M8 9.5h8"/><path d="M8 13h5"/>') },
-  { id: 'rect', code: 'R', title: 'Прямоугольник', icon: svg('<rect x="4" y="6" width="16" height="12" rx="1.5"/>') },
-  { id: 'ellipse', code: 'O', title: 'Эллипс', icon: svg('<ellipse cx="12" cy="12" rx="8.5" ry="6.5"/>') },
-  { id: 'line', code: 'L', title: 'Линия', icon: svg('<path d="M5 19L19 5"/>') },
-  { id: 'arrow', code: 'A', title: 'Стрелка', icon: svg('<path d="M5 19L18 6"/><path d="M12 6h6v6"/>') },
-  { id: 'poly', code: 'K', title: 'Ломаная / многоугольник', icon: svg('<path d="M4 18l5-10 6 7 5-9"/>') },
+  { id: 'rect', code: 'R', title: 'Фигуры', icon: '' }, // место группы «Фигуры»
   { id: 'pan', code: 'H', title: 'Панорама', icon: svg('<path d="M12 3v18M3 12h18"/><path d="M9.5 5.5L12 3l2.5 2.5M9.5 18.5L12 21l2.5-2.5M5.5 9.5L3 12l2.5 2.5M18.5 9.5L21 12l-2.5 2.5"/>') },
   { id: 'laser', code: 'I', title: 'Лазерная указка', icon: svg('<circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4"/>') },
 ];
+
+/** Инструменты группы «Фигуры» — в тулбаре одна кнопка, выбор во всплывающей панели. */
+const SHAPE_TOOLS: { id: ToolId; code: string; title: string; icon: string }[] = [
+  { id: 'rect', code: 'R', title: 'Прямоугольник', icon: svg('<rect x="4" y="6" width="16" height="12" rx="1.5"/>') },
+  { id: 'ellipse', code: 'O', title: 'Эллипс', icon: svg('<ellipse cx="12" cy="12" rx="8.5" ry="6.5"/>') },
+  { id: 'triangle', code: 'Y', title: 'Треугольник', icon: svg('<path d="M12 4.5L20.5 19H3.5z"/>') },
+  { id: 'line', code: 'L', title: 'Линия', icon: svg('<path d="M5 19L19 5"/>') },
+  { id: 'arrow', code: 'A', title: 'Стрелка', icon: svg('<path d="M5 19L18 6"/><path d="M12 6h6v6"/>') },
+  { id: 'poly', code: 'K', title: 'Ломаная / многоугольник', icon: svg('<path d="M4 18l5-10 6 7 5-9"/>') },
+];
+/** Последняя выбранная фигура — её иконку показывает кнопка группы. */
+let lastShapeTool: ToolId = 'rect';
 
 const PALETTE = ['#1f2329', '#e03131', '#1971c2', '#2f9e44', '#f08c00', '#9c36b5'];
 const NOTE_PASTELS = ['#ffe066', '#ffd6a5', '#ffd5d5', '#d3f9d8', '#a9def9', '#e4c1f9', '#fde4cf', '#d8f3dc'];
@@ -264,7 +272,7 @@ export function closeEditor(commit: boolean): void {
 
 // ----- Контекстная панель (цвета / толщина / стикеры) -----
 
-type CtxKind = 'color' | 'width' | 'note';
+type CtxKind = 'color' | 'width' | 'note' | 'shapes';
 let ctxKind: CtxKind | null = null;
 
 function ctxPanelEl(): HTMLElement {
@@ -283,6 +291,7 @@ function openCtxPanel(kind: CtxKind): void {
   p.textContent = '';
   if (kind === 'color') buildColorPanel(p);
   else if (kind === 'width') buildWidthPanel(p);
+  else if (kind === 'shapes') buildShapesPanel(p);
   else buildNotePanel(p);
   positionCtxPanel();
 }
@@ -306,6 +315,28 @@ function positionCtxPanel(): void {
   top = Math.max(8, Math.min(top, wr.height - pr.height - 8));
   p.style.left = `${left}px`;
   p.style.top = `${top}px`;
+}
+
+function buildShapesPanel(p: HTMLElement): void {
+  p.dataset.kind = 'shapes';
+  const title = document.createElement('div');
+  title.className = 'ctx-title';
+  title.textContent = 'Фигуры';
+  p.appendChild(title);
+  const grid = document.createElement('div');
+  grid.className = 'ctx-shapes';
+  for (const t of SHAPE_TOOLS) {
+    const b = document.createElement('button');
+    b.className = 'tool' + (state.tool === t.id ? ' active' : '');
+    b.title = `${t.title} (${t.code})`;
+    b.innerHTML = t.icon;
+    b.addEventListener('click', () => {
+      setTool(t.id);
+      closeCtxPanel();
+    });
+    grid.appendChild(b);
+  }
+  p.appendChild(grid);
 }
 
 function buildColorPanel(p: HTMLElement): void {
@@ -555,6 +586,7 @@ function updateQuickMenu(): void {
   // цвет
   const cBtn = document.createElement('button');
   cBtn.className = 'qm-btn qm-color';
+  cBtn.dataset.ctxToggle = '';
   cBtn.title = 'Цвет';
   const dot = document.createElement('i');
   dot.style.background = state.style.color;
@@ -570,6 +602,7 @@ function updateQuickMenu(): void {
   if (inkEls.length > 0) {
     const wBtn = document.createElement('button');
     wBtn.className = 'qm-btn';
+    wBtn.dataset.ctxToggle = '';
     wBtn.title = 'Толщина';
     const bar = document.createElement('i');
     bar.className = 'qm-width-bar';
@@ -661,7 +694,7 @@ function positionQuickMenu(): void {
   if (x0 === Infinity) { qm.hidden = true; return; }
   // над bbox может торчать ручка поворота (~44px) — оставляем ей место
   const hasRotateHandle = state.selection.size === 1 && state.board.elements.some(e =>
-    state.selection.has(e.id) && ((e.type === 'shape' && (e.shape === 'rect' || e.shape === 'ellipse')) || e.type === 'image'));
+    state.selection.has(e.id) && ((e.type === 'shape' && e.shape !== 'line' && e.shape !== 'arrow') || e.type === 'image'));
   const topGap = 10 + (hasRotateHandle ? 44 : 0);
   const sx = (x0 - cam.x) * cam.zoom;
   const sy = (y0 - cam.y) * cam.zoom;
@@ -1390,10 +1423,22 @@ function buildToolbar(): void {
   for (const t of TOOLS) {
     const b = document.createElement('button');
     b.className = 'tool';
-    b.dataset.tool = t.id;
-    b.title = `${t.title} (${t.code})`;
-    b.innerHTML = t.icon;
-    b.addEventListener('click', () => setTool(t.id));
+    if (t.id === 'rect') {
+      // группа «Фигуры»: клик открывает панель выбора фигуры
+      b.id = 'btn-shapes';
+      b.dataset.ctxToggle = '';
+      b.classList.add('tool-shapes');
+      b.title = 'Фигуры';
+      b.addEventListener('click', () => {
+        if (ctxKind === 'shapes') closeCtxPanel();
+        else openCtxPanel('shapes');
+      });
+    } else {
+      b.dataset.tool = t.id;
+      b.title = `${t.title} (${t.code})`;
+      b.innerHTML = t.icon;
+      b.addEventListener('click', () => setTool(t.id));
+    }
     tools.appendChild(b);
   }
   tb.appendChild(tools);
@@ -1404,6 +1449,7 @@ function buildToolbar(): void {
   const cBtn = document.createElement('button');
   cBtn.className = 'tool style-btn';
   cBtn.id = 'btn-style-color';
+  cBtn.dataset.ctxToggle = '';
   cBtn.title = 'Цвет';
   cBtn.innerHTML = '<i class="color-dot"></i>';
   cBtn.addEventListener('click', () => {
@@ -1413,6 +1459,7 @@ function buildToolbar(): void {
   const wBtn = document.createElement('button');
   wBtn.className = 'tool style-btn';
   wBtn.id = 'btn-style-width';
+  wBtn.dataset.ctxToggle = '';
   wBtn.title = 'Толщина';
   wBtn.innerHTML = '<i class="width-bar"></i>';
   wBtn.addEventListener('click', () => {
@@ -1486,6 +1533,8 @@ function wireTopbar(): void {
     const qm = quickMenuEl();
     if (!qm.hidden && !qm.contains(e.target as Node)) { /* меню остаётся, клик по холсту обрабатывает контроллер */ }
     const p = ctxPanelEl();
+    // кнопки-переключатели панели сами закрывают её повторным кликом
+    if ((e.target as HTMLElement).closest('[data-ctx-toggle]')) return;
     if (!p.hidden && !p.contains(e.target as Node)) closeCtxPanel();
   }, { capture: true });
   window.addEventListener('keydown', e => {
@@ -1641,6 +1690,18 @@ function refresh(): void {
   const tb = document.getElementById('toolbar')!;
   for (const b of tb.querySelectorAll<HTMLButtonElement>('.tool[data-tool]')) {
     b.classList.toggle('active', b.dataset.tool === state.tool);
+  }
+  const activeShape = SHAPE_TOOLS.find(t => t.id === state.tool);
+  if (activeShape) lastShapeTool = activeShape.id;
+  const shapesBtn = tb.querySelector<HTMLButtonElement>('#btn-shapes');
+  if (shapesBtn) {
+    shapesBtn.classList.toggle('active', !!activeShape);
+    if (shapesBtn.dataset.shape !== lastShapeTool) {
+      const cur = SHAPE_TOOLS.find(t => t.id === lastShapeTool)!;
+      shapesBtn.dataset.shape = cur.id;
+      shapesBtn.innerHTML = cur.icon;
+      shapesBtn.title = `Фигуры: ${cur.title}`;
+    }
   }
   const colorDot = tb.querySelector<HTMLElement>('#btn-style-color .color-dot');
   if (colorDot) colorDot.style.background = state.style.color;

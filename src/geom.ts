@@ -149,6 +149,12 @@ export function hitTest(el: Element, x: number, y: number, tol: number): boolean
       }
       if (s.shape === 'rect')
         return px >= lx0 - tol && px <= lx1 + tol && py >= ly0 - tol && py <= ly1 + tol;
+      if (s.shape === 'triangle') {
+        // равнобедренный: вершина — центр верхней грани, основание — нижняя грань; вся площадь
+        if (py < ly0 - tol || py > ly1 + tol) return false;
+        const t = ly1 > ly0 ? Math.min(Math.max((py - ly0) / (ly1 - ly0), 0), 1) : 1;
+        return Math.abs(px - (lx0 + lx1) / 2) <= t * (lx1 - lx0) / 2 + tol;
+      }
       // ellipse: вся площадь (удобнее перемещать)
       const ccx = (lx0 + lx1) / 2, ccy = (ly0 + ly1) / 2;
       const rx = Math.max((lx1 - lx0) / 2, 0.5), ry = Math.max((ly1 - ly0) / 2, 0.5);
