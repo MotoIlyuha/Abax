@@ -155,7 +155,7 @@ select {
 .page-del svg { width: 12px; height: 12px; }
 /* (старые стили .board-item удалены вместе с досками) */
 /* display:flex у этих панелей перебивает [hidden] из UA-стилей — чиним явно */
-#quick-menu[hidden], #ctx-panel[hidden], #settings-popover[hidden], #home[hidden] { display: none !important; }
+#quick-menu[hidden], #ctx-panel[hidden], #settings-popover[hidden], #home[hidden], #tooltip[hidden] { display: none !important; }
 
 #canvas-wrap { position: relative; flex: 1; min-width: 0; overflow: hidden; }
 #board { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; cursor: crosshair; }
@@ -576,3 +576,37 @@ body.collab-guest .page-del { display: none !important; }
 body.collab-guest.readonly-mode #toolbar { display: none; }
 #overlay textarea.inplace-edit.note { background: transparent; box-shadow: none; }
 #overlay textarea.inplace-edit:not(.note) { background: rgba(255, 255, 255, 0.85); box-shadow: 0 0 0 1.5px rgba(50, 115, 245, 0.35); border-radius: 3px; }
+
+/* ----- Подсказки (tooltip) ----- */
+#tooltip {
+  --tip-bg: #1e2026;
+  position: fixed;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 280px;
+  padding: 6px 10px;
+  border-radius: 7px;
+  background: var(--tip-bg);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+  white-space: normal;
+  pointer-events: none;
+  box-shadow: 0 4px 14px rgba(16, 24, 40, 0.18);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+#tooltip.show { opacity: 1; }
+#tooltip .tooltip-kbd { color: rgba(255, 255, 255, 0.55); white-space: nowrap; }
+#tooltip::before {
+  content: '';
+  position: absolute;
+  border: 5px solid transparent;
+}
+#tooltip[data-side="right"]::before { right: 100%; top: var(--arrow); margin-top: -5px; border-right-color: var(--tip-bg); }
+#tooltip[data-side="left"]::before { left: 100%; top: var(--arrow); margin-top: -5px; border-left-color: var(--tip-bg); }
+#tooltip[data-side="bottom"]::before { bottom: 100%; left: var(--arrow); margin-left: -5px; border-bottom-color: var(--tip-bg); }
+#tooltip[data-side="top"]::before { top: 100%; left: var(--arrow); margin-left: -5px; border-top-color: var(--tip-bg); }

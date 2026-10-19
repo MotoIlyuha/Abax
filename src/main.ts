@@ -5,8 +5,10 @@ import { initApp, importPdfFromDataUrl } from './app';
 import { state, openProject, blankProject, projectMeta, onChange, undo, redo } from './state';
 import { storage, setStorage } from './storage';
 import { startCollab, netStorage } from './collab';
+import { initTooltips } from './tooltip';
 
 async function boot(): Promise<void> {
+  initTooltips();
   const canvas = document.getElementById('board') as HTMLCanvasElement;
 
   // guest-режим: открыта ссылка совместной работы (?room=CODE)
