@@ -517,13 +517,17 @@ export function initController(canvas: HTMLCanvasElement): void {
     e.preventDefault();
     const lp = localPos(e);
     const k = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 100 : 1;
-    if (e.ctrlKey) {
-      // pinch жест точпада приходит как ctrl+wheel
+    const zoomMode = state.settings.wheelMode === 'zoom';
+    // pinch жест точпада приходит как ctrl+wheel — это всегда масштаб;
+    // в режиме «как в Figma» Ctrl+Shift прокручивает по вертикали
+    const panVertical = zoomMode && e.ctrlKey && e.shiftKey;
+    const zoom = !panVertical && (e.ctrlKey || (zoomMode && !e.shiftKey && e.deltaY !== 0));
+    if (zoom) {
       zoomAtScreen(lp.x, lp.y, Math.exp(-e.deltaY * k * 0.0022));
     } else {
       let dx = e.deltaX * k;
       let dy = e.deltaY * k;
-      if (e.shiftKey && dx === 0) { dx = dy; dy = 0; }
+      if (e.shiftKey && !panVertical && dx === 0) { dx = dy; dy = 0; }
       state.camera = {
         ...state.camera,
         x: state.camera.x + dx / state.camera.zoom,

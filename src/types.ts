@@ -122,10 +122,15 @@ export interface HandlePos { h: Handle; x: number; y: number }
 /** Позиция панели инструментов. */
 export type ToolbarPos = 'left' | 'right' | 'top' | 'bottom';
 
+/** Поведение колёсика мыши: прокрутка холста или масштаб (как в Figma). */
+export type WheelMode = 'scroll' | 'zoom';
+
 export interface BoardSettings {
   toolbarPos: ToolbarPos;
   /** Подписи делений на координатной плоскости. */
   coordLabels: boolean;
   /** Привязка перемещения/размеров к видимому шагу сетки. */
   snapToGrid: boolean;
+  /** Колёсико без модификаторов: прокрутка или масштаб. */
+  wheelMode: WheelMode;
 }
