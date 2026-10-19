@@ -1,6 +1,6 @@
 export type ToolId =
   | 'select' | 'pen' | 'highlighter' | 'eraser' | 'pan'
-  | 'text' | 'note' | 'rect' | 'ellipse' | 'line' | 'arrow' | 'poly' | 'laser';
+  | 'text' | 'note' | 'rect' | 'ellipse' | 'triangle' | 'line' | 'arrow' | 'poly' | 'laser';
 
 /** Точка в координатах сцены; p — давление 0..1 (мышь даёт 0.5). */
 export interface Pt { x: number; y: number; p: number }
@@ -20,12 +20,12 @@ export interface StrokeEl {
 export interface ShapeEl {
   id: string;
   type: 'shape';
-  shape: 'rect' | 'ellipse' | 'line' | 'arrow';
+  shape: 'rect' | 'ellipse' | 'triangle' | 'line' | 'arrow';
   /** x,y — якорь; w,h — смещения (для линии/стрелки могут быть отрицательными). */
   x: number; y: number; w: number; h: number;
   color: string;
   width: number;
-  /** Поворот вокруг центра в радианах (только rect/ellipse). */
+  /** Поворот вокруг центра в радианах (только rect/ellipse/triangle). */
   rot?: number;
   groupId?: string;
 }

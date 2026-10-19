@@ -18,11 +18,11 @@ const POLY_SNAP_PX = 14; // радиус примагничивания к пе�
 const CURSORS: Record<ToolId, string> = {
   select: 'default', pen: 'crosshair', highlighter: 'crosshair', eraser: 'none',
   pan: 'grab', text: 'text', note: 'crosshair', rect: 'crosshair',
-  ellipse: 'crosshair', line: 'crosshair', arrow: 'crosshair', poly: 'crosshair', laser: 'none',
+  ellipse: 'crosshair', triangle: 'crosshair', line: 'crosshair', arrow: 'crosshair', poly: 'crosshair', laser: 'none',
 };
 const TOOL_BY_CODE: Record<string, ToolId> = {
   KeyV: 'select', KeyP: 'pen', KeyM: 'highlighter', KeyE: 'eraser', KeyH: 'pan',
-  KeyT: 'text', KeyN: 'note', KeyR: 'rect', KeyO: 'ellipse', KeyL: 'line', KeyA: 'arrow',
+  KeyT: 'text', KeyN: 'note', KeyR: 'rect', KeyO: 'ellipse', KeyY: 'triangle', KeyL: 'line', KeyA: 'arrow',
   KeyI: 'laser', KeyK: 'poly',
 };
 const MOVE_THRESHOLD_PX = 3;
@@ -116,7 +116,7 @@ export function initController(canvas: HTMLCanvasElement): void {
     const h = ls.y1 - ls.y0;
     if (Math.hypot(w, h) * state.camera.zoom < 3) { update(); return; } // случайный клик
     let el: ShapeEl = { id: uid(), type: 'shape', shape: ls.shape, x: ls.x0, y: ls.y0, w, h, color: ls.color, width: ls.width };
-    if (ls.shape === 'rect' || ls.shape === 'ellipse') {
+    if (ls.shape !== 'line' && ls.shape !== 'arrow') {
       el = { ...el, x: Math.min(ls.x0, ls.x1), y: Math.min(ls.y0, ls.y1), w: Math.abs(w), h: Math.abs(h) };
     }
     addElement(el);
@@ -219,6 +219,7 @@ export function initController(canvas: HTMLCanvasElement): void {
       }
       case 'rect':
       case 'ellipse':
+      case 'triangle':
       case 'line':
       case 'arrow':
         state.liveShape = { shape: tool, ax0: s.x, ay0: s.y, x0: s.x, y0: s.y, x1: s.x, y1: s.y, color: state.style.color, width: state.style.width * 1.3 };
@@ -393,7 +394,7 @@ export function initController(canvas: HTMLCanvasElement): void {
           // модификаторы как при resize: Alt — от центра, Shift/Ctrl — пропорции/45°
           let dx = s.x - ls.ax0, dy = s.y - ls.ay0;
           if (e.shiftKey || e.ctrlKey) {
-            if (ls.shape === 'rect' || ls.shape === 'ellipse') {
+            if (ls.shape !== 'line' && ls.shape !== 'arrow') {
               const m = Math.max(Math.abs(dx), Math.abs(dy));
               const sgnX = Math.sign(dx) || 1, sgnY = Math.sign(dy) || 1;
               dx = sgnX * m;

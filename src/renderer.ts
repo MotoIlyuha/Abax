@@ -211,9 +211,17 @@ function drawShapeEl(ctx: CanvasRenderingContext2D, el: ShapeEl): void {
   ctx.strokeStyle = el.color;
   ctx.lineWidth = el.width;
   ctx.lineCap = 'round';
+  ctx.lineJoin = el.shape === 'triangle' ? 'round' : 'miter';
   ctx.beginPath();
   if (el.shape === 'rect') {
     ctx.rect(Math.min(el.x, el.x + el.w), Math.min(el.y, el.y + el.h), Math.abs(el.w), Math.abs(el.h));
+  } else if (el.shape === 'triangle') {
+    const x0 = Math.min(el.x, el.x + el.w), y0 = Math.min(el.y, el.y + el.h);
+    const x1 = Math.max(el.x, el.x + el.w), y1 = Math.max(el.y, el.y + el.h);
+    ctx.moveTo((x0 + x1) / 2, y0);
+    ctx.lineTo(x1, y1);
+    ctx.lineTo(x0, y1);
+    ctx.closePath();
   } else if (el.shape === 'ellipse') {
     const cx = el.x + el.w / 2;
     const cy = el.y + el.h / 2;
