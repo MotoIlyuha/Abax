@@ -155,7 +155,7 @@ select {
 .page-del svg { width: 12px; height: 12px; }
 /* (старые стили .board-item удалены вместе с досками) */
 /* display:flex у этих панелей перебивает [hidden] из UA-стилей — чиним явно */
-#quick-menu[hidden], #ctx-panel[hidden], #settings-popover[hidden], #home[hidden], #tooltip[hidden] { display: none !important; }
+#quick-menu[hidden], #settings-popover[hidden], #home[hidden], #tooltip[hidden] { display: none !important; }
 
 #canvas-wrap { position: relative; flex: 1; min-width: 0; overflow: hidden; }
 #board { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; cursor: crosshair; }
@@ -223,9 +223,12 @@ select {
 }
 .ctx-shapes { display: grid; grid-template-columns: repeat(3, auto); gap: 4px; justify-content: start; }
 
-/* ----- Контекстная панель ----- */
-#ctx-panel {
+/* ----- Контекстные панели ----- */
+/* общий слой: свой контекст наложения, внутри — порядок «кого трогали последним» через z-index */
+#ctx-layer { position: absolute; inset: 0; pointer-events: none; z-index: 9; }
+.ctx-panel {
   position: absolute;
+  pointer-events: auto;
   display: flex;
   flex-direction: column;
   width: 212px;
@@ -234,14 +237,16 @@ select {
   border-radius: 14px;
   box-shadow: var(--shadow);
   padding: 14px 16px 16px;
-  z-index: 9;
 }
-#ctx-panel[data-kind="shapes"] { width: auto; padding: 10px; }
+.ctx-panel[data-kind="shapes"] { width: auto; padding: 10px; }
+/* заголовок группы не заезжает под ручку и кнопки в углу */
+.ctx-panel[data-kind="shapes"] .ctx-title { padding-right: 24px; }
+.ctx-panel[data-kind="shapes"].detached .ctx-title { padding-right: 72px; }
 /* у панели стиля сверху слайдер — опускаем его под ручку */
-#ctx-panel[data-kind="style"] { padding-top: 30px; }
-#ctx-panel.detached { box-shadow: 0 2px 6px rgba(16, 24, 40, 0.1), 0 10px 28px rgba(16, 24, 40, 0.14); }
+.ctx-panel[data-kind="style"] { padding-top: 30px; }
+.ctx-panel.detached { box-shadow: 0 2px 6px rgba(16, 24, 40, 0.1), 0 10px 28px rgba(16, 24, 40, 0.14); }
 
-/* ручка перетаскивания и pin в правом верхнем углу */
+/* ручка перетаскивания, pin и крестик в правом верхнем углу */
 .ctx-bar { position: absolute; top: 5px; right: 5px; display: flex; align-items: center; gap: 2px; }
 .ctx-grip {
   width: 20px;
@@ -271,7 +276,21 @@ select {
 }
 .ctx-pin:hover { background: #2160dd; }
 .ctx-pin svg { width: 13px; height: 13px; }
-#ctx-panel.detached .ctx-pin { display: flex; }
+.ctx-close {
+  display: none;
+  width: 22px;
+  height: 22px;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #a3aab5;
+  cursor: pointer;
+}
+.ctx-close:hover { background: #f0f2f5; color: var(--fg); }
+.ctx-close svg { width: 12px; height: 12px; }
+.ctx-panel.detached .ctx-pin, .ctx-panel.detached .ctx-close { display: flex; }
 .ctx-scroll {
   flex: 0 1 auto;
   min-height: 0;
