@@ -49,7 +49,15 @@ function hexA(hex: string, a: number): string {
 
 const HIGHLIGHTER_ALPHA = 0.42;
 const GRID_STEP = 40; // юниты сцены
-const LASER_TTL = 800; // мс жизни следа указки
+const LASER_TTL = 550; // мс жизни точки следа указки
+const LASER_R = 4.5; // полуширина следа у головы, px экрана
+const LASER_COLOR = '#ff2d2d';
+const FADE_MS = 650; // мс угасания росчерка исчезающего маркера
+const FLASH_MS = 1400; // мс подсветки контура
+const FLASH_IN = 140;
+const FLASH_OUT = 600;
+const FLASH_COLOR = '#ff9f1c';
+const FLASH_R = 4; // толщина контура подсветки, px экрана
 
 function drawGrid(ctx: CanvasRenderingContext2D, cam: Camera, w: number, h: number, mode: GridMode): void {
   const z = cam.zoom;
@@ -737,8 +745,10 @@ function draw(): void {
       ctx.stroke();
     }
   }
+  if (state.fadeStrokes.length > 0) drawFadeStrokes(ctx);
   // оверлеи в экранных координатах
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (state.flashes.length > 0) drawFlashes(ctx, cam);
   if (state.selection.size > 0) {
     ctx.strokeStyle = '#3273f5';
     ctx.lineWidth = 1.5;
@@ -784,32 +794,165 @@ function draw(): void {
     ctx.arc(state.hover.x, state.hover.y, ERASE_R, 0, Math.PI * 2);
     ctx.stroke();
   }
-  if (state.laserPts.length > 0) {
-    const now = performance.now();
-    const alive = state.laserPts.filter(p => now - p.t < LASER_TTL);
-    if (alive.length !== state.laserPts.length) state.laserPts = alive;
-    for (let i = 0; i < alive.length; i++) {
-      const p = alive[i];
-      const age = (now - p.t) / LASER_TTL; // 0..1
-      const sx = (p.x - cam.x) * cam.zoom;
-      const sy = (p.y - cam.y) * cam.zoom;
-      const isHead = i === alive.length - 1;
-      ctx.globalAlpha = (1 - age) * 0.9;
-      ctx.fillStyle = '#ff2d2d';
-      ctx.beginPath();
-      ctx.arc(sx, sy, isHead ? 6 : 4 - age * 2, 0, Math.PI * 2);
-      ctx.fill();
-      if (isHead) {
-        ctx.globalAlpha = 0.95;
-        ctx.fillStyle = '#ffffff';
-        ctx.beginPath();
-        ctx.arc(sx, sy, 2.2, 0, Math.PI * 2);
-        ctx.fill();
+  drawLaser(ctx);
+}
+
+/** Росчерки исчезающего маркера: рисуются маркером, после отрыва гаснут. */
+function drawFadeStrokes(ctx: CanvasRenderingContext2D): void {
+  const now = performance.now();
+  state.fadeStrokes = state.fadeStrokes.filter(f => f.endT === null || now - f.endT < FADE_MS);
+  for (const f of state.fadeStrokes) {
+    const k = f.endT === null ? 1 : 1 - (now - f.endT) / FADE_MS;
+    ctx.globalAlpha = k * k; // к концу гаснет быстрее
+    ctx.fillStyle = hexA(f.color, HIGHLIGHTER_ALPHA); // полупрозрачный, как маркер
+    ctx.fill(ribbonPath(f.pts, f.width));
+  }
+  ctx.globalAlpha = 1;
+  if (state.fadeStrokes.some(f => f.endT !== null)) requestRender();
+}
+
+// Подсветка контура: силуэт элементов «раздувается» сдвинутыми копиями,
+// затем сам силуэт вырезается — остаётся кольцо по форме объекта.
+const flashShape = document.createElement('canvas');
+const flashRing = document.createElement('canvas');
+
+function flashAlpha(age: number): number {
+  if (age < FLASH_IN) return age / FLASH_IN;
+  if (age > FLASH_MS - FLASH_OUT) return Math.max(0, (FLASH_MS - age) / FLASH_OUT);
+  return 1;
+}
+
+function drawFlashes(ctx: CanvasRenderingContext2D, cam: Camera): void {
+  const now = performance.now();
+  state.flashes = state.flashes.filter(f => now - f.t < FLASH_MS);
+  if (state.flashes.length === 0) return;
+  const W = Math.round(cssW * dpr), H = Math.round(cssH * dpr);
+  for (const c of [flashShape, flashRing]) {
+    if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
+  }
+  const sc = flashShape.getContext('2d')!;
+  const rc = flashRing.getContext('2d')!;
+  const vx1 = cam.x + cssW / cam.zoom, vy1 = cam.y + cssH / cam.zoom;
+  const r = FLASH_R * dpr;
+  const pad = r + 2;
+  for (const f of state.flashes) {
+    const ids = new Set(f.ids);
+    const els = state.board.elements.filter(el => ids.has(el.id) && el.id !== state.hideElId);
+    if (els.length === 0) continue;
+    // работаем только в габарите подсвечиваемого — в пикселях канваса
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const el of els) {
+      const a = cacheOf(el).aabb;
+      x0 = Math.min(x0, a.x0); y0 = Math.min(y0, a.y0);
+      x1 = Math.max(x1, a.x1); y1 = Math.max(y1, a.y1);
+    }
+    const bx = Math.max(0, Math.floor((x0 - cam.x) * cam.zoom * dpr - pad));
+    const by = Math.max(0, Math.floor((y0 - cam.y) * cam.zoom * dpr - pad));
+    const bw = Math.min(W, Math.ceil((x1 - cam.x) * cam.zoom * dpr + pad)) - bx;
+    const bh = Math.min(H, Math.ceil((y1 - cam.y) * cam.zoom * dpr + pad)) - by;
+    if (bw <= 0 || bh <= 0) continue;
+
+    sc.setTransform(1, 0, 0, 1, 0, 0);
+    sc.globalCompositeOperation = 'source-over';
+    sc.clearRect(bx, by, bw, bh);
+    const zx = dpr * cam.zoom;
+    sc.setTransform(zx, 0, 0, zx, -cam.x * zx, -cam.y * zx);
+    for (const el of els) drawElement(sc, el, cam.x, cam.y, vx1, vy1);
+    sc.setTransform(1, 0, 0, 1, 0, 0);
+    // полупрозрачное (маркер, сглаживание) уплотняем, затем красим силуэт
+    sc.drawImage(flashShape, bx, by, bw, bh, bx, by, bw, bh);
+    sc.drawImage(flashShape, bx, by, bw, bh, bx, by, bw, bh);
+    sc.globalCompositeOperation = 'source-in';
+    sc.fillStyle = FLASH_COLOR;
+    sc.fillRect(bx, by, bw, bh);
+    sc.globalCompositeOperation = 'source-over';
+
+    rc.setTransform(1, 0, 0, 1, 0, 0);
+    rc.globalCompositeOperation = 'source-over';
+    rc.clearRect(bx, by, bw, bh);
+    for (const rr of [r, r * 0.5]) {
+      for (let i = 0; i < 16; i++) {
+        const a = (i / 16) * Math.PI * 2;
+        rc.drawImage(flashShape, bx, by, bw, bh, bx + Math.cos(a) * rr, by + Math.sin(a) * rr, bw, bh);
       }
     }
-    ctx.globalAlpha = 1;
-    if (state.laserPts.length > 0) requestRender(); // гоним кадры, пока след гаснет
+    rc.globalCompositeOperation = 'destination-out';
+    rc.drawImage(flashShape, bx, by, bw, bh, bx, by, bw, bh);
+    rc.globalCompositeOperation = 'source-over';
+
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalAlpha = flashAlpha(now - f.t);
+    ctx.shadowColor = FLASH_COLOR;
+    ctx.shadowBlur = 10 * dpr;
+    ctx.drawImage(flashRing, bx, by, bw, bh, bx, by, bw, bh);
+    ctx.restore();
   }
+  requestRender(); // гоним кадры до конца подсветки
+}
+
+/** Сужающаяся лента по точкам экрана: hw — полуширина в каждой точке. */
+function taperPath(xs: number[], ys: number[], hw: number[]): Path2D {
+  const path = new Path2D();
+  const n = xs.length;
+  const nx: number[] = [], ny: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const a = Math.max(0, i - 1), b = Math.min(n - 1, i + 1);
+    const dx = xs[b] - xs[a], dy = ys[b] - ys[a];
+    const len = Math.hypot(dx, dy) || 1;
+    nx.push(-dy / len); ny.push(dx / len);
+  }
+  path.moveTo(xs[0] + nx[0] * hw[0], ys[0] + ny[0] * hw[0]);
+  for (let i = 1; i < n; i++) path.lineTo(xs[i] + nx[i] * hw[i], ys[i] + ny[i] * hw[i]);
+  // скруглённая голова в последней точке
+  const th = Math.atan2(ny[n - 1], nx[n - 1]);
+  path.arc(xs[n - 1], ys[n - 1], hw[n - 1], th, th - Math.PI, true);
+  for (let i = n - 2; i >= 0; i--) path.lineTo(xs[i] - nx[i] * hw[i], ys[i] - ny[i] * hw[i]);
+  path.closePath();
+  return path;
+}
+
+/** Лазерная указка: светящийся след, который сужается и гаснет к хвосту. */
+function drawLaser(ctx: CanvasRenderingContext2D): void {
+  const now = performance.now();
+  const alive = state.laserPts.filter(p => now - p.t < LASER_TTL);
+  if (alive.length !== state.laserPts.length) state.laserPts = alive;
+  const hover = state.tool === 'laser' ? state.hover : null;
+  if (alive.length === 0 && !hover) return;
+  // свечение — широкий полупрозрачный ореол, а не shadowBlur: размытие
+  // считается по габариту пути и на длинном следе стоит слишком дорого
+  if (alive.length > 1) {
+    const xs: number[] = [], ys: number[] = [], k: number[] = [];
+    for (const p of alive) {
+      xs.push(p.x);
+      ys.push(p.y);
+      k.push(Math.pow(1 - (now - p.t) / LASER_TTL, 0.7));
+    }
+    // хвост дотягиваем до курсора, чтобы голова не отставала
+    if (hover) { xs.push(hover.x); ys.push(hover.y); k.push(1); }
+    ctx.fillStyle = hexA(LASER_COLOR, 0.22);
+    ctx.fill(taperPath(xs, ys, k.map(v => v * LASER_R * 2.2)));
+    ctx.fillStyle = LASER_COLOR;
+    ctx.fill(taperPath(xs, ys, k.map(v => v * LASER_R)));
+    ctx.fillStyle = '#ffe3e3';
+    ctx.fill(taperPath(xs, ys, k.map(v => v * LASER_R * 0.38)));
+  }
+  const head = hover ?? alive[alive.length - 1];
+  if (head) {
+    ctx.fillStyle = hexA(LASER_COLOR, 0.25);
+    ctx.beginPath();
+    ctx.arc(head.x, head.y, LASER_R * 2.4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = LASER_COLOR;
+    ctx.beginPath();
+    ctx.arc(head.x, head.y, LASER_R + 1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath();
+    ctx.arc(head.x, head.y, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  if (alive.length > 0) requestRender(); // гоним кадры, пока след гаснет
 }
 
 export const eraseRadius = ERASE_R;

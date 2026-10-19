@@ -1,4 +1,4 @@
-import type { BoardSettings, Element, GridMode, Page, Project, ProjectMeta, Pt, SolidKind, ToolId } from './types';
+import type { BoardSettings, Element, FadeStroke, Flash, GridMode, LaserPt, Page, Project, ProjectMeta, Pt, SolidKind, ToolId } from './types';
 import { hasBaseSides, SIDES_MAX, SIDES_MIN, solidSides } from './solid';
 
 export interface LiveStroke {
@@ -60,8 +60,12 @@ export interface AppState {
   marquee: { x0: number; y0: number; x1: number; y1: number } | null;
   /** Позиция курсора в экранных координатах (для ластика). */
   hover: { x: number; y: number } | null;
-  /** След лазерной указки (координаты сцены + метка времени). */
-  laserPts: { x: number; y: number; t: number }[];
+  /** След лазерной указки (экранные координаты + метка времени). */
+  laserPts: LaserPt[];
+  /** Росчерки исчезающего маркера (координаты сцены). */
+  fadeStrokes: FadeStroke[];
+  /** Активные подсветки контуров объектов. */
+  flashes: Flash[];
   /** Есть несохранённые изменения содержимого доски. */
   dirty: boolean;
 }
@@ -101,6 +105,8 @@ export const state: AppState = {
   marquee: null,
   hover: null,
   laserPts: [],
+  fadeStrokes: [],
+  flashes: [],
   dirty: false,
 };
 
