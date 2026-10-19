@@ -513,17 +513,41 @@ export function initController(canvas: HTMLCanvasElement): void {
     if (hit && (hit.type === 'text' || hit.type === 'note')) beginTextEdit({ el: hit });
   }
 
+  /** До какого момента (e.timeStamp) поток wheel-событий считается жестом тачпада. */
+  let touchpadUntil = 0;
+
+  /**
+   * Тачпад или колёсико мыши. Колёсико шлёт шаги, кратные 120 в wheelDeltaY
+   * (в Firefox — построчный deltaMode), тачпад — мелкие дробные дельты и deltaX.
+   * Решение «залипает» на весь жест, включая инерцию: отдельные события
+   * тачпада случайно бывают похожи на шаг колёсика.
+   */
+  function isTouchpad(e: WheelEvent): boolean {
+    const wheelDeltaY = (e as WheelEvent & { wheelDeltaY?: number }).wheelDeltaY;
+    const looksTouchpad = e.deltaMode === 0 && (
+      e.deltaX !== 0 ||
+      (wheelDeltaY !== undefined ? wheelDeltaY % 120 !== 0 : !Number.isInteger(e.deltaY))
+    );
+    if (looksTouchpad) touchpadUntil = e.timeStamp + 400;
+    return looksTouchpad || e.timeStamp < touchpadUntil;
+  }
+
   function onWheel(e: WheelEvent): void {
     e.preventDefault();
     const lp = localPos(e);
     const k = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 100 : 1;
-    if (e.ctrlKey) {
-      // pinch жест точпада приходит как ctrl+wheel
+    // настройка колёсика касается только мыши: тачпад всегда прокручивает
+    const zoomMode = state.settings.wheelMode === 'zoom' && !isTouchpad(e);
+    // pinch жест точпада приходит как ctrl+wheel — это всегда масштаб;
+    // в режиме «как в Figma» Ctrl+Shift прокручивает по вертикали
+    const panVertical = zoomMode && e.ctrlKey && e.shiftKey;
+    const zoom = !panVertical && (e.ctrlKey || (zoomMode && !e.shiftKey && e.deltaY !== 0));
+    if (zoom) {
       zoomAtScreen(lp.x, lp.y, Math.exp(-e.deltaY * k * 0.0022));
     } else {
       let dx = e.deltaX * k;
       let dy = e.deltaY * k;
-      if (e.shiftKey && dx === 0) { dx = dy; dy = 0; }
+      if (e.shiftKey && !panVertical && dx === 0) { dx = dy; dy = 0; }
       state.camera = {
         ...state.camera,
         x: state.camera.x + dx / state.camera.zoom,

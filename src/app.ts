@@ -1,4 +1,4 @@
-import type { Element, GridMode, ImageEl, NoteEl, Page, Project, TextEl, ToolId, ToolbarPos } from './types';
+import type { Element, GridMode, ImageEl, NoteEl, Page, Project, TextEl, ToolId, ToolbarPos, WheelMode } from './types';
 import {
   state, update, onChange, undo, redo, canUndo, canRedo, setTool, setGrid, setStyleColor,
   setStyleWidth, setNoteColor, addElement, replaceElements, pushHistory, uid,
@@ -127,6 +127,7 @@ function restoreSettings(): void {
         toolbarPos: v.toolbarPos as ToolbarPos,
         coordLabels: typeof v.coordLabels === 'boolean' ? v.coordLabels : true,
         snapToGrid: typeof v.snapToGrid === 'boolean' ? v.snapToGrid : false,
+        wheelMode: v.wheelMode === 'zoom' ? 'zoom' : 'scroll',
       };
     }
   } catch { /* дефолт */ }
@@ -822,6 +823,29 @@ function openSettings(): void {
   span3.textContent = 'Привязка к сетке';
   lbl3.append(cb3, span3);
   pop.appendChild(lbl3);
+  const lbl4 = document.createElement('div');
+  lbl4.className = 'ctx-label';
+  lbl4.textContent = 'Колёсико мыши';
+  pop.appendChild(lbl4);
+  const wheelRow = document.createElement('div');
+  wheelRow.className = 'ctx-toolbar-pos';
+  const wheelModes: { mode: WheelMode; name: string; hint: string }[] = [
+    { mode: 'scroll', name: 'Прокрутка', hint: 'Колёсико прокручивает, Shift — по горизонтали, Ctrl — масштаб' },
+    { mode: 'zoom', name: 'Масштаб', hint: 'Колёсико масштабирует, Shift — прокрутка по горизонтали, Ctrl+Shift — по вертикали. Тачпад всегда прокручивает' },
+  ];
+  for (const { mode, name, hint } of wheelModes) {
+    const b = document.createElement('button');
+    b.textContent = name;
+    b.title = hint;
+    b.className = state.settings.wheelMode === mode ? 'active' : '';
+    b.addEventListener('click', () => {
+      setSettings({ wheelMode: mode });
+      persistSettings();
+      openSettings();
+    });
+    wheelRow.appendChild(b);
+  }
+  pop.appendChild(wheelRow);
   const btn = document.getElementById('btn-settings')!;
   const br = btn.getBoundingClientRect();
   pop.style.left = `${Math.max(8, br.right - 260)}px`;
