@@ -586,6 +586,7 @@ function updateQuickMenu(): void {
   // цвет
   const cBtn = document.createElement('button');
   cBtn.className = 'qm-btn qm-color';
+  cBtn.dataset.ctxToggle = '';
   cBtn.title = 'Цвет';
   const dot = document.createElement('i');
   dot.style.background = state.style.color;
@@ -601,6 +602,7 @@ function updateQuickMenu(): void {
   if (inkEls.length > 0) {
     const wBtn = document.createElement('button');
     wBtn.className = 'qm-btn';
+    wBtn.dataset.ctxToggle = '';
     wBtn.title = 'Толщина';
     const bar = document.createElement('i');
     bar.className = 'qm-width-bar';
@@ -1424,6 +1426,7 @@ function buildToolbar(): void {
     if (t.id === 'rect') {
       // группа «Фигуры»: клик открывает панель выбора фигуры
       b.id = 'btn-shapes';
+      b.dataset.ctxToggle = '';
       b.classList.add('tool-shapes');
       b.title = 'Фигуры';
       b.addEventListener('click', () => {
@@ -1446,6 +1449,7 @@ function buildToolbar(): void {
   const cBtn = document.createElement('button');
   cBtn.className = 'tool style-btn';
   cBtn.id = 'btn-style-color';
+  cBtn.dataset.ctxToggle = '';
   cBtn.title = 'Цвет';
   cBtn.innerHTML = '<i class="color-dot"></i>';
   cBtn.addEventListener('click', () => {
@@ -1455,6 +1459,7 @@ function buildToolbar(): void {
   const wBtn = document.createElement('button');
   wBtn.className = 'tool style-btn';
   wBtn.id = 'btn-style-width';
+  wBtn.dataset.ctxToggle = '';
   wBtn.title = 'Толщина';
   wBtn.innerHTML = '<i class="width-bar"></i>';
   wBtn.addEventListener('click', () => {
@@ -1528,6 +1533,8 @@ function wireTopbar(): void {
     const qm = quickMenuEl();
     if (!qm.hidden && !qm.contains(e.target as Node)) { /* меню остаётся, клик по холсту обрабатывает контроллер */ }
     const p = ctxPanelEl();
+    // кнопки-переключатели панели сами закрывают её повторным кликом
+    if ((e.target as HTMLElement).closest('[data-ctx-toggle]')) return;
     if (!p.hidden && !p.contains(e.target as Node)) closeCtxPanel();
   }, { capture: true });
   window.addEventListener('keydown', e => {
