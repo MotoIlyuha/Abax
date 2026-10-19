@@ -747,7 +747,7 @@ function openSettings(): void {
   wheelRow.className = 'ctx-toolbar-pos';
   const wheelModes: { mode: WheelMode; name: string; hint: string }[] = [
     { mode: 'scroll', name: 'Прокрутка', hint: 'Колёсико прокручивает, Shift — по горизонтали, Ctrl — масштаб' },
-    { mode: 'zoom', name: 'Масштаб', hint: 'Колёсико масштабирует, Shift — прокрутка по горизонтали, Ctrl+Shift — по вертикали' },
+    { mode: 'zoom', name: 'Масштаб', hint: 'Колёсико масштабирует, Shift — прокрутка по горизонтали, Ctrl+Shift — по вертикали. Тачпад всегда прокручивает' },
   ];
   for (const { mode, name, hint } of wheelModes) {
     const b = document.createElement('button');

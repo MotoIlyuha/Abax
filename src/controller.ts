@@ -513,11 +513,31 @@ export function initController(canvas: HTMLCanvasElement): void {
     if (hit && (hit.type === 'text' || hit.type === 'note')) beginTextEdit({ el: hit });
   }
 
+  /** До какого момента (e.timeStamp) поток wheel-событий считается жестом тачпада. */
+  let touchpadUntil = 0;
+
+  /**
+   * Тачпад или колёсико мыши. Колёсико шлёт шаги, кратные 120 в wheelDeltaY
+   * (в Firefox — построчный deltaMode), тачпад — мелкие дробные дельты и deltaX.
+   * Решение «залипает» на весь жест, включая инерцию: отдельные события
+   * тачпада случайно бывают похожи на шаг колёсика.
+   */
+  function isTouchpad(e: WheelEvent): boolean {
+    const wheelDeltaY = (e as WheelEvent & { wheelDeltaY?: number }).wheelDeltaY;
+    const looksTouchpad = e.deltaMode === 0 && (
+      e.deltaX !== 0 ||
+      (wheelDeltaY !== undefined ? wheelDeltaY % 120 !== 0 : !Number.isInteger(e.deltaY))
+    );
+    if (looksTouchpad) touchpadUntil = e.timeStamp + 400;
+    return looksTouchpad || e.timeStamp < touchpadUntil;
+  }
+
   function onWheel(e: WheelEvent): void {
     e.preventDefault();
     const lp = localPos(e);
     const k = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 100 : 1;
-    const zoomMode = state.settings.wheelMode === 'zoom';
+    // настройка колёсика касается только мыши: тачпад всегда прокручивает
+    const zoomMode = state.settings.wheelMode === 'zoom' && !isTouchpad(e);
     // pinch жест точпада приходит как ctrl+wheel — это всегда масштаб;
     // в режиме «как в Figma» Ctrl+Shift прокручивает по вертикали
     const panVertical = zoomMode && e.ctrlKey && e.shiftKey;
