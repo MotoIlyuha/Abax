@@ -1,4 +1,5 @@
 import type { Element, Handle, HandlePos, PolyEl, Pt, ShapeEl, StrokeEl, TextEl } from './types';
+import { applySolidParam, solidGeometry, solidHandles } from './solid';
 
 export interface AABB { x0: number; y0: number; x1: number; y1: number }
 
@@ -109,6 +110,15 @@ export function elementAABB(el: Element): AABB {
       }
       return { x0: el.x, y0: el.y, x1: el.x + el.w, y1: el.y + el.h };
     }
+    case 'solid': {
+      let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+      for (const p of solidGeometry(el).hull) {
+        x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x);
+        y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y);
+      }
+      const r = el.width / 2 + 1;
+      return { x0: x0 - r, y0: y0 - r, x1: x1 + r, y1: y1 + r };
+    }
   }
 }
 
@@ -189,10 +199,21 @@ export function hitTest(el: Element, x: number, y: number, tol: number): boolean
       }
       return px >= el.x - tol && px <= el.x + el.w + tol && py >= el.y - tol && py <= el.y + el.h + tol;
     }
+    case 'solid': {
+      // вся проекция тела: удобнее хватать и перемещать
+      const hull = solidGeometry(el).hull;
+      if (pointInPoly(x, y, hull)) return true;
+      const t = tol + el.width / 2;
+      for (let i = 0; i < hull.length; i++) {
+        const a = hull[i], b = hull[(i + 1) % hull.length];
+        if (distToSeg(x, y, a.x, a.y, b.x, b.y) <= t) return true;
+      }
+      return false;
+    }
   }
 }
 /** Луч с чётным числом пересечений = внутри (для замкнутого контура). */
-export function pointInPoly(x: number, y: number, pts: Pt[]): boolean {
+export function pointInPoly(x: number, y: number, pts: { x: number; y: number }[]): boolean {
   let inside = false;
   for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
     const a = pts[i], b = pts[j];
@@ -282,6 +303,8 @@ export function elementHandles(el: Element, zoom: number): HandlePos[] {
       out.push({ h: { kind: 'rotate' }, x: cx + lx * cos - ly * sin, y: cy + lx * sin + ly * cos });
       return out;
     }
+    case 'solid':
+      return solidHandles(el);
     default:
       return [];
   }
@@ -434,6 +457,7 @@ export function applyHandle(el: Element, h: Handle, pt: Pt, mods?: ResizeMods, r
     applyResizeMods(box, h, mods, el.w, el.h, Math.min(MIN_NOTE_W, MIN_NOTE_H));
     return { ...el, x: ncx + box.left, y: ncy + box.top, w: box.right - box.left, h: box.bottom - box.top };
   }
+  if (el.type === 'solid' && h.kind === 'param') return applySolidParam(el, h.key, pt);
   if (el.type === 'poly' && h.kind === 'node') {
     const pts = el.pts.slice();
     pts[h.i] = { x: pt.x, y: pt.y, p: 0.5 };

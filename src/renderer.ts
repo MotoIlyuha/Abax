@@ -1,10 +1,11 @@
-import type { Camera, Element, GridMode, ImageEl, ShapeEl } from './types';
+import type { Camera, Element, GridMode, ImageEl, ShapeEl, SolidEl } from './types';
 import { foreignSelections } from './collab';
 import {
   elementAABB, elementHandles, wrapText, TEXT_FONT,
   NOTE_PAD, NOTE_FONT, NOTE_TEXT_COLOR,
 } from './geom';
 import { ribbonPath } from './stroke';
+import { fitSolid, solidGeometry, type SolidPrim } from './solid';
 import { state } from './state';
 
 // Кэш загруженных картинок (импортированные PDF-страницы).
@@ -246,6 +247,41 @@ function drawShapeEl(ctx: CanvasRenderingContext2D, el: ShapeEl): void {
   if (rot) ctx.restore();
 }
 
+function traceSolidPrims(ctx: CanvasRenderingContext2D, prims: SolidPrim[], hidden: boolean): void {
+  for (const p of prims) {
+    if (p.hidden !== hidden) continue;
+    if (p.k === 'seg') {
+      ctx.moveTo(p.x0, p.y0);
+      ctx.lineTo(p.x1, p.y1);
+    } else {
+      // без moveTo дуга соединилась бы линией с концом предыдущей
+      ctx.moveTo(p.cx + p.rx * Math.cos(p.a0), p.cy + p.ry * Math.sin(p.a0));
+      ctx.ellipse(p.cx, p.cy, Math.max(p.rx, 0.01), Math.max(p.ry, 0.01), 0, p.a0, p.a1);
+    }
+  }
+}
+
+/** Каркас тела: сначала невидимые линии пунктиром, поверх — видимые. */
+function drawSolidEl(ctx: CanvasRenderingContext2D, el: SolidEl): void {
+  const g = solidGeometry(el);
+  ctx.strokeStyle = el.color;
+  ctx.lineWidth = el.width;
+  ctx.lineJoin = 'round';
+  if (g.prims.some(p => p.hidden)) {
+    const dash = Math.max(5, el.width * 2.2);
+    ctx.lineCap = 'butt';
+    ctx.setLineDash([dash, dash * 0.7]);
+    ctx.beginPath();
+    traceSolidPrims(ctx, g.prims, true);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  traceSolidPrims(ctx, g.prims, false);
+  ctx.stroke();
+}
+
 function drawElement(
   ctx: CanvasRenderingContext2D, el: Element,
   vx0: number, vy0: number, vx1: number, vy1: number,
@@ -259,6 +295,9 @@ function drawElement(
       break;
     case 'shape':
       drawShapeEl(ctx, el);
+      break;
+    case 'solid':
+      drawSolidEl(ctx, el);
       break;
     case 'text': {
       ctx.font = TEXT_FONT(el.size, el.bold, el.italic);
@@ -488,6 +527,25 @@ function drawHandles(ctx: CanvasRenderingContext2D, cam: Camera): void {
   if (!el) return;
   const hs = elementHandles(el, cam.zoom);
   if (hs.length === 0) return;
+  // направляющие параметров (высота, радиус) — под ручками
+  ctx.strokeStyle = '#3273f5';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 3]);
+  ctx.beginPath();
+  for (const { x, y, from } of hs) {
+    if (!from) continue;
+    ctx.moveTo((from.x - cam.x) * cam.zoom, (from.y - cam.y) * cam.zoom);
+    ctx.lineTo((x - cam.x) * cam.zoom, (y - cam.y) * cam.zoom);
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+  for (const { from } of hs) {
+    if (!from) continue;
+    ctx.fillStyle = '#3273f5';
+    ctx.beginPath();
+    ctx.arc((from.x - cam.x) * cam.zoom, (from.y - cam.y) * cam.zoom, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+  }
   for (const { h, x, y } of hs) {
     const sx = (x - cam.x) * cam.zoom;
     const sy = (y - cam.y) * cam.zoom;
@@ -505,6 +563,17 @@ function drawHandles(ctx: CanvasRenderingContext2D, cam: Camera): void {
       ctx.beginPath();
       ctx.rect(sx - 3.5, sy - 3.5, 7, 7);
       ctx.fill();
+      ctx.stroke();
+      continue;
+    }
+    if (h.kind === 'param') {
+      // параметр тела — залитая точка, отличается от ручек размера и узлов
+      ctx.beginPath();
+      ctx.arc(sx, sy, 5.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#3273f5';
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
       ctx.stroke();
       continue;
     }
@@ -629,6 +698,10 @@ function draw(): void {
       x: ls.x0, y: ls.y0, w: ls.x1 - ls.x0, h: ls.y1 - ls.y0,
       color: ls.color, width: ls.width,
     });
+  }
+  if (state.liveSolid) {
+    const ls = state.liveSolid;
+    drawSolidEl(ctx, fitSolid(ls.solid, ls.x0, ls.y0, ls.x1, ls.y1, { id: '', color: ls.color, width: ls.width }));
   }
   if (state.livePoly) {
     const lp = state.livePoly;

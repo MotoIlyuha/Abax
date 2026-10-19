@@ -10,6 +10,7 @@ import {
 } from './geom';
 import { collabActive, noteCursor, readOnly } from './collab';
 import { eraseRadius } from './renderer';
+import { fitSolid, SOLID_CLICK_SIZE, solidKeepsAspect } from './solid';
 import { beginTextEdit, exportPng, fitContent, saveNow, toggleSidebar } from './app';
 
 const SELECT_TOL = 6; // px экрана
@@ -19,6 +20,8 @@ const CURSORS: Record<ToolId, string> = {
   select: 'default', pen: 'crosshair', highlighter: 'crosshair', eraser: 'none',
   pan: 'grab', text: 'text', note: 'crosshair', rect: 'crosshair',
   ellipse: 'crosshair', triangle: 'crosshair', line: 'crosshair', arrow: 'crosshair', poly: 'crosshair', laser: 'none',
+  cube: 'crosshair', box: 'crosshair', prism: 'crosshair', pyramid: 'crosshair', truncPyramid: 'crosshair',
+  cylinder: 'crosshair', cone: 'crosshair', truncCone: 'crosshair', sphere: 'crosshair',
 };
 const TOOL_BY_CODE: Record<string, ToolId> = {
   KeyV: 'select', KeyP: 'pen', KeyM: 'highlighter', KeyE: 'eraser', KeyH: 'pan',
@@ -34,6 +37,7 @@ type Action = { pid: number } & (
   | { kind: 'erase'; pre: Element[]; removed: Element[] }
   | { kind: 'move'; pre: Element[]; start: Pt; orig: Map<string, Element>; moved: boolean; deselectOnUp: boolean }
   | { kind: 'shape' }
+  | { kind: 'solid' }
   | { kind: 'handle'; el: Element; h: Handle; pre: Element[]; changed: boolean; rotBase?: { a0: number; rot0: number } }
   | { kind: 'marquee' }
   | { kind: 'pan'; sx: number; sy: number; cam: Camera }
@@ -122,6 +126,25 @@ export function initController(canvas: HTMLCanvasElement): void {
     addElement(el);
   }
 
+  function finishSolid(): void {
+    const ls = state.liveSolid;
+    state.liveSolid = null;
+    if (!ls) { update(); return; }
+    const z = state.camera.zoom;
+    let { x0, y0, x1, y1 } = ls;
+    if (Math.hypot(x1 - x0, y1 - y0) * z < 3) {
+      // клик без протягивания — тело стандартного размера с центром в точке клика
+      const [w, h] = SOLID_CLICK_SIZE[ls.solid];
+      x0 = ls.ax0 - w / (2 * z); x1 = ls.ax0 + w / (2 * z);
+      y0 = ls.ay0 - h / (2 * z); y1 = ls.ay0 + h / (2 * z);
+    }
+    const el = fitSolid(ls.solid, x0, y0, x1, y1, { id: uid(), color: ls.color, width: ls.width });
+    addElement(el);
+    // тело сразу выделено: его параметры правятся ручками
+    setTool('select');
+    setSelection([el.id]);
+  }
+
   function finishMarquee(): void {
     const m = state.marquee;
     state.marquee = null;
@@ -153,6 +176,7 @@ export function initController(canvas: HTMLCanvasElement): void {
         update();
         break;
       case 'shape': finishShape(); break;
+      case 'solid': finishSolid(); break;
       case 'move':
         state.liveEdit = false;
         if (a.moved) pushHistory(a.pre);
@@ -224,6 +248,20 @@ export function initController(canvas: HTMLCanvasElement): void {
       case 'arrow':
         state.liveShape = { shape: tool, ax0: s.x, ay0: s.y, x0: s.x, y0: s.y, x1: s.x, y1: s.y, color: state.style.color, width: state.style.width * 1.3 };
         action = { pid: e.pointerId, kind: 'shape' };
+        update();
+        break;
+      case 'cube':
+      case 'box':
+      case 'prism':
+      case 'pyramid':
+      case 'truncPyramid':
+      case 'cylinder':
+      case 'cone':
+      case 'truncCone':
+      case 'sphere':
+        // толщина без множителя: тело сразу выделяется и его толщина становится текущей
+        state.liveSolid = { solid: tool, ax0: s.x, ay0: s.y, x0: s.x, y0: s.y, x1: s.x, y1: s.y, color: state.style.color, width: state.style.width };
+        action = { pid: e.pointerId, kind: 'solid' };
         update();
         break;
       case 'select': {
@@ -387,14 +425,18 @@ export function initController(canvas: HTMLCanvasElement): void {
           eraseAt(s.x, s.y, a);
         }
         break;
-      case 'shape': {
+      case 'shape':
+      case 'solid': {
         const s = toScene(lp.x, lp.y);
-        const ls = state.liveShape;
+        const ls = a.kind === 'shape' ? state.liveShape : state.liveSolid;
         if (ls) {
-          // модификаторы как при resize: Alt — от центра, Shift/Ctrl — пропорции/45°
+          const isLine = 'shape' in ls && (ls.shape === 'line' || ls.shape === 'arrow');
+          // модификаторы как при resize: Alt — от центра, Shift/Ctrl — пропорции/45°;
+          // куб и шар всегда вписываются в квадрат
           let dx = s.x - ls.ax0, dy = s.y - ls.ay0;
-          if (e.shiftKey || e.ctrlKey) {
-            if (ls.shape !== 'line' && ls.shape !== 'arrow') {
+          const square = e.shiftKey || e.ctrlKey || ('solid' in ls && solidKeepsAspect(ls.solid));
+          if (square) {
+            if (!isLine) {
               const m = Math.max(Math.abs(dx), Math.abs(dy));
               const sgnX = Math.sign(dx) || 1, sgnY = Math.sign(dy) || 1;
               dx = sgnX * m;

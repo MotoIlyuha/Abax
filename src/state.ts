@@ -1,4 +1,5 @@
-import type { BoardSettings, Element, GridMode, Page, Project, ProjectMeta, Pt, ToolId } from './types';
+import type { BoardSettings, Element, GridMode, Page, Project, ProjectMeta, Pt, SolidKind, ToolId } from './types';
+import { hasBaseSides, SIDES_MAX, SIDES_MIN, solidSides } from './solid';
 
 export interface LiveStroke {
   tool: 'pen' | 'highlighter';
@@ -12,6 +13,15 @@ export interface LiveShape {
   /** Якорь — точка старта (не меняется модификаторами). */
   ax0: number; ay0: number;
   /** Текущие углы с учётом модификаторов. */
+  x0: number; y0: number; x1: number; y1: number;
+  color: string;
+  width: number;
+}
+
+/** Тело в процессе протягивания: прямоугольник, в который оно вписывается. */
+export interface LiveSolid {
+  solid: SolidKind;
+  ax0: number; ay0: number;
   x0: number; y0: number; x1: number; y1: number;
   color: string;
   width: number;
@@ -39,6 +49,7 @@ export interface AppState {
   selection: Set<string>;
   liveStroke: LiveStroke | null;
   liveShape: LiveShape | null;
+  liveSolid: LiveSolid | null;
   livePoly: { pts: Pt[]; cursor: Pt | null } | null;
   liveNote: LiveNote | null;
   /** id элемента, скрытого на время редактирования текста. */
@@ -82,6 +93,7 @@ export const state: AppState = {
   selection: new Set(),
   liveStroke: null,
   liveShape: null,
+  liveSolid: null,
   livePoly: null,
   liveNote: null,
   hideElId: null,
@@ -173,11 +185,11 @@ export function setSelection(ids: string[]): void {
 /** Тулбар отражает стиль выделенного: единый цвет/толщина подхватываются как текущие. */
 function syncStyleFromSelection(): void {
   const sel = state.board.elements.filter(e => state.selection.has(e.id));
-  const inked = sel.filter(e => e.type === 'stroke' || e.type === 'shape' || e.type === 'poly' || e.type === 'text');
+  const inked = sel.filter(e => e.type === 'stroke' || e.type === 'shape' || e.type === 'poly' || e.type === 'solid' || e.type === 'text');
   if (inked.length === 0) return;
   const colors = new Set(inked.map(e => e.color));
   if (colors.size === 1) state.style.color = inked[0].color;
-  const sized = sel.filter(e => e.type === 'stroke' || e.type === 'shape' || e.type === 'poly');
+  const sized = sel.filter(e => e.type === 'stroke' || e.type === 'shape' || e.type === 'poly' || e.type === 'solid');
   if (sized.length > 0) {
     const widths = new Set(sized.map(e => e.width));
     if (widths.size === 1) state.style.width = sized[0].width;
@@ -189,6 +201,7 @@ export function setTool(tool: ToolId): void {
   state.tool = tool;
   state.liveStroke = null;
   state.liveShape = null;
+  state.liveSolid = null;
   state.livePoly = null;
   state.liveEdit = false;
   update();
@@ -218,6 +231,17 @@ export function applyStyleToSelection(patch: { color?: string; width?: number; b
       ...(patch.width !== undefined ? { width: patch.width } : {}),
     };
   }));
+}
+
+/** Число сторон основания у выделенных призм и пирамид (запись в историю). */
+export function setSolidSides(n: number): void {
+  const sides = Math.min(SIDES_MAX, Math.max(SIDES_MIN, Math.round(n)));
+  const hit = state.board.elements.some(e =>
+    state.selection.has(e.id) && e.type === 'solid' && hasBaseSides(e.solid) && solidSides(e) !== sides);
+  if (!hit) return;
+  pushHistory(state.board.elements);
+  replaceElements(state.board.elements.map(el =>
+    state.selection.has(el.id) && el.type === 'solid' && hasBaseSides(el.solid) ? { ...el, n: sides } : el));
 }
 
 export function setStyleColor(color: string): void { state.style.color = color; update(); }
@@ -292,6 +316,7 @@ export function openProject(project: Project, pageId?: string, view: 'home' | 'b
   state.selection = new Set();
   state.liveStroke = null;
   state.liveShape = null;
+  state.liveSolid = null;
   state.livePoly = null;
   state.liveNote = null;
   state.liveEdit = false;
@@ -316,6 +341,7 @@ export function switchPage(pageId: string): void {
   state.selection = new Set();
   state.liveStroke = null;
   state.liveShape = null;
+  state.liveSolid = null;
   state.livePoly = null;
   state.liveNote = null;
   state.liveEdit = false;

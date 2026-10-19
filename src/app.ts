@@ -4,10 +4,11 @@ import {
   setStyleWidth, setNoteColor, addElement, replaceElements, pushHistory, uid,
   applyStyleToSelection, setSettings, setView, switchPage, addPage, deletePage, renamePage, setSelection,
   openProject, blankProject, projectMeta, groupSelected, ungroupSelected,
-  bringForward, sendBackward, deleteSelected,
+  bringForward, sendBackward, deleteSelected, setSolidSides,
 } from './state';
 import { storage } from './storage';
 import { renderScene, contentBBox } from './renderer';
+import { hasBaseSides, SIDES_MAX, SIDES_MIN, solidSides } from './solid';
 import { elementAABB, NOTE_W, NOTE_H, NOTE_PAD, NOTE_FONT, NOTE_TEXT_COLOR, TEXT_SIZE } from './geom';
 import * as pdfjsLib from 'pdfjs-dist';
 // ?worker&inline: воркер инлайнится в бандл и работает из file:// (Electron)
@@ -52,6 +53,7 @@ const TOOLS: { id: ToolId; code: string; title: string; icon: string }[] = [
   { id: 'text', code: 'T', title: 'Текст', icon: svg('<path d="M5 7V5h14v2"/><path d="M12 5v14"/><path d="M9 19h6"/>') },
   { id: 'note', code: 'N', title: 'Стикер', icon: svg('<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M8 9.5h8"/><path d="M8 13h5"/>') },
   { id: 'rect', code: 'R', title: 'Фигуры', icon: '' }, // место группы «Фигуры»
+  { id: 'cube', code: '', title: 'Стереометрия', icon: '' }, // место группы «Стереометрия»
   { id: 'pan', code: 'H', title: 'Панорама', icon: svg('<path d="M12 3v18M3 12h18"/><path d="M9.5 5.5L12 3l2.5 2.5M9.5 18.5L12 21l2.5-2.5M5.5 9.5L3 12l2.5 2.5M18.5 9.5L21 12l-2.5 2.5"/>') },
   { id: 'laser', code: 'I', title: 'Лазерная указка', icon: svg('<circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4"/>') },
 ];
@@ -65,8 +67,30 @@ const SHAPE_TOOLS: { id: ToolId; code: string; title: string; icon: string }[] =
   { id: 'arrow', code: 'A', title: 'Стрелка', icon: svg('<path d="M5 19L18 6"/><path d="M12 6h6v6"/>') },
   { id: 'poly', code: 'K', title: 'Ломаная / многоугольник', icon: svg('<path d="M4 18l5-10 6 7 5-9"/>') },
 ];
-/** Последняя выбранная фигура — её иконку показывает кнопка группы. */
-let lastShapeTool: ToolId = 'rect';
+/** Невидимые линии на иконках тел — пунктиром, как на холсте. */
+const hid = (d: string) => `<path d="${d}" stroke-dasharray="2.2 2" stroke-width="1.4"/>`;
+
+/** Инструменты группы «Стереометрия»: каркасные тела с пунктиром невидимых рёбер. */
+const SOLID_TOOLS: { id: ToolId; code: string; title: string; icon: string }[] = [
+  { id: 'cube', code: '', title: 'Куб', icon: svg('<path d="M4 9h11v11H4z"/><path d="M4 9l5-5h11l-5 5M20 4v11l-5 5"/>' + hid('M9 4v11h11M4 20l5-5')) },
+  { id: 'box', code: '', title: 'Параллелепипед', icon: svg('<path d="M2.5 11h14v9h-14z"/><path d="M2.5 11l5-5h14l-5 5M21.5 6v9l-5 5"/>' + hid('M7.5 6v9h14M2.5 20l5-5')) },
+  { id: 'prism', code: '', title: 'Призма', icon: svg('<path d="M6 4h13l-10.5 4z"/><path d="M6 4v13l2.5 4L19 17V4M8.5 8v13"/>' + hid('M6 17h13')) },
+  { id: 'pyramid', code: '', title: 'Пирамида', icon: svg('<path d="M3 20h12l5-5M3 20l8.5-17L15 20M11.5 3L20 15"/>' + hid('M20 15H8l-5 5M8 15l3.5-12')) },
+  { id: 'truncPyramid', code: '', title: 'Усечённая пирамида', icon: svg('<path d="M6 8h7l3-3H9z"/><path d="M2 20h13l6-5M2 20L6 8M15 20L13 8M21 15L16 5"/>' + hid('M21 15H8l-6 5M8 15L9 5')) },
+  { id: 'cylinder', code: '', title: 'Цилиндр', icon: svg('<ellipse cx="12" cy="5" rx="7" ry="2.5"/><path d="M5 5v14M19 5v14M5 19a7 2.5 0 0 0 14 0"/>' + hid('M5 19a7 2.5 0 0 1 14 0')) },
+  { id: 'cone', code: '', title: 'Конус', icon: svg('<path d="M4 19L12 3l8 16M4 19a8 2.8 0 0 0 16 0"/>' + hid('M4 19a8 2.8 0 0 1 16 0')) },
+  { id: 'truncCone', code: '', title: 'Усечённый конус', icon: svg('<ellipse cx="12" cy="6" rx="4" ry="1.5"/><path d="M8 6L4 19M16 6l4 13M4 19a8 2.8 0 0 0 16 0"/>' + hid('M4 19a8 2.8 0 0 1 16 0')) },
+  { id: 'sphere', code: '', title: 'Шар', icon: svg('<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12a8.5 3 0 0 0 17 0"/>' + hid('M3.5 12a8.5 3 0 0 1 17 0')) },
+];
+
+/** Группы инструментов с одной кнопкой в тулбаре и выбором во всплывающей панели. */
+type ToolGroupKind = 'shapes' | 'solids';
+const TOOL_GROUPS: Record<ToolGroupKind, { title: string; tools: typeof SHAPE_TOOLS }> = {
+  shapes: { title: 'Фигуры', tools: SHAPE_TOOLS },
+  solids: { title: 'Стереометрия', tools: SOLID_TOOLS },
+};
+/** Последний выбранный инструмент группы — его иконку показывает кнопка группы. */
+const lastGroupTool: Record<ToolGroupKind, ToolId> = { shapes: 'rect', solids: 'cube' };
 
 
 /** Палитра как в Miro: строки — семейства оттенков, столбцы — светлый / яркий / тёмный / нейтральный. */
@@ -293,7 +317,7 @@ export function closeEditor(commit: boolean): void {
 
 // ----- Контекстная панель (цвет и толщина / стикеры) -----
 
-type CtxKind = 'style' | 'note' | 'shapes';
+type CtxKind = 'style' | 'note' | ToolGroupKind;
 /** Откуда вызвана панель: с тулбара — встаёт сбоку по центру кнопки, из плавающего меню — под ним. */
 type CtxSource = 'toolbar' | 'quick';
 let ctxKind: CtxKind | null = null;
@@ -327,8 +351,8 @@ function openCtxPanel(kind: CtxKind, source: CtxSource): void {
   p.textContent = '';
   p.style.maxHeight = '';
   if (kind === 'style') buildStylePanel(p);
-  else if (kind === 'shapes') buildShapesPanel(p);
-  else buildNotePanel(p);
+  else if (kind === 'note') buildNotePanel(p);
+  else buildToolGroupPanel(p, kind);
   p.appendChild(buildCtxBar());
   positionCtxPanel();
   syncCtxButtons();
@@ -472,18 +496,20 @@ function positionCtxPanel(): void {
   p.style.top = `${top}px`;
 }
 
-function buildShapesPanel(p: HTMLElement): void {
+function buildToolGroupPanel(p: HTMLElement, kind: ToolGroupKind): void {
+  const group = TOOL_GROUPS[kind];
+  // панели групп оформлены одинаково (data-kind='shapes'), различаются набором кнопок
   p.dataset.kind = 'shapes';
   const title = document.createElement('div');
   title.className = 'ctx-title';
-  title.textContent = 'Фигуры';
+  title.textContent = group.title;
   p.appendChild(title);
   const grid = document.createElement('div');
   grid.className = 'ctx-shapes';
-  for (const t of SHAPE_TOOLS) {
+  for (const t of group.tools) {
     const b = document.createElement('button');
     b.className = 'tool' + (state.tool === t.id ? ' active' : '');
-    b.title = `${t.title} (${t.code})`;
+    b.title = t.code ? `${t.title} (${t.code})` : t.title;
     b.innerHTML = t.icon;
     b.dataset.shape = t.id;
     b.addEventListener('click', () => {
@@ -536,7 +562,7 @@ function renderCustomSwatches(): void {
 function styleNeedsWidth(): boolean {
   if (ctxSource === 'toolbar') return true;
   return state.board.elements.some(e =>
-    state.selection.has(e.id) && (e.type === 'stroke' || e.type === 'shape' || e.type === 'poly'));
+    state.selection.has(e.id) && (e.type === 'stroke' || e.type === 'shape' || e.type === 'poly' || e.type === 'solid'));
 }
 
 /** Единая панель в духе Miro: слайдер толщины сверху, ниже свои и все цвета. */
@@ -767,7 +793,7 @@ function updateQuickMenu(): void {
   qm.hidden = false;
   qm.textContent = '';
   // цвет и толщина — одна кнопка и одна панель; толщина — только для «линейных» элементов
-  const hasInk = selEls.some(e => e.type === 'stroke' || e.type === 'shape' || e.type === 'poly');
+  const hasInk = selEls.some(e => e.type === 'stroke' || e.type === 'shape' || e.type === 'poly' || e.type === 'solid');
   const sBtn = document.createElement('button');
   sBtn.className = 'qm-btn qm-style' + (ctxKind === 'style' && ctxSource === 'quick' ? ' active' : '');
   sBtn.dataset.ctx = 'style';
@@ -794,6 +820,30 @@ function updateQuickMenu(): void {
     iBtn.addEventListener('mousedown', e => e.preventDefault());
     iBtn.addEventListener('click', () => { applyStyleToSelection({ italic: !allItalic }); });
     qm.append(bBtn, iBtn);
+  }
+  // число сторон основания призмы/пирамиды
+  const sides = new Set<number>();
+  for (const e of selEls) if (e.type === 'solid' && hasBaseSides(e.solid)) sides.add(solidSides(e));
+  if (sides.size > 0) {
+    const cur = sides.size === 1 ? [...sides][0] : null;
+    const box = document.createElement('div');
+    box.className = 'qm-sides';
+    box.title = 'Число сторон основания';
+    const minus = document.createElement('button');
+    minus.className = 'qm-btn qm-step';
+    minus.textContent = '−';
+    minus.disabled = cur !== null && cur <= SIDES_MIN;
+    minus.addEventListener('click', () => setSolidSides((cur ?? SIDES_MIN + 1) - 1));
+    const val = document.createElement('span');
+    val.className = 'qm-sides-val';
+    val.textContent = cur === null ? 'n' : `n = ${cur}`;
+    const plus = document.createElement('button');
+    plus.className = 'qm-btn qm-step';
+    plus.textContent = '+';
+    plus.disabled = cur !== null && cur >= SIDES_MAX;
+    plus.addEventListener('click', () => setSolidSides((cur ?? SIDES_MAX - 1) + 1));
+    box.append(minus, val, plus);
+    qm.appendChild(box);
   }
   // слои
   if (state.board.elements.length > 1 && canChangeLayer()) {
@@ -1584,15 +1634,16 @@ function buildToolbar(): void {
   for (const t of TOOLS) {
     const b = document.createElement('button');
     b.className = 'tool';
-    if (t.id === 'rect') {
-      // группа «Фигуры»: клик открывает панель выбора фигуры по центру этой кнопки
-      b.id = 'btn-shapes';
-      b.dataset.ctx = 'shapes';
+    const groupKind: ToolGroupKind | null = t.id === 'rect' ? 'shapes' : t.id === 'cube' ? 'solids' : null;
+    if (groupKind) {
+      // группа инструментов: клик открывает панель выбора по центру этой кнопки
+      b.id = `btn-${groupKind}`;
+      b.dataset.ctx = groupKind;
       b.classList.add('tool-shapes');
-      b.title = 'Фигуры';
+      b.title = TOOL_GROUPS[groupKind].title;
       b.addEventListener('click', () => {
-        if (ctxKind === 'shapes') closeCtxPanel();
-        else openCtxPanel('shapes', 'toolbar');
+        if (ctxKind === groupKind) closeCtxPanel();
+        else openCtxPanel(groupKind, 'toolbar');
       });
     } else {
       b.dataset.tool = t.id;
@@ -1843,16 +1894,18 @@ function refresh(): void {
   for (const b of tb.querySelectorAll<HTMLButtonElement>('.tool[data-tool]')) {
     b.classList.toggle('active', b.dataset.tool === state.tool);
   }
-  const activeShape = SHAPE_TOOLS.find(t => t.id === state.tool);
-  if (activeShape) lastShapeTool = activeShape.id;
-  const shapesBtn = tb.querySelector<HTMLButtonElement>('#btn-shapes');
-  if (shapesBtn) {
-    shapesBtn.classList.toggle('active', !!activeShape);
-    if (shapesBtn.dataset.shape !== lastShapeTool) {
-      const cur = SHAPE_TOOLS.find(t => t.id === lastShapeTool)!;
-      shapesBtn.dataset.shape = cur.id;
-      shapesBtn.innerHTML = cur.icon;
-      shapesBtn.title = `Фигуры: ${cur.title}`;
+  for (const kind of Object.keys(TOOL_GROUPS) as ToolGroupKind[]) {
+    const group = TOOL_GROUPS[kind];
+    const active = group.tools.find(t => t.id === state.tool);
+    if (active) lastGroupTool[kind] = active.id;
+    const btn = tb.querySelector<HTMLButtonElement>(`#btn-${kind}`);
+    if (!btn) continue;
+    btn.classList.toggle('active', !!active);
+    if (btn.dataset.shape !== lastGroupTool[kind]) {
+      const cur = group.tools.find(t => t.id === lastGroupTool[kind])!;
+      btn.dataset.shape = cur.id;
+      btn.innerHTML = cur.icon;
+      btn.title = `${group.title}: ${cur.title}`;
     }
   }
   const styleInd = tb.querySelector<HTMLElement>('#btn-style .style-ind');

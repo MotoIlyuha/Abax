@@ -1,6 +1,12 @@
+/** Стереометрические тела (id инструмента совпадает с видом тела). */
+export type SolidKind =
+  | 'cube' | 'box' | 'prism' | 'pyramid' | 'truncPyramid'
+  | 'cylinder' | 'cone' | 'truncCone' | 'sphere';
+
 export type ToolId =
   | 'select' | 'pen' | 'highlighter' | 'eraser' | 'pan'
-  | 'text' | 'note' | 'rect' | 'ellipse' | 'triangle' | 'line' | 'arrow' | 'poly' | 'laser';
+  | 'text' | 'note' | 'rect' | 'ellipse' | 'triangle' | 'line' | 'arrow' | 'poly' | 'laser'
+  | SolidKind;
 
 /** Точка в координатах сцены; p — давление 0..1 (мышь даёт 0.5). */
 export interface Pt { x: number; y: number; p: number }
@@ -74,7 +80,36 @@ export interface ImageEl {
   groupId?: string;
 }
 
-export type Element = StrokeEl | ShapeEl | PolyEl | TextEl | NoteEl | ImageEl;
+/**
+ * Стереометрическое тело — каркасная модель: невидимые рёбра рисуются пунктиром.
+ * Многогранники — в кабинетной проекции (глубина под 45° с сокращением 0.5),
+ * тела вращения — с основаниями-эллипсами, как в школьных учебниках.
+ */
+export interface SolidEl {
+  id: string;
+  type: 'solid';
+  solid: SolidKind;
+  /**
+   * Якорь в сцене: у многогранников — передний левый нижний угол (3D-начало координат),
+   * у тел вращения — центр нижнего основания, у шара — центр.
+   */
+  x: number; y: number;
+  /** Ширина (у тел вращения — диаметр основания). */
+  w: number;
+  /** Глубина: у многогранников — истинная (рисуется с сокращением), у тел вращения — высота эллипса основания. */
+  d: number;
+  /** Высота тела. */
+  h: number;
+  /** Число сторон основания призмы/пирамиды. */
+  n?: number;
+  /** Отношение верхнего основания к нижнему (усечённые пирамида и конус), 0..1. */
+  t?: number;
+  color: string;
+  width: number;
+  groupId?: string;
+}
+
+export type Element = StrokeEl | ShapeEl | PolyEl | TextEl | NoteEl | ImageEl | SolidEl;
 
 /** Экран = (сцена - камера) * zoom. */
 export interface Camera { x: number; y: number; zoom: number }
@@ -115,9 +150,12 @@ export type Handle =
   | { kind: 'node'; i: number }
   | { kind: 'insert'; i: number }
   | { kind: 'resize'; dx: -1 | 0 | 1; dy: -1 | 0 | 1 }
-  | { kind: 'rotate' };
+  | { kind: 'rotate' }
+  /** Параметр тела: a — ребро куба (меняет w, d, h разом). */
+  | { kind: 'param'; key: 'w' | 'd' | 'h' | 't' | 'a' };
 
-export interface HandlePos { h: Handle; x: number; y: number }
+/** from — начало направляющей (высота, радиус), которую рисуем к ручке. */
+export interface HandlePos { h: Handle; x: number; y: number; from?: { x: number; y: number } }
 
 /** Позиция панели инструментов. */
 export type ToolbarPos = 'left' | 'right' | 'top' | 'bottom';

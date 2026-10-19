@@ -455,6 +455,12 @@ select {
 }
 .qm-btn:hover { background: #f0f2f5; }
 .qm-btn svg { width: 16px; height: 16px; }
+.qm-btn:disabled { opacity: 0.35; cursor: default; background: transparent; }
+
+/* число сторон основания призмы/пирамиды: − n = 4 + */
+.qm-sides { display: flex; align-items: center; }
+.qm-step { width: 24px; font-size: 17px; line-height: 1; }
+.qm-sides-val { min-width: 42px; text-align: center; font-size: 12.5px; font-variant-numeric: tabular-nums; color: #3b414b; user-select: none; }
 
 /* ----- Настройки (поповер) ----- */
 #settings-popover {
