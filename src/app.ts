@@ -300,6 +300,11 @@ let ctxKind: CtxKind | null = null;
 let ctxSource: CtxSource = 'toolbar';
 /** Высота панели при открытии: центрируемся по ней, чтобы раскрытие пикера росло вниз, а не прыгало. */
 let ctxBaseHeight = 0;
+/** Панель перетащена за ручку: стоит, где оставили, и не закрывается кликом мимо. */
+let ctxDetached = false;
+
+const GRIP_ICON = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>';
+const PIN_ICON = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M15.2 2.6a1 1 0 0 1 1.4 0l4.8 4.8a1 1 0 0 1 0 1.4l-.9.9a2 2 0 0 1-2.2.4l-2.6 2.6.3 3.5a1 1 0 0 1-.3.8l-1 1a1 1 0 0 1-1.4 0l-3.2-3.2-4.6 4.6a1 1 0 0 1-1.4-1.4l4.6-4.6-3.2-3.2a1 1 0 0 1 0-1.4l1-1a1 1 0 0 1 .8-.3l3.5.3 2.6-2.6a2 2 0 0 1 .4-2.2z"/></svg>';
 
 function ctxPanelEl(): HTMLElement {
   return document.getElementById('ctx-panel')!;
@@ -307,6 +312,7 @@ function ctxPanelEl(): HTMLElement {
 
 export function closeCtxPanel(): void {
   ctxKind = null;
+  setCtxDetached(false);
   ctxPanelEl().hidden = true;
   syncCtxButtons();
 }
@@ -316,14 +322,79 @@ function openCtxPanel(kind: CtxKind, source: CtxSource): void {
   ctxKind = kind;
   ctxSource = source;
   ctxBaseHeight = 0;
+  setCtxDetached(false);
   p.hidden = false;
   p.textContent = '';
   p.style.maxHeight = '';
   if (kind === 'style') buildStylePanel(p);
   else if (kind === 'shapes') buildShapesPanel(p);
   else buildNotePanel(p);
+  p.appendChild(buildCtxBar());
   positionCtxPanel();
   syncCtxButtons();
+}
+
+function setCtxDetached(v: boolean): void {
+  ctxDetached = v;
+  ctxPanelEl().classList.toggle('detached', v);
+}
+
+/** Правый верхний угол: ручка перетаскивания и pin, возвращающий панель к её кнопке-вызову. */
+function buildCtxBar(): HTMLElement {
+  const bar = document.createElement('div');
+  bar.className = 'ctx-bar';
+  const pin = document.createElement('button');
+  pin.className = 'ctx-pin';
+  pin.title = ctxSource === 'quick' ? 'Вернуть под меню выделения' : 'Вернуть к панели инструментов';
+  pin.innerHTML = PIN_ICON;
+  pin.addEventListener('click', () => {
+    setCtxDetached(false);
+    ctxBaseHeight = 0;
+    positionCtxPanel();
+  });
+  const grip = document.createElement('div');
+  grip.className = 'ctx-grip';
+  grip.title = 'Перетащить';
+  grip.innerHTML = GRIP_ICON;
+  grip.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    const p = ctxPanelEl();
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const left0 = p.offsetLeft;
+    const top0 = p.offsetTop;
+    let moved = false;
+    try { grip.setPointerCapture(e.pointerId); } catch { /* синтетический pointer */ }
+    const onMove = (ev: PointerEvent) => {
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      // мелкое дрожание при клике — ещё не перенос
+      if (!moved && Math.hypot(dx, dy) < 3) return;
+      moved = true;
+      if (!ctxDetached) setCtxDetached(true);
+      placeDetached(left0 + dx, top0 + dy);
+    };
+    const onUp = () => {
+      grip.removeEventListener('pointermove', onMove);
+      grip.removeEventListener('pointerup', onUp);
+      grip.removeEventListener('pointercancel', onUp);
+    };
+    grip.addEventListener('pointermove', onMove);
+    grip.addEventListener('pointerup', onUp);
+    grip.addEventListener('pointercancel', onUp);
+  });
+  bar.append(pin, grip);
+  return bar;
+}
+
+/** Ставит открепленную панель в точку, не выпуская её за пределы холста. */
+function placeDetached(left: number, top: number): void {
+  const p = ctxPanelEl();
+  const wrap = document.getElementById('canvas-wrap')!;
+  const margin = 8;
+  p.style.maxHeight = `${wrap.clientHeight - margin * 2}px`;
+  p.style.left = `${Math.max(margin, Math.min(left, wrap.clientWidth - p.offsetWidth - margin))}px`;
+  p.style.top = `${Math.max(margin, Math.min(top, wrap.clientHeight - p.offsetHeight - margin))}px`;
 }
 
 function toggleStylePanel(source: CtxSource): void {
@@ -347,6 +418,8 @@ function ctxAnchor(): HTMLElement | null {
 function positionCtxPanel(): void {
   if (!ctxKind) return;
   const p = ctxPanelEl();
+  // откреплённая панель живёт сама по себе: только держим её в пределах холста
+  if (ctxDetached) { placeDetached(p.offsetLeft, p.offsetTop); return; }
   const ar = ctxAnchor()?.getBoundingClientRect();
   if (!ar || ar.width === 0) { closeCtxPanel(); return; }
   const wr = document.getElementById('canvas-wrap')!.getBoundingClientRect();
@@ -412,9 +485,14 @@ function buildShapesPanel(p: HTMLElement): void {
     b.className = 'tool' + (state.tool === t.id ? ' active' : '');
     b.title = `${t.title} (${t.code})`;
     b.innerHTML = t.icon;
+    b.dataset.shape = t.id;
     b.addEventListener('click', () => {
       setTool(t.id);
-      closeCtxPanel();
+      // откреплённая панель работает как палитра фигур — остаётся открытой
+      if (!ctxDetached) { closeCtxPanel(); return; }
+      for (const x of grid.querySelectorAll<HTMLElement>('[data-shape]')) {
+        x.classList.toggle('active', x.dataset.shape === t.id);
+      }
     });
     grid.appendChild(b);
   }
@@ -1600,12 +1678,15 @@ function wireTopbar(): void {
   });
 
   // закрытие панелей по клику мимо / Esc
-  canvas.addEventListener('pointerdown', () => { closeCtxPanel(); closeSettings(); }, { capture: true });
+  canvas.addEventListener('pointerdown', () => {
+    if (!ctxDetached) closeCtxPanel();
+    closeSettings();
+  }, { capture: true });
   document.getElementById('canvas-wrap')!.addEventListener('pointerdown', e => {
     const t = e.target as HTMLElement;
     const p = ctxPanelEl();
-    // кнопки-вызовы сами переключают панель по click — здесь их не трогаем
-    if (!p.hidden && !p.contains(t) && !t.closest('[data-ctx]')) closeCtxPanel();
+    // кнопки-вызовы сами переключают панель по click; откреплённая панель кликом мимо не закрывается
+    if (!p.hidden && !ctxDetached && !p.contains(t) && !t.closest('[data-ctx]')) closeCtxPanel();
   }, { capture: true });
   window.addEventListener('resize', () => positionCtxPanel());
   window.addEventListener('keydown', e => {
