@@ -198,42 +198,92 @@ select {
 .tool:hover { background: #f0f2f5; }
 .tool.active { background: var(--accent-soft); color: var(--accent); }
 .tool svg { width: 19px; height: 19px; }
-.style-btn .color-dot {
-  display: block;
-  width: 16px;
-  height: 16px;
+/* индикатор «цвет + толщина»: кружок с точкой текущего цвета, размер точки — толщина */
+.style-ind {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
-  border: 2px solid #fff;
-  box-shadow: 0 0 0 1px var(--border);
+  background: #fff;
+  box-shadow: inset 0 0 0 1.5px #d3d8e0;
 }
-.style-btn .width-bar {
-  display: block;
-  width: 18px;
-  border-radius: 99px;
-  background: currentColor;
-}
+.style-ind b { display: block; flex: none; max-width: 70%; max-height: 70%; aspect-ratio: 1; border-radius: 50%; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12); }
+.qm-style .style-ind { width: 20px; height: 20px; }
+.tool.active .style-ind, .qm-btn.active .style-ind { box-shadow: inset 0 0 0 1.5px var(--accent); }
 
 /* ----- Контекстная панель ----- */
 #ctx-panel {
   position: absolute;
+  display: flex;
+  flex-direction: column;
+  width: 212px;
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 14px;
   box-shadow: var(--shadow);
-  padding: 10px;
+  padding: 14px 16px 16px;
   z-index: 9;
-  min-width: 180px;
 }
+.ctx-scroll {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  /* тонкий скроллбар живёт в правом поле панели и не сжимает сетку */
+  margin-right: -12px;
+  padding-right: 8px;
+  scrollbar-gutter: stable;
+}
+.ctx-scroll::-webkit-scrollbar { width: 4px; }
+.ctx-scroll::-webkit-scrollbar-thumb { background: #c9ced6; border-radius: 99px; }
+.ctx-scroll::-webkit-scrollbar-track { background: transparent; }
 .ctx-title { font-weight: 600; font-size: 12px; color: var(--muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.04em; }
-.ctx-swatches { display: flex; flex-wrap: wrap; gap: 7px; max-width: 180px; }
-.ctx-swatch {
-  width: 22px;
-  height: 22px;
-  border-radius: 7px;
-  border: 1px solid rgba(0, 0, 0, 0.08);
+.ctx-section { font-size: 13px; color: #3b414b; margin-bottom: 8px; }
+.ctx-scroll .ctx-section ~ .ctx-section { margin-top: 4px; }
+.ctx-swatches.custom { margin-bottom: 14px; }
+.ctx-add-color {
+  display: block;
+  border: none;
+  background: none;
+  padding: 0;
+  margin: -4px 0 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
   cursor: pointer;
 }
-.ctx-swatch.active { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ctx-add-color:hover { text-decoration: underline; }
+.ctx-swatches {
+  display: grid;
+  grid-template-columns: repeat(4, 34px);
+  justify-content: space-between;
+  row-gap: 12px;
+}
+.ctx-swatches[hidden] { display: none; }
+.ctx-swatch {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: none;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.14);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: box-shadow 0.12s;
+}
+.ctx-swatch:hover { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.14), 0 0 0 3px #e6e9ee; }
+.ctx-swatch.active::after {
+  content: '';
+  width: 18px;
+  height: 18px;
+  background: var(--check, #fff);
+  -webkit-mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'><path d='M5.5 12.5l4.2 4.2L18.5 7.8'/></svg>") center / contain no-repeat;
+  mask: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'><path d='M5.5 12.5l4.2 4.2L18.5 7.8'/></svg>") center / contain no-repeat;
+}
 .ctx-custom-btn {
   margin-top: 9px;
   width: 100%;
@@ -246,27 +296,9 @@ select {
   color: var(--fg);
 }
 .ctx-custom-btn:hover { border-color: var(--accent); color: var(--accent); }
-.ctx-widths { display: flex; flex-direction: column; gap: 3px; }
-.ctx-width {
-  height: 28px;
-  border: none;
-  background: transparent;
-  border-radius: 7px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-}
-.ctx-width:hover { background: #f0f2f5; }
-.ctx-width.active { background: var(--accent-soft); }
-.ctx-width i { display: block; border-radius: 99px; background: var(--fg); }
-.ctx-width.active i { background: var(--accent); }
-.ctx-slider { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
-.ctx-slider input[type="range"] { flex: 1; }
-.ctx-slider span { min-width: 30px; text-align: right; color: var(--muted); }
 
 /* ----- Кастомный HSV-пикер ----- */
-.ctx-picker { margin-top: 10px; }
+.ctx-picker { margin-bottom: 14px; }
 .picker-sv {
   position: relative;
   width: 100%;
@@ -307,6 +339,7 @@ select {
 .picker-hex { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
 .picker-hex input {
   flex: 1;
+  min-width: 0;
   font: inherit;
   font-family: ui-monospace, Consolas, monospace;
   padding: 4px 8px;
@@ -323,7 +356,7 @@ select {
 }
 
 /* ----- Слайдер толщины «капля» ----- */
-.ctx-drop-slider { position: relative; height: 44px; margin-top: 12px; }
+.ctx-drop-slider { position: relative; flex: none; height: 44px; margin: -6px 0 10px; }
 .qs-track {
   position: absolute;
   inset: 10px 6px;
@@ -376,8 +409,6 @@ select {
 }
 .qm-btn:hover { background: #f0f2f5; }
 .qm-btn svg { width: 16px; height: 16px; }
-.qm-color i { display: block; width: 14px; height: 14px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px var(--border); }
-.qm-width-bar { display: block; width: 16px; border-radius: 99px; background: currentColor; }
 
 /* ----- Настройки (поповер) ----- */
 #settings-popover {

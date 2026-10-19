@@ -60,9 +60,18 @@ const TOOLS: { id: ToolId; code: string; title: string; icon: string }[] = [
   { id: 'laser', code: 'I', title: 'Лазерная указка', icon: svg('<circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4"/>') },
 ];
 
-const PALETTE = ['#1f2329', '#e03131', '#1971c2', '#2f9e44', '#f08c00', '#9c36b5'];
+/** Палитра как в Miro: строки — семейства оттенков, столбцы — светлый / яркий / тёмный / нейтральный. */
+const PALETTE = [
+  '#fff6b6', '#ffdc4a', '#af7e04', '#ffffff',
+  '#f8d3af', '#fe9f4d', '#9b4a08', '#e7e7e7',
+  '#ffc6c6', '#ff6464', '#bd0a0a', '#b0b0b0',
+  '#adf0c7', '#2dc75c', '#067429', '#595959',
+  '#c6dcff', '#659df2', '#305bab', '#1f2329',
+  '#dedaff', '#8f7fee', '#6631d7', '#316f45',
+  '#d3f0a2', '#5b4100', '#e4f9c1', '#fddaff',
+];
 const NOTE_PASTELS = ['#ffe066', '#ffd6a5', '#ffd5d5', '#d3f9d8', '#a9def9', '#e4c1f9', '#fde4cf', '#d8f3dc'];
-const WIDTH_PRESETS = [1.5, 3, 4.5, 6, 9];
+const CUSTOM_MAX = 8;
 
 let canvas: HTMLCanvasElement;
 let saveTimer = 0;
@@ -78,16 +87,19 @@ const SETTINGS_KEY = 'doska.settings';
 function loadCustomColors(): string[] {
   try {
     const v = JSON.parse(localStorage.getItem(CUSTOM_COLORS_KEY) || '[]');
-    return Array.isArray(v) ? v.filter(c => typeof c === 'string').slice(0, 6) : [];
+    return Array.isArray(v) ? v.filter(c => typeof c === 'string').slice(0, CUSTOM_MAX) : [];
   } catch {
     return [];
   }
 }
 
+function saveCustomColors(list: string[]): void {
+  localStorage.setItem(CUSTOM_COLORS_KEY, JSON.stringify(list.slice(0, CUSTOM_MAX)));
+}
+
 function addCustomColor(c: string): void {
   if (PALETTE.includes(c)) return;
-  const list = [c, ...loadCustomColors().filter(x => x !== c)].slice(0, 6);
-  localStorage.setItem(CUSTOM_COLORS_KEY, JSON.stringify(list));
+  saveCustomColors([c, ...loadCustomColors().filter(x => x !== c)]);
 }
 
 function persistStyle(): void {
@@ -128,21 +140,29 @@ function persistSettings(): void {
 function chooseColor(c: string): void {
   if (state.selection.size > 0) applyStyleToSelection({ color: c });
   setStyleColor(c);
-  addCustomColor(c);
   persistStyle();
   // панель не пересобираем: живой HSV-пикер должен остаться на месте;
   // обновляем только активность свотчей
-  if (ctxKind === 'color') updateSwatchActive();
+  if (ctxKind === 'style') updateSwatchActive(c);
   refresh();
 }
 
-/** Подсвечивает текущий цвет в открытой панели цвета без её пересборки. */
-function updateSwatchActive(): void {
-  const grid = ctxPanelEl().querySelector('.ctx-swatches');
-  if (!grid) return;
-  for (const b of Array.from(grid.children)) {
-    const btn = b as HTMLButtonElement;
-    if (btn.dataset.c) btn.classList.toggle('active', btn.dataset.c === state.style.color);
+/** Цвет, который текущая сессия пикера держит первым в «Моих цветах». */
+let pickerHead: string | null = null;
+
+/** Цвет из пикера: правит один и тот же свотч, а не плодит новый на каждое движение. */
+function choosePickedColor(c: string): void {
+  const rest = loadCustomColors().filter(x => x !== c && x !== pickerHead);
+  pickerHead = PALETTE.includes(c) ? null : c;
+  saveCustomColors(pickerHead ? [c, ...rest] : rest);
+  renderCustomSwatches();
+  chooseColor(c);
+}
+
+/** Подсвечивает текущий цвет в открытой панели без её пересборки. */
+function updateSwatchActive(current: string): void {
+  for (const btn of ctxPanelEl().querySelectorAll<HTMLButtonElement>('.ctx-swatch[data-c]')) {
+    btn.classList.toggle('active', btn.dataset.c === current);
   }
 }
 
@@ -261,10 +281,15 @@ export function closeEditor(commit: boolean): void {
   }
 }
 
-// ----- Контекстная панель (цвета / толщина / стикеры) -----
+// ----- Контекстная панель (цвет и толщина / стикеры) -----
 
-type CtxKind = 'color' | 'width' | 'note';
+type CtxKind = 'style' | 'note';
+/** Откуда вызвана панель: с тулбара — встаёт сбоку по центру кнопки, из плавающего меню — под ним. */
+type CtxSource = 'toolbar' | 'quick';
 let ctxKind: CtxKind | null = null;
+let ctxSource: CtxSource = 'toolbar';
+/** Высота панели при открытии: центрируемся по ней, чтобы раскрытие пикера росло вниз, а не прыгало. */
+let ctxBaseHeight = 0;
 
 function ctxPanelEl(): HTMLElement {
   return document.getElementById('ctx-panel')!;
@@ -273,81 +298,174 @@ function ctxPanelEl(): HTMLElement {
 export function closeCtxPanel(): void {
   ctxKind = null;
   ctxPanelEl().hidden = true;
+  syncCtxButtons();
 }
 
-function openCtxPanel(kind: CtxKind): void {
+function openCtxPanel(kind: CtxKind, source: CtxSource): void {
   const p = ctxPanelEl();
   ctxKind = kind;
+  ctxSource = source;
+  ctxBaseHeight = 0;
   p.hidden = false;
   p.textContent = '';
-  if (kind === 'color') buildColorPanel(p);
-  else if (kind === 'width') buildWidthPanel(p);
+  p.style.maxHeight = '';
+  if (kind === 'style') buildStylePanel(p);
   else buildNotePanel(p);
   positionCtxPanel();
+  syncCtxButtons();
+}
+
+function toggleStylePanel(source: CtxSource): void {
+  if (ctxKind === 'style' && ctxSource === source) closeCtxPanel();
+  else openCtxPanel('style', source);
+}
+
+/** Кнопка-вызов подсвечена, пока её панель открыта. */
+function syncCtxButtons(): void {
+  document.getElementById('btn-style')?.classList.toggle('active', ctxKind === 'style' && ctxSource === 'toolbar');
+  quickMenuEl().querySelector('[data-ctx="style"]')?.classList.toggle('active', ctxKind === 'style' && ctxSource === 'quick');
+}
+
+/** Элемент, вызвавший панель (кнопка тулбара или плавающего меню). */
+function ctxAnchor(): HTMLElement | null {
+  const host = ctxSource === 'quick' ? quickMenuEl() : document.getElementById('toolbar')!;
+  if (host.hidden) return null;
+  return host.querySelector<HTMLElement>(`[data-ctx="${ctxKind}"]`);
 }
 
 function positionCtxPanel(): void {
   if (!ctxKind) return;
   const p = ctxPanelEl();
-  const toolbar = document.getElementById('toolbar')!;
-  const wrap = document.getElementById('canvas-wrap')!;
-  const tr = toolbar.getBoundingClientRect();
-  const wr = wrap.getBoundingClientRect();
-  const pr = p.getBoundingClientRect();
-  const pos = state.settings.toolbarPos;
-  let left: number;
+  const ar = ctxAnchor()?.getBoundingClientRect();
+  if (!ar || ar.width === 0) { closeCtxPanel(); return; }
+  const wr = document.getElementById('canvas-wrap')!.getBoundingClientRect();
+  const gap = 10;
+  const margin = 8;
+  // естественная высота без max-height: прокручиваемая часть целиком
+  const scroller = p.querySelector<HTMLElement>('.ctx-scroll');
+  const natural = scroller ? p.offsetHeight - scroller.clientHeight + scroller.scrollHeight : p.offsetHeight;
+  if (!ctxBaseHeight) ctxBaseHeight = natural;
+  const w = p.offsetWidth;
+  const ax = ar.left + ar.width / 2 - wr.left;
+  const ay = ar.top + ar.height / 2 - wr.top;
+  let left = ax - w / 2;
   let top: number;
-  if (pos === 'left') { left = tr.right - wr.left + 10; top = tr.top - wr.top; }
-  else if (pos === 'right') { left = tr.left - wr.left - pr.width - 10; top = tr.top - wr.top; }
-  else if (pos === 'top') { left = tr.left - wr.left; top = tr.bottom - wr.top + 10; }
-  else { left = tr.left - wr.left; top = tr.top - wr.top - pr.height - 10; }
-  left = Math.max(8, Math.min(left, wr.width - pr.width - 8));
-  top = Math.max(8, Math.min(top, wr.height - pr.height - 8));
+  let maxH: number;
+  if (ctxSource === 'quick') {
+    // как в Miro: сразу под плавающим меню, по центру кнопки; не влезает — над меню
+    const qr = quickMenuEl().getBoundingClientRect();
+    const below = wr.bottom - qr.bottom - gap - margin;
+    const above = qr.top - wr.top - gap - margin;
+    if (below >= Math.min(natural, 260) || below >= above) {
+      maxH = below;
+      top = qr.bottom - wr.top + gap;
+    } else {
+      maxH = above;
+      top = qr.top - wr.top - gap - Math.min(natural, above);
+    }
+  } else {
+    // центр панели — на уровне кнопки инструмента
+    const tr = document.getElementById('toolbar')!.getBoundingClientRect();
+    const pos = state.settings.toolbarPos;
+    if (pos === 'left' || pos === 'right') {
+      maxH = wr.height - margin * 2;
+      left = pos === 'left' ? tr.right - wr.left + gap : tr.left - wr.left - w - gap;
+      top = ay - Math.min(ctxBaseHeight, maxH) / 2;
+    } else if (pos === 'top') {
+      maxH = wr.bottom - tr.bottom - gap - margin;
+      top = tr.bottom - wr.top + gap;
+    } else {
+      maxH = tr.top - wr.top - gap - margin;
+      top = tr.top - wr.top - gap - Math.min(natural, maxH);
+    }
+  }
+  maxH = Math.max(120, maxH);
+  p.style.maxHeight = `${maxH}px`;
+  const h = Math.min(natural, maxH);
+  left = Math.max(margin, Math.min(left, wr.width - w - margin));
+  top = Math.max(margin, Math.min(top, wr.height - h - margin));
   p.style.left = `${left}px`;
   p.style.top = `${top}px`;
 }
 
-function buildColorPanel(p: HTMLElement): void {
-  p.dataset.kind = 'color';
-  const title = document.createElement('div');
-  title.className = 'ctx-title';
-  title.textContent = 'Цвет';
-  p.appendChild(title);
-  const grid = document.createElement('div');
-  grid.className = 'ctx-swatches';
-  const fillSwatches = () => {
-    grid.textContent = '';
-    for (const c of [...PALETTE, ...loadCustomColors()]) {
-      const b = document.createElement('button');
-      b.className = 'ctx-swatch' + (c === state.style.color ? ' active' : '');
-      b.dataset.c = c;
-      b.style.background = c;
-      b.title = c;
-      b.addEventListener('click', () => chooseColor(c));
-      grid.appendChild(b);
-    }
-  };
-  fillSwatches();
-  p.appendChild(grid);
-  const custom = document.createElement('button');
-  custom.className = 'ctx-custom-btn';
-  custom.textContent = 'Свой цвет…';
+function sectionHead(text: string): HTMLElement {
+  const d = document.createElement('div');
+  d.className = 'ctx-section';
+  d.textContent = text;
+  return d;
+}
+
+function isLightColor(hex: string): boolean {
+  const n = parseInt(hex.slice(1), 16);
+  return 0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255) > 165;
+}
+
+/** Круглый свотч в стиле Miro; у активного — галочка контрастного цвета. */
+function makeSwatch(c: string, active: boolean, onPick: (c: string) => void): HTMLButtonElement {
+  const b = document.createElement('button');
+  b.className = 'ctx-swatch' + (active ? ' active' : '');
+  b.dataset.c = c;
+  b.title = c;
+  b.style.background = c;
+  b.style.setProperty('--check', isLightColor(c) ? '#1f2329' : '#ffffff');
+  b.addEventListener('click', () => onPick(c));
+  return b;
+}
+
+function renderCustomSwatches(): void {
+  const grid = ctxPanelEl().querySelector<HTMLElement>('.ctx-swatches.custom');
+  if (!grid) return;
+  grid.textContent = '';
+  const list = loadCustomColors();
+  for (const c of list) grid.appendChild(makeSwatch(c, c === state.style.color, chooseColor));
+  grid.hidden = list.length === 0;
+}
+
+/** Толщина нужна с тулбара и для выделенных линий/фигур (у текста и стикеров её нет). */
+function styleNeedsWidth(): boolean {
+  if (ctxSource === 'toolbar') return true;
+  return state.board.elements.some(e =>
+    state.selection.has(e.id) && (e.type === 'stroke' || e.type === 'shape' || e.type === 'poly'));
+}
+
+/** Единая панель в духе Miro: слайдер толщины сверху, ниже свои и все цвета. */
+function buildStylePanel(p: HTMLElement): void {
+  p.dataset.kind = 'style';
+  // текущий цвет не из палитры (старая палитра, чужой элемент) — сразу в «Мои цвета»
+  addCustomColor(state.style.color);
+  if (styleNeedsWidth()) {
+    const sliderHost = document.createElement('div');
+    sliderHost.className = 'ctx-drop-slider';
+    sliderHost.title = 'Толщина';
+    buildDropSlider(sliderHost, state.style.width, v => chooseWidth(v));
+    p.appendChild(sliderHost);
+  }
+  const scroll = document.createElement('div');
+  scroll.className = 'ctx-scroll';
+  const add = document.createElement('button');
+  add.className = 'ctx-add-color';
+  add.textContent = '+ Добавить цвет';
+  // пикер стоит над свотчами: новый свотч не сдвигает его под курсором
   const pickerHost = document.createElement('div');
   pickerHost.className = 'ctx-picker';
   pickerHost.hidden = true;
-  custom.addEventListener('click', () => {
-    if (pickerHost.hidden) {
-      // текущий цвет (если не из палитры) сразу становится квадратиком
-      addCustomColor(state.style.color);
-      fillSwatches();
-      buildCustomColorPicker(pickerHost, state.style.color, c => chooseColor(c));
-      pickerHost.hidden = false;
-      positionCtxPanel();
-    } else {
-      pickerHost.hidden = true;
+  add.addEventListener('click', () => {
+    pickerHost.hidden = !pickerHost.hidden;
+    if (!pickerHost.hidden) {
+      pickerHead = null;
+      buildCustomColorPicker(pickerHost, state.style.color, choosePickedColor);
     }
+    add.textContent = pickerHost.hidden ? '+ Добавить цвет' : 'Готово';
+    positionCtxPanel();
   });
-  p.append(custom, pickerHost);
+  const custom = document.createElement('div');
+  custom.className = 'ctx-swatches custom';
+  const all = document.createElement('div');
+  all.className = 'ctx-swatches';
+  for (const c of PALETTE) all.appendChild(makeSwatch(c, c === state.style.color, chooseColor));
+  scroll.append(sectionHead('Мои цвета'), add, pickerHost, custom, sectionHead('Все цвета'), all);
+  p.appendChild(scroll);
+  renderCustomSwatches();
 }
 
 // ----- Кастомный HSV-пикер -----
@@ -477,51 +595,36 @@ function buildDropSlider(host: HTMLElement, initial: number, onChange: (v: numbe
   apply(false);
 }
 
-function buildWidthPanel(p: HTMLElement): void {
-  p.dataset.kind = 'width';
-  const title = document.createElement('div');
-  title.className = 'ctx-title';
-  title.textContent = 'Толщина';
-  p.appendChild(title);
-  const presets = document.createElement('div');
-  presets.className = 'ctx-widths';
-  for (const w of WIDTH_PRESETS) {
-    const b = document.createElement('button');
-    b.className = 'ctx-width' + (Math.abs(w - state.style.width) < 0.01 ? ' active' : '');
-    b.title = String(w);
-    const i = document.createElement('i');
-    i.style.height = `${Math.min(10, Math.max(1.5, w))}px`;
-    i.style.width = `${Math.min(46, 16 + w * 3)}px`;
-    b.appendChild(i);
-    b.addEventListener('click', () => { chooseWidth(w); openCtxPanel('width'); });
-    presets.appendChild(b);
-  }
-  p.appendChild(presets);
-  const sliderHost = document.createElement('div');
-  sliderHost.className = 'ctx-drop-slider';
-  buildDropSlider(sliderHost, state.style.width, v => chooseWidth(v));
-  p.appendChild(sliderHost);
+/** Индикатор «цвет + толщина» как в Miro: кружок, внутри точка текущего цвета, её размер — толщина. */
+function styleIndicator(withWidth: boolean): HTMLElement {
+  const ring = document.createElement('i');
+  ring.className = 'style-ind';
+  ring.appendChild(document.createElement('b'));
+  paintStyleIndicator(ring, withWidth);
+  return ring;
+}
+
+function paintStyleIndicator(ring: HTMLElement, withWidth: boolean): void {
+  const dot = ring.firstElementChild as HTMLElement;
+  // у элементов толщина бывает больше максимума слайдера — точка не должна вылезать из кольца
+  const frac = Math.max(0, Math.min(1, (state.style.width - WIDTH_MIN) / (WIDTH_MAX - WIDTH_MIN)));
+  const d = withWidth ? Math.round(7 + frac * 9) : 14;
+  dot.style.width = `${d}px`;
+  dot.style.height = `${d}px`;
+  dot.style.background = state.style.color;
 }
 
 function buildNotePanel(p: HTMLElement): void {
   p.dataset.kind = 'note';
-  const title = document.createElement('div');
-  title.className = 'ctx-title';
-  title.textContent = 'Цвет стикера';
-  p.appendChild(title);
+  p.appendChild(sectionHead('Цвет стикера'));
   const grid = document.createElement('div');
   grid.className = 'ctx-swatches';
   for (const c of NOTE_PASTELS) {
-    const b = document.createElement('button');
-    b.className = 'ctx-swatch note' + (c === state.noteColor ? ' active' : '');
-    b.style.background = c;
-    b.title = c;
-    b.addEventListener('click', () => {
+    grid.appendChild(makeSwatch(c, c === state.noteColor, () => {
       setNoteColor(c);
       persistStyle();
-      openCtxPanel('note');
-    });
-    grid.appendChild(b);
+      updateSwatchActive(c);
+    }));
   }
   p.appendChild(grid);
 }
@@ -551,36 +654,16 @@ function updateQuickMenu(): void {
   }
   qm.hidden = false;
   qm.textContent = '';
-  // цвет
-  const cBtn = document.createElement('button');
-  cBtn.className = 'qm-btn qm-color';
-  cBtn.title = 'Цвет';
-  const dot = document.createElement('i');
-  dot.style.background = state.style.color;
-  cBtn.appendChild(dot);
-  cBtn.addEventListener('mousedown', e => e.preventDefault());
-  cBtn.addEventListener('click', () => {
-    if (ctxKind === 'color') closeCtxPanel();
-    else openCtxPanel('color');
-  });
-  qm.appendChild(cBtn);
-  // толщина — только если среди выделенного есть «линейные» элементы
-  const inkEls = selEls.filter(e => e.type === 'stroke' || e.type === 'shape' || e.type === 'poly');
-  if (inkEls.length > 0) {
-    const wBtn = document.createElement('button');
-    wBtn.className = 'qm-btn';
-    wBtn.title = 'Толщина';
-    const bar = document.createElement('i');
-    bar.className = 'qm-width-bar';
-    bar.style.height = `${Math.min(10, Math.max(1.5, state.style.width))}px`;
-    wBtn.appendChild(bar);
-    wBtn.addEventListener('mousedown', e => e.preventDefault());
-    wBtn.addEventListener('click', () => {
-      if (ctxKind === 'width') closeCtxPanel();
-      else openCtxPanel('width');
-    });
-    qm.appendChild(wBtn);
-  }
+  // цвет и толщина — одна кнопка и одна панель; толщина — только для «линейных» элементов
+  const hasInk = selEls.some(e => e.type === 'stroke' || e.type === 'shape' || e.type === 'poly');
+  const sBtn = document.createElement('button');
+  sBtn.className = 'qm-btn qm-style' + (ctxKind === 'style' && ctxSource === 'quick' ? ' active' : '');
+  sBtn.dataset.ctx = 'style';
+  sBtn.title = hasInk ? 'Цвет и толщина' : 'Цвет';
+  sBtn.appendChild(styleIndicator(hasInk));
+  sBtn.addEventListener('mousedown', e => e.preventDefault());
+  sBtn.addEventListener('click', () => toggleStylePanel('quick'));
+  qm.appendChild(sBtn);
   // жирность/курсив — для текста
   const textEls = selEls.filter(e => e.type === 'text');
   if (textEls.length > 0) {
@@ -1369,6 +1452,8 @@ function buildToolbar(): void {
     b.dataset.tool = t.id;
     b.title = `${t.title} (${t.code})`;
     b.innerHTML = t.icon;
+    // панель стикеров открывается с этим инструментом и встаёт по центру его кнопки
+    if (t.id === 'note') b.dataset.ctx = 'note';
     b.addEventListener('click', () => setTool(t.id));
     tools.appendChild(b);
   }
@@ -1377,25 +1462,14 @@ function buildToolbar(): void {
 
   const styleGroup = document.createElement('div');
   styleGroup.className = 'tool-group';
-  const cBtn = document.createElement('button');
-  cBtn.className = 'tool style-btn';
-  cBtn.id = 'btn-style-color';
-  cBtn.title = 'Цвет';
-  cBtn.innerHTML = '<i class="color-dot"></i>';
-  cBtn.addEventListener('click', () => {
-    if (ctxKind === 'color') closeCtxPanel();
-    else openCtxPanel('color');
-  });
-  const wBtn = document.createElement('button');
-  wBtn.className = 'tool style-btn';
-  wBtn.id = 'btn-style-width';
-  wBtn.title = 'Толщина';
-  wBtn.innerHTML = '<i class="width-bar"></i>';
-  wBtn.addEventListener('click', () => {
-    if (ctxKind === 'width') closeCtxPanel();
-    else openCtxPanel('width');
-  });
-  styleGroup.append(cBtn, wBtn);
+  const sBtn = document.createElement('button');
+  sBtn.className = 'tool style-btn';
+  sBtn.id = 'btn-style';
+  sBtn.dataset.ctx = 'style';
+  sBtn.title = 'Цвет и толщина';
+  sBtn.appendChild(styleIndicator(true));
+  sBtn.addEventListener('click', () => toggleStylePanel('toolbar'));
+  styleGroup.appendChild(sBtn);
   tb.appendChild(styleGroup);
 }
 
@@ -1459,11 +1533,12 @@ function wireTopbar(): void {
   // закрытие панелей по клику мимо / Esc
   canvas.addEventListener('pointerdown', () => { closeCtxPanel(); closeSettings(); }, { capture: true });
   document.getElementById('canvas-wrap')!.addEventListener('pointerdown', e => {
-    const qm = quickMenuEl();
-    if (!qm.hidden && !qm.contains(e.target as Node)) { /* меню остаётся, клик по холсту обрабатывает контроллер */ }
+    const t = e.target as HTMLElement;
     const p = ctxPanelEl();
-    if (!p.hidden && !p.contains(e.target as Node)) closeCtxPanel();
+    // кнопки-вызовы сами переключают панель по click — здесь их не трогаем
+    if (!p.hidden && !p.contains(t) && !t.closest('[data-ctx]')) closeCtxPanel();
   }, { capture: true });
+  window.addEventListener('resize', () => positionCtxPanel());
   window.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
       if (!settingsPopover().hidden) { closeSettings(); return; }
@@ -1618,12 +1693,10 @@ function refresh(): void {
   for (const b of tb.querySelectorAll<HTMLButtonElement>('.tool[data-tool]')) {
     b.classList.toggle('active', b.dataset.tool === state.tool);
   }
-  const colorDot = tb.querySelector<HTMLElement>('#btn-style-color .color-dot');
-  if (colorDot) colorDot.style.background = state.style.color;
-  const widthBar = tb.querySelector<HTMLElement>('#btn-style-width .width-bar');
-  if (widthBar) widthBar.style.height = `${Math.min(10, Math.max(1.5, state.style.width))}px`;
+  const styleInd = tb.querySelector<HTMLElement>('#btn-style .style-ind');
+  if (styleInd) paintStyleIndicator(styleInd, true);
   // панель стикеров открывается автоматически с инструментом
-  if (state.tool === 'note' && !ctxKind && state.view === 'board') openCtxPanel('note');
+  if (state.tool === 'note' && !ctxKind && state.view === 'board') openCtxPanel('note', 'toolbar');
   if (state.tool !== 'note' && ctxKind === 'note') closeCtxPanel();
 
   (document.getElementById('btn-undo') as HTMLButtonElement).disabled = !canUndo();
