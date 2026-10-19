@@ -359,7 +359,7 @@ select {
 .ctx-drop-slider { position: relative; flex: none; height: 44px; margin: -6px 0 10px; }
 .qs-track {
   position: absolute;
-  inset: 10px 6px;
+  inset: 10px 12px;
   cursor: pointer;
   touch-action: none;
 }

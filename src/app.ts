@@ -576,7 +576,8 @@ function buildDropSlider(host: HTMLElement, initial: number, onChange: (v: numbe
     const d = 10 + frac * 14;
     thumb.style.width = `${d}px`;
     thumb.style.height = `${d}px`;
-    thumb.style.left = `calc(${(frac * 100).toFixed(1)}% - ${d / 2}px)`;
+    // центр ручки ходит по треку (отступ 12px = макс. радиус), поэтому ручка не вылезает за края
+    thumb.style.left = `calc(12px + (100% - 24px) * ${frac.toFixed(4)} - ${d / 2}px)`;
     if (emit) onChange(Math.round(value * 2) / 2);
   };
   const pointToValue = (e: PointerEvent) => {
