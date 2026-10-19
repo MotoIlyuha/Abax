@@ -5,8 +5,12 @@ export type SolidKind =
 
 export type ToolId =
   | 'select' | 'pen' | 'highlighter' | 'eraser' | 'pan'
-  | 'text' | 'note' | 'rect' | 'ellipse' | 'triangle' | 'line' | 'arrow' | 'poly' | 'laser'
+  | 'text' | 'note' | 'rect' | 'ellipse' | 'triangle' | 'line' | 'arrow' | 'poly'
+  | PointerKind
   | SolidKind;
+
+/** Инструменты группы «Указка»: ничего не оставляют на доске. */
+export type PointerKind = 'laser' | 'fadePen' | 'flash';
 
 /** Точка в координатах сцены; p — давление 0..1 (мышь даёт 0.5). */
 export interface Pt { x: number; y: number; p: number }
@@ -141,8 +145,17 @@ export interface ProjectMeta {
 
 export type GridMode = 'none' | 'dots' | 'square' | 'coord';
 
-/** Точка лазерной указки в координатах сцены с меткой времени. */
+/**
+ * Точка лазерной указки в экранных координатах с меткой времени.
+ * Экранных, а не сцены: при масштабировании след не раздувается вместе с доской.
+ */
 export interface LaserPt { x: number; y: number; t: number }
+
+/** Росчерк исчезающего маркера; endT — когда оторвали перо (с этого момента гаснет). */
+export interface FadeStroke { color: string; width: number; pts: Pt[]; endT: number | null }
+
+/** Кратковременная подсветка контура элементов; t — момент начала. */
+export interface Flash { ids: string[]; t: number }
 
 /** Ручка редактирования выделенного элемента. */
 export type Handle =

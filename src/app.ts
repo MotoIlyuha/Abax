@@ -45,21 +45,24 @@ const GRID_ICONS: Record<GridMode, string> = {
   coord: svg('<path d="M5 19V5M5 19h14"/><path d="M5 5l-2 3M5 5l2 3M19 19l-3-2M19 19l-3 2"/><circle cx="12" cy="12" r="1"/>'),
 };
 
-const TOOLS: { id: ToolId; code: string; title: string; icon: string }[] = [
+type ToolDef = { id: ToolId; code: string; title: string; icon: string };
+
+/** group — место кнопки группы инструментов; иконку она берёт у последнего выбранного. */
+const TOOLS: (ToolDef & { group?: ToolGroupKind })[] = [
   { id: 'select', code: 'V', title: 'Выделение и перемещение', icon: svg('<path d="M5 3l15 8-6.4 1.7L11 20z"/>') },
+  { id: 'pan', code: 'H', title: 'Панорама', icon: svg('<path d="M12 3v18M3 12h18"/><path d="M9.5 5.5L12 3l2.5 2.5M9.5 18.5L12 21l2.5-2.5M5.5 9.5L3 12l2.5 2.5M18.5 9.5L21 12l-2.5 2.5"/>') },
   { id: 'pen', code: 'P', title: 'Перо', icon: svg('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>') },
   { id: 'highlighter', code: 'M', title: 'Маркер', icon: svg('<path d="M9 11l-6 6v3h3l6-6"/><path d="M17.5 2.5l4 4L11 17l-4-4z"/>') },
   { id: 'eraser', code: 'E', title: 'Ластик', icon: svg('<path d="M20 20H8.5L3.6 15.1a2 2 0 0 1 0-2.8l8.6-8.6a2 2 0 0 1 2.8 0l6 6a2 2 0 0 1 0 2.8L13.5 19"/><path d="M7 10.5l6.5 6.5"/>') },
   { id: 'text', code: 'T', title: 'Текст', icon: svg('<path d="M5 7V5h14v2"/><path d="M12 5v14"/><path d="M9 19h6"/>') },
   { id: 'note', code: 'N', title: 'Стикер', icon: svg('<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M8 9.5h8"/><path d="M8 13h5"/>') },
-  { id: 'rect', code: 'R', title: 'Фигуры', icon: '' }, // место группы «Фигуры»
-  { id: 'cube', code: '', title: 'Стереометрия', icon: '' }, // место группы «Стереометрия»
-  { id: 'pan', code: 'H', title: 'Панорама', icon: svg('<path d="M12 3v18M3 12h18"/><path d="M9.5 5.5L12 3l2.5 2.5M9.5 18.5L12 21l2.5-2.5M5.5 9.5L3 12l2.5 2.5M18.5 9.5L21 12l-2.5 2.5"/>') },
-  { id: 'laser', code: 'I', title: 'Лазерная указка', icon: svg('<circle cx="12" cy="12" r="3.2"/><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4"/>') },
+  { id: 'rect', code: 'R', title: 'Фигуры', icon: '', group: 'shapes' },
+  { id: 'cube', code: '', title: 'Стереометрия', icon: '', group: 'solids' },
+  { id: 'laser', code: 'I', title: 'Указка', icon: '', group: 'pointer' },
 ];
 
 /** Инструменты группы «Фигуры» — в тулбаре одна кнопка, выбор во всплывающей панели. */
-const SHAPE_TOOLS: { id: ToolId; code: string; title: string; icon: string }[] = [
+const SHAPE_TOOLS: ToolDef[] = [
   { id: 'rect', code: 'R', title: 'Прямоугольник', icon: svg('<rect x="4" y="6" width="16" height="12" rx="1.5"/>') },
   { id: 'ellipse', code: 'O', title: 'Эллипс', icon: svg('<ellipse cx="12" cy="12" rx="8.5" ry="6.5"/>') },
   { id: 'triangle', code: 'Y', title: 'Треугольник', icon: svg('<path d="M12 4.5L20.5 19H3.5z"/>') },
@@ -71,7 +74,7 @@ const SHAPE_TOOLS: { id: ToolId; code: string; title: string; icon: string }[] =
 const hid = (d: string) => `<path d="${d}" stroke-dasharray="2.2 2" stroke-width="1.4"/>`;
 
 /** Инструменты группы «Стереометрия»: каркасные тела с пунктиром невидимых рёбер. */
-const SOLID_TOOLS: { id: ToolId; code: string; title: string; icon: string }[] = [
+const SOLID_TOOLS: ToolDef[] = [
   { id: 'cube', code: '', title: 'Куб', icon: svg('<path d="M4 9h11v11H4z"/><path d="M4 9l5-5h11l-5 5M20 4v11l-5 5"/>' + hid('M9 4v11h11M4 20l5-5')) },
   { id: 'box', code: '', title: 'Параллелепипед', icon: svg('<path d="M2.5 11h14v9h-14z"/><path d="M2.5 11l5-5h14l-5 5M21.5 6v9l-5 5"/>' + hid('M7.5 6v9h14M2.5 20l5-5')) },
   { id: 'prism', code: '', title: 'Призма', icon: svg('<path d="M6 4h13l-10.5 4z"/><path d="M6 4v13l2.5 4L19 17V4M8.5 8v13"/>' + hid('M6 17h13')) },
@@ -83,15 +86,22 @@ const SOLID_TOOLS: { id: ToolId; code: string; title: string; icon: string }[] =
   { id: 'sphere', code: '', title: 'Шар', icon: svg('<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12a8.5 3 0 0 0 17 0"/>' + hid('M3.5 12a8.5 3 0 0 1 17 0')) },
 ];
 
+/** Инструменты группы «Указка»: показать, не оставляя следов на доске. */
+const POINTER_TOOLS: ToolDef[] = [
+  { id: 'laser', code: 'I', title: 'Лазерная указка', icon: svg('<circle cx="15" cy="9" r="2.6"/><path d="M15 2.5v1.8M21.5 9h-1.8M19.6 4.4l-1.3 1.3"/><path d="M3 21c4.5-1.2 8-4.2 10.2-8.6"/>') },
+  { id: 'fadePen', code: '', title: 'Исчезающий маркер', icon: svg('<path d="M18 2.5l3.5 3.5-8.5 8.5-3.5-3.5z"/><path d="M9.5 11l-4 4v2.5H8l4-4"/><path d="M3 21h4"/><path d="M10 21h3" opacity=".55"/><path d="M16 21h2" opacity=".25"/>') },
+  { id: 'flash', code: '', title: 'Подсветка объектов', icon: svg('<rect x="7.5" y="7.5" width="9" height="9" rx="2"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>') },
+];
+
 /** Группы инструментов с одной кнопкой в тулбаре и выбором во всплывающей панели. */
-type ToolGroupKind = 'shapes' | 'solids';
-const TOOL_GROUPS: Record<ToolGroupKind, { title: string; tools: typeof SHAPE_TOOLS }> = {
+type ToolGroupKind = 'shapes' | 'solids' | 'pointer';
+const TOOL_GROUPS: Record<ToolGroupKind, { title: string; tools: ToolDef[] }> = {
   shapes: { title: 'Фигуры', tools: SHAPE_TOOLS },
   solids: { title: 'Стереометрия', tools: SOLID_TOOLS },
+  pointer: { title: 'Указка', tools: POINTER_TOOLS },
 };
 /** Последний выбранный инструмент группы — его иконку показывает кнопка группы. */
-const lastGroupTool: Record<ToolGroupKind, ToolId> = { shapes: 'rect', solids: 'cube' };
-
+const lastGroupTool: Record<ToolGroupKind, ToolId> = { shapes: 'rect', solids: 'cube', pointer: 'laser' };
 
 /** Палитра как в Miro: строки — семейства оттенков, столбцы — светлый / яркий / тёмный / нейтральный. */
 const PALETTE = [
@@ -1634,7 +1644,7 @@ function buildToolbar(): void {
   for (const t of TOOLS) {
     const b = document.createElement('button');
     b.className = 'tool';
-    const groupKind: ToolGroupKind | null = t.id === 'rect' ? 'shapes' : t.id === 'cube' ? 'solids' : null;
+    const groupKind = t.group;
     if (groupKind) {
       // группа инструментов: клик открывает панель выбора по центру этой кнопки
       b.id = `btn-${groupKind}`;

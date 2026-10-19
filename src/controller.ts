@@ -1,4 +1,4 @@
-import type { Camera, Element, Handle, Pt, ShapeEl, ToolId } from './types';
+import type { Camera, Element, FadeStroke, Handle, Pt, ShapeEl, ToolId } from './types';
 import {
   state, update, onChange, beginStroke, extendStroke, endStroke, pushHistory, replaceElements,
   addElement, setSelection, deleteSelected, undo, redo, setTool, uid, commitPoly,
@@ -19,7 +19,8 @@ const POLY_SNAP_PX = 14; // радиус примагничивания к пе�
 const CURSORS: Record<ToolId, string> = {
   select: 'default', pen: 'crosshair', highlighter: 'crosshair', eraser: 'none',
   pan: 'grab', text: 'text', note: 'crosshair', rect: 'crosshair',
-  ellipse: 'crosshair', triangle: 'crosshair', line: 'crosshair', arrow: 'crosshair', poly: 'crosshair', laser: 'none',
+  ellipse: 'crosshair', triangle: 'crosshair', line: 'crosshair', arrow: 'crosshair', poly: 'crosshair',
+  laser: 'none', fadePen: 'crosshair', flash: 'default',
   cube: 'crosshair', box: 'crosshair', prism: 'crosshair', pyramid: 'crosshair', truncPyramid: 'crosshair',
   cylinder: 'crosshair', cone: 'crosshair', truncCone: 'crosshair', sphere: 'crosshair',
 };
@@ -29,6 +30,9 @@ const TOOL_BY_CODE: Record<string, ToolId> = {
   KeyI: 'laser', KeyK: 'poly',
 };
 const MOVE_THRESHOLD_PX = 3;
+const LASER_MAX_PTS = 400;
+/** Инструменты указки ничего не меняют на доске — доступны и без права правки. */
+const POINTER_TOOLS = new Set<ToolId>(['laser', 'fadePen', 'flash']);
 const ZOOM_MIN = 0.05;
 const ZOOM_MAX = 32;
 
@@ -39,7 +43,8 @@ type Action = { pid: number } & (
   | { kind: 'shape' }
   | { kind: 'solid' }
   | { kind: 'handle'; el: Element; h: Handle; pre: Element[]; changed: boolean; rotBase?: { a0: number; rot0: number } }
-  | { kind: 'marquee' }
+  | { kind: 'marquee'; flash?: boolean }
+  | { kind: 'fade'; stroke: FadeStroke }
   | { kind: 'pan'; sx: number; sy: number; cam: Camera }
   | { kind: 'click'; x: number; y: number; target: 'text' | 'note' }
 );
@@ -145,24 +150,51 @@ export function initController(canvas: HTMLCanvasElement): void {
     setSelection([el.id]);
   }
 
-  function finishMarquee(): void {
-    const m = state.marquee;
-    state.marquee = null;
-    if (!m) { update(); return; }
+  /** Элементы, задетые рамкой (с достройкой до целых групп). */
+  function marqueeIds(m: { x0: number; y0: number; x1: number; y1: number }): string[] {
     const s0x = Math.min(m.x0, m.x1) / state.camera.zoom + state.camera.x;
     const s0y = Math.min(m.y0, m.y1) / state.camera.zoom + state.camera.y;
     const s1x = Math.max(m.x0, m.x1) / state.camera.zoom + state.camera.x;
     const s1y = Math.max(m.y0, m.y1) / state.camera.zoom + state.camera.y;
     const rect = { x0: s0x, y0: s0y, x1: s1x, y1: s1y };
-    setSelection(
-      expandSelectionWithGroups(
-        new Set(
-          state.board.elements
-            .filter(el => aabbIntersects(elementAABB(el), rect))
-            .map(el => el.id),
-        ),
+    return expandSelectionWithGroups(
+      new Set(
+        state.board.elements
+          .filter(el => aabbIntersects(elementAABB(el), rect))
+          .map(el => el.id),
       ),
     );
+  }
+
+  function finishMarquee(flash: boolean): void {
+    const m = state.marquee;
+    state.marquee = null;
+    if (!m) { update(); return; }
+    if (!flash) { setSelection(marqueeIds(m)); return; }
+    flashIds(marqueeIds(m));
+  }
+
+  /** Подсветка указкой: выделение не трогаем, только мигаем контуром. */
+  function flashIds(ids: string[]): void {
+    if (ids.length) state.flashes.push({ ids, t: performance.now() });
+    update();
+  }
+
+  function addLaserPt(sx: number, sy: number): void {
+    const pts = state.laserPts;
+    const last = pts[pts.length - 1];
+    const t = performance.now();
+    // слишком близкие точки только освежают голову следа
+    if (last && Math.hypot(last.x - sx, last.y - sy) < 1.5) { last.t = t; return; }
+    pts.push({ x: sx, y: sy, t });
+    if (pts.length > LASER_MAX_PTS) pts.splice(0, pts.length - LASER_MAX_PTS);
+  }
+
+  function extendFade(st: FadeStroke, pt: Pt): void {
+    const last = st.pts[st.pts.length - 1];
+    if (Math.hypot(pt.x - last.x, pt.y - last.y) * state.camera.zoom < 0.4) return;
+    // то же сглаживание, что у пера
+    st.pts.push({ x: last.x + (pt.x - last.x) * 0.6, y: last.y + (pt.y - last.y) * 0.6, p: pt.p });
   }
 
   function finishAction(): void {
@@ -188,7 +220,11 @@ export function initController(canvas: HTMLCanvasElement): void {
         if (a.changed) pushHistory(a.pre);
         update();
         break;
-      case 'marquee': finishMarquee(); break;
+      case 'marquee': finishMarquee(!!a.flash); break;
+      case 'fade':
+        a.stroke.endT = performance.now(); // перо оторвано — след гаснет
+        update();
+        break;
       case 'click': beginTextEdit({ at: { x: a.x, y: a.y }, target: a.target }); break;
       case 'pan':
         canvas.style.cursor = CURSORS[activeTool()];
@@ -203,7 +239,7 @@ export function initController(canvas: HTMLCanvasElement): void {
     pointers.set(e.pointerId, { x: lp.x, y: lp.y, type: e.pointerType });
 
     // совместный режим: на странице без права edit правки запрещены
-    if (collabActive() && readOnly() && activeTool() !== 'pan' && e.button !== 1) return;
+    if (collabActive() && readOnly() && activeTool() !== 'pan' && !POINTER_TOOLS.has(activeTool()) && e.button !== 1) return;
 
 
     const touches = touchPtrs();
@@ -348,6 +384,23 @@ export function initController(canvas: HTMLCanvasElement): void {
       }
       case 'laser':
         break; // указка не создаёт действий — след рисуется в onPointerMove
+      case 'fadePen': {
+        // толщина как у маркера (см. endStroke)
+        const stroke: FadeStroke = { color: state.style.color, width: state.style.width * 3.2, pts: [{ x: s.x, y: s.y, p: pressureOf(e) }], endT: null };
+        state.fadeStrokes.push(stroke);
+        action = { pid: e.pointerId, kind: 'fade', stroke };
+        update();
+        break;
+      }
+      case 'flash': {
+        const hit = topHit(s.x, s.y);
+        if (hit) { flashIds(expandSelectionWithGroups(new Set([hit.id]))); break; }
+        // мимо объектов — рамка, как у выделения
+        action = { pid: e.pointerId, kind: 'marquee', flash: true };
+        state.marquee = { x0: lp.x, y0: lp.y, x1: lp.x, y1: lp.y };
+        update();
+        break;
+      }
     }
   }
 
@@ -387,9 +440,10 @@ export function initController(canvas: HTMLCanvasElement): void {
     if (gesture) { applyGesture(); return; }
     if (touchBlocked && e.pointerType === 'touch') return;
     if (state.tool === 'laser') {
-      const sp = toScene(lp.x, lp.y);
-      state.laserPts.push({ x: sp.x, y: sp.y, t: performance.now() });
-      if (state.laserPts.length > 400) state.laserPts.splice(0, state.laserPts.length - 400);
+      for (const ev of coalesced(e)) {
+        const c = localPos(ev);
+        addLaserPt(c.x, c.y);
+      }
       update();
     }
     if (state.tool === 'poly' && state.livePoly) {
@@ -417,6 +471,14 @@ export function initController(canvas: HTMLCanvasElement): void {
           const s = toScene(c.x, c.y);
           extendStroke({ x: s.x, y: s.y, p: pressureOf(ev) });
         }
+        break;
+      case 'fade':
+        for (const ev of coalesced(e)) {
+          const c = localPos(ev);
+          const s = toScene(c.x, c.y);
+          extendFade(a.stroke, { x: s.x, y: s.y, p: pressureOf(ev) });
+        }
+        update();
         break;
       case 'erase':
         for (const ev of coalesced(e)) {
@@ -523,7 +585,7 @@ export function initController(canvas: HTMLCanvasElement): void {
 
   function onPointerLeave(): void {
     state.hover = null;
-    if (state.tool === 'eraser') update();
+    if (state.tool === 'eraser' || state.tool === 'laser') update();
   }
 
   function onDblClick(e: MouseEvent): void {
