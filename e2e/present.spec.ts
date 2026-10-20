@@ -109,9 +109,10 @@ test.describe('окно демонстрации', () => {
 
   test('текст виден ещё во время ввода', async ({ board, page }) => {
     const popup = await openPresent(page);
+    // цвет — у пресета текущего инструмента: сначала текст, потом цвет
+    await board.tool('t');
     await page.locator('#btn-style').click();
     await page.locator('.ctx-panel[data-kind="style"] .ctx-swatches:not(.custom) .ctx-swatch[data-c="#bd0a0a"]').click();
-    await board.tool('t');
     await board.click({ x: 400, y: 300 });
     await page.keyboard.type('Пример 2+2');
     expect(await board.count('text')).toBe(0); // ещё не зафиксирован
