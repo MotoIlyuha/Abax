@@ -18,7 +18,11 @@ class FakeWindow {
   url = '';
   file = '';
   listeners = new Map<string, (...a: unknown[]) => void>();
-  webContents = { on: (ev: string, fn: (...a: unknown[]) => void) => { this.listeners.set(ev, fn); } };
+  openHandler: ((d: { frameName: string }) => Record<string, any>) | null = null;
+  webContents = {
+    on: (ev: string, fn: (...a: unknown[]) => void) => { this.listeners.set(ev, fn); },
+    setWindowOpenHandler: (fn: (d: { frameName: string }) => Record<string, any>) => { this.openHandler = fn; },
+  };
   constructor(public opts: Record<string, unknown>) { FakeWindow.all.push(this); }
   async loadURL(u: string) { this.url = u; }
   async loadFile(f: string) { this.file = f; if (f.includes('missing')) throw new Error('нет файла'); }
@@ -41,6 +45,7 @@ const fakeElectron = {
     whenReady: () => ready,
     on: (ev: string, fn: () => void) => { appEvents.set(ev, fn); },
     quit: vi.fn(),
+    commandLine: { appendSwitch: vi.fn() },
   },
   BrowserWindow: FakeWindow,
   ipcMain: { handle: (ch: string, fn: Handler) => { handlers.set(ch, fn); } },
@@ -118,6 +123,22 @@ describe('окно', () => {
       '[doska:renderer] boom (a.js:7)',
     ]);
     err.mockRestore();
+  });
+
+  it('окно демонстрации: без меню и троттлинга, перекрытое окно продолжает рисоваться', async () => {
+    await loadMain();
+    expect(fakeElectron.app.commandLine.appendSwitch).toHaveBeenCalledWith('disable-features', 'CalculateNativeWinOcclusion');
+    const w = FakeWindow.all[0];
+    const r = w.openHandler!({ frameName: 'doska-present' });
+    expect(r).toMatchObject({ action: 'allow', overrideBrowserWindowOptions: { webPreferences: { backgroundThrottling: false } } });
+    const child = { removeMenu: vi.fn() };
+    w.listeners.get('did-create-window')!(child, { frameName: 'doska-present' });
+    expect(child.removeMenu).toHaveBeenCalled();
+    // прочие окна — как раньше
+    expect(w.openHandler!({ frameName: '' })).toEqual({ action: 'allow' });
+    const other = { removeMenu: vi.fn() };
+    w.listeners.get('did-create-window')!(other, { frameName: '' });
+    expect(other.removeMenu).not.toHaveBeenCalled();
   });
 
   it('закрытие всех окон завершает приложение', async () => {

@@ -1,4 +1,4 @@
-import type { Element, Handle, HandlePos, PolyEl, Pt, ShapeEl, StrokeEl, TextEl } from './types';
+import type { Camera, Element, Handle, HandlePos, PolyEl, Pt, ShapeEl, StrokeEl, TextEl } from './types';
 import { applySolidParam, solidGeometry, solidHandles } from './solid';
 
 export interface AABB { x0: number; y0: number; x1: number; y1: number }
@@ -489,4 +489,17 @@ export function aabbUnion(a: AABB, b: AABB): AABB {
 
 export function aabbIntersects(a: AABB, b: AABB): boolean {
   return a.x0 <= b.x1 && a.x1 >= b.x0 && a.y0 <= b.y1 && a.y1 >= b.y0;
+}
+
+/**
+ * Камера окна демонстрации: область сцены, видимая в основном холсте (mainW×mainH),
+ * целиком и по центру окна w×h — лишнее по краям добирается соседней частью доски.
+ */
+export function presentCamera(cam: Camera, mainW: number, mainH: number, w: number, h: number): Camera {
+  const zoom = cam.zoom * Math.min(w / mainW, h / mainH);
+  return {
+    x: cam.x + mainW / cam.zoom / 2 - w / zoom / 2,
+    y: cam.y + mainH / cam.zoom / 2 - h / zoom / 2,
+    zoom,
+  };
 }

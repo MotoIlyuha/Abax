@@ -6,6 +6,14 @@ const { createShareServer, MAX_EDITORS } = require('./share.cjs');
 
 const isDev = !app.isPackaged;
 
+// Окно демонстрации показывают в видеозвонке, часто спрятанным за основным окном.
+// Иначе Chromium на Windows считает перекрытое окно скрытым и перестаёт его рисовать —
+// ученик видит застывшую картинку.
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
+
+/** Имя окна демонстрации (window.open в src/present.ts). */
+const PRESENT_FRAME = 'doska-present';
+
 async function createWindow() {
   const win = new BrowserWindow({
     width: 1440,
@@ -28,6 +36,23 @@ async function createWindow() {
       dialog.showErrorBox('Doska — ошибка загрузки', String(err));
     });
   }
+  // окно демонстрации: без меню и без троттлинга — оно почти всегда в фоне
+  win.webContents.setWindowOpenHandler(({ frameName }) => {
+    if (frameName !== PRESENT_FRAME) return { action: 'allow' };
+    return {
+      action: 'allow',
+      overrideBrowserWindowOptions: {
+        autoHideMenuBar: true,
+        backgroundColor: '#ffffff',
+        minWidth: 320,
+        minHeight: 200,
+        webPreferences: { backgroundThrottling: false },
+      },
+    };
+  });
+  win.webContents.on('did-create-window', (child, { frameName }) => {
+    if (frameName === PRESENT_FRAME) child.removeMenu();
+  });
   win.webContents.on('did-fail-load', (_e, code, desc, url) => {
     console.error(`[doska] did-fail-load: ${code} ${desc} ${url}`);
   });

@@ -1,12 +1,15 @@
 import type { Camera, Element, GridMode, ImageEl, ShapeEl, SolidEl } from './types';
 import { foreignSelections } from './collab';
 import {
-  elementAABB, elementHandles, wrapText, TEXT_FONT,
+  elementAABB, elementHandles, presentCamera, wrapText, TEXT_FONT,
   NOTE_PAD, NOTE_FONT, NOTE_TEXT_COLOR,
 } from './geom';
 import { ribbonPath } from './stroke';
 import { fitSolid, solidGeometry, type SolidPrim } from './solid';
 import { state } from './state';
+
+/** Сколько картинок догрузилось: кэш сцены, собранный с заглушкой, устаревает. */
+let imgEpoch = 0;
 
 // Кэш загруженных картинок (импортированные PDF-страницы).
 const imgCache = new WeakMap<ImageEl, HTMLImageElement>();
@@ -15,7 +18,10 @@ function imageOf(el: ImageEl): HTMLImageElement {
   let img = imgCache.get(el);
   if (!img) {
     img = new Image();
-    img.onload = () => requestRender();
+    img.onload = () => {
+      imgEpoch++;
+      requestRender();
+    };
     img.src = el.src;
     imgCache.set(el, img);
   }
@@ -398,16 +404,17 @@ export function renderScene(
   }
 }
 
-// ----- Основной канвас с битмап-кэшем сцены -----
-let cacheHideId: string | null = null;
+// ----- Битмап-кэш сцены -----
 // Статика (фон + все элементы) рисуется в offscreen-канвас один раз и blit'ается
 // каждый кадр. Новые элементы дописываются в кэш инкрементально (префикс-проверка
 // массива). Изменение камеры НЕ инвалидирует кэш мгновенно: во время pan/zoom
 // устаревший кэш рисуется с трансформом (мгновенно), а резкая перерисовка
 // происходит через REBUILD_DELAY после остановки движения.
+// Кэш свой у каждого холста: основного и окна демонстрации.
 
 const REBUILD_DELAY = 120; // мс покоя камеры до резкой перерисовки
 const HEAVY_BOARD = 1500; // элементов: выше — переносим выделенное поверх ради плавности
+const ERASE_R = 12;
 
 let canvas: HTMLCanvasElement | null = null;
 let ctx: CanvasRenderingContext2D | null = null;
@@ -415,16 +422,6 @@ let cssW = 0;
 let cssH = 0;
 let dpr = 1;
 let rafId = 0;
-const ERASE_R = 12;
-
-const sceneCache = document.createElement('canvas');
-let cacheCtx: CanvasRenderingContext2D | null = null;
-let cacheCam: Camera | null = null;
-let cacheArr: Element[] | null = null;
-let cacheGrid: GridMode = 'none';
-let cacheCoordLabels = true;
-let cacheStale = false;
-let cacheLiveEdit = false;
 let lastCamRef: Camera | null = null;
 let lastCamChange = 0;
 let settleTimer = 0;
@@ -438,10 +435,120 @@ function scheduleSettleRender(): void {
   }, wait + 1);
 }
 
+/** true, если newArr = oldArr + добавленные в конец элементы. */
+function isPrefixExtension(newArr: Element[], oldArr: Element[]): boolean {
+  if (newArr.length < oldArr.length) return false;
+  for (let i = 0; i < oldArr.length; i++) {
+    if (newArr[i] !== oldArr[i]) return false;
+  }
+  return true;
+}
+
+class SceneCache {
+  readonly canvas = document.createElement('canvas');
+  private readonly ctx = this.canvas.getContext('2d');
+  /** Камера, с которой снят кэш; null — кэш ещё не собран. */
+  cam: Camera | null = null;
+  private w = 0;
+  private h = 0;
+  private dpr = 1;
+  private arr: Element[] | null = null;
+  private grid: GridMode = 'none';
+  private coordLabels = true;
+  private liveEdit = false;
+  private hideId: string | null = null;
+  private imgEpoch = 0;
+  private stale = false;
+
+  resize(wPx: number, hPx: number): void {
+    this.canvas.width = wPx;
+    this.canvas.height = hPx;
+    this.stale = true;
+  }
+
+  /** Приводит кэш к текущей сцене; пока камера движется, резкая перерисовка откладывается. */
+  sync(cam: Camera, w: number, h: number, dpr: number, camSettled: boolean): void {
+    if (!this.ctx || (!this.cam && (w === 0 || h === 0))) return;
+    const c = this.cam;
+    if (!c || c.x !== cam.x || c.y !== cam.y || c.zoom !== cam.zoom || w !== this.w || h !== this.h || dpr !== this.dpr) {
+      this.stale = true;
+    }
+    if (state.board.grid !== this.grid || state.settings.coordLabels !== this.coordLabels || state.liveEdit !== this.liveEdit
+      || state.hideElId !== this.hideId || imgEpoch !== this.imgEpoch) this.stale = true;
+    const arr = state.board.elements;
+    if (arr !== this.arr) {
+      if (this.arr && !this.stale && isPrefixExtension(arr, this.arr)) this.append(this.arr.length);
+      else this.stale = true;
+    }
+    if (!this.stale) return;
+    if (camSettled || !this.cam) this.rebuild(cam, w, h, dpr);
+    else scheduleSettleRender(); // камера ещё движется: резкая перерисовка после остановки
+  }
+
+  private rebuild(cam: Camera, w: number, h: number, dpr: number): void {
+    // выделение исключается из кэша только на очень больших досках,
+    // где полная перерисовка каждый кадр переноса дорога; иначе честные слои
+    const excl = new Set<string>();
+    if (state.liveEdit && state.board.elements.length > HEAVY_BOARD) {
+      for (const id of state.selection) excl.add(id);
+    }
+    if (state.hideElId) excl.add(state.hideElId);
+    renderScene(this.ctx!, state.board.elements, cam, w, h, dpr, state.board.grid, excl.size ? excl : undefined);
+    this.cam = { ...cam };
+    this.w = w;
+    this.h = h;
+    this.dpr = dpr;
+    this.arr = state.board.elements;
+    this.grid = state.board.grid;
+    this.coordLabels = state.settings.coordLabels;
+    this.liveEdit = state.liveEdit;
+    this.hideId = state.hideElId;
+    this.imgEpoch = imgEpoch;
+    this.stale = false;
+  }
+
+  /** Дописывает только новые элементы поверх существующего кэша. */
+  private append(from: number): void {
+    const cam = this.cam!;
+    const zx = this.dpr * cam.zoom;
+    this.ctx!.setTransform(zx, 0, 0, zx, -cam.x * zx, -cam.y * zx);
+    const vx1 = cam.x + this.w / cam.zoom;
+    const vy1 = cam.y + this.h / cam.zoom;
+    const arr = state.board.elements;
+    for (let i = from; i < arr.length; i++) {
+      const el = arr[i];
+      if ((el.type === 'stroke' && el.tool === 'highlighter') || el.type === 'image') {
+        // маркер/картинка должны лечь ПОД существующее — инвалидируем кэш
+        this.stale = true;
+        return;
+      }
+      drawElement(this.ctx!, el, cam.x, cam.y, vx1, vy1);
+    }
+    this.arr = arr;
+  }
+
+  /** Кэш покрывает сцену [cam .. cam + w/zoom]; рисуем его в координатах камеры cam. */
+  blit(ctx: CanvasRenderingContext2D, cam: Camera, w: number, h: number, dpr: number): void {
+    const c = this.cam;
+    if (!c) return;
+    const dx = (c.x - cam.x) * cam.zoom;
+    const dy = (c.y - cam.y) * cam.zoom;
+    const dw = (this.w / c.zoom) * cam.zoom;
+    const dh = (this.h / c.zoom) * cam.zoom;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(this.canvas, 0, 0, this.canvas.width, this.canvas.height, dx, dy, dw, dh);
+  }
+}
+
+const mainCache = new SceneCache();
+
+// ----- Основной канвас -----
+
 export function initRenderer(c: HTMLCanvasElement): void {
   canvas = c;
   ctx = c.getContext('2d');
-  cacheCtx = sceneCache.getContext('2d');
   new ResizeObserver(resize).observe(c.parentElement!);
   // после разворота свёрнутого окна rAF заморожен и кадр не приходит — перерисовываем сами
   document.addEventListener('visibilitychange', () => {
@@ -462,9 +569,7 @@ function resize(): void {
   cssH = r.height;
   canvas.width = Math.round(r.width * dpr);
   canvas.height = Math.round(r.height * dpr);
-  sceneCache.width = canvas.width;
-  sceneCache.height = canvas.height;
-  cacheStale = true;
+  mainCache.resize(canvas.width, canvas.height);
   requestRender();
 }
 
@@ -474,59 +579,6 @@ export function requestRender(): void {
     rafId = 0;
     draw();
   });
-}
-
-/** true, если newArr = oldArr + добавленные в конец элементы. */
-function isPrefixExtension(newArr: Element[], oldArr: Element[]): boolean {
-  if (newArr.length < oldArr.length) return false;
-  for (let i = 0; i < oldArr.length; i++) {
-    if (newArr[i] !== oldArr[i]) return false;
-  }
-  return true;
-}
-
-function rebuildCache(): void {
-  if (!cacheCtx) return;
-  const cam = state.camera;
-  // выделение исключается из кэша только на очень больших досках,
-  // где полная перерисовка каждый кадр переноса дорога; иначе честные слои
-  const excl = new Set<string>();
-  if (state.liveEdit && state.board.elements.length > HEAVY_BOARD) {
-    for (const id of state.selection) excl.add(id);
-  }
-  if (state.hideElId) excl.add(state.hideElId);
-  renderScene(cacheCtx, state.board.elements, cam, cssW, cssH, dpr, state.board.grid, excl.size ? excl : undefined);
-  cacheCam = { ...cam };
-  cacheArr = state.board.elements;
-  cacheGrid = state.board.grid;
-  cacheCoordLabels = state.settings.coordLabels;
-  cacheLiveEdit = state.liveEdit;
-  cacheHideId = state.hideElId;
-  cacheStale = false;
-}
-
-function appendToCache(from: number): void {
-  // дописываем только новые элементы поверх существующего кэша
-  if (!cacheCtx) return;
-  const cam = cacheCam;
-  if (!cam) return;
-  const zx = dpr * cam.zoom;
-  cacheCtx.setTransform(zx, 0, 0, zx, -cam.x * zx, -cam.y * zx);
-  const vx0 = cam.x;
-  const vy0 = cam.y;
-  const vx1 = cam.x + cssW / cam.zoom;
-  const vy1 = cam.y + cssH / cam.zoom;
-  const arr = state.board.elements;
-  for (let i = from; i < arr.length; i++) {
-    const el = arr[i];
-    if ((el.type === 'stroke' && el.tool === 'highlighter') || el.type === 'image') {
-      // маркер/картинка должны лечь ПОД существующее — инвалидируем кэш
-      cacheStale = true;
-      return;
-    }
-    drawElement(cacheCtx, el, vx0, vy0, vx1, vy1);
-  }
-  cacheArr = arr;
 }
 
 /** Ручки редактирования единственного выделенного элемента (экранные координаты). */
@@ -616,63 +668,17 @@ function drawHandles(ctx: CanvasRenderingContext2D, cam: Camera): void {
   }
 }
 
-function blitCache(): void {
-  if (!ctx || !cacheCam) return;
-  const cam = state.camera;
-  // кэш покрывает сцену [cacheCam .. cacheCam + css/cacheZoom]; рисуем его
-  // в координатах текущей камеры
-  const dx = (cacheCam.x - cam.x) * cam.zoom;
-  const dy = (cacheCam.y - cam.y) * cam.zoom;
-  const dw = (cssW / cacheCam.zoom) * cam.zoom;
-  const dh = (cssH / cacheCam.zoom) * cam.zoom;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, cssW, cssH);
-  ctx.drawImage(sceneCache, 0, 0, sceneCache.width, sceneCache.height, dx, dy, dw, dh);
-}
-
-function draw(): void {
-  if (!ctx || !canvas) return;
-  const cam = state.camera;
-
-  if (cam !== lastCamRef) {
-    lastCamRef = cam;
-    lastCamChange = performance.now();
-    cacheStale = true;
-  }
-  if (state.board.grid !== cacheGrid || state.settings.coordLabels !== cacheCoordLabels || state.liveEdit !== cacheLiveEdit || state.hideElId !== cacheHideId) cacheStale = true;
-
-  const arr = state.board.elements;
-  const arrRefChanged = arr !== cacheArr;
-  const camSettled = performance.now() - lastCamChange >= REBUILD_DELAY;
-
-  if (!cacheCtx || (!cacheCam && (cssW === 0 || cssH === 0))) return;
-
-  if (arrRefChanged) {
-    if (cacheArr && isPrefixExtension(arr, cacheArr) && !cacheStale) {
-      appendToCache(cacheArr.length);
-    } else {
-      cacheStale = true;
-    }
-  }
-  if (cacheStale) {
-    if (camSettled || !cacheCam) {
-      rebuildCache();
-    } else {
-      // камера ещё движется: договорисываем резкую перерисовку после остановки
-      scheduleSettleRender();
-    }
-  }
-
-  if (cacheCam) {
-    blitCache();
+/** Содержимое доски без интерфейса: кэш статики и превью живых объектов. */
+function drawContent(ctx: CanvasRenderingContext2D, cache: SceneCache, cam: Camera, w: number, h: number, dpr: number): void {
+  if (cache.cam) {
+    cache.blit(ctx, cam, w, h, dpr);
     // во время перетаскивания выделенное исключено из кэша — рисуем поверх;
     // в покое выделенный рендерится в кэше на своём слое
     if (state.liveEdit && state.board.elements.length > HEAVY_BOARD && state.selection.size > 0) {
       const zx0 = dpr * cam.zoom;
       ctx.setTransform(zx0, 0, 0, zx0, -cam.x * zx0, -cam.y * zx0);
       const ex0 = cam.x, ey0 = cam.y;
-      const ex1 = cam.x + cssW / cam.zoom, ey1 = cam.y + cssH / cam.zoom;
+      const ex1 = cam.x + w / cam.zoom, ey1 = cam.y + h / cam.zoom;
       for (const el of state.board.elements) {
         if (!state.selection.has(el.id) || el.id === state.hideElId) continue;
         drawElement(ctx, el, ex0, ey0, ex1, ey1);
@@ -726,7 +732,7 @@ function draw(): void {
     if (lp.cursor && lp.pts.length > 0) {
       // резинка до курсора
       ctx.save();
-      ctx.setLineDash([6 / state.camera.zoom, 4 / state.camera.zoom]);
+      ctx.setLineDash([6 / cam.zoom, 4 / cam.zoom]);
       ctx.beginPath();
       ctx.moveTo(lp.pts[lp.pts.length - 1].x, lp.pts[lp.pts.length - 1].y);
       ctx.lineTo(lp.cursor.x, lp.cursor.y);
@@ -736,9 +742,9 @@ function draw(): void {
     // узлы: поставленные точки + колечко на первой (замыкание)
     ctx.fillStyle = '#ffffff';
     ctx.strokeStyle = '#3273f5';
-    ctx.lineWidth = 1.5 / state.camera.zoom;
+    ctx.lineWidth = 1.5 / cam.zoom;
     for (let i = 0; i < lp.pts.length; i++) {
-      const r = i === 0 ? 6 / state.camera.zoom : 4 / state.camera.zoom;
+      const r = i === 0 ? 6 / cam.zoom : 4 / cam.zoom;
       ctx.beginPath();
       ctx.arc(lp.pts[i].x, lp.pts[i].y, r, 0, Math.PI * 2);
       ctx.fill();
@@ -746,9 +752,24 @@ function draw(): void {
     }
   }
   if (state.fadeStrokes.length > 0) drawFadeStrokes(ctx);
+}
+
+const mainFlash: FlashScratch = { shape: document.createElement('canvas'), ring: document.createElement('canvas') };
+
+function draw(): void {
+  if (!ctx || !canvas) return;
+  const cam = state.camera;
+  if (cam !== lastCamRef) {
+    lastCamRef = cam;
+    lastCamChange = performance.now();
+  }
+  const camSettled = performance.now() - lastCamChange >= REBUILD_DELAY;
+
+  mainCache.sync(cam, cssW, cssH, dpr, camSettled);
+  drawContent(ctx, mainCache, cam, cssW, cssH, dpr);
   // оверлеи в экранных координатах
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  if (state.flashes.length > 0) drawFlashes(ctx, cam);
+  if (state.flashes.length > 0) drawFlashes(ctx, cam, cssW, cssH, dpr, mainFlash);
   if (state.selection.size > 0) {
     ctx.strokeStyle = '#3273f5';
     ctx.lineWidth = 1.5;
@@ -795,6 +816,115 @@ function draw(): void {
     ctx.stroke();
   }
   drawLaser(ctx);
+  if (present) drawPresent(camSettled);
+}
+
+// ----- Окно демонстрации -----
+// Второй холст в отдельном окне (его показывают в видеозвонке): та же область доски,
+// что видна в основном окне, но без интерфейса — ни выделения, ни ручек, ни рамки.
+// Рисуется из этого же rAF, поэтому всегда синхронно с основным холстом.
+
+interface PresentTarget {
+  win: Window;
+  canvas: HTMLCanvasElement;
+  ctx: CanvasRenderingContext2D;
+  w: number;
+  h: number;
+  dpr: number;
+  cache: SceneCache;
+  flash: FlashScratch;
+}
+let present: PresentTarget | null = null;
+
+/** Подключает холст окна демонстрации (canvas живёт в документе win). */
+export function attachPresent(win: Window, c: HTMLCanvasElement): void {
+  const pctx = c.getContext('2d');
+  if (!pctx) return;
+  present = {
+    win, canvas: c, ctx: pctx, w: 0, h: 0, dpr: 1, cache: new SceneCache(),
+    flash: { shape: document.createElement('canvas'), ring: document.createElement('canvas') },
+  };
+  requestRender();
+}
+
+export function detachPresent(): void {
+  present = null;
+}
+
+export function presenting(): boolean {
+  return present !== null;
+}
+
+function drawPresent(camSettled: boolean): void {
+  const p = present!;
+  if (p.win.closed) { present = null; return; }
+  const w = p.win.innerWidth;
+  const h = p.win.innerHeight;
+  const pdpr = Math.min(p.win.devicePixelRatio || 1, 2);
+  if (w !== p.w || h !== p.h || pdpr !== p.dpr) {
+    p.w = w;
+    p.h = h;
+    p.dpr = pdpr;
+    p.canvas.width = Math.round(w * pdpr);
+    p.canvas.height = Math.round(h * pdpr);
+    p.cache.resize(p.canvas.width, p.canvas.height);
+  }
+  if (w === 0 || h === 0 || cssW === 0 || cssH === 0) return;
+  const cam = state.camera;
+  const pcam = presentCamera(cam, cssW, cssH, w, h);
+  const c = p.ctx;
+  p.cache.sync(pcam, w, h, pdpr, camSettled);
+  drawContent(c, p.cache, pcam, w, h, pdpr);
+  if (state.liveText) {
+    // текст в процессе ввода: в основном окне его показывает редактор поверх холста
+    const zx = pdpr * pcam.zoom;
+    c.setTransform(zx, 0, 0, zx, -pcam.x * zx, -pcam.y * zx);
+    drawElement(c, state.liveText, pcam.x, pcam.y, pcam.x + w / pcam.zoom, pcam.y + h / pcam.zoom);
+  }
+  c.setTransform(pdpr, 0, 0, pdpr, 0, 0);
+  if (state.flashes.length > 0) drawFlashes(c, pcam, w, h, pdpr, p.flash);
+  // экранные координаты основного холста (указка, курсор) → окно демонстрации
+  const k = pcam.zoom / cam.zoom;
+  const ox = (cam.x - pcam.x) * pcam.zoom;
+  const oy = (cam.y - pcam.y) * pcam.zoom;
+  const hover = state.hover;
+  if (hover && state.tool !== 'laser') {
+    const x = hover.x * k + ox;
+    const y = hover.y * k + oy;
+    if (state.tool === 'eraser') {
+      c.strokeStyle = '#7a828e';
+      c.lineWidth = 1.25;
+      c.beginPath();
+      c.arc(x, y, ERASE_R * k, 0, Math.PI * 2);
+      c.stroke();
+    } else {
+      drawPointer(c, x, y);
+    }
+  }
+  c.setTransform(pdpr * k, 0, 0, pdpr * k, pdpr * ox, pdpr * oy);
+  drawLaser(c);
+}
+
+/** Курсор учителя: в окне демонстрации системного курсора нет, ученик видит этот. */
+function drawPointer(ctx: CanvasRenderingContext2D, x: number, y: number): void {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(0, 16);
+  ctx.lineTo(4.2, 12.2);
+  ctx.lineTo(7, 18.4);
+  ctx.lineTo(9.6, 17.2);
+  ctx.lineTo(6.9, 11.2);
+  ctx.lineTo(12, 11.2);
+  ctx.closePath();
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = '#ffffff';
+  ctx.fillStyle = '#1f2329';
+  ctx.stroke();
+  ctx.fill();
+  ctx.restore();
 }
 
 /** Росчерки исчезающего маркера: рисуются маркером, после отрыва гаснут. */
@@ -813,8 +943,8 @@ function drawFadeStrokes(ctx: CanvasRenderingContext2D): void {
 
 // Подсветка контура: силуэт элементов «раздувается» сдвинутыми копиями,
 // затем сам силуэт вырезается — остаётся кольцо по форме объекта.
-const flashShape = document.createElement('canvas');
-const flashRing = document.createElement('canvas');
+/** Служебные канвасы подсветки: свои у каждого холста. */
+interface FlashScratch { shape: HTMLCanvasElement; ring: HTMLCanvasElement }
 
 function flashAlpha(age: number): number {
   if (age < FLASH_IN) return age / FLASH_IN;
@@ -822,11 +952,14 @@ function flashAlpha(age: number): number {
   return 1;
 }
 
-function drawFlashes(ctx: CanvasRenderingContext2D, cam: Camera): void {
+function drawFlashes(
+  ctx: CanvasRenderingContext2D, cam: Camera, cssW: number, cssH: number, dpr: number, scratch: FlashScratch,
+): void {
   const now = performance.now();
   state.flashes = state.flashes.filter(f => now - f.t < FLASH_MS);
   if (state.flashes.length === 0) return;
   const W = Math.round(cssW * dpr), H = Math.round(cssH * dpr);
+  const { shape: flashShape, ring: flashRing } = scratch;
   for (const c of [flashShape, flashRing]) {
     if (c.width !== W || c.height !== H) { c.width = W; c.height = H; }
   }

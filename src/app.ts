@@ -1,11 +1,12 @@
 import type { Element, GridMode, ImageEl, NoteEl, Page, Project, TextEl, ToolId, ToolbarPos, WheelMode } from './types';
 import {
   state, update, onChange, undo, redo, canUndo, canRedo, setTool, setGrid, setStyleColor,
-  setStyleWidth, setNoteColor, addElement, replaceElements, pushHistory, uid,
+  setStyleWidth, setNoteColor, selectPreset, presetKind, addElement, replaceElements, pushHistory, uid,
   applyStyleToSelection, setSettings, setView, switchPage, addPage, deletePage, renamePage, setSelection,
   openProject, blankProject, projectMeta, groupSelected, ungroupSelected,
   bringForward, sendBackward, deleteSelected, setSolidSides,
 } from './state';
+import type { PresetKind, StyleValue } from './state';
 import { storage } from './storage';
 import { renderScene, contentBBox } from './renderer';
 import { hasBaseSides, SIDES_MAX, SIDES_MIN, solidSides } from './solid';
@@ -14,6 +15,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 // ?worker&inline: воркер инлайнится в бандл и работает из file:// (Electron)
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker&inline';
 import { collabActive, isHost, noteSelection, readOnly, startHostConnection, stopCollab } from './collab';
+import { closePresent, openPresent, presentOpen } from './present';
 import { type ToolbarGroup, onToolbarChange, restoreToolbar, svg, toolDef, toolTip, toolbarConfig } from './toolbar';
 import { openSettingsDialog, settingsDialogOpen } from './settings-dialog';
 import { renderToolbarEditor } from './toolbar-editor';
@@ -28,6 +30,7 @@ const ICONS = {
   redo: svg('<path d="M20 10h-9a5 5 0 0 0 0 10h3"/><path d="M16 6l4 4-4 4"/>'),
   fit: svg('<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/>'),
   export: svg('<path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M4 19h16"/>'),
+  present: svg('<rect x="2.5" y="4" width="19" height="13" rx="2"/><path d="M8 21h8M12 17v4"/><path d="M10.5 8.2l4 2.3-4 2.3z"/>'),
   pdf: svg('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h4"/>'),
   del: svg('<path d="M6 6l12 12M18 6L6 18"/>'),
   settings: svg('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.1-1.55 1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1.1 1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h.01a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/>'),
@@ -99,15 +102,30 @@ function addCustomColor(c: string): void {
 }
 
 function persistStyle(): void {
-  localStorage.setItem(STYLE_KEY, JSON.stringify({ ...state.style, noteColor: state.noteColor }));
+  localStorage.setItem(STYLE_KEY, JSON.stringify({ ...state.style, noteColor: state.noteColor, presets: state.presets }));
 }
 
 function restoreStyle(): void {
   try {
     const v = JSON.parse(localStorage.getItem(STYLE_KEY) || 'null');
-    if (v && typeof v.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(v.color) && typeof v.width === 'number') {
-      state.style = { color: v.color, width: Math.min(14, Math.max(0.5, v.width)) };
+    const styleOf = (x: unknown): StyleValue | null => {
+      const o = x as { color?: unknown; width?: unknown } | null;
+      return o && typeof o.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(o.color) && typeof o.width === 'number'
+        ? { color: o.color, width: Math.min(14, Math.max(0.5, o.width)) }
+        : null;
+    };
+    for (const kind of Object.keys(state.presets) as PresetKind[]) {
+      const saved = v?.presets?.[kind];
+      const set = state.presets[kind];
+      if (!saved || !Array.isArray(saved.list)) continue;
+      set.list.forEach((_, i) => { set.list[i] = styleOf(saved.list[i]) ?? set.list[i]; });
+      if (Number.isInteger(saved.active) && saved.active >= 0 && saved.active < set.list.length) set.active = saved.active;
     }
+    // старый формат: один стиль на всё — становится пресетом «остальных» инструментов
+    const legacy = !v?.presets ? styleOf(v) : null;
+    if (legacy) state.presets.other.list[0] = legacy;
+    const set = state.presets[presetKind(state.tool)];
+    state.style = { ...set.list[set.active] };
     if (v && typeof v.noteColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(v.noteColor)) {
       state.noteColor = v.noteColor;
     }
@@ -203,6 +221,7 @@ export function beginTextEdit(opts: { el?: TextEl | NoteEl; at?: { x: number; y:
   document.getElementById('overlay')!.appendChild(ta);
   editing = { el, at: opts.at ?? null, target, ta };
   positionEditor();
+  syncLiveText();
   update();
   ta.focus();
   ta.setSelectionRange(ta.value.length, ta.value.length);
@@ -212,8 +231,26 @@ export function beginTextEdit(opts: { el?: TextEl | NoteEl; at?: { x: number; y:
     else if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); closeEditor(true); }
     // Shift+Enter — перевод строки (стандартное поведение textarea)
   });
-  ta.addEventListener('input', () => positionEditor());
+  ta.addEventListener('input', () => {
+    syncLiveText();
+    update(); // подписчик заодно подгоняет размер редактора
+  });
   ta.addEventListener('blur', () => closeEditor(true));
+}
+
+/** Вводимый текст — в state.liveText: окно демонстрации рисует его вместо редактора. */
+function syncLiveText(): void {
+  const e = editing;
+  if (!e) { state.liveText = null; return; }
+  const text = e.ta.value;
+  if (e.el) {
+    state.liveText = { ...e.el, text };
+  } else if (e.target === 'text') {
+    state.liveText = { id: '', type: 'text', x: e.at!.x, y: e.at!.y, text, size: TEXT_SIZE, color: state.style.color };
+  } else {
+    const n = state.liveNote;
+    state.liveText = n ? { id: '', type: 'note', x: n.x, y: n.y, w: n.w, h: n.h, text, color: n.color } : null;
+  }
 }
 
 function positionEditor(): void {
@@ -256,6 +293,7 @@ export function closeEditor(commit: boolean): void {
   const text = e.ta.value.replace(/[ \t]+$/gm, '').replace(/\s+$/, '');
   e.ta.remove();
   state.hideElId = null;
+  state.liveText = null;
   const liveNote = state.liveNote;
   state.liveNote = null;
   if (!commit || text === '') {
@@ -444,7 +482,9 @@ function ctxOpenFrom(kind: CtxKind, source: CtxSource): boolean {
 
 /** Кнопка-вызов подсвечена, пока её панель открыта. */
 function syncCtxButtons(): void {
-  document.getElementById('btn-style')?.classList.toggle('active', ctxOpenFrom('style', 'toolbar'));
+  for (const b of document.querySelectorAll('#toolbar .style-btn')) {
+    b.classList.toggle('active', b.hasAttribute('data-ctx') && ctxOpenFrom('style', 'toolbar'));
+  }
   quickMenuEl().querySelector('[data-ctx="style"]')?.classList.toggle('active', ctxOpenFrom('style', 'quick'));
 }
 
@@ -769,22 +809,22 @@ function buildDropSlider(host: HTMLElement, initial: number, onChange: (v: numbe
 }
 
 /** Индикатор «цвет + толщина» как в Miro: кружок, внутри точка текущего цвета, её размер — толщина. */
-function styleIndicator(withWidth: boolean): HTMLElement {
+function styleIndicator(withWidth: boolean, style: StyleValue = state.style): HTMLElement {
   const ring = document.createElement('i');
   ring.className = 'style-ind';
   ring.appendChild(document.createElement('b'));
-  paintStyleIndicator(ring, withWidth);
+  paintStyleIndicator(ring, withWidth, style);
   return ring;
 }
 
-function paintStyleIndicator(ring: HTMLElement, withWidth: boolean): void {
+function paintStyleIndicator(ring: HTMLElement, withWidth: boolean, style: StyleValue = state.style): void {
   const dot = ring.firstElementChild as HTMLElement;
   // у элементов толщина бывает больше максимума слайдера — точка не должна вылезать из кольца
-  const frac = Math.max(0, Math.min(1, (state.style.width - WIDTH_MIN) / (WIDTH_MAX - WIDTH_MIN)));
+  const frac = Math.max(0, Math.min(1, (style.width - WIDTH_MIN) / (WIDTH_MAX - WIDTH_MIN)));
   const d = withWidth ? Math.round(7 + frac * 9) : 14;
   dot.style.width = `${d}px`;
   dot.style.height = `${d}px`;
-  dot.style.background = state.style.color;
+  dot.style.background = style.color;
 }
 
 function buildNotePanel(cp: CtxPanel): void {
@@ -1765,17 +1805,65 @@ function buildToolbar(): void {
     tb.appendChild(makeVsep());
   }
 
+  // пресеты «цвет + толщина»: у пера и маркера три, у прочих инструментов один (лишние скрыты)
   const styleGroup = document.createElement('div');
   styleGroup.className = 'tool-group';
-  const sBtn = document.createElement('button');
-  sBtn.className = 'tool style-btn';
-  sBtn.id = 'btn-style';
-  sBtn.dataset.ctx = 'style';
-  sBtn.title = 'Цвет и толщина';
-  sBtn.appendChild(styleIndicator(true));
-  sBtn.addEventListener('click', () => toggleStylePanel('toolbar'));
-  styleGroup.appendChild(sBtn);
+  for (let i = 0; i < PRESET_SLOTS; i++) {
+    const sBtn = document.createElement('button');
+    sBtn.className = 'tool style-btn';
+    sBtn.dataset.preset = String(i);
+    sBtn.appendChild(styleIndicator(true));
+    sBtn.addEventListener('click', () => {
+      // клик по текущему пресету — панель цвета и толщины, по другому — выбор этого пресета
+      if (state.presets[presetKind(state.tool)].active === i) toggleStylePanel('toolbar');
+      else selectPreset(i);
+    });
+    styleGroup.appendChild(sBtn);
+  }
   tb.appendChild(styleGroup);
+}
+
+const PRESET_SLOTS = 3;
+/** Пресет, к которому сейчас относится панель стиля с тулбара: смена — панель пересобирается. */
+let shownPresetKey = '';
+
+/** Кнопки пресетов: видимость, подсветка текущего, якорь панели стиля (data-ctx) — у текущего. */
+function syncPresetButtons(tb: HTMLElement): void {
+  const kind = presetKind(state.tool);
+  const set = state.presets[kind];
+  const multi = set.list.length > 1;
+  const title = kind === 'pen' ? 'Перо' : kind === 'highlighter' ? 'Маркер' : '';
+  for (const b of tb.querySelectorAll<HTMLButtonElement>('.style-btn[data-preset]')) {
+    const i = Number(b.dataset.preset);
+    const preset = set.list[i];
+    b.hidden = !preset;
+    if (!preset) { delete b.dataset.ctx; b.removeAttribute('id'); continue; }
+    const current = i === set.active;
+    b.classList.toggle('current', multi && current);
+    if (current) { b.dataset.ctx = 'style'; b.id = 'btn-style'; }
+    else { delete b.dataset.ctx; b.removeAttribute('id'); }
+    b.title = multi ? `${title}: пресет ${i + 1}${current ? ' — цвет и толщина' : ''}` : 'Цвет и толщина';
+    // текущий показывает живой стиль (в т.ч. подхваченный из выделения)
+    paintStyleIndicator(b.querySelector<HTMLElement>('.style-ind')!, true, current ? state.style : preset);
+  }
+  syncCtxButtons();
+  const key = `${kind}:${set.active}`;
+  if (key === shownPresetKey) return;
+  shownPresetKey = key;
+  // панель стиля с тулбара переезжает к новому пресету и показывает его цвет и толщину
+  const sp = panelOf('style');
+  if (sp && sp.source === 'toolbar') {
+    if (sp.detached) rebuildStylePanel(sp);
+    else openCtxPanel('style', 'toolbar');
+  }
+}
+
+function rebuildStylePanel(cp: CtxPanel): void {
+  cp.el.textContent = '';
+  buildStylePanel(cp);
+  cp.el.appendChild(buildCtxBar(cp));
+  cp.baseHeight = 0;
+  positionCtxPanel(cp);
 }
 
 function makeVsep(): HTMLElement {
@@ -1791,6 +1879,7 @@ function wireTopbar(): void {
   document.getElementById('btn-redo')!.innerHTML = ICONS.redo;
   document.getElementById('btn-fit')!.innerHTML = ICONS.fit;
   document.getElementById('btn-export')!.innerHTML = ICONS.export;
+  document.getElementById('btn-present')!.innerHTML = ICONS.present;
   document.getElementById('btn-import')!.innerHTML = ICONS.pdf;
   document.getElementById('btn-settings')!.innerHTML = ICONS.settings;
   document.getElementById('btn-share')!.innerHTML = svg('<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/>');
@@ -1813,6 +1902,7 @@ function wireTopbar(): void {
   document.getElementById('btn-redo')!.addEventListener('click', () => redo());
   document.getElementById('btn-fit')!.addEventListener('click', fitContent);
   document.getElementById('btn-export')!.addEventListener('click', () => { void exportPng(); });
+  document.getElementById('btn-present')!.addEventListener('click', togglePresent);
   document.getElementById('btn-import')!.addEventListener('click', () => { void importPdf(); });
   document.getElementById('btn-settings')!.addEventListener('click', () => {
     if (settingsPopover().hidden) openSettings();
@@ -1855,6 +1945,12 @@ function wireTopbar(): void {
       if (dockedPanel()) { closeCtxPanel(); return; }
     }
   }, { capture: true });
+}
+
+/** Окно демонстрации: открыть или закрыть. */
+export function togglePresent(): void {
+  if (presentOpen()) { closePresent(); return; }
+  if (!openPresent()) alert('Не удалось открыть окно демонстрации: разрешите всплывающие окна для этой страницы');
 }
 
 export function toggleSidebar(): void {
@@ -2018,8 +2114,7 @@ function refresh(): void {
       btn.title = `${group.name}: ${toolDef(cur).title}`;
     }
   }
-  const styleInd = tb.querySelector<HTMLElement>('#btn-style .style-ind');
-  if (styleInd) paintStyleIndicator(styleInd, true);
+  syncPresetButtons(tb);
   // панель стикеров открывается автоматически с инструментом (если стикер не скрыт с панели)
   const noteOnToolbar = !!tb.querySelector('[data-ctx="note"], [data-tools~="note"]');
   if (state.tool === 'note' && noteOnToolbar && !dockedPanel() && !panelOf('note') && state.view === 'board') openCtxPanel('note', 'toolbar');
@@ -2031,6 +2126,7 @@ function refresh(): void {
   }
   ctxLayerEl().hidden = state.view !== 'board';
 
+  document.getElementById('btn-present')!.classList.toggle('active', presentOpen());
   (document.getElementById('btn-undo') as HTMLButtonElement).disabled = !canUndo();
   (document.getElementById('btn-redo') as HTMLButtonElement).disabled = !canRedo();
   document.getElementById('zoom-label')!.textContent = `${Math.round(state.camera.zoom * 100)}%`;
