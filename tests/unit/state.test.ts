@@ -3,7 +3,7 @@ import {
   addElement, addPage, applyStyleToSelection, beginStroke, blankPage, blankProject, bringForward, canRedo, canUndo,
   commitPoly, deletePage, deleteSelected, endStroke, expandSelectionWithGroups, extendStroke, groupSelected,
   onChange, openProject, projectMeta, pushHistory, redo, renamePage, replaceElements, sendBackward, setGrid,
-  setNoteColor, setSelection, setSettings, setSolidSides, setStyleColor, setStyleWidth, setTool, setView, state,
+  presetKind, selectPreset, setNoteColor, setSelection, setSettings, setSolidSides, setStyleColor, setStyleWidth, setTool, setView, state,
   switchPage, uid, undo, ungroupSelected, update,
 } from '../../src/state';
 import type { Element, ShapeEl, SolidEl, TextEl } from '../../src/types';
@@ -16,8 +16,12 @@ beforeEach(() => {
   const p = blankProject('Тест');
   openProject(p);
   state.camera = { x: 0, y: 0, zoom: 1 };
-  state.style = { color: '#1f2329', width: 4 };
   setTool('pen');
+  // пресеты живут между тестами: сеттеры стиля пишут в текущий
+  state.presets.pen = { list: [{ color: '#1f2329', width: 4 }, { color: '#bd0a0a', width: 4 }, { color: '#305bab', width: 4 }], active: 0 };
+  state.presets.highlighter = { list: [{ color: '#ffdc4a', width: 4 }, { color: '#2dc75c', width: 4 }, { color: '#ff6464', width: 4 }], active: 0 };
+  state.presets.other = { list: [{ color: '#1f2329', width: 4 }], active: 0 };
+  state.style = { color: '#1f2329', width: 4 };
 });
 
 describe('uid', () => {
@@ -244,6 +248,30 @@ describe('выделение и стиль', () => {
     expect(state.style).toEqual({ color: '#111111', width: 7 });
     expect(state.noteColor).toBe('#a9def9');
     expect(state.settings).toMatchObject({ snapToGrid: true, toolbarPos: 'left' });
+  });
+
+  it('пресеты: у пера и маркера свои, у остальных инструментов общий', () => {
+    expect(presetKind('pen')).toBe('pen');
+    expect(presetKind('highlighter')).toBe('highlighter');
+    expect(presetKind('rect')).toBe('other');
+    expect(presetKind('select')).toBe('other');
+    selectPreset(1);
+    expect(state.style).toEqual({ color: '#bd0a0a', width: 4 });
+    setStyleWidth(6); // пишет в текущий пресет
+    expect(state.presets.pen.list[1]).toEqual({ color: '#bd0a0a', width: 6 });
+    selectPreset(5); // нет такого — без изменений
+    expect(state.presets.pen.active).toBe(1);
+    setTool('highlighter');
+    expect(state.style).toEqual({ color: '#ffdc4a', width: 4 });
+    setTool('rect');
+    expect(state.style).toEqual({ color: '#1f2329', width: 4 });
+    setStyleColor('#2dc75c');
+    setTool('ellipse'); // тот же набор — стиль не перезагружается
+    expect(state.style.color).toBe('#2dc75c');
+    setTool('pen');
+    expect(state.style).toEqual({ color: '#bd0a0a', width: 6 });
+    setTool('select');
+    expect(state.style.color).toBe('#2dc75c');
   });
 
   it('setGrid меняет фон страницы и помечает dirty', () => {

@@ -102,10 +102,10 @@ export const state: AppState = {
   board: blankPage('Страница 1'),
   camera: { x: 0, y: 0, zoom: 1 },
   tool: 'pen',
-  style: { color: '#1f2329', width: 3 },
+  style: { color: '#1f2329', width: 4 },
   presets: {
-    pen: { list: [{ color: '#1f2329', width: 3 }, { color: '#bd0a0a', width: 3 }, { color: '#305bab', width: 3 }], active: 0 },
-    highlighter: { list: [{ color: '#ffdc4a', width: 5 }, { color: '#2dc75c', width: 5 }, { color: '#ff6464', width: 5 }], active: 0 },
+    pen: { list: [{ color: '#1f2329', width: 4 }, { color: '#bd0a0a', width: 4 }, { color: '#305bab', width: 4 }], active: 0 },
+    highlighter: { list: [{ color: '#ffdc4a', width: 4 }, { color: '#2dc75c', width: 4 }, { color: '#ff6464', width: 4 }], active: 0 },
     other: { list: [{ color: '#1f2329', width: 4 }], active: 0 },
   },
   noteColor: '#ffe066',

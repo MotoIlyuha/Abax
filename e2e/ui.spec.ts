@@ -31,6 +31,33 @@ test.describe('панель цвета и толщины', () => {
     expect((await board.state()).style.color).toBe('#ff6464');
   });
 
+  test('пресеты: три у пера и маркера, один у остальных', async ({ board, page }) => {
+    const presets = page.locator('#toolbar .style-btn');
+    await expect(presets.locator('visible=true')).toHaveCount(3);
+    // клик по другому пресету выбирает его, повторный — открывает панель
+    await presets.nth(1).click();
+    await expect(presets.nth(1)).toHaveClass(/current/);
+    await expect(page.locator('.ctx-panel[data-kind="style"]')).toHaveCount(0);
+    await presets.nth(1).click();
+    const panel = page.locator('.ctx-panel[data-kind="style"]');
+    await expect(panel).toBeVisible();
+    await panel.locator('.ctx-swatches:not(.custom) .ctx-swatch[data-c="#2dc75c"]').click();
+    await board.drag([{ x: 400, y: 300 }, { x: 500, y: 300 }]);
+    expect((await board.elements())[0].color).toBe('#2dc75c');
+
+    await board.tool('m');
+    await expect(presets.locator('visible=true')).toHaveCount(3);
+    expect((await board.state()).style.color).toBe('#ffdc4a');
+    await board.tool('r');
+    await expect(presets.locator('visible=true')).toHaveCount(1);
+    await board.tool('p');
+    expect((await board.state()).style.color).toBe('#2dc75c');
+
+    await page.reload();
+    await board.ready();
+    expect((await board.state()).style.color).toBe('#2dc75c');
+  });
+
   test('слайдер толщины', async ({ board, page }) => {
     await page.locator('#btn-style').click();
     const track = page.locator('.ctx-panel[data-kind="style"] .qs-track');

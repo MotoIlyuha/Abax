@@ -1808,11 +1808,11 @@ function syncPresetButtons(tb: HTMLElement): void {
     const i = Number(b.dataset.preset);
     const preset = set.list[i];
     b.hidden = !preset;
-    if (!preset) { delete b.dataset.ctx; continue; }
+    if (!preset) { delete b.dataset.ctx; b.removeAttribute('id'); continue; }
     const current = i === set.active;
     b.classList.toggle('current', multi && current);
-    if (current) b.dataset.ctx = 'style';
-    else delete b.dataset.ctx;
+    if (current) { b.dataset.ctx = 'style'; b.id = 'btn-style'; }
+    else { delete b.dataset.ctx; b.removeAttribute('id'); }
     b.title = multi ? `${title}: пресет ${i + 1}${current ? ' — цвет и толщина' : ''}` : 'Цвет и толщина';
     // текущий показывает живой стиль (в т.ч. подхваченный из выделения)
     paintStyleIndicator(b.querySelector<HTMLElement>('.style-ind')!, true, current ? state.style : preset);
