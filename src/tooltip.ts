@@ -14,7 +14,7 @@ const MARGIN = 6;         // отступ от края окна
 let tipEl: HTMLDivElement | null = null;
 let target: HTMLElement | null = null;
 let showTimer = 0;
-let hiddenAt = 0;
+let hiddenAt = -Infinity;
 let visible = false;
 
 function ensureEl(): HTMLDivElement {
@@ -153,7 +153,7 @@ export function initTooltips(): void {
     hide();
   });
   // нажатие, прокрутка, клавиатура — подсказка больше не нужна
-  document.addEventListener('pointerdown', () => { hide(); hiddenAt = 0; }, true);
+  document.addEventListener('pointerdown', () => { hide(); hiddenAt = -Infinity; }, true);
   document.addEventListener('wheel', hide, { capture: true, passive: true });
   document.addEventListener('keydown', hide, true);
   window.addEventListener('blur', hide);
