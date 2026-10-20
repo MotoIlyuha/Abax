@@ -16,11 +16,11 @@ import * as pdfjsLib from 'pdfjs-dist';
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker&inline';
 import { collabActive, isHost, noteSelection, readOnly, startHostConnection, stopCollab } from './collab';
 import { closePresent, openPresent, presentOpen } from './present';
+import { type ToolbarGroup, onToolbarChange, restoreToolbar, svg, toolDef, toolTip, toolbarConfig } from './toolbar';
+import { openSettingsDialog, settingsDialogOpen } from './settings-dialog';
+import { renderToolbarEditor } from './toolbar-editor';
 
 pdfjsLib.GlobalWorkerOptions.workerPort = new PdfWorker();
-
-const svg = (paths: string) =>
-  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
 
 const ICONS = {
   home: svg('<path d="M3 11l9-8 9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/>'),
@@ -39,6 +39,8 @@ const ICONS = {
   group: svg('<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/><path d="M11 11l2 2"/>'),
   ungroup: svg('<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/><path d="M13 6h4M15 4v4M7 13v4M5 15h4"/>'),
   trash: svg('<path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/>'),
+  toolbar: svg('<rect x="3" y="3" width="7" height="18" rx="2"/><path d="M14 7h7M14 12h7M14 17h7"/>'),
+  chevron: svg('<path d="M9 6l6 6-6 6"/>'),
 };
 
 const GRID_ICONS: Record<GridMode, string> = {
@@ -48,63 +50,13 @@ const GRID_ICONS: Record<GridMode, string> = {
   coord: svg('<path d="M5 19V5M5 19h14"/><path d="M5 5l-2 3M5 5l2 3M19 19l-3-2M19 19l-3 2"/><circle cx="12" cy="12" r="1"/>'),
 };
 
-type ToolDef = { id: ToolId; code: string; title: string; icon: string };
+/** Последний выбранный инструмент группы (по id группы) — его иконку показывает кнопка группы. */
+const lastGroupTool: Record<string, ToolId> = {};
 
-/** group — место кнопки группы инструментов; иконку она берёт у последнего выбранного. */
-const TOOLS: (ToolDef & { group?: ToolGroupKind })[] = [
-  { id: 'select', code: 'V', title: 'Выделение и перемещение', icon: svg('<path d="M5 3l15 8-6.4 1.7L11 20z"/>') },
-  { id: 'pan', code: 'H', title: 'Панорама', icon: svg('<path d="M12 3v18M3 12h18"/><path d="M9.5 5.5L12 3l2.5 2.5M9.5 18.5L12 21l2.5-2.5M5.5 9.5L3 12l2.5 2.5M18.5 9.5L21 12l-2.5 2.5"/>') },
-  { id: 'pen', code: 'P', title: 'Перо', icon: svg('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>') },
-  { id: 'highlighter', code: 'M', title: 'Маркер', icon: svg('<path d="M9 11l-6 6v3h3l6-6"/><path d="M17.5 2.5l4 4L11 17l-4-4z"/>') },
-  { id: 'eraser', code: 'E', title: 'Ластик', icon: svg('<path d="M20 20H8.5L3.6 15.1a2 2 0 0 1 0-2.8l8.6-8.6a2 2 0 0 1 2.8 0l6 6a2 2 0 0 1 0 2.8L13.5 19"/><path d="M7 10.5l6.5 6.5"/>') },
-  { id: 'text', code: 'T', title: 'Текст', icon: svg('<path d="M5 7V5h14v2"/><path d="M12 5v14"/><path d="M9 19h6"/>') },
-  { id: 'note', code: 'N', title: 'Стикер', icon: svg('<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M8 9.5h8"/><path d="M8 13h5"/>') },
-  { id: 'rect', code: 'R', title: 'Фигуры', icon: '', group: 'shapes' },
-  { id: 'cube', code: '', title: 'Стереометрия', icon: '', group: 'solids' },
-  { id: 'laser', code: 'I', title: 'Указка', icon: '', group: 'pointer' },
-];
-
-/** Инструменты группы «Фигуры» — в тулбаре одна кнопка, выбор во всплывающей панели. */
-const SHAPE_TOOLS: ToolDef[] = [
-  { id: 'rect', code: 'R', title: 'Прямоугольник', icon: svg('<rect x="4" y="6" width="16" height="12" rx="1.5"/>') },
-  { id: 'ellipse', code: 'O', title: 'Эллипс', icon: svg('<ellipse cx="12" cy="12" rx="8.5" ry="6.5"/>') },
-  { id: 'triangle', code: 'Y', title: 'Треугольник', icon: svg('<path d="M12 4.5L20.5 19H3.5z"/>') },
-  { id: 'line', code: 'L', title: 'Линия', icon: svg('<path d="M5 19L19 5"/>') },
-  { id: 'arrow', code: 'A', title: 'Стрелка', icon: svg('<path d="M5 19L18 6"/><path d="M12 6h6v6"/>') },
-  { id: 'poly', code: 'K', title: 'Ломаная / многоугольник', icon: svg('<path d="M4 18l5-10 6 7 5-9"/>') },
-];
-/** Невидимые линии на иконках тел — пунктиром, как на холсте. */
-const hid = (d: string) => `<path d="${d}" stroke-dasharray="2.2 2" stroke-width="1.4"/>`;
-
-/** Инструменты группы «Стереометрия»: каркасные тела с пунктиром невидимых рёбер. */
-const SOLID_TOOLS: ToolDef[] = [
-  { id: 'cube', code: '', title: 'Куб', icon: svg('<path d="M4 9h11v11H4z"/><path d="M4 9l5-5h11l-5 5M20 4v11l-5 5"/>' + hid('M9 4v11h11M4 20l5-5')) },
-  { id: 'box', code: '', title: 'Параллелепипед', icon: svg('<path d="M2.5 11h14v9h-14z"/><path d="M2.5 11l5-5h14l-5 5M21.5 6v9l-5 5"/>' + hid('M7.5 6v9h14M2.5 20l5-5')) },
-  { id: 'prism', code: '', title: 'Призма', icon: svg('<path d="M6 4h13l-10.5 4z"/><path d="M6 4v13l2.5 4L19 17V4M8.5 8v13"/>' + hid('M6 17h13')) },
-  { id: 'pyramid', code: '', title: 'Пирамида', icon: svg('<path d="M3 20h12l5-5M3 20l8.5-17L15 20M11.5 3L20 15"/>' + hid('M20 15H8l-5 5M8 15l3.5-12')) },
-  { id: 'truncPyramid', code: '', title: 'Усечённая пирамида', icon: svg('<path d="M6 8h7l3-3H9z"/><path d="M2 20h13l6-5M2 20L6 8M15 20L13 8M21 15L16 5"/>' + hid('M21 15H8l-6 5M8 15L9 5')) },
-  { id: 'cylinder', code: '', title: 'Цилиндр', icon: svg('<ellipse cx="12" cy="5" rx="7" ry="2.5"/><path d="M5 5v14M19 5v14M5 19a7 2.5 0 0 0 14 0"/>' + hid('M5 19a7 2.5 0 0 1 14 0')) },
-  { id: 'cone', code: '', title: 'Конус', icon: svg('<path d="M4 19L12 3l8 16M4 19a8 2.8 0 0 0 16 0"/>' + hid('M4 19a8 2.8 0 0 1 16 0')) },
-  { id: 'truncCone', code: '', title: 'Усечённый конус', icon: svg('<ellipse cx="12" cy="6" rx="4" ry="1.5"/><path d="M8 6L4 19M16 6l4 13M4 19a8 2.8 0 0 0 16 0"/>' + hid('M4 19a8 2.8 0 0 1 16 0')) },
-  { id: 'sphere', code: '', title: 'Шар', icon: svg('<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12a8.5 3 0 0 0 17 0"/>' + hid('M3.5 12a8.5 3 0 0 1 17 0')) },
-];
-
-/** Инструменты группы «Указка»: показать, не оставляя следов на доске. */
-const POINTER_TOOLS: ToolDef[] = [
-  { id: 'laser', code: 'I', title: 'Лазерная указка', icon: svg('<circle cx="15" cy="9" r="2.6"/><path d="M15 2.5v1.8M21.5 9h-1.8M19.6 4.4l-1.3 1.3"/><path d="M3 21c4.5-1.2 8-4.2 10.2-8.6"/>') },
-  { id: 'fadePen', code: '', title: 'Исчезающий маркер', icon: svg('<path d="M18 2.5l3.5 3.5-8.5 8.5-3.5-3.5z"/><path d="M9.5 11l-4 4v2.5H8l4-4"/><path d="M3 21h4"/><path d="M10 21h3" opacity=".55"/><path d="M16 21h2" opacity=".25"/>') },
-  { id: 'flash', code: '', title: 'Подсветка объектов', icon: svg('<rect x="7.5" y="7.5" width="9" height="9" rx="2"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>') },
-];
-
-/** Группы инструментов с одной кнопкой в тулбаре и выбором во всплывающей панели. */
-type ToolGroupKind = 'shapes' | 'solids' | 'pointer';
-const TOOL_GROUPS: Record<ToolGroupKind, { title: string; tools: ToolDef[] }> = {
-  shapes: { title: 'Фигуры', tools: SHAPE_TOOLS },
-  solids: { title: 'Стереометрия', tools: SOLID_TOOLS },
-  pointer: { title: 'Указка', tools: POINTER_TOOLS },
-};
-/** Последний выбранный инструмент группы — его иконку показывает кнопка группы. */
-const lastGroupTool: Record<ToolGroupKind, ToolId> = { shapes: 'rect', solids: 'cube', pointer: 'laser' };
+/** Группа, кнопка которой сейчас на панели инструментов. */
+function toolbarGroup(id: string): ToolbarGroup | undefined {
+  return toolbarConfig().items.find((it): it is ToolbarGroup => it.type === 'group' && it.id === id && it.tools.length > 0);
+}
 
 /** Палитра как в Miro: строки — семейства оттенков, столбцы — светлый / яркий / тёмный / нейтральный. */
 const PALETTE = [
@@ -367,7 +319,8 @@ export function closeEditor(commit: boolean): void {
 
 // ----- Контекстная панель (цвет и толщина / стикеры) -----
 
-type CtxKind = 'style' | 'note' | ToolGroupKind;
+/** 'style', 'note' или id группы инструментов (у групп свои id, с этими двумя не совпадают). */
+type CtxKind = string;
 /** Откуда вызвана панель: с тулбара — встаёт сбоку по центру кнопки, из плавающего меню — под ним. */
 type CtxSource = 'toolbar' | 'quick';
 interface CtxPanel {
@@ -539,7 +492,10 @@ function syncCtxButtons(): void {
 function ctxAnchor(cp: CtxPanel): HTMLElement | null {
   const host = cp.source === 'quick' ? quickMenuEl() : document.getElementById('toolbar')!;
   if (host.hidden) return null;
-  return host.querySelector<HTMLElement>(`[data-ctx="${cp.kind}"]`);
+  const own = host.querySelector<HTMLElement>(`[data-ctx="${cp.kind}"]`);
+  // стикер, убранный в группу, показывает цвета у кнопки этой группы
+  if (!own && cp.kind === 'note' && cp.source === 'toolbar') return host.querySelector<HTMLElement>('[data-tools~="note"]');
+  return own;
 }
 
 /** Пристыкованную панель держим у её кнопки (без кнопки — закрываем), откреплённые — в пределах холста. */
@@ -605,31 +561,42 @@ function positionCtxPanel(cp: CtxPanel): void {
   p.style.top = `${top}px`;
 }
 
-function buildToolGroupPanel(cp: CtxPanel, kind: ToolGroupKind): void {
+function buildToolGroupPanel(cp: CtxPanel, groupId: string): void {
   const p = cp.el;
-  const group = TOOL_GROUPS[kind];
+  const group = toolbarGroup(groupId);
   // панели групп оформлены одинаково (data-kind='shapes'), различаются набором кнопок
   p.dataset.kind = 'shapes';
   const title = document.createElement('div');
   title.className = 'ctx-title';
-  title.textContent = group.title;
+  title.textContent = group?.name ?? '';
   p.appendChild(title);
   const grid = document.createElement('div');
   grid.className = 'ctx-shapes';
-  for (const t of group.tools) {
+  for (const id of group?.tools ?? []) {
     const b = document.createElement('button');
-    b.className = 'tool' + (state.tool === t.id ? ' active' : '');
-    b.title = t.code ? `${t.title} (${t.code})` : t.title;
-    b.innerHTML = t.icon;
-    b.dataset.shape = t.id;
+    b.className = 'tool' + (state.tool === id ? ' active' : '');
+    b.title = toolTip(id);
+    b.innerHTML = toolDef(id).icon;
+    b.dataset.shape = id;
     b.addEventListener('click', () => {
       // откреплённая панель работает как палитра — остаётся открытой, подсветку обновит refresh()
       if (!cp.detached) closePanel(cp);
-      setTool(t.id);
+      setTool(id);
     });
     grid.appendChild(b);
   }
   p.appendChild(grid);
+}
+
+/** Панель инструментов перенастроили: панели групп пересобираем, у исчезнувших групп — закрываем. */
+function syncGroupPanels(): void {
+  for (const cp of [...ctxPanels]) {
+    if (cp.kind === 'style' || cp.kind === 'note') continue;
+    if (!toolbarGroup(cp.kind)) { closePanel(cp); continue; }
+    cp.el.textContent = '';
+    buildToolGroupPanel(cp, cp.kind);
+    cp.el.appendChild(buildCtxBar(cp));
+  }
 }
 
 function sectionHead(text: string): HTMLElement {
@@ -1071,6 +1038,44 @@ function openSettings(): void {
   title.className = 'ctx-title';
   title.textContent = 'Настройки доски';
   pop.appendChild(title);
+  fillBoardSettings(pop, openSettings);
+  const all = document.createElement('button');
+  all.className = 'settings-all';
+  all.title = 'Все настройки (Ctrl+,)';
+  all.innerHTML = ICONS.settings;
+  const allText = document.createElement('span');
+  allText.textContent = 'Все настройки';
+  all.append(allText);
+  all.insertAdjacentHTML('beforeend', ICONS.chevron);
+  all.addEventListener('click', () => openAllSettings());
+  pop.appendChild(all);
+  const btn = document.getElementById('btn-settings')!;
+  const br = btn.getBoundingClientRect();
+  pop.style.left = `${Math.max(8, br.right - 260)}px`;
+  pop.style.top = `${br.bottom + 8}px`;
+}
+
+/** Окно «Все настройки»; section — раздел, с которого открыть (по умолчанию — последний открытый). */
+export function openAllSettings(section?: string): void {
+  closeSettings();
+  openSettingsDialog([
+    {
+      id: 'general',
+      title: 'Доска',
+      icon: ICONS.settings,
+      render: (host, rerender) => {
+        const box = document.createElement('div');
+        box.className = 'sd-general';
+        fillBoardSettings(box, rerender);
+        host.appendChild(box);
+      },
+    },
+    { id: 'toolbar', title: 'Панель инструментов', icon: ICONS.toolbar, render: host => renderToolbarEditor(host) },
+  ], section);
+}
+
+/** Основные настройки доски — в поповере и в разделе «Доска» окна всех настроек. */
+function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
   const lbl1 = document.createElement('div');
   lbl1.className = 'ctx-label';
   lbl1.textContent = 'Панель инструментов';
@@ -1086,7 +1091,7 @@ function openSettings(): void {
       setSettings({ toolbarPos: pos });
       persistSettings();
       applyToolbarPos();
-      openSettings();
+      rerender();
     });
     row.appendChild(b);
   }
@@ -1135,15 +1140,11 @@ function openSettings(): void {
     b.addEventListener('click', () => {
       setSettings({ wheelMode: mode });
       persistSettings();
-      openSettings();
+      rerender();
     });
     wheelRow.appendChild(b);
   }
   pop.appendChild(wheelRow);
-  const btn = document.getElementById('btn-settings')!;
-  const br = btn.getBoundingClientRect();
-  pop.style.left = `${Math.max(8, br.right - 260)}px`;
-  pop.style.top = `${br.bottom + 8}px`;
 }
 
 function applyToolbarPos(): void {
@@ -1774,29 +1775,35 @@ function buildToolbar(): void {
   tb.textContent = '';
   const tools = document.createElement('div');
   tools.className = 'tool-group';
-  for (const t of TOOLS) {
+  // порядок, группы и скрытые — из настройки панели (окно «Все настройки»)
+  for (const item of toolbarConfig().items) {
     const b = document.createElement('button');
     b.className = 'tool';
-    const groupKind = t.group;
-    if (groupKind) {
+    if (item.type === 'group') {
+      if (item.tools.length === 0) continue;
       // группа инструментов: клик открывает панель выбора по центру этой кнопки
-      b.id = `btn-${groupKind}`;
-      b.dataset.ctx = groupKind;
+      const groupId = item.id;
+      b.id = `btn-${groupId}`;
+      b.dataset.ctx = groupId;
+      b.dataset.tools = item.tools.join(' ');
       b.classList.add('tool-shapes');
-      b.title = TOOL_GROUPS[groupKind].title;
-      b.addEventListener('click', () => toggleCtxPanel(groupKind, 'toolbar'));
+      b.title = item.name;
+      b.addEventListener('click', () => toggleCtxPanel(groupId, 'toolbar'));
     } else {
-      b.dataset.tool = t.id;
-      b.title = `${t.title} (${t.code})`;
-      b.innerHTML = t.icon;
+      const id = item.id;
+      b.dataset.tool = id;
+      b.title = toolTip(id);
+      b.innerHTML = toolDef(id).icon;
       // панель стикеров открывается с этим инструментом и встаёт по центру его кнопки
-      if (t.id === 'note') b.dataset.ctx = 'note';
-      b.addEventListener('click', () => setTool(t.id));
+      if (id === 'note') b.dataset.ctx = 'note';
+      b.addEventListener('click', () => setTool(id));
     }
     tools.appendChild(b);
   }
-  tb.appendChild(tools);
-  tb.appendChild(makeVsep());
+  if (tools.childElementCount > 0) {
+    tb.appendChild(tools);
+    tb.appendChild(makeVsep());
+  }
 
   // пресеты «цвет + толщина»: у пера и маркера три, у прочих инструментов один (лишние скрыты)
   const styleGroup = document.createElement('div');
@@ -1931,6 +1938,8 @@ function wireTopbar(): void {
   }, { capture: true });
   window.addEventListener('resize', () => positionCtxPanels(true));
   window.addEventListener('keydown', e => {
+    // Esc у открытого окна настроек закрывает только его
+    if (settingsDialogOpen()) return;
     if (e.key === 'Escape') {
       if (!settingsPopover().hidden) { closeSettings(); return; }
       if (dockedPanel()) { closeCtxPanel(); return; }
@@ -2090,23 +2099,25 @@ function refresh(): void {
   for (const b of tb.querySelectorAll<HTMLButtonElement>('.tool[data-tool]')) {
     b.classList.toggle('active', b.dataset.tool === state.tool);
   }
-  for (const kind of Object.keys(TOOL_GROUPS) as ToolGroupKind[]) {
-    const group = TOOL_GROUPS[kind];
-    const active = group.tools.find(t => t.id === state.tool);
-    if (active) lastGroupTool[kind] = active.id;
-    const btn = tb.querySelector<HTMLButtonElement>(`#btn-${kind}`);
+  for (const group of toolbarConfig().items) {
+    if (group.type !== 'group' || group.tools.length === 0) continue;
+    const active = group.tools.includes(state.tool);
+    if (active) lastGroupTool[group.id] = state.tool;
+    const btn = tb.querySelector<HTMLButtonElement>(`[data-ctx="${group.id}"]`);
     if (!btn) continue;
-    btn.classList.toggle('active', !!active);
-    if (btn.dataset.shape !== lastGroupTool[kind]) {
-      const cur = group.tools.find(t => t.id === lastGroupTool[kind])!;
-      btn.dataset.shape = cur.id;
-      btn.innerHTML = cur.icon;
-      btn.title = `${group.title}: ${cur.title}`;
+    btn.classList.toggle('active', active);
+    // инструмент могли перенести в другую группу — тогда кнопка показывает первый
+    const cur = group.tools.includes(lastGroupTool[group.id]) ? lastGroupTool[group.id] : group.tools[0];
+    if (btn.dataset.shape !== cur) {
+      btn.dataset.shape = cur;
+      btn.innerHTML = toolDef(cur).icon;
+      btn.title = `${group.name}: ${toolDef(cur).title}`;
     }
   }
   syncPresetButtons(tb);
-  // панель стикеров открывается автоматически с инструментом
-  if (state.tool === 'note' && !dockedPanel() && !panelOf('note') && state.view === 'board') openCtxPanel('note', 'toolbar');
+  // панель стикеров открывается автоматически с инструментом (если стикер не скрыт с панели)
+  const noteOnToolbar = !!tb.querySelector('[data-ctx="note"], [data-tools~="note"]');
+  if (state.tool === 'note' && noteOnToolbar && !dockedPanel() && !panelOf('note') && state.view === 'board') openCtxPanel('note', 'toolbar');
   const notePanel = panelOf('note');
   if (state.tool !== 'note' && notePanel && !notePanel.detached) closePanel(notePanel);
   // откреплённые палитры инструментов подсвечивают текущий инструмент
@@ -2160,11 +2171,18 @@ export function initApp(c: HTMLCanvasElement): void {
   canvas = c;
   restoreStyle();
   restoreSettings();
+  restoreToolbar();
   buildToolbar();
   applyToolbarPos();
   wireTopbar();
   wireImageInput();
   try { refresh(); } catch (err) { console.error('[doska] refresh failed:', err); }
+  onToolbarChange(() => {
+    buildToolbar();
+    syncGroupPanels();
+    refresh();
+    positionCtxPanels(true);
+  });
   onChange(() => {
     refresh();
     scheduleSave();

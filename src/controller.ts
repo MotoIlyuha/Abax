@@ -11,7 +11,8 @@ import {
 import { collabActive, noteCursor, readOnly } from './collab';
 import { eraseRadius, presenting, requestRender } from './renderer';
 import { fitSolid, SOLID_CLICK_SIZE, solidKeepsAspect } from './solid';
-import { beginTextEdit, exportPng, fitContent, saveNow, toggleSidebar } from './app';
+import { beginTextEdit, exportPng, fitContent, openAllSettings, saveNow, toggleSidebar } from './app';
+import { toolByKey } from './toolbar';
 
 const SELECT_TOL = 6; // px экрана
 const HANDLE_HIT_PX = 8;
@@ -23,11 +24,6 @@ const CURSORS: Record<ToolId, string> = {
   laser: 'none', fadePen: 'crosshair', flash: 'default',
   cube: 'crosshair', box: 'crosshair', prism: 'crosshair', pyramid: 'crosshair', truncPyramid: 'crosshair',
   cylinder: 'crosshair', cone: 'crosshair', truncCone: 'crosshair', sphere: 'crosshair',
-};
-const TOOL_BY_CODE: Record<string, ToolId> = {
-  KeyV: 'select', KeyP: 'pen', KeyM: 'highlighter', KeyE: 'eraser', KeyH: 'pan',
-  KeyT: 'text', KeyN: 'note', KeyR: 'rect', KeyO: 'ellipse', KeyY: 'triangle', KeyL: 'line', KeyA: 'arrow',
-  KeyI: 'laser', KeyK: 'poly',
 };
 const MOVE_THRESHOLD_PX = 3;
 const LASER_MAX_PTS = 400;
@@ -697,6 +693,7 @@ export function initController(canvas: HTMLCanvasElement): void {
           if (e.shiftKey) ungroupSelected(); else groupSelected();
           return;
         case 'KeyE': e.preventDefault(); void exportPng(); return;
+        case 'Comma': e.preventDefault(); openAllSettings(); return;
       }
       return;
     }
@@ -719,7 +716,8 @@ export function initController(canvas: HTMLCanvasElement): void {
       case 'Digit0': fitContent(); break;
       case 'KeyB': toggleSidebar(); break;
       default: {
-        const tool = TOOL_BY_CODE[e.code];
+        // клавиши инструментов настраиваются в окне «Все настройки»
+        const tool = toolByKey(e.code);
         if (tool) setTool(tool);
       }
     }
