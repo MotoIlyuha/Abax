@@ -1,4 +1,4 @@
-import type { BoardSettings, Element, FadeStroke, Flash, GridMode, LaserPt, Page, Project, ProjectMeta, Pt, SolidKind, ToolId } from './types';
+import type { BoardSettings, Element, FadeStroke, Flash, GridMode, LaserPt, NoteEl, Page, Project, ProjectMeta, Pt, SolidKind, TextEl, ToolId } from './types';
 import { hasBaseSides, SIDES_MAX, SIDES_MIN, solidSides } from './solid';
 
 export interface LiveStroke {
@@ -52,6 +52,8 @@ export interface AppState {
   liveSolid: LiveSolid | null;
   livePoly: { pts: Pt[]; cursor: Pt | null } | null;
   liveNote: LiveNote | null;
+  /** Текст или стикер в процессе ввода (для окна демонстрации: в основном окне его показывает редактор). */
+  liveText: TextEl | NoteEl | null;
   /** id элемента, скрытого на время редактирования текста. */
   hideElId: string | null;
   /** Идёт активное перетаскивание/правка выделенного — рисуем его поверх. */
@@ -100,6 +102,7 @@ export const state: AppState = {
   liveSolid: null,
   livePoly: null,
   liveNote: null,
+  liveText: null,
   hideElId: null,
   liveEdit: false,
   marquee: null,
