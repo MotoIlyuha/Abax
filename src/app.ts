@@ -841,14 +841,35 @@ function quickMenuEl(): HTMLElement {
   return document.getElementById('quick-menu')!;
 }
 
-function canChangeLayer(): boolean {
-  const arr = state.board.elements;
-  for (let i = 0; i < arr.length; i++) {
-    const sel = state.selection.has(arr[i].id);
-    if (i > 0 && sel && !state.selection.has(arr[i - 1].id)) return true;
-    if (i < arr.length - 1 && sel && !state.selection.has(arr[i + 1].id)) return true;
+/** Есть ли смысл в «выше/ниже»: выделенное пересекается (по bbox) с невыделенным над ним / под ним. */
+function layerMoves(): { up: boolean; down: boolean } {
+  type Box = { x0: number; y0: number; x1: number; y1: number };
+  const hit = (a: Box, b: Box) => a.x0 <= b.x1 && b.x0 <= a.x1 && a.y0 <= b.y1 && b.y0 <= a.y1;
+  const boxes = state.board.elements.map(elementAABB);
+  // общая рамка выделения — дешёвый отсев невыделенных, которые точно ни с чем не пересекаются
+  const all: Box = { x0: Infinity, y0: Infinity, x1: -Infinity, y1: -Infinity };
+  state.board.elements.forEach((el, i) => {
+    if (!state.selection.has(el.id)) return;
+    const a = boxes[i];
+    all.x0 = Math.min(all.x0, a.x0); all.y0 = Math.min(all.y0, a.y0);
+    all.x1 = Math.max(all.x1, a.x1); all.y1 = Math.max(all.y1, a.y1);
+  });
+  const selBelow: Box[] = [];   // выделенные, пройденные ранее (ниже текущего)
+  const otherBelow: Box[] = []; // невыделенные, пройденные ранее
+  let up = false, down = false;
+  for (let i = 0; i < boxes.length; i++) {
+    const a = boxes[i];
+    if (state.selection.has(state.board.elements[i].id)) {
+      if (!down && otherBelow.some(b => hit(a, b))) down = true;
+      selBelow.push(a);
+    } else {
+      if (!hit(a, all)) continue;
+      if (!up && selBelow.some(b => hit(a, b))) up = true;
+      otherBelow.push(a);
+    }
+    if (up && down) break;
   }
-  return false;
+  return { up, down };
 }
 
 function updateQuickMenu(): void {
@@ -914,18 +935,22 @@ function updateQuickMenu(): void {
     qm.appendChild(box);
   }
   // слои
-  if (state.board.elements.length > 1 && canChangeLayer()) {
+  const layers = layerMoves();
+  if (layers.up) {
     const up = document.createElement('button');
     up.className = 'qm-btn';
     up.title = 'Выше (слой)';
     up.innerHTML = ICONS.up;
     up.addEventListener('click', () => { bringForward(); });
+    qm.appendChild(up);
+  }
+  if (layers.down) {
     const down = document.createElement('button');
     down.className = 'qm-btn';
     down.title = 'Ниже (слой)';
     down.innerHTML = ICONS.down;
     down.addEventListener('click', () => { sendBackward(); });
-    qm.append(up, down);
+    qm.appendChild(down);
   }
   // группы
   const sel = state.board.elements.filter(e => state.selection.has(e.id));
