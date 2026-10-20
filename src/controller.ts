@@ -38,7 +38,7 @@ const ZOOM_MAX = 32;
 
 type Action = { pid: number } & (
   | { kind: 'draw' }
-  | { kind: 'erase'; pre: Element[]; removed: Element[] }
+  | { kind: 'erase'; pre: Element[]; removed: Element[]; last: { x: number; y: number } | null }
   | { kind: 'move'; pre: Element[]; start: Pt; orig: Map<string, Element>; moved: boolean; deselectOnUp: boolean }
   | { kind: 'shape' }
   | { kind: 'solid' }
@@ -107,12 +107,22 @@ export function initController(canvas: HTMLCanvasElement): void {
 
   function eraseAt(x: number, y: number, a: Extract<Action, { kind: 'erase' }>): void {
     const r = eraseRadius / state.camera.zoom;
-    const before = state.board.elements;
-    const next: Element[] = [];
+    // быстрое движение даёт редкие события: проходим путь от прошлой точки с шагом в радиус,
+    // иначе тонкая линия между двумя событиями не стирается
+    const from = a.last ?? { x, y };
+    const steps = Math.max(1, Math.ceil(Math.hypot(x - from.x, y - from.y) / r));
+    a.last = { x, y };
+    let next = state.board.elements;
     let removedNow = 0;
-    for (const el of before) {
-      if (hitTest(el, x, y, r)) { a.removed.push(el); removedNow++; }
-      else next.push(el);
+    for (let i = 1; i <= steps; i++) {
+      const px = from.x + ((x - from.x) * i) / steps;
+      const py = from.y + ((y - from.y) * i) / steps;
+      const kept: Element[] = [];
+      for (const el of next) {
+        if (hitTest(el, px, py, r)) { a.removed.push(el); removedNow++; }
+        else kept.push(el);
+      }
+      next = kept;
     }
     if (removedNow) replaceElements(next);
   }
@@ -244,7 +254,12 @@ export function initController(canvas: HTMLCanvasElement): void {
 
     const touches = touchPtrs();
     if (e.pointerType === 'touch' && touches.length === 2) {
-      finishAction(); // жест двумя пальцами прерывает текущее действие
+      // жест двумя пальцами прерывает текущее действие; начатое первым пальцем рисование —
+      // это не штрих, а начало жеста: отбрасываем, а не сохраняем точкой на доске
+      if (action?.kind === 'draw') { action = null; state.liveStroke = null; }
+      else if (action?.kind === 'shape') { action = null; state.liveShape = null; }
+      else if (action?.kind === 'solid') { action = null; state.liveSolid = null; }
+      finishAction();
       const [a, b] = touches;
       gesture = {
         dist: Math.hypot(a.x - b.x, a.y - b.y) || 1,
@@ -272,7 +287,7 @@ export function initController(canvas: HTMLCanvasElement): void {
         action = { pid: e.pointerId, kind: 'draw' };
         break;
       case 'eraser': {
-        const a: Extract<Action, { kind: 'erase' }> = { pid: e.pointerId, kind: 'erase', pre: state.board.elements, removed: [] };
+        const a: Extract<Action, { kind: 'erase' }> = { pid: e.pointerId, kind: 'erase', pre: state.board.elements, removed: [], last: null };
         action = a;
         eraseAt(s.x, s.y, a);
         break;

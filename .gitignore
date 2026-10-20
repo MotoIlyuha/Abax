@@ -3,3 +3,6 @@ dist/
 release/
 *.log
 .vite/
+coverage/
+test-results/
+playwright-report/
