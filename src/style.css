@@ -67,6 +67,7 @@ select {
   color: var(--fg);
 }
 .icon:hover { background: #f0f2f5; }
+.icon.active { background: var(--accent-soft); color: var(--accent); }
 .icon:disabled { color: #c3c8d1; cursor: default; background: transparent; }
 .icon svg { width: 18px; height: 18px; }
 

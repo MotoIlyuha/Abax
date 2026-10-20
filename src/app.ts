@@ -15,6 +15,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 // ?worker&inline: воркер инлайнится в бандл и работает из file:// (Electron)
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker&inline';
 import { collabActive, isHost, noteSelection, readOnly, startHostConnection, stopCollab } from './collab';
+import { closePresent, openPresent, presentOpen } from './present';
 
 pdfjsLib.GlobalWorkerOptions.workerPort = new PdfWorker();
 
@@ -29,6 +30,7 @@ const ICONS = {
   redo: svg('<path d="M20 10h-9a5 5 0 0 0 0 10h3"/><path d="M16 6l4 4-4 4"/>'),
   fit: svg('<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/>'),
   export: svg('<path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M4 19h16"/>'),
+  present: svg('<rect x="2.5" y="4" width="19" height="13" rx="2"/><path d="M8 21h8M12 17v4"/><path d="M10.5 8.2l4 2.3-4 2.3z"/>'),
   pdf: svg('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h4"/>'),
   del: svg('<path d="M6 6l12 12M18 6L6 18"/>'),
   settings: svg('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.1-1.55 1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1.1 1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h.01a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/>'),
@@ -267,6 +269,7 @@ export function beginTextEdit(opts: { el?: TextEl | NoteEl; at?: { x: number; y:
   document.getElementById('overlay')!.appendChild(ta);
   editing = { el, at: opts.at ?? null, target, ta };
   positionEditor();
+  syncLiveText();
   update();
   ta.focus();
   ta.setSelectionRange(ta.value.length, ta.value.length);
@@ -276,8 +279,26 @@ export function beginTextEdit(opts: { el?: TextEl | NoteEl; at?: { x: number; y:
     else if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); closeEditor(true); }
     // Shift+Enter — перевод строки (стандартное поведение textarea)
   });
-  ta.addEventListener('input', () => positionEditor());
+  ta.addEventListener('input', () => {
+    syncLiveText();
+    update(); // подписчик заодно подгоняет размер редактора
+  });
   ta.addEventListener('blur', () => closeEditor(true));
+}
+
+/** Вводимый текст — в state.liveText: окно демонстрации рисует его вместо редактора. */
+function syncLiveText(): void {
+  const e = editing;
+  if (!e) { state.liveText = null; return; }
+  const text = e.ta.value;
+  if (e.el) {
+    state.liveText = { ...e.el, text };
+  } else if (e.target === 'text') {
+    state.liveText = { id: '', type: 'text', x: e.at!.x, y: e.at!.y, text, size: TEXT_SIZE, color: state.style.color };
+  } else {
+    const n = state.liveNote;
+    state.liveText = n ? { id: '', type: 'note', x: n.x, y: n.y, w: n.w, h: n.h, text, color: n.color } : null;
+  }
 }
 
 function positionEditor(): void {
@@ -320,6 +341,7 @@ export function closeEditor(commit: boolean): void {
   const text = e.ta.value.replace(/[ \t]+$/gm, '').replace(/\s+$/, '');
   e.ta.remove();
   state.hideElId = null;
+  state.liveText = null;
   const liveNote = state.liveNote;
   state.liveNote = null;
   if (!commit || text === '') {
@@ -1850,6 +1872,7 @@ function wireTopbar(): void {
   document.getElementById('btn-redo')!.innerHTML = ICONS.redo;
   document.getElementById('btn-fit')!.innerHTML = ICONS.fit;
   document.getElementById('btn-export')!.innerHTML = ICONS.export;
+  document.getElementById('btn-present')!.innerHTML = ICONS.present;
   document.getElementById('btn-import')!.innerHTML = ICONS.pdf;
   document.getElementById('btn-settings')!.innerHTML = ICONS.settings;
   document.getElementById('btn-share')!.innerHTML = svg('<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/>');
@@ -1872,6 +1895,7 @@ function wireTopbar(): void {
   document.getElementById('btn-redo')!.addEventListener('click', () => redo());
   document.getElementById('btn-fit')!.addEventListener('click', fitContent);
   document.getElementById('btn-export')!.addEventListener('click', () => { void exportPng(); });
+  document.getElementById('btn-present')!.addEventListener('click', togglePresent);
   document.getElementById('btn-import')!.addEventListener('click', () => { void importPdf(); });
   document.getElementById('btn-settings')!.addEventListener('click', () => {
     if (settingsPopover().hidden) openSettings();
@@ -1912,6 +1936,12 @@ function wireTopbar(): void {
       if (dockedPanel()) { closeCtxPanel(); return; }
     }
   }, { capture: true });
+}
+
+/** Окно демонстрации: открыть или закрыть. */
+export function togglePresent(): void {
+  if (presentOpen()) { closePresent(); return; }
+  if (!openPresent()) alert('Не удалось открыть окно демонстрации: разрешите всплывающие окна для этой страницы');
 }
 
 export function toggleSidebar(): void {
@@ -2085,6 +2115,7 @@ function refresh(): void {
   }
   ctxLayerEl().hidden = state.view !== 'board';
 
+  document.getElementById('btn-present')!.classList.toggle('active', presentOpen());
   (document.getElementById('btn-undo') as HTMLButtonElement).disabled = !canUndo();
   (document.getElementById('btn-redo') as HTMLButtonElement).disabled = !canRedo();
   document.getElementById('zoom-label')!.textContent = `${Math.round(state.camera.zoom * 100)}%`;

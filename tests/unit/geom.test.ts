@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   aabbIntersects, aabbUnion, applyHandle, distToSeg, elementAABB, elementHandles, gridStepFor,
-  hitTest, insertPolyNode, pointInPoly, removePolyNode, snapValue, TEXT_FONT, textSize, wrapText,
+  hitTest, insertPolyNode, pointInPoly, presentCamera, removePolyNode, snapValue, TEXT_FONT, textSize, wrapText,
 } from '../../src/geom';
 import type { Handle, ImageEl, NoteEl, PolyEl, ShapeEl, SolidEl, StrokeEl, TextEl } from '../../src/types';
 
@@ -350,5 +350,37 @@ describe('узлы ломаной', () => {
     expect(removePolyNode(poly(false), 0)!.pts).toHaveLength(3);
     expect(removePolyNode(poly(false, [pt(0, 0), pt(1, 1)]), 0)).toBeNull();
     expect(removePolyNode(poly(true, [pt(0, 0), pt(1, 1), pt(2, 0)]), 0)).toBeNull();
+  });
+});
+
+describe('камера окна демонстрации', () => {
+  const cam = { x: 100, y: 50, zoom: 2 };
+  // основной холст 800×600 при zoom 2 показывает сцену [100..500] × [50..350], центр (300, 200)
+  const center = (c: { x: number; y: number; zoom: number }, w: number, h: number) =>
+    ({ x: c.x + w / c.zoom / 2, y: c.y + h / c.zoom / 2 });
+
+  it('окно того же размера показывает ровно то же', () => {
+    expect(presentCamera(cam, 800, 600, 800, 600)).toEqual(cam);
+  });
+
+  it('пропорциональное окно масштабирует ту же область', () => {
+    const c = presentCamera(cam, 800, 600, 1600, 1200);
+    expect(c).toEqual({ x: 100, y: 50, zoom: 4 });
+  });
+
+  it('широкое окно: видимая область целиком по высоте, по центру', () => {
+    const c = presentCamera(cam, 800, 600, 1920, 1080);
+    expect(c.zoom).toBeCloseTo(2 * 1080 / 600);
+    expect(center(c, 1920, 1080)).toEqual({ x: 300, y: 200 });
+    // по высоте — ровно видимая область, по ширине — с запасом
+    expect(1080 / c.zoom).toBeCloseTo(300);
+    expect(1920 / c.zoom).toBeGreaterThan(400);
+  });
+
+  it('узкое окно: видимая область целиком по ширине', () => {
+    const c = presentCamera(cam, 800, 600, 400, 800);
+    expect(c.zoom).toBeCloseTo(1);
+    expect(400 / c.zoom).toBeCloseTo(400);
+    expect(center(c, 400, 800)).toEqual({ x: 300, y: 200 });
   });
 });

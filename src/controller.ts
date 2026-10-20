@@ -9,7 +9,7 @@ import {
   insertPolyNode, removePolyNode, gridStepFor, snapValue,
 } from './geom';
 import { collabActive, noteCursor, readOnly } from './collab';
-import { eraseRadius } from './renderer';
+import { eraseRadius, presenting, requestRender } from './renderer';
 import { fitSolid, SOLID_CLICK_SIZE, solidKeepsAspect } from './solid';
 import { beginTextEdit, exportPng, fitContent, saveNow, toggleSidebar } from './app';
 
@@ -451,6 +451,7 @@ export function initController(canvas: HTMLCanvasElement): void {
     state.hover = { x: lp.x, y: lp.y };
     if (collabActive()) noteCursor(lp.x / state.camera.zoom + state.camera.x, lp.y / state.camera.zoom + state.camera.y);
     if (state.tool === 'eraser') update();
+    else if (presenting()) requestRender(); // курсор в окне демонстрации
 
     if (gesture) { applyGesture(); return; }
     if (touchBlocked && e.pointerType === 'touch') return;
@@ -601,6 +602,7 @@ export function initController(canvas: HTMLCanvasElement): void {
   function onPointerLeave(): void {
     state.hover = null;
     if (state.tool === 'eraser' || state.tool === 'laser') update();
+    else if (presenting()) requestRender();
   }
 
   function onDblClick(e: MouseEvent): void {
