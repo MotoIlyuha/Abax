@@ -109,7 +109,7 @@ test.describe('окно демонстрации', () => {
 
   test('текст виден ещё во время ввода', async ({ board, page }) => {
     const popup = await openPresent(page);
-    // цвет — после выбора инструмента: у пера свои пресеты, у текста другой
+    // цвет — у пресета текущего инструмента: сначала текст, потом цвет
     await board.tool('t');
     await page.locator('#btn-style').click();
     await page.locator('.ctx-panel[data-kind="style"] .ctx-swatches:not(.custom) .ctx-swatch[data-c="#bd0a0a"]').click();
