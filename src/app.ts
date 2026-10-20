@@ -1,11 +1,12 @@
 import type { Element, GridMode, ImageEl, NoteEl, Page, Project, TextEl, ToolId, ToolbarPos, WheelMode } from './types';
 import {
   state, update, onChange, undo, redo, canUndo, canRedo, setTool, setGrid, setStyleColor,
-  setStyleWidth, setNoteColor, addElement, replaceElements, pushHistory, uid,
+  setStyleWidth, setNoteColor, selectPreset, presetKind, addElement, replaceElements, pushHistory, uid,
   applyStyleToSelection, setSettings, setView, switchPage, addPage, deletePage, renamePage, setSelection,
   openProject, blankProject, projectMeta, groupSelected, ungroupSelected,
   bringForward, sendBackward, deleteSelected, setSolidSides,
 } from './state';
+import type { PresetKind, StyleValue } from './state';
 import { storage } from './storage';
 import { renderScene, contentBBox } from './renderer';
 import { hasBaseSides, SIDES_MAX, SIDES_MIN, solidSides } from './solid';
@@ -147,15 +148,30 @@ function addCustomColor(c: string): void {
 }
 
 function persistStyle(): void {
-  localStorage.setItem(STYLE_KEY, JSON.stringify({ ...state.style, noteColor: state.noteColor }));
+  localStorage.setItem(STYLE_KEY, JSON.stringify({ ...state.style, noteColor: state.noteColor, presets: state.presets }));
 }
 
 function restoreStyle(): void {
   try {
     const v = JSON.parse(localStorage.getItem(STYLE_KEY) || 'null');
-    if (v && typeof v.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(v.color) && typeof v.width === 'number') {
-      state.style = { color: v.color, width: Math.min(14, Math.max(0.5, v.width)) };
+    const styleOf = (x: unknown): StyleValue | null => {
+      const o = x as { color?: unknown; width?: unknown } | null;
+      return o && typeof o.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(o.color) && typeof o.width === 'number'
+        ? { color: o.color, width: Math.min(14, Math.max(0.5, o.width)) }
+        : null;
+    };
+    for (const kind of Object.keys(state.presets) as PresetKind[]) {
+      const saved = v?.presets?.[kind];
+      const set = state.presets[kind];
+      if (!saved || !Array.isArray(saved.list)) continue;
+      set.list.forEach((_, i) => { set.list[i] = styleOf(saved.list[i]) ?? set.list[i]; });
+      if (Number.isInteger(saved.active) && saved.active >= 0 && saved.active < set.list.length) set.active = saved.active;
     }
+    // старый формат: один стиль на всё — становится пресетом «остальных» инструментов
+    const legacy = !v?.presets ? styleOf(v) : null;
+    if (legacy) state.presets.other.list[0] = legacy;
+    const set = state.presets[presetKind(state.tool)];
+    state.style = { ...set.list[set.active] };
     if (v && typeof v.noteColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(v.noteColor)) {
       state.noteColor = v.noteColor;
     }
@@ -491,7 +507,9 @@ function ctxOpenFrom(kind: CtxKind, source: CtxSource): boolean {
 
 /** Кнопка-вызов подсвечена, пока её панель открыта. */
 function syncCtxButtons(): void {
-  document.getElementById('btn-style')?.classList.toggle('active', ctxOpenFrom('style', 'toolbar'));
+  for (const b of document.querySelectorAll('#toolbar .style-btn')) {
+    b.classList.toggle('active', b.hasAttribute('data-ctx') && ctxOpenFrom('style', 'toolbar'));
+  }
   quickMenuEl().querySelector('[data-ctx="style"]')?.classList.toggle('active', ctxOpenFrom('style', 'quick'));
 }
 
@@ -802,22 +820,22 @@ function buildDropSlider(host: HTMLElement, initial: number, onChange: (v: numbe
 }
 
 /** Индикатор «цвет + толщина» как в Miro: кружок, внутри точка текущего цвета, её размер — толщина. */
-function styleIndicator(withWidth: boolean): HTMLElement {
+function styleIndicator(withWidth: boolean, style: StyleValue = state.style): HTMLElement {
   const ring = document.createElement('i');
   ring.className = 'style-ind';
   ring.appendChild(document.createElement('b'));
-  paintStyleIndicator(ring, withWidth);
+  paintStyleIndicator(ring, withWidth, style);
   return ring;
 }
 
-function paintStyleIndicator(ring: HTMLElement, withWidth: boolean): void {
+function paintStyleIndicator(ring: HTMLElement, withWidth: boolean, style: StyleValue = state.style): void {
   const dot = ring.firstElementChild as HTMLElement;
   // у элементов толщина бывает больше максимума слайдера — точка не должна вылезать из кольца
-  const frac = Math.max(0, Math.min(1, (state.style.width - WIDTH_MIN) / (WIDTH_MAX - WIDTH_MIN)));
+  const frac = Math.max(0, Math.min(1, (style.width - WIDTH_MIN) / (WIDTH_MAX - WIDTH_MIN)));
   const d = withWidth ? Math.round(7 + frac * 9) : 14;
   dot.style.width = `${d}px`;
   dot.style.height = `${d}px`;
-  dot.style.background = state.style.color;
+  dot.style.background = style.color;
 }
 
 function buildNotePanel(cp: CtxPanel): void {
@@ -1758,17 +1776,65 @@ function buildToolbar(): void {
   tb.appendChild(tools);
   tb.appendChild(makeVsep());
 
+  // пресеты «цвет + толщина»: у пера и маркера три, у прочих инструментов один (лишние скрыты)
   const styleGroup = document.createElement('div');
   styleGroup.className = 'tool-group';
-  const sBtn = document.createElement('button');
-  sBtn.className = 'tool style-btn';
-  sBtn.id = 'btn-style';
-  sBtn.dataset.ctx = 'style';
-  sBtn.title = 'Цвет и толщина';
-  sBtn.appendChild(styleIndicator(true));
-  sBtn.addEventListener('click', () => toggleStylePanel('toolbar'));
-  styleGroup.appendChild(sBtn);
+  for (let i = 0; i < PRESET_SLOTS; i++) {
+    const sBtn = document.createElement('button');
+    sBtn.className = 'tool style-btn';
+    sBtn.dataset.preset = String(i);
+    sBtn.appendChild(styleIndicator(true));
+    sBtn.addEventListener('click', () => {
+      // клик по текущему пресету — панель цвета и толщины, по другому — выбор этого пресета
+      if (state.presets[presetKind(state.tool)].active === i) toggleStylePanel('toolbar');
+      else selectPreset(i);
+    });
+    styleGroup.appendChild(sBtn);
+  }
   tb.appendChild(styleGroup);
+}
+
+const PRESET_SLOTS = 3;
+/** Пресет, к которому сейчас относится панель стиля с тулбара: смена — панель пересобирается. */
+let shownPresetKey = '';
+
+/** Кнопки пресетов: видимость, подсветка текущего, якорь панели стиля (data-ctx) — у текущего. */
+function syncPresetButtons(tb: HTMLElement): void {
+  const kind = presetKind(state.tool);
+  const set = state.presets[kind];
+  const multi = set.list.length > 1;
+  const title = kind === 'pen' ? 'Перо' : kind === 'highlighter' ? 'Маркер' : '';
+  for (const b of tb.querySelectorAll<HTMLButtonElement>('.style-btn[data-preset]')) {
+    const i = Number(b.dataset.preset);
+    const preset = set.list[i];
+    b.hidden = !preset;
+    if (!preset) { delete b.dataset.ctx; b.removeAttribute('id'); continue; }
+    const current = i === set.active;
+    b.classList.toggle('current', multi && current);
+    if (current) { b.dataset.ctx = 'style'; b.id = 'btn-style'; }
+    else { delete b.dataset.ctx; b.removeAttribute('id'); }
+    b.title = multi ? `${title}: пресет ${i + 1}${current ? ' — цвет и толщина' : ''}` : 'Цвет и толщина';
+    // текущий показывает живой стиль (в т.ч. подхваченный из выделения)
+    paintStyleIndicator(b.querySelector<HTMLElement>('.style-ind')!, true, current ? state.style : preset);
+  }
+  syncCtxButtons();
+  const key = `${kind}:${set.active}`;
+  if (key === shownPresetKey) return;
+  shownPresetKey = key;
+  // панель стиля с тулбара переезжает к новому пресету и показывает его цвет и толщину
+  const sp = panelOf('style');
+  if (sp && sp.source === 'toolbar') {
+    if (sp.detached) rebuildStylePanel(sp);
+    else openCtxPanel('style', 'toolbar');
+  }
+}
+
+function rebuildStylePanel(cp: CtxPanel): void {
+  cp.el.textContent = '';
+  buildStylePanel(cp);
+  cp.el.appendChild(buildCtxBar(cp));
+  cp.baseHeight = 0;
+  positionCtxPanel(cp);
 }
 
 function makeVsep(): HTMLElement {
@@ -2008,8 +2074,7 @@ function refresh(): void {
       btn.title = `${group.title}: ${cur.title}`;
     }
   }
-  const styleInd = tb.querySelector<HTMLElement>('#btn-style .style-ind');
-  if (styleInd) paintStyleIndicator(styleInd, true);
+  syncPresetButtons(tb);
   // панель стикеров открывается автоматически с инструментом
   if (state.tool === 'note' && !dockedPanel() && !panelOf('note') && state.view === 'board') openCtxPanel('note', 'toolbar');
   const notePanel = panelOf('note');
