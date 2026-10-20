@@ -34,9 +34,13 @@ let distDir: string;
 let server: any;
 const peers: Peer[] = [];
 
+/** Подключение с кодом комнаты; host=1 — ещё и с ключом автора (отказы проверяет share-auth.test.ts). */
 function connect(query = ''): Promise<Peer> {
+  const q = new URLSearchParams(query);
+  q.set('code', server.code);
+  if (q.get('host') === '1') q.set('key', server.hostKey);
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(`ws://127.0.0.1:${server.port}/ws${query}`);
+    const ws = new WebSocket(`ws://127.0.0.1:${server.port}/ws?${q}`);
     const inbox: Msg[] = [];
     let onClose!: () => void;
     const closed = new Promise<void>(r => { onClose = r; });

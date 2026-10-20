@@ -183,7 +183,7 @@ test.describe('совместная работа', () => {
     const port = host.server!.port;
     const sockets: WebSocket[] = [];
     for (let i = 0; i < MAX_EDITORS - 1; i++) {
-      const ws = new WebSocket(`ws://127.0.0.1:${port}/ws?name=${encodeURIComponent(`Бот ${i}`)}`);
+      const ws = new WebSocket(`ws://127.0.0.1:${port}/ws?code=${host.server!.code}&name=${encodeURIComponent(`Бот ${i}`)}`);
       sockets.push(ws);
       const init = await new Promise<any>(r => { ws.onmessage = ev => r(JSON.parse(String(ev.data))); });
       expect(host.server!.setRights(init.userId, { all: 'edit' }).ok).toBe(true);

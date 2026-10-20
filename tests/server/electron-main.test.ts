@@ -224,6 +224,7 @@ describe('совместная работа', () => {
     const r = await invoke('share:start');
     expect(r).toMatchObject({ ok: true, port: Number(process.env.DOSKA_SHARE_PORT), maxEditors: 4, users: [] });
     expect(r.code).toMatch(/^[A-Z0-9]{6}$/);
+    expect(r.hostKey).toEqual(expect.any(String));
     expect(r.url).toBe(`http://${r.url.split('//')[1].split(':')[0]}:${r.port}/?room=${r.code}`);
     expect(await invoke('share:start')).toMatchObject({ ok: true, code: r.code }); // тот же сервер
     expect(await invoke('share:status')).toMatchObject({ active: true, code: r.code });
@@ -232,7 +233,7 @@ describe('совместная работа', () => {
     expect(FakeWindow.all.at(-1)!.url).toBe(`http://127.0.0.1:${r.port}/?room=${r.code}&name=${encodeURIComponent('Тест-гость')}`);
 
     // гость подключается — автор может выдать ему права
-    const ws = new WebSocket(`ws://127.0.0.1:${r.port}/ws`);
+    const ws = new WebSocket(`ws://127.0.0.1:${r.port}/ws?code=${r.code}`);
     await new Promise(res => { ws.onmessage = res; });
     expect(await invoke('share:setRights', { uid: 1, patch: { all: 'edit' } })).toEqual({ ok: true });
     expect((await invoke('share:status')).users[0].rights.default).toBe('edit');

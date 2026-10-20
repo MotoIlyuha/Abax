@@ -3,6 +3,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
 
 const COLORS = ['#e8590c', '#1971c2', '#2f9e44', '#9c36b5', '#0c8599', '#f08c00'];
@@ -75,7 +76,17 @@ class Room {
   }
 }
 
-function createShareServer({ port, code, openEdit = process.env.DOSKA_OPEN_EDIT === '1' }) {
+// Секрет автора: только у него, в гостевую ссылку не попадает.
+function newHostKey() { return crypto.randomBytes(24).toString('base64url'); }
+
+function safeEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string') return false;
+  const ha = crypto.createHash('sha256').update(a).digest();
+  const hb = crypto.createHash('sha256').update(b).digest();
+  return crypto.timingSafeEqual(ha, hb);
+}
+
+function createShareServer({ port, code, hostKey = newHostKey(), openEdit = process.env.DOSKA_OPEN_EDIT === '1' }) {
   const room = new Room(code);
   const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.png': 'image/png', '.woff2': 'font/woff2' };
 
@@ -96,7 +107,12 @@ function createShareServer({ port, code, openEdit = process.env.DOSKA_OPEN_EDIT 
   wss.on('connection', (ws, req) => {
     const u = new URL(req.url, 'http://x');
     if (u.pathname !== '/ws') { ws.close(); return; }
+    if (!safeEqual(u.searchParams.get('code'), room.code)) { ws.close(4403, 'bad room code'); return; }
     const isHost = u.searchParams.get('host') === '1';
+    if (isHost) {
+      if (!safeEqual(u.searchParams.get('key'), hostKey)) { ws.close(4401, 'bad host key'); return; }
+      if ([...room.clients.values()].some(c => c.host)) { ws.close(4409, 'host already connected'); return; }
+    }
     const uid = isHost ? 0 : room.nextUid++;
     const info = {
       ws, uid, host: isHost,
@@ -120,7 +136,11 @@ function createShareServer({ port, code, openEdit = process.env.DOSKA_OPEN_EDIT 
       if (m.t === 'selection') { info.selection = m.ids || []; info.pageId = m.pageId ?? info.pageId; broadcastUsers(); return; }
       if (m.t === 'project' && m.project && Array.isArray(m.project.pages)) {
         // серверный enforcement: чужие view-страницы не применяем
-        if (!room.project) { room.project = m.project; }
+        if (!room.project) {
+          // первый проект задаёт только автор
+          if (!isHost) return;
+          room.project = m.project;
+        }
         else {
           const merged = { ...m.project, pages: room.project.pages.map(oldPg => {
             const newPg = m.project.pages.find(p => p.id === oldPg.id);
@@ -152,7 +172,7 @@ function createShareServer({ port, code, openEdit = process.env.DOSKA_OPEN_EDIT 
   return new Promise((resolve, reject) => {
     server.once('error', reject);
     server.listen(port, () => resolve({
-      port: server.address().port, code, room,
+      port: server.address().port, code, hostKey, room,
       setDistDir(d) { distDir = d; },
       setRights: (uid, patch) => { const r = room.setRights(uid, patch); broadcastUsers(); pushRights(uid); return r; },
       pushProject: (project) => { room.project = project; for (const c of room.clients.values()) try { c.ws.send(JSON.stringify({ t: 'project', project, by: -1 })); } catch {} },

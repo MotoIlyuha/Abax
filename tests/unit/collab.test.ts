@@ -15,6 +15,8 @@ type Msg = Record<string, any>;
 interface Peer { ws: WebSocket; inbox: Msg[] }
 interface ShareServer {
   port: number;
+  code: string;
+  hostKey: string;
   room: { project: Project | null; clients: Map<unknown, { uid: number; selection: string[]; cursor: unknown; pageId: string | null }> };
   setRights(uid: number, patch: unknown): { ok: boolean; error?: string };
   close(): void;
@@ -66,7 +68,7 @@ async function freshModules(): Promise<void> {
 
 beforeAll(async () => {
   server = await createShareServer({ port: 0, code: 'TEST01' });
-  base = `ws://127.0.0.1:${server.port}/ws`;
+  base = `ws://127.0.0.1:${server.port}/ws?code=${server.code}`;
 });
 afterAll(() => server.close());
 
@@ -121,7 +123,7 @@ describe('гость', () => {
     st.state.camera = { x: 5, y: 6, zoom: 2 };
     const events: Event[] = [];
     document.addEventListener('doska:collab-project', e => events.push(e));
-    const host = await peer(`${base}?host=1`);
+    const host = await peer(`${base}&host=1&key=${encodeURIComponent(server.hostKey)}`);
     peers.push(host);
     const p = demo();
     p.pages[1].elements = [rect('r1') as never];
@@ -135,7 +137,7 @@ describe('гость', () => {
   it('курсор отправляется с троттлингом и рисуется у других', async () => {
     await collab.startCollab(base, false, 'Ученик');
     await until(() => st.state.project.id === 'proj');
-    const other = await peer(`${base}?name=${encodeURIComponent('Второй')}`);
+    const other = await peer(`${base}&name=${encodeURIComponent('Второй')}`);
     peers.push(other);
     collab.noteCursor(10, 20);
     collab.noteCursor(11, 21); // в пределах 40мс — отложен
@@ -157,7 +159,7 @@ describe('гость', () => {
   it('метка «Отошёл» у бездействующего участника', async () => {
     await collab.startCollab(base, false, 'Ученик');
     await until(() => st.state.project.id === 'proj');
-    const other = await peer(`${base}?name=Соня`);
+    const other = await peer(`${base}&name=Соня`);
     peers.push(other);
     other.ws.send(JSON.stringify({ t: 'cursor', x: 1, y: 1, pageId: 'pg1' }));
     await until(() => document.querySelector('.remote-cursor'));
@@ -171,7 +173,7 @@ describe('гость', () => {
   it('выделения других участников на активной странице', async () => {
     await collab.startCollab(base, false, 'Ученик');
     await until(() => st.state.project.id === 'proj');
-    const other = await peer(`${base}?name=Соня`);
+    const other = await peer(`${base}&name=Соня`);
     peers.push(other);
     other.ws.send(JSON.stringify({ t: 'selection', ids: ['a', 'b'], pageId: 'pg1' }));
     await until(() => collab.foreignSelections().length === 1);
@@ -193,7 +195,7 @@ describe('гость', () => {
     const uid = [...server.room.clients.values()][0].uid;
     server.setRights(uid, { all: 'edit' });
     await until(() => collab.pageRight('pg1') === 'edit');
-    const host = await peer(`${base}?host=1`);
+    const host = await peer(`${base}&host=1&key=${encodeURIComponent(server.hostKey)}`);
     peers.push(host);
     const p = demo();
     p.pages[0].elements = [rect('mine') as never];
@@ -219,7 +221,7 @@ describe('гость', () => {
   });
 
   it('битые сообщения игнорируются', async () => {
-    const raw = await peer(`${base}?host=1`);
+    const raw = await peer(`${base}&host=1&key=${encodeURIComponent(server.hostKey)}`);
     peers.push(raw);
     await collab.startCollab(base, false, 'Ученик');
     await until(() => st.state.project.id === 'proj');
@@ -233,10 +235,10 @@ describe('гость', () => {
 
 describe('автор', () => {
   it('startHostConnection: права edit везде и рассылка проекта', async () => {
-    const guest = await peer(`${base}?name=Гость`);
+    const guest = await peer(`${base}&name=Гость`);
     peers.push(guest);
     st.openProject(demo());
-    await collab.startHostConnection(server.port, 'TEST01', 'Автор');
+    await collab.startHostConnection(server.port, server.code, server.hostKey, 'Автор');
     expect(collab.isHost()).toBe(true);
     expect(collab.readOnly()).toBe(false);
     expect(collab.pageRight('любая')).toBe('edit');
@@ -244,12 +246,12 @@ describe('автор', () => {
   });
 
   it('сохранение автора пишет в локальное хранилище и уходит гостям', async () => {
-    const guest = await peer(`${base}?name=Гость`);
+    const guest = await peer(`${base}&name=Гость`);
     peers.push(guest);
     const local = { list: vi.fn(async () => []), load: vi.fn(async () => null), save: vi.fn(async () => undefined), remove: vi.fn(async () => undefined) };
     storageMod.setStorage(local);
     st.openProject(demo());
-    await collab.startHostConnection(server.port, 'TEST01', 'Автор');
+    await collab.startHostConnection(server.port, server.code, server.hostKey, 'Автор');
     guest.inbox.length = 0;
 
     const p = demo();

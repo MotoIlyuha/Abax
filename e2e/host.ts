@@ -15,7 +15,7 @@ export const MAX_EDITORS: number = share.MAX_EDITORS;
 const DIST = path.join(__dirname, '..', 'dist');
 
 type ShareServer = {
-  port: number; code: string; room: any;
+  port: number; code: string; hostKey: string; room: any;
   setRights(uid: number, patch: unknown): { ok: boolean; error?: string };
   users(): any[];
   close(): void;
@@ -68,7 +68,7 @@ export class Host {
           this.server = await createShareServer({ port: 0, code: 'E2E' + Math.random().toString(36).slice(2, 5).toUpperCase() });
           (this.server as any).setDistDir(DIST);
         }
-        return { ok: true, ...info(), users: this.server!.users() };
+        return { ok: true, ...info(), hostKey: this.server!.hostKey, users: this.server!.users() };
       }
       if (op === 'status') return this.server ? { active: true, ...info(), users: this.server.users() } : { active: false };
       if (op === 'stop') { this.server?.close(); this.server = null; return { ok: true }; }

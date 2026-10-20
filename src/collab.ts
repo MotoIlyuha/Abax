@@ -178,8 +178,9 @@ export function foreignSelections(): { color: string; ids: string[] }[] {
 let hostLocalStorage: BoardsStorage | null = null;
 
 /** Подключение автора (host) к собственному серверу совместной работы. */
-export async function startHostConnection(port: number, code: string, name: string): Promise<void> {
-  await startCollab(`ws://127.0.0.1:${port}/ws?code=${code}`, true, name);
+export async function startHostConnection(port: number, code: string, hostKey: string, name: string): Promise<void> {
+  const q = new URLSearchParams({ code, key: hostKey });
+  await startCollab(`ws://127.0.0.1:${port}/ws?${q}`, true, name);
   // правки автора уходят гостям тем же путём, что и автосохранение
   if (!hostLocalStorage) {
     const local = storage;
