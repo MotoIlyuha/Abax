@@ -419,6 +419,8 @@ export function renamePage(pageId: string, name: string): void {
     ...state.project,
     pages: state.project.pages.map(p => (p.id === pageId ? { ...p, name } : p)),
   };
+  // активная страница — тот же объект, что в проекте: иначе правки уйдут в осиротевшую копию
+  if (pageId === state.pageId) state.board = state.project.pages.find(p => p.id === pageId)!;
   update(true);
 }
 

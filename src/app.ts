@@ -14,7 +14,7 @@ import { elementAABB, NOTE_W, NOTE_H, NOTE_PAD, NOTE_FONT, NOTE_TEXT_COLOR, TEXT
 import * as pdfjsLib from 'pdfjs-dist';
 // ?worker&inline: воркер инлайнится в бандл и работает из file:// (Electron)
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker&inline';
-import { collabActive, isHost, readOnly, startHostConnection, stopCollab } from './collab';
+import { collabActive, isHost, noteSelection, readOnly, startHostConnection, stopCollab } from './collab';
 
 pdfjsLib.GlobalWorkerOptions.workerPort = new PdfWorker();
 
@@ -121,6 +121,7 @@ let canvas: HTMLCanvasElement;
 let saveTimer = 0;
 let lastPagesKey = '';
 let lastHomeKey = '';
+let lastSelectionKey = '';
 
 // ----- Персистентность стиля и настроек -----
 
@@ -1509,14 +1510,16 @@ async function deleteProjectHandler(id: string): Promise<void> {
   await storage.remove(id);
   state.projects = state.projects.filter(m => m.id !== id);
   if (state.project.id === id) {
+    // удаляют из списка проектов — там и остаёмся
+    const view = state.view;
     if (state.projects.length > 0) {
       const p = await storage.load(state.projects[0].id);
-      if (p) { openProject(p); fitContent(); }
+      if (p) { openProject(p, undefined, view); fitContent(); }
     } else {
       const p = blankProject('Проект 1');
       await storage.save(p);
       state.projects = [projectMeta(p)];
-      openProject(p);
+      openProject(p, undefined, view);
       fitContent();
     }
   }
@@ -1647,9 +1650,16 @@ function renderHome(): void {
         pd.title = 'Удалить страницу';
         pd.innerHTML = ICONS.del;
         row.append(gi, pn, pd);
-        row.addEventListener('click', () => { void openProjectHandler(state.project, pg.id); });
+        // клик по названию ждёт: это может быть начало двойного клика (переименование)
+        let openTimer = 0;
+        row.addEventListener('click', e => {
+          clearTimeout(openTimer);
+          const delay = (e.target as HTMLElement).closest('.home-page-name') ? 300 : 0;
+          openTimer = window.setTimeout(() => { void openProjectHandler(state.project, pg.id); }, delay);
+        });
         pn.addEventListener('dblclick', e => {
           e.stopPropagation();
+          clearTimeout(openTimer);
           startHomePageRename(row, meta.id, pg.id, pg.name);
         });
         pd.addEventListener('click', e => {
@@ -1913,7 +1923,7 @@ export function toggleSidebar(): void {
 interface ShareUser { userId: number; name: string; color: string; host?: boolean; away?: boolean; rights?: { default?: string; pages?: Record<string, string> } }
 interface ShareStatus { active: boolean; url?: string; code?: string; port?: number; maxEditors?: number; users?: ShareUser[] }
 interface ShareApi {
-  shareStart(): Promise<{ ok: boolean; port?: number; code?: string }>;
+  shareStart(): Promise<{ ok: boolean; port?: number; code?: string; hostKey?: string }>;
   shareStop(): Promise<{ ok: boolean }>;
   shareStatus(): Promise<ShareStatus>;
   shareSetRights(uid: number, patch: { pages?: Record<string, string>; default?: string; all?: string }): Promise<{ ok: boolean; error?: string }>;
@@ -1948,13 +1958,13 @@ async function openShareDialog(): Promise<void> {
       start.textContent = 'Включить совместную работу';
       start.addEventListener('click', async () => {
         const r = await api.shareStart();
-        if (!r.ok || !r.port || !r.code) {
+        if (!r.ok || !r.port || !r.code || !r.hostKey) {
           alert((r as { error?: string }).error || 'Не удалось запустить сервер совместной работы');
           await render();
           return;
         }
         await saveNow();
-        await startHostConnection(r.port, r.code, 'Автор');
+        await startHostConnection(r.port, r.code, r.hostKey, 'Автор');
         await render();
       });
       dlg!.appendChild(start);
@@ -2105,6 +2115,16 @@ function refresh(): void {
   updateQuickMenu();
 }
 
+/** Совместный режим: остальные участники видят рамку вокруг выделенного нами. */
+function syncSelectionToCollab(): void {
+  if (!collabActive()) return;
+  const ids = [...state.selection];
+  const key = `${state.pageId}:${ids.join(',')}`;
+  if (key === lastSelectionKey) return;
+  lastSelectionKey = key;
+  noteSelection(ids);
+}
+
 export function initApp(c: HTMLCanvasElement): void {
   canvas = c;
   restoreStyle();
@@ -2117,6 +2137,7 @@ export function initApp(c: HTMLCanvasElement): void {
   onChange(() => {
     refresh();
     scheduleSave();
+    syncSelectionToCollab();
     if (editing) positionEditor();
     if (ctxPanels.length) positionCtxPanels();
   });

@@ -139,8 +139,9 @@ function shareInfo() {
   return { port: share.port, code: share.code, url: `http://${ip}:${share.port}/?room=${share.code}`, maxEditors: MAX_EDITORS };
 }
 
+// hostKey отдаём только в ответ share:start — это секрет автора для host-подключения
 ipcMain.handle('share:start', async () => {
-  if (share) return { ok: true, ...shareInfo(), users: share.users() };
+  if (share) return { ok: true, ...shareInfo(), hostKey: share.hostKey, users: share.users() };
   const code = Math.random().toString(36).slice(2, 8).toUpperCase();
   // пробуем базовый порт, затем следующие — не падаем от EADDRINUSE
   for (let p = SHARE_PORT; p < SHARE_PORT + 20; p++) {
@@ -153,7 +154,7 @@ ipcMain.handle('share:start', async () => {
   }
   if (!share) return { ok: false, error: 'Не удалось найти свободный порт' };
   share.setDistDir(path.join(__dirname, '..', 'dist'));
-  return { ok: true, ...shareInfo(), users: share.users() };
+  return { ok: true, ...shareInfo(), hostKey: share.hostKey, users: share.users() };
 });
 
 ipcMain.handle('share:stop', async () => {
