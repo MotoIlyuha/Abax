@@ -212,6 +212,10 @@ select {
 .style-ind b { display: block; flex: none; max-width: 70%; max-height: 70%; aspect-ratio: 1; border-radius: 50%; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12); }
 .qm-style .style-ind { width: 20px; height: 20px; }
 .tool.active .style-ind, .qm-btn.active .style-ind { box-shadow: inset 0 0 0 1.5px var(--accent); }
+.style-btn[hidden] { display: none; }
+/* выбранный пресет пера/маркера */
+.style-btn.current { background: var(--accent-soft); }
+.style-btn.current .style-ind { box-shadow: inset 0 0 0 1.5px var(--accent); }
 
 /* ----- Группа «Фигуры» ----- */
 #toolbar .tool-shapes { position: relative; }

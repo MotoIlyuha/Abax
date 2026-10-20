@@ -33,6 +33,15 @@ export interface LiveNote {
   color: string;
 }
 
+export interface StyleValue { color: string; width: number }
+export type PresetKind = 'pen' | 'highlighter' | 'other';
+export interface PresetSet { list: StyleValue[]; active: number }
+
+/** Перо и маркер держат собственные пресеты, все прочие инструменты делят общий. */
+export function presetKind(tool: ToolId): PresetKind {
+  return tool === 'pen' || tool === 'highlighter' ? tool : 'other';
+}
+
 export interface AppState {
   view: 'home' | 'board';
   project: Project;
@@ -42,7 +51,9 @@ export interface AppState {
   board: Page;
   camera: { x: number; y: number; zoom: number };
   tool: ToolId;
-  style: { color: string; width: number };
+  style: StyleValue;
+  /** Пресеты «цвет + толщина»: у пера и маркера — по три, у остальных инструментов — один. */
+  presets: Record<PresetKind, PresetSet>;
   /** Цвет новых стикеров. */
   noteColor: string;
   settings: BoardSettings;
@@ -91,7 +102,12 @@ export const state: AppState = {
   board: blankPage('Страница 1'),
   camera: { x: 0, y: 0, zoom: 1 },
   tool: 'pen',
-  style: { color: '#1f2329', width: 4 },
+  style: { color: '#1f2329', width: 3 },
+  presets: {
+    pen: { list: [{ color: '#1f2329', width: 3 }, { color: '#bd0a0a', width: 3 }, { color: '#305bab', width: 3 }], active: 0 },
+    highlighter: { list: [{ color: '#ffdc4a', width: 5 }, { color: '#2dc75c', width: 5 }, { color: '#ff6464', width: 5 }], active: 0 },
+    other: { list: [{ color: '#1f2329', width: 4 }], active: 0 },
+  },
   noteColor: '#ffe066',
   settings: { toolbarPos: 'left', coordLabels: true, snapToGrid: false, wheelMode: 'scroll' },
   selection: new Set(),
@@ -204,7 +220,9 @@ function syncStyleFromSelection(): void {
 
 export function setTool(tool: ToolId): void {
   if (state.tool === tool) return;
+  const kindChanged = presetKind(state.tool) !== presetKind(tool);
   state.tool = tool;
+  if (kindChanged) state.style = { ...activePreset() };
   state.liveStroke = null;
   state.liveShape = null;
   state.liveSolid = null;
@@ -250,8 +268,22 @@ export function setSolidSides(n: number): void {
     state.selection.has(el.id) && el.type === 'solid' && hasBaseSides(el.solid) ? { ...el, n: sides } : el));
 }
 
-export function setStyleColor(color: string): void { state.style.color = color; update(); }
-export function setStyleWidth(width: number): void { state.style.width = width; update(); }
+function activePreset(): StyleValue {
+  const set = state.presets[presetKind(state.tool)];
+  return set.list[set.active];
+}
+
+/** Выбор пресета текущего инструмента: его цвет и толщина становятся текущими. */
+export function selectPreset(i: number): void {
+  const set = state.presets[presetKind(state.tool)];
+  if (i < 0 || i >= set.list.length) return;
+  set.active = i;
+  state.style = { ...set.list[i] };
+  update();
+}
+
+export function setStyleColor(color: string): void { state.style.color = color; activePreset().color = color; update(); }
+export function setStyleWidth(width: number): void { state.style.width = width; activePreset().width = width; update(); }
 export function setNoteColor(color: string): void { state.noteColor = color; update(); }
 
 export function setGrid(grid: GridMode): void {
