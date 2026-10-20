@@ -187,7 +187,8 @@ function chooseColor(c: string): void {
   persistStyle();
   // панель не пересобираем: живой HSV-пикер должен остаться на месте;
   // обновляем только активность свотчей
-  if (ctxKind === 'style') updateSwatchActive(c);
+  const sp = panelOf('style');
+  if (sp) updateSwatchActive(sp.el, c);
   refresh();
 }
 
@@ -203,9 +204,9 @@ function choosePickedColor(c: string): void {
   chooseColor(c);
 }
 
-/** Подсвечивает текущий цвет в открытой панели без её пересборки. */
-function updateSwatchActive(current: string): void {
-  for (const btn of ctxPanelEl().querySelectorAll<HTMLButtonElement>('.ctx-swatch[data-c]')) {
+/** Подсвечивает текущий цвет в панели без её пересборки. */
+function updateSwatchActive(panel: HTMLElement, current: string): void {
+  for (const btn of panel.querySelectorAll<HTMLButtonElement>('.ctx-swatch[data-c]')) {
     btn.classList.toggle('active', btn.dataset.c === current);
   }
 }
@@ -330,69 +331,115 @@ export function closeEditor(commit: boolean): void {
 type CtxKind = 'style' | 'note' | ToolGroupKind;
 /** Откуда вызвана панель: с тулбара — встаёт сбоку по центру кнопки, из плавающего меню — под ним. */
 type CtxSource = 'toolbar' | 'quick';
-let ctxKind: CtxKind | null = null;
-let ctxSource: CtxSource = 'toolbar';
-/** Высота панели при открытии: центрируемся по ней, чтобы раскрытие пикера росло вниз, а не прыгало. */
-let ctxBaseHeight = 0;
-/** Панель перетащена за ручку: стоит, где оставили, и не закрывается кликом мимо. */
-let ctxDetached = false;
+interface CtxPanel {
+  el: HTMLElement;
+  kind: CtxKind;
+  source: CtxSource;
+  /** Высота панели при открытии: центрируемся по ней, чтобы раскрытие пикера росло вниз, а не прыгало. */
+  baseHeight: number;
+  /** Панель перетащена за ручку: стоит, где оставили, и не закрывается кликом мимо. */
+  detached: boolean;
+}
+/**
+ * Открытые панели: не больше одной каждого вида. Пристыкованная к кнопке-вызову — максимум одна,
+ * откреплённых может быть сколько угодно.
+ */
+const ctxPanels: CtxPanel[] = [];
+/** Счётчик z-index: панель, которую трогали последней, — поверх остальных. */
+let ctxZ = 0;
 
 const GRIP_ICON = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>';
 const PIN_ICON = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M15.2 2.6a1 1 0 0 1 1.4 0l4.8 4.8a1 1 0 0 1 0 1.4l-.9.9a2 2 0 0 1-2.2.4l-2.6 2.6.3 3.5a1 1 0 0 1-.3.8l-1 1a1 1 0 0 1-1.4 0l-3.2-3.2-4.6 4.6a1 1 0 0 1-1.4-1.4l4.6-4.6-3.2-3.2a1 1 0 0 1 0-1.4l1-1a1 1 0 0 1 .8-.3l3.5.3 2.6-2.6a2 2 0 0 1 .4-2.2z"/></svg>';
+const CLOSE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 
-function ctxPanelEl(): HTMLElement {
-  return document.getElementById('ctx-panel')!;
+function ctxLayerEl(): HTMLElement {
+  return document.getElementById('ctx-layer')!;
 }
 
-export function closeCtxPanel(): void {
-  ctxKind = null;
-  setCtxDetached(false);
-  ctxPanelEl().hidden = true;
+function dockedPanel(): CtxPanel | undefined {
+  return ctxPanels.find(cp => !cp.detached);
+}
+
+function panelOf(kind: CtxKind): CtxPanel | undefined {
+  return ctxPanels.find(cp => cp.kind === kind);
+}
+
+function closePanel(cp: CtxPanel): void {
+  const i = ctxPanels.indexOf(cp);
+  if (i < 0) return;
+  ctxPanels.splice(i, 1);
+  cp.el.remove();
   syncCtxButtons();
+}
+
+/** Закрывает пристыкованную панель; откреплённые остаются на доске. */
+export function closeCtxPanel(): void {
+  const d = dockedPanel();
+  if (d) closePanel(d);
 }
 
 function openCtxPanel(kind: CtxKind, source: CtxSource): void {
-  const p = ctxPanelEl();
-  ctxKind = kind;
-  ctxSource = source;
-  ctxBaseHeight = 0;
-  setCtxDetached(false);
-  p.hidden = false;
-  p.textContent = '';
-  p.style.maxHeight = '';
-  if (kind === 'style') buildStylePanel(p);
-  else if (kind === 'note') buildNotePanel(p);
-  else buildToolGroupPanel(p, kind);
-  p.appendChild(buildCtxBar());
-  positionCtxPanel();
+  // пристыкованное место одно, а вид панели не дублируется
+  closeCtxPanel();
+  const same = panelOf(kind);
+  if (same) closePanel(same);
+  const el = document.createElement('div');
+  el.className = 'ctx-panel';
+  el.style.zIndex = String(++ctxZ);
+  const cp: CtxPanel = { el, kind, source, baseHeight: 0, detached: false };
+  ctxPanels.push(cp);
+  el.addEventListener('pointerdown', () => { el.style.zIndex = String(++ctxZ); }, { capture: true });
+  ctxLayerEl().appendChild(el);
+  if (kind === 'style') buildStylePanel(cp);
+  else if (kind === 'note') buildNotePanel(cp);
+  else buildToolGroupPanel(cp, kind);
+  el.appendChild(buildCtxBar(cp));
+  positionCtxPanel(cp);
   syncCtxButtons();
 }
 
-function setCtxDetached(v: boolean): void {
-  ctxDetached = v;
-  ctxPanelEl().classList.toggle('detached', v);
+/** Клик по кнопке-вызову: открытую ею (или откреплённую) панель закрывает, иначе открывает. */
+function toggleCtxPanel(kind: CtxKind, source: CtxSource): void {
+  const cur = panelOf(kind);
+  if (cur && (cur.detached || cur.source === source)) closePanel(cur);
+  else openCtxPanel(kind, source);
 }
 
-/** Правый верхний угол: ручка перетаскивания и pin, возвращающий панель к её кнопке-вызову. */
-function buildCtxBar(): HTMLElement {
+function setCtxDetached(cp: CtxPanel, v: boolean): void {
+  cp.detached = v;
+  cp.el.classList.toggle('detached', v);
+  syncCtxButtons();
+}
+
+/** Возвращает откреплённую панель к её кнопке-вызову, вытесняя пристыкованную там сейчас. */
+function dockCtxPanel(cp: CtxPanel): void {
+  closeCtxPanel();
+  setCtxDetached(cp, false);
+  cp.baseHeight = 0;
+  positionCtxPanel(cp);
+}
+
+/** Правый верхний угол: ручка перетаскивания, у откреплённой — ещё pin к кнопке-вызову и крестик. */
+function buildCtxBar(cp: CtxPanel): HTMLElement {
   const bar = document.createElement('div');
   bar.className = 'ctx-bar';
   const pin = document.createElement('button');
   pin.className = 'ctx-pin';
-  pin.title = ctxSource === 'quick' ? 'Вернуть под меню выделения' : 'Вернуть к панели инструментов';
+  pin.title = cp.source === 'quick' ? 'Вернуть под меню выделения' : 'Вернуть к панели инструментов';
   pin.innerHTML = PIN_ICON;
-  pin.addEventListener('click', () => {
-    setCtxDetached(false);
-    ctxBaseHeight = 0;
-    positionCtxPanel();
-  });
+  pin.addEventListener('click', () => dockCtxPanel(cp));
+  const close = document.createElement('button');
+  close.className = 'ctx-close';
+  close.title = 'Закрыть';
+  close.innerHTML = CLOSE_ICON;
+  close.addEventListener('click', () => closePanel(cp));
   const grip = document.createElement('div');
   grip.className = 'ctx-grip';
   grip.title = 'Перетащить';
   grip.innerHTML = GRIP_ICON;
   grip.addEventListener('pointerdown', e => {
     e.preventDefault();
-    const p = ctxPanelEl();
+    const p = cp.el;
     const startX = e.clientX;
     const startY = e.clientY;
     const left0 = p.offsetLeft;
@@ -405,8 +452,8 @@ function buildCtxBar(): HTMLElement {
       // мелкое дрожание при клике — ещё не перенос
       if (!moved && Math.hypot(dx, dy) < 3) return;
       moved = true;
-      if (!ctxDetached) setCtxDetached(true);
-      placeDetached(left0 + dx, top0 + dy);
+      if (!cp.detached) setCtxDetached(cp, true);
+      placeDetached(cp, left0 + dx, top0 + dy);
     };
     const onUp = () => {
       grip.removeEventListener('pointermove', onMove);
@@ -417,13 +464,13 @@ function buildCtxBar(): HTMLElement {
     grip.addEventListener('pointerup', onUp);
     grip.addEventListener('pointercancel', onUp);
   });
-  bar.append(pin, grip);
+  bar.append(pin, close, grip);
   return bar;
 }
 
 /** Ставит открепленную панель в точку, не выпуская её за пределы холста. */
-function placeDetached(left: number, top: number): void {
-  const p = ctxPanelEl();
+function placeDetached(cp: CtxPanel, left: number, top: number): void {
+  const p = cp.el;
   const wrap = document.getElementById('canvas-wrap')!;
   const margin = 8;
   p.style.maxHeight = `${wrap.clientHeight - margin * 2}px`;
@@ -432,44 +479,55 @@ function placeDetached(left: number, top: number): void {
 }
 
 function toggleStylePanel(source: CtxSource): void {
-  if (ctxKind === 'style' && ctxSource === source) closeCtxPanel();
-  else openCtxPanel('style', source);
+  toggleCtxPanel('style', source);
+}
+
+/** Панель «открыта этой кнопкой»: пристыкована к ней или откреплена (тогда кнопка её закроет). */
+function ctxOpenFrom(kind: CtxKind, source: CtxSource): boolean {
+  const cp = panelOf(kind);
+  return !!cp && (cp.detached || cp.source === source);
 }
 
 /** Кнопка-вызов подсвечена, пока её панель открыта. */
 function syncCtxButtons(): void {
-  document.getElementById('btn-style')?.classList.toggle('active', ctxKind === 'style' && ctxSource === 'toolbar');
-  quickMenuEl().querySelector('[data-ctx="style"]')?.classList.toggle('active', ctxKind === 'style' && ctxSource === 'quick');
+  document.getElementById('btn-style')?.classList.toggle('active', ctxOpenFrom('style', 'toolbar'));
+  quickMenuEl().querySelector('[data-ctx="style"]')?.classList.toggle('active', ctxOpenFrom('style', 'quick'));
 }
 
 /** Элемент, вызвавший панель (кнопка тулбара или плавающего меню). */
-function ctxAnchor(): HTMLElement | null {
-  const host = ctxSource === 'quick' ? quickMenuEl() : document.getElementById('toolbar')!;
+function ctxAnchor(cp: CtxPanel): HTMLElement | null {
+  const host = cp.source === 'quick' ? quickMenuEl() : document.getElementById('toolbar')!;
   if (host.hidden) return null;
-  return host.querySelector<HTMLElement>(`[data-ctx="${ctxKind}"]`);
+  return host.querySelector<HTMLElement>(`[data-ctx="${cp.kind}"]`);
 }
 
-function positionCtxPanel(): void {
-  if (!ctxKind) return;
-  const p = ctxPanelEl();
+/** Пристыкованную панель держим у её кнопки (без кнопки — закрываем), откреплённые — в пределах холста. */
+function positionCtxPanels(includeDetached = false): void {
+  for (const cp of [...ctxPanels]) {
+    if (!cp.detached || includeDetached) positionCtxPanel(cp);
+  }
+}
+
+function positionCtxPanel(cp: CtxPanel): void {
+  const p = cp.el;
   // откреплённая панель живёт сама по себе: только держим её в пределах холста
-  if (ctxDetached) { placeDetached(p.offsetLeft, p.offsetTop); return; }
-  const ar = ctxAnchor()?.getBoundingClientRect();
-  if (!ar || ar.width === 0) { closeCtxPanel(); return; }
+  if (cp.detached) { placeDetached(cp, p.offsetLeft, p.offsetTop); return; }
+  const ar = ctxAnchor(cp)?.getBoundingClientRect();
+  if (!ar || ar.width === 0) { closePanel(cp); return; }
   const wr = document.getElementById('canvas-wrap')!.getBoundingClientRect();
   const gap = 10;
   const margin = 8;
   // естественная высота без max-height: прокручиваемая часть целиком
   const scroller = p.querySelector<HTMLElement>('.ctx-scroll');
   const natural = scroller ? p.offsetHeight - scroller.clientHeight + scroller.scrollHeight : p.offsetHeight;
-  if (!ctxBaseHeight) ctxBaseHeight = natural;
+  if (!cp.baseHeight) cp.baseHeight = natural;
   const w = p.offsetWidth;
   const ax = ar.left + ar.width / 2 - wr.left;
   const ay = ar.top + ar.height / 2 - wr.top;
   let left = ax - w / 2;
   let top: number;
   let maxH: number;
-  if (ctxSource === 'quick') {
+  if (cp.source === 'quick') {
     // как в Miro: сразу под плавающим меню, по центру кнопки; не влезает — над меню
     const qr = quickMenuEl().getBoundingClientRect();
     const below = wr.bottom - qr.bottom - gap - margin;
@@ -488,7 +546,7 @@ function positionCtxPanel(): void {
     if (pos === 'left' || pos === 'right') {
       maxH = wr.height - margin * 2;
       left = pos === 'left' ? tr.right - wr.left + gap : tr.left - wr.left - w - gap;
-      top = ay - Math.min(ctxBaseHeight, maxH) / 2;
+      top = ay - Math.min(cp.baseHeight, maxH) / 2;
     } else if (pos === 'top') {
       maxH = wr.bottom - tr.bottom - gap - margin;
       top = tr.bottom - wr.top + gap;
@@ -506,7 +564,8 @@ function positionCtxPanel(): void {
   p.style.top = `${top}px`;
 }
 
-function buildToolGroupPanel(p: HTMLElement, kind: ToolGroupKind): void {
+function buildToolGroupPanel(cp: CtxPanel, kind: ToolGroupKind): void {
+  const p = cp.el;
   const group = TOOL_GROUPS[kind];
   // панели групп оформлены одинаково (data-kind='shapes'), различаются набором кнопок
   p.dataset.kind = 'shapes';
@@ -523,12 +582,9 @@ function buildToolGroupPanel(p: HTMLElement, kind: ToolGroupKind): void {
     b.innerHTML = t.icon;
     b.dataset.shape = t.id;
     b.addEventListener('click', () => {
+      // откреплённая панель работает как палитра — остаётся открытой, подсветку обновит refresh()
+      if (!cp.detached) closePanel(cp);
       setTool(t.id);
-      // откреплённая панель работает как палитра фигур — остаётся открытой
-      if (!ctxDetached) { closeCtxPanel(); return; }
-      for (const x of grid.querySelectorAll<HTMLElement>('[data-shape]')) {
-        x.classList.toggle('active', x.dataset.shape === t.id);
-      }
     });
     grid.appendChild(b);
   }
@@ -560,7 +616,7 @@ function makeSwatch(c: string, active: boolean, onPick: (c: string) => void): HT
 }
 
 function renderCustomSwatches(): void {
-  const grid = ctxPanelEl().querySelector<HTMLElement>('.ctx-swatches.custom');
+  const grid = panelOf('style')?.el.querySelector<HTMLElement>('.ctx-swatches.custom');
   if (!grid) return;
   grid.textContent = '';
   const list = loadCustomColors();
@@ -569,18 +625,19 @@ function renderCustomSwatches(): void {
 }
 
 /** Толщина нужна с тулбара и для выделенных линий/фигур (у текста и стикеров её нет). */
-function styleNeedsWidth(): boolean {
-  if (ctxSource === 'toolbar') return true;
+function styleNeedsWidth(source: CtxSource): boolean {
+  if (source === 'toolbar') return true;
   return state.board.elements.some(e =>
     state.selection.has(e.id) && (e.type === 'stroke' || e.type === 'shape' || e.type === 'poly' || e.type === 'solid'));
 }
 
 /** Единая панель в духе Miro: слайдер толщины сверху, ниже свои и все цвета. */
-function buildStylePanel(p: HTMLElement): void {
+function buildStylePanel(cp: CtxPanel): void {
+  const p = cp.el;
   p.dataset.kind = 'style';
   // текущий цвет не из палитры (старая палитра, чужой элемент) — сразу в «Мои цвета»
   addCustomColor(state.style.color);
-  if (styleNeedsWidth()) {
+  if (styleNeedsWidth(cp.source)) {
     const sliderHost = document.createElement('div');
     sliderHost.className = 'ctx-drop-slider';
     sliderHost.title = 'Толщина';
@@ -603,7 +660,7 @@ function buildStylePanel(p: HTMLElement): void {
       buildCustomColorPicker(pickerHost, state.style.color, choosePickedColor);
     }
     add.textContent = pickerHost.hidden ? '+ Добавить цвет' : 'Готово';
-    positionCtxPanel();
+    positionCtxPanel(cp);
   });
   const custom = document.createElement('div');
   custom.className = 'ctx-swatches custom';
@@ -762,7 +819,8 @@ function paintStyleIndicator(ring: HTMLElement, withWidth: boolean): void {
   dot.style.background = state.style.color;
 }
 
-function buildNotePanel(p: HTMLElement): void {
+function buildNotePanel(cp: CtxPanel): void {
+  const p = cp.el;
   p.dataset.kind = 'note';
   p.appendChild(sectionHead('Цвет стикера'));
   const grid = document.createElement('div');
@@ -771,7 +829,7 @@ function buildNotePanel(p: HTMLElement): void {
     grid.appendChild(makeSwatch(c, c === state.noteColor, () => {
       setNoteColor(c);
       persistStyle();
-      updateSwatchActive(c);
+      updateSwatchActive(p, c);
     }));
   }
   p.appendChild(grid);
@@ -805,7 +863,7 @@ function updateQuickMenu(): void {
   // цвет и толщина — одна кнопка и одна панель; толщина — только для «линейных» элементов
   const hasInk = selEls.some(e => e.type === 'stroke' || e.type === 'shape' || e.type === 'poly' || e.type === 'solid');
   const sBtn = document.createElement('button');
-  sBtn.className = 'qm-btn qm-style' + (ctxKind === 'style' && ctxSource === 'quick' ? ' active' : '');
+  sBtn.className = 'qm-btn qm-style' + (ctxOpenFrom('style', 'quick') ? ' active' : '');
   sBtn.dataset.ctx = 'style';
   sBtn.title = hasInk ? 'Цвет и толщина' : 'Цвет';
   sBtn.appendChild(styleIndicator(hasInk));
@@ -1025,7 +1083,7 @@ function openSettings(): void {
 function applyToolbarPos(): void {
   const tb = document.getElementById('toolbar')!;
   tb.dataset.pos = state.settings.toolbarPos;
-  positionCtxPanel();
+  positionCtxPanels();
 }
 
 // ----- Экспорт PNG -----
@@ -1651,10 +1709,7 @@ function buildToolbar(): void {
       b.dataset.ctx = groupKind;
       b.classList.add('tool-shapes');
       b.title = TOOL_GROUPS[groupKind].title;
-      b.addEventListener('click', () => {
-        if (ctxKind === groupKind) closeCtxPanel();
-        else openCtxPanel(groupKind, 'toolbar');
-      });
+      b.addEventListener('click', () => toggleCtxPanel(groupKind, 'toolbar'));
     } else {
       b.dataset.tool = t.id;
       b.title = `${t.title} (${t.code})`;
@@ -1740,20 +1795,20 @@ function wireTopbar(): void {
 
   // закрытие панелей по клику мимо / Esc
   canvas.addEventListener('pointerdown', () => {
-    if (!ctxDetached) closeCtxPanel();
+    closeCtxPanel();
     closeSettings();
   }, { capture: true });
   document.getElementById('canvas-wrap')!.addEventListener('pointerdown', e => {
     const t = e.target as HTMLElement;
-    const p = ctxPanelEl();
-    // кнопки-вызовы сами переключают панель по click; откреплённая панель кликом мимо не закрывается
-    if (!p.hidden && !ctxDetached && !p.contains(t) && !t.closest('[data-ctx]')) closeCtxPanel();
+    const d = dockedPanel();
+    // кнопки-вызовы сами переключают панель по click; откреплённые панели кликом мимо не закрываются
+    if (d && !d.el.contains(t) && !t.closest('[data-ctx]')) closePanel(d);
   }, { capture: true });
-  window.addEventListener('resize', () => positionCtxPanel());
+  window.addEventListener('resize', () => positionCtxPanels(true));
   window.addEventListener('keydown', e => {
     if (e.key === 'Escape') {
       if (!settingsPopover().hidden) { closeSettings(); return; }
-      if (ctxKind) { closeCtxPanel(); return; }
+      if (dockedPanel()) { closeCtxPanel(); return; }
     }
   }, { capture: true });
 }
@@ -1921,8 +1976,14 @@ function refresh(): void {
   const styleInd = tb.querySelector<HTMLElement>('#btn-style .style-ind');
   if (styleInd) paintStyleIndicator(styleInd, true);
   // панель стикеров открывается автоматически с инструментом
-  if (state.tool === 'note' && !ctxKind && state.view === 'board') openCtxPanel('note', 'toolbar');
-  if (state.tool !== 'note' && ctxKind === 'note') closeCtxPanel();
+  if (state.tool === 'note' && !dockedPanel() && !panelOf('note') && state.view === 'board') openCtxPanel('note', 'toolbar');
+  const notePanel = panelOf('note');
+  if (state.tool !== 'note' && notePanel && !notePanel.detached) closePanel(notePanel);
+  // откреплённые палитры инструментов подсвечивают текущий инструмент
+  for (const b of ctxLayerEl().querySelectorAll<HTMLElement>('[data-shape]')) {
+    b.classList.toggle('active', b.dataset.shape === state.tool);
+  }
+  ctxLayerEl().hidden = state.view !== 'board';
 
   (document.getElementById('btn-undo') as HTMLButtonElement).disabled = !canUndo();
   (document.getElementById('btn-redo') as HTMLButtonElement).disabled = !canRedo();
@@ -1967,6 +2028,6 @@ export function initApp(c: HTMLCanvasElement): void {
     refresh();
     scheduleSave();
     if (editing) positionEditor();
-    if (ctxKind) positionCtxPanel();
+    if (ctxPanels.length) positionCtxPanels();
   });
 }
