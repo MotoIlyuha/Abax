@@ -1847,7 +1847,7 @@ export function toggleSidebar(): void {
 interface ShareUser { userId: number; name: string; color: string; host?: boolean; away?: boolean; rights?: { default?: string; pages?: Record<string, string> } }
 interface ShareStatus { active: boolean; url?: string; code?: string; port?: number; maxEditors?: number; users?: ShareUser[] }
 interface ShareApi {
-  shareStart(): Promise<{ ok: boolean; port?: number; code?: string }>;
+  shareStart(): Promise<{ ok: boolean; port?: number; code?: string; hostKey?: string }>;
   shareStop(): Promise<{ ok: boolean }>;
   shareStatus(): Promise<ShareStatus>;
   shareSetRights(uid: number, patch: { pages?: Record<string, string>; default?: string; all?: string }): Promise<{ ok: boolean; error?: string }>;
@@ -1882,13 +1882,13 @@ async function openShareDialog(): Promise<void> {
       start.textContent = 'Включить совместную работу';
       start.addEventListener('click', async () => {
         const r = await api.shareStart();
-        if (!r.ok || !r.port || !r.code) {
+        if (!r.ok || !r.port || !r.code || !r.hostKey) {
           alert((r as { error?: string }).error || 'Не удалось запустить сервер совместной работы');
           await render();
           return;
         }
         await saveNow();
-        await startHostConnection(r.port, r.code, 'Автор');
+        await startHostConnection(r.port, r.code, r.hostKey, 'Автор');
         await render();
       });
       dlg!.appendChild(start);

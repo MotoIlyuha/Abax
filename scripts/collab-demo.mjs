@@ -50,13 +50,13 @@ server.setDistDir(path.join(__dirname, '..', 'dist'));
 
 try {
   // 1. host подключается и заливает проект
-  const host = await connect(`ws://127.0.0.1:${actualPort}/ws?host=1&name=${encodeURIComponent('Автор')}`);
+  const host = await connect(`ws://127.0.0.1:${actualPort}/ws?code=DEMO01&host=1&key=${encodeURIComponent(server.hostKey)}&name=${encodeURIComponent('Автор')}`);
   host.ws.send(JSON.stringify({ t: 'project', project: demoProject }));
   await waitInit(host);
   await wait(100); // даём серверу обработать проект до подключения гостя
   check('host init (uid=0)', host.inbox[0].userId === 0);
   // 2. гость: default = view (openEdit выключен)
-  const guest = await connect(`ws://127.0.0.1:${actualPort}/ws?name=${encodeURIComponent('Ученик')}`);
+  const guest = await connect(`ws://127.0.0.1:${actualPort}/ws?code=DEMO01&name=${encodeURIComponent('Ученик')}`);
   const gInit = await waitInit(guest);
   check('гость получил проект и цвет', gInit?.project?.pages?.length === 2 && !!gInit?.color);
   // 3. presence: курсор гостя виден хосту
@@ -95,7 +95,7 @@ try {
   // 7. лимит редакторов: добавляем гостей с edit до превышения
   let denied = 0;
   for (let i = 0; i < 5; i++) {
-    const g = await connect(`ws://127.0.0.1:${actualPort}/ws?name=${encodeURIComponent('Гость' + (i + 2))}`);
+    const g = await connect(`ws://127.0.0.1:${actualPort}/ws?code=DEMO01&name=${encodeURIComponent('Гость' + (i + 2))}`);
     const gi = await waitInit(g);
     const rr = server.setRights(gi.userId, { all: 'edit' });
     if (!rr.ok) denied++;

@@ -18,7 +18,7 @@ async function boot(): Promise<void> {
     // имя из URL (тестовое окно) или автогенерация — БЕЗ window.prompt,
     // который блокирует boot в Electron BrowserWindow
     const name = q.get('name') || `Гость ${Math.floor(Math.random() * 90 + 10)}`;
-    await startCollab(`ws://${location.host}/ws`, false, name);
+    await startCollab(`ws://${location.host}/ws?code=${encodeURIComponent(roomCode)}`, false, name);
     setStorage(netStorage);
     initRenderer(canvas);
     initApp(canvas);
