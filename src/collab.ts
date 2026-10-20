@@ -1,5 +1,6 @@
 import type { Project, ProjectMeta } from './types';
 import { state, openProject, setSelection } from './state';
+import { setStorage, storage, type BoardsStorage } from './storage';
 
 export interface CollabUser {
   userId: number;
@@ -57,7 +58,9 @@ export function startCollab(wsUrl: string, asHost: boolean, name: string): Promi
       if (m.t === 'init') {
         myUserId = m.userId as number;
         myRights = (m.rights as typeof myRights) || myRights;
+        if (Array.isArray(m.users)) users = m.users as CollabUser[];
         if (m.project) applyRemoteProject(m.project as Project);
+        renderRemoteCursors();
       } else if (m.t === 'users') {
         users = m.users as CollabUser[];
         renderRemoteCursors();
@@ -90,7 +93,7 @@ export function noteCursor(x: number, y: number): void {
   const now = Date.now();
   if (now - cursorThrottle.last < 40) {
     if (!cursorThrottle.timer) {
-      cursorThrottle.timer = setTimeout(() => {
+      cursorThrottle.timer = window.setTimeout(() => {
         cursorThrottle.timer = 0;
         flushCursor();
       }, 40);
@@ -115,7 +118,7 @@ export function noteSelection(ids: string[]): void {
 export function sendProject(project: Project): void {
   if (!connected) return;
   clearTimeout(projectThrottle.timer);
-  projectThrottle.timer = setTimeout(() => send({ t: 'project', project }), 250);
+  projectThrottle.timer = window.setTimeout(() => send({ t: 'project', project }), 250);
 }
 
 /** Сетевое хранилище: save = отправка, load = из init-проекта. */
@@ -171,13 +174,23 @@ export function foreignSelections(): { color: string; ids: string[] }[] {
     .map(u => ({ color: u.away ? '#9aa0ab' : u.color, ids: u.selection }));
 }
 
+/** Локальное хранилище автора на время совместной работы (save дополнительно рассылает проект). */
+let hostLocalStorage: BoardsStorage | null = null;
+
 /** Подключение автора (host) к собственному серверу совместной работы. */
 export async function startHostConnection(port: number, code: string, name: string): Promise<void> {
   await startCollab(`ws://127.0.0.1:${port}/ws?code=${code}`, true, name);
+  // правки автора уходят гостям тем же путём, что и автосохранение
+  if (!hostLocalStorage) {
+    const local = storage;
+    hostLocalStorage = local;
+    setStorage({ ...local, save: async project => { await local.save(project); sendProject(project); } });
+  }
   sendProject(state.project);
 }
 
 export function stopCollab(): void {
+  if (hostLocalStorage) { setStorage(hostLocalStorage); hostLocalStorage = null; }
   if (ws) { try { ws.close(); } catch { /* уже закрыт */ } }
   ws = null;
   connected = false;

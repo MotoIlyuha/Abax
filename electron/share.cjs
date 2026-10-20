@@ -91,6 +91,8 @@ function createShareServer({ port, code, openEdit = process.env.DOSKA_OPEN_EDIT 
   });
 
   const wss = new WebSocketServer({ server });
+  // ws пересылает сюда ошибки http-сервера (например, EADDRINUSE); их обрабатывает промис ниже
+  wss.on('error', () => {});
   wss.on('connection', (ws, req) => {
     const u = new URL(req.url, 'http://x');
     if (u.pathname !== '/ws') { ws.close(); return; }
@@ -109,6 +111,7 @@ function createShareServer({ port, code, openEdit = process.env.DOSKA_OPEN_EDIT 
     const rightsOf = () => { const r = room.rights.get(uid); const pages = {}; if (room.project) for (const pg of room.project.pages) pages[pg.id] = room.userPageRight(uid, pg.id); return { default: r?.default || 'view', pages }; };
     const projectFor = () => isHost ? room.project : (room.project ? { ...room.project, pages: room.visiblePages(uid) } : null);
     ws.send(JSON.stringify({ t: 'init', userId: uid, color: info.color, name: info.name, project: projectFor(), rights: rightsOf(), users: room.usersSnapshot() }));
+    broadcastUsers(); // остальные сразу видят нового участника
 
     ws.on('message', (raw) => {
       info.last = Date.now();
@@ -162,6 +165,10 @@ function createShareServer({ port, code, openEdit = process.env.DOSKA_OPEN_EDIT 
       const r = room.rights.get(uid);
       const pages = {}; if (room.project) for (const pg of room.project.pages) pages[pg.id] = room.userPageRight(uid, pg.id);
       try { c.ws.send(JSON.stringify({ t: 'rights', rights: { default: r?.default || 'view', pages } })); } catch {}
+      // состав видимых страниц мог измениться: скрытая страница пропадает у гостя сразу, открытая — появляется
+      if (room.project) {
+        try { c.ws.send(JSON.stringify({ t: 'project', project: { ...room.project, pages: room.visiblePages(uid) }, by: -1 })); } catch {}
+      }
     }
   });
 }
