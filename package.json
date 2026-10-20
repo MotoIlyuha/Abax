@@ -11,13 +11,15 @@
     "build": "npm run typecheck && vite build",
     "electron": "electron .",
     "dist": "npm run build && electron-builder --win nsis portable",
-    "collab:demo": "node scripts/collab-demo.mjs"
+    "collab:demo": "node scripts/collab-demo.mjs",
+    "test": "vitest run"
   },
   "devDependencies": {
     "electron": "^33.2.0",
     "electron-builder": "^25.1.8",
     "typescript": "^5.6.3",
-    "vite": "^5.4.11"
+    "vite": "^5.4.11",
+    "vitest": "^2.1.9"
   },
   "dependencies": {
     "@types/ws": "^8.18.2",
