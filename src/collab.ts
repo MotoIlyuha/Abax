@@ -66,7 +66,7 @@ export function startCollab(wsUrl: string, asHost: boolean, name: string): Promi
         renderRemoteCursors();
       } else if (m.t === 'rights') {
         myRights = (m.rights as typeof myRights) || myRights;
-        // перерисовываем UI — тулбар/сайдбар зависят от прав
+        // перерисовываем UI — тулбар и список страниц зависят от прав
         setSelection([...state.selection]);
       } else if (m.t === 'project') {
         if ((m.by as number) !== myUserId) applyRemoteProject(m.project as Project);

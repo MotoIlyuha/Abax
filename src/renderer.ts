@@ -11,6 +11,11 @@ import { state } from './state';
 /** Сколько картинок догрузилось: кэш сцены, собранный с заглушкой, устаревает. */
 let imgEpoch = 0;
 
+/** Превью, снятое при меньшем значении, могло нарисоваться с незагруженными картинками. */
+export function imageEpoch(): number {
+  return imgEpoch;
+}
+
 // Кэш загруженных картинок (импортированные PDF-страницы).
 const imgCache = new WeakMap<ImageEl, HTMLImageElement>();
 
@@ -581,6 +586,21 @@ export function requestRender(): void {
   });
 }
 
+/**
+ * Кадр сразу и начисто, не дожидаясь rAF и покоя камеры: после смены страницы
+ * кэш не должен показывать прежнюю страницу, а переход снимает готовый кадр новой.
+ */
+export function renderNow(): void {
+  if (!ctx) return;
+  if (rafId) {
+    cancelAnimationFrame(rafId);
+    rafId = 0;
+  }
+  lastCamRef = state.camera;
+  lastCamChange = -Infinity;
+  draw();
+}
+
 /** Ручки редактирования единственного выделенного элемента (экранные координаты). */
 function drawHandles(ctx: CanvasRenderingContext2D, cam: Camera): void {
   const el = state.board.elements.find(e => state.selection.has(e.id));
@@ -853,6 +873,11 @@ export function detachPresent(): void {
 
 export function presenting(): boolean {
   return present !== null;
+}
+
+/** Холст окна демонстрации, если оно открыто. */
+export function presentCanvas(): HTMLCanvasElement | null {
+  return present && !present.win.closed ? present.canvas : null;
 }
 
 function drawPresent(camSettled: boolean): void {

@@ -176,6 +176,9 @@ export type ToolbarPos = 'left' | 'right' | 'top' | 'bottom';
 /** Поведение колёсика мыши: прокрутка холста или масштаб (как в Figma). */
 export type WheelMode = 'scroll' | 'zoom';
 
+/** Анимация перехода на другую страницу. */
+export type PageTransition = 'none' | 'slide' | 'fade' | 'zoom';
+
 export interface BoardSettings {
   toolbarPos: ToolbarPos;
   /** Подписи делений на координатной плоскости. */
@@ -184,4 +187,5 @@ export interface BoardSettings {
   snapToGrid: boolean;
   /** Колёсико без модификаторов: прокрутка или масштаб. */
   wheelMode: WheelMode;
+  pageTransition: PageTransition;
 }

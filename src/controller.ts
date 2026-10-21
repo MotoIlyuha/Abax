@@ -11,7 +11,7 @@ import {
 import { collabActive, noteCursor, readOnly } from './collab';
 import { eraseRadius, presenting, requestRender } from './renderer';
 import { fitSolid, SOLID_CLICK_SIZE, solidKeepsAspect } from './solid';
-import { beginTextEdit, exportPng, fitContent, openAllSettings, saveNow, toggleSidebar } from './app';
+import { beginTextEdit, exportPng, fitContent, openAllSettings, saveNow, togglePages } from './app';
 import { toolByKey } from './toolbar';
 
 const SELECT_TOL = 6; // px экрана
@@ -714,7 +714,7 @@ export function initController(canvas: HTMLCanvasElement): void {
       case 'Equal': zoomAtCenter(1.25); break;
       case 'Minus': zoomAtCenter(1 / 1.25); break;
       case 'Digit0': fitContent(); break;
-      case 'KeyB': toggleSidebar(); break;
+      case 'KeyB': togglePages(); break;
       default: {
         // клавиши инструментов настраиваются в окне «Все настройки»
         const tool = toolByKey(e.code);

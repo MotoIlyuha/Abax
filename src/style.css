@@ -44,6 +44,18 @@ body {
   color: var(--fg);
 }
 #page-name:hover, #page-name:focus { border-color: var(--border); background: #fff; outline: none; }
+/* «Проект / Страница» в шапке */
+#project-name {
+  max-width: 200px;
+  padding-left: 4px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--muted);
+  font-weight: 500;
+}
+/* у поля названия свой внутренний отступ — подтягиваем его к разделителю */
+.crumb-sep { color: #c3c8d1; margin-right: -7px; }
 
 select {
   font: inherit;
@@ -73,64 +85,9 @@ select {
 
 #main { flex: 1; display: flex; min-height: 0; }
 
-#sidebar {
-  width: 232px;
-  background: var(--panel);
-  border-right: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  flex: none;
-}
-#sidebar.hidden { display: none; }
-.sidebar-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 12px;
-  font-weight: 600;
-  color: var(--muted);
-  text-transform: uppercase;
-  font-size: 11px;
-  letter-spacing: 0.04em;
-}
-#btn-new-page {
-  width: 26px;
-  height: 26px;
-  border: 1px solid var(--border);
-  background: #fff;
-  border-radius: 7px;
-  font-size: 16px;
-  line-height: 1;
-  cursor: pointer;
-  color: var(--fg);
-}
-#btn-new-page:hover { border-color: var(--accent); color: var(--accent); }
-
-#pages-list { flex: 1; overflow-y: auto; padding: 0 8px 8px; }
-.page-item {
-  position: relative;
-  padding: 6px;
-  border-radius: 8px;
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.page-item:hover { background: #f0f2f5; }
-.page-item.active { background: var(--accent-soft); }
-.page-item canvas { border-radius: 4px; border: 1px solid var(--border); display: block; }
-.page-row { display: flex; align-items: center; gap: 6px; padding: 0 2px; }
 .page-grid-icon { color: var(--muted); display: inline-flex; flex: none; }
 .page-grid-icon svg { width: 14px; height: 14px; }
-.page-name {
-  font-weight: 600;
-  font-size: 12px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  flex: 1;
-}
-.page-item input, .home-page-row input, .project-title input {
+.home-page-row input, .project-title input {
   font: inherit;
   padding: 2px 4px;
   border: 1px solid var(--accent);
@@ -151,7 +108,7 @@ select {
   justify-content: center;
   flex: none;
 }
-.page-item:hover .page-del, .home-page-row:hover .page-del { display: inline-flex; }
+.home-page-row:hover .page-del { display: inline-flex; }
 .page-del:hover { background: #f9e5e5; color: var(--danger); }
 .page-del svg { width: 12px; height: 12px; }
 /* (старые стили .board-item удалены вместе с досками) */
@@ -160,6 +117,224 @@ select {
 
 #canvas-wrap { position: relative; flex: 1; min-width: 0; overflow: hidden; }
 #board { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; cursor: crosshair; }
+
+/* ----- Страницы: плавающая кнопка слева внизу, под ней — горизонтальный список ----- */
+/* подложки нет: над холстом парят только кнопка и карточки */
+#pages-dock {
+  --dock-ease: cubic-bezier(0.22, 0.8, 0.24, 1);
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 6;
+  pointer-events: none;
+}
+#btn-pages {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 10px 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  font: inherit;
+  font-weight: 600;
+  color: var(--fg);
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: transform 0.38s var(--dock-ease), box-shadow 0.15s ease, border-color 0.15s ease;
+}
+#btn-pages:hover { border-color: #cfd5de; box-shadow: 0 2px 6px rgba(16, 24, 40, 0.1), 0 8px 22px rgba(16, 24, 40, 0.1); }
+#btn-pages > svg { width: 18px; height: 18px; flex: none; color: var(--accent); }
+#btn-pages.add { padding-right: 8px; }
+.pages-count {
+  min-width: 22px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 99px;
+  background: #f0f2f5;
+  color: #5d6572;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.pages-plus {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.pages-chev { display: inline-flex; color: var(--muted); transition: transform 0.38s var(--dock-ease); }
+.pages-chev svg { width: 16px; height: 16px; }
+/* открыт: кнопка приподнимается над списком, стрелка смотрит вниз — «опустить» */
+#pages-dock.open #btn-pages { transform: translateY(calc(-1 * var(--tray-h, 150px) - 10px)); }
+#pages-dock.open .pages-chev { transform: rotate(180deg); }
+
+#pages-tray {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  max-width: 100%;
+  pointer-events: auto;
+  visibility: hidden;
+  opacity: 0;
+  transform: translateY(28px);
+  transition: opacity 0.2s ease, transform 0.38s var(--dock-ease), visibility 0s linear 0.38s;
+}
+#pages-dock.open #pages-tray {
+  visibility: visible;
+  opacity: 1;
+  transform: none;
+  transition: opacity 0.2s ease, transform 0.38s var(--dock-ease), visibility 0s;
+}
+#pages-list {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* поле под тени, кнопку удаления в углу и подъём карточек при наведении */
+  margin: -14px -12px -12px;
+  padding: 14px 12px 12px;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #c9ced6 transparent;
+}
+#pages-list::-webkit-scrollbar { height: 5px; }
+#pages-list::-webkit-scrollbar-thumb { background: #c9ced6; border-radius: 99px; }
+#pages-list::-webkit-scrollbar-track { background: transparent; }
+
+.page-item {
+  position: relative;
+  flex: none;
+  width: 178px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  transition: transform 0.2s var(--dock-ease), box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.page-item:hover { transform: translateY(-3px); box-shadow: 0 4px 10px rgba(16, 24, 40, 0.1), 0 14px 30px rgba(16, 24, 40, 0.12); }
+.page-item.active { border-color: var(--accent); box-shadow: 0 0 0 1.5px var(--accent), var(--shadow); }
+.page-item.active:hover { box-shadow: 0 0 0 1.5px var(--accent), 0 14px 30px rgba(16, 24, 40, 0.12); }
+.page-thumb { position: relative; border-radius: 9px; overflow: hidden; background: #fff; }
+.page-thumb canvas { display: block; }
+.page-thumb::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px rgba(16, 24, 40, 0.08);
+  pointer-events: none;
+}
+.page-num {
+  position: absolute;
+  left: 6px;
+  top: 6px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 0 0 1px rgba(16, 24, 40, 0.08);
+  color: #5d6572;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.page-item.active .page-num { background: var(--accent); color: #fff; box-shadow: none; }
+.page-row { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 7px 4px 2px; }
+.page-name {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.page-name[hidden] { display: none; }
+.page-item input {
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  font: inherit;
+  font-weight: 600;
+  font-size: 12.5px;
+  padding: 1px 4px;
+  margin: -2px 0;
+  border: 1px solid var(--accent);
+  border-radius: 5px;
+  outline: none;
+}
+/* удалить — круглая кнопка в углу карточки, появляется при наведении */
+.page-item .page-del {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--panel);
+  box-shadow: 0 2px 6px rgba(16, 24, 40, 0.14);
+  color: #6b7380;
+  visibility: hidden;
+  opacity: 0;
+  transform: scale(0.8);
+  transition: opacity 0.15s ease, transform 0.15s ease, visibility 0s linear 0.15s;
+}
+.page-item:hover .page-del { visibility: visible; opacity: 1; transform: none; transition: opacity 0.15s ease, transform 0.15s ease, visibility 0s; }
+.page-item .page-del:hover { background: #fdecec; border-color: #f3c1c1; color: var(--danger); }
+.page-item .page-del svg { width: 11px; height: 11px; }
+/* последний элемент: такая же карточка, но пунктиром и с «+» — новая страница */
+.page-add {
+  flex: none;
+  width: 178px;
+  border: 2px dashed #c3c9d3;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.6);
+  color: #98a0ac;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.2s var(--dock-ease), border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+.page-add:hover { transform: translateY(-3px); border-color: var(--accent); color: var(--accent); background: rgba(234, 240, 254, 0.9); }
+.page-add svg { width: 30px; height: 30px; }
+/* карточки поднимаются вслед за кнопкой, по очереди */
+@keyframes page-in { from { opacity: 0; transform: translateY(18px); } }
+#pages-dock.open .page-item, #pages-dock.open .page-add {
+  animation: page-in 0.4s var(--dock-ease) backwards;
+  animation-delay: calc(var(--i, 0) * 26ms + 40ms);
+}
+@media (prefers-reduced-motion: reduce) {
+  #btn-pages, .pages-chev, #pages-tray, #pages-dock.open #pages-tray, .page-item, .page-add { transition: none; }
+  #pages-dock.open .page-item, #pages-dock.open .page-add { animation: none; }
+}
 
 /* ----- Панель инструментов: позиция из настроек ----- */
 #toolbar {
@@ -510,6 +685,8 @@ select {
   color: var(--fg);
 }
 .ctx-toolbar-pos button.active { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+/* варианты с длинными названиями — по два в ряд */
+.ctx-toolbar-pos.ctx-options { display: grid; grid-template-columns: 1fr 1fr; }
 .ctx-check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
 .ctx-check input { accent-color: var(--accent); }
 /* пункт «Все настройки» — нижняя строка поповера во всю ширину */
@@ -943,8 +1120,7 @@ body.tbe-grabbing, body.tbe-grabbing * { cursor: grabbing !important; }
   border-radius: 99px;
   white-space: nowrap;
 }
-body.collab-guest #sidebar { display: flex; }
-body.collab-guest #btn-new-page { display: none; }
+body.collab-guest .page-add { display: none; }
 body.collab-guest .page-del { display: none !important; }
 body.collab-guest.readonly-mode #toolbar { display: none; }
 #overlay textarea.inplace-edit.note { background: transparent; box-shadow: none; }
