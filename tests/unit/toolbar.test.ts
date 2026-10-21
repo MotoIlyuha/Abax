@@ -87,7 +87,7 @@ describe('sanitizeToolbar', () => {
     expect(cfg.keys.pen).toBeUndefined();
     expect(cfg.keys.eraser).toBe('KeyP');
     expect(cfg.keys.text).toBeUndefined(); // KeyP уже у ластика
-    expect(cfg.keys.select).toBeUndefined(); // B — панель страниц
+    expect(cfg.keys.select).toBeUndefined(); // B — список страниц
     expect(cfg.keys.note).toBeUndefined();
     expect(cfg.keys.cube).toBe('Digit1');
     // инструментов нет в сохранённых клавишах — у них клавиши по умолчанию

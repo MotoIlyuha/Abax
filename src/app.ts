@@ -1,4 +1,4 @@
-import type { Element, GridMode, ImageEl, NoteEl, Page, Project, TextEl, ToolId, ToolbarPos, WheelMode } from './types';
+import type { Element, GridMode, ImageEl, NoteEl, Page, PageTransition, Project, TextEl, ToolId, ToolbarPos, WheelMode } from './types';
 import {
   state, update, onChange, undo, redo, canUndo, canRedo, setTool, setGrid, setStyleColor,
   setStyleWidth, setNoteColor, selectPreset, presetKind, addElement, replaceElements, pushHistory, uid,
@@ -8,7 +8,8 @@ import {
 } from './state';
 import type { PresetKind, StyleValue } from './state';
 import { storage } from './storage';
-import { renderScene, contentBBox } from './renderer';
+import { renderScene, contentBBox, imageEpoch, presentCanvas, renderNow } from './renderer';
+import { capturePageTransition } from './page-transition';
 import { hasBaseSides, SIDES_MAX, SIDES_MIN, solidSides } from './solid';
 import { elementAABB, NOTE_W, NOTE_H, NOTE_PAD, NOTE_FONT, NOTE_TEXT_COLOR, TEXT_SIZE } from './geom';
 import * as pdfjsLib from 'pdfjs-dist';
@@ -24,7 +25,9 @@ pdfjsLib.GlobalWorkerOptions.workerPort = new PdfWorker();
 
 const ICONS = {
   home: svg('<path d="M3 11l9-8 9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/>'),
-  sidebar: svg('<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M9 5v14"/>'),
+  pages: svg('<rect x="8" y="3" width="12" height="15" rx="2"/><path d="M4.5 7v11.5A2.5 2.5 0 0 0 7 21h9"/>'),
+  plus: svg('<path d="M12 5v14M5 12h14"/>'),
+  chevronUp: svg('<path d="M6 15l6-6 6 6"/>'),
   image: svg('<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M21 15l-5-5L5 19"/>'),
   undo: svg('<path d="M4 10h9a5 5 0 0 1 0 10h-3"/><path d="M8 6l-4 4 4 4"/>'),
   redo: svg('<path d="M20 10h-9a5 5 0 0 0 0 10h3"/><path d="M16 6l4 4-4 4"/>'),
@@ -142,10 +145,19 @@ function restoreSettings(): void {
         coordLabels: typeof v.coordLabels === 'boolean' ? v.coordLabels : true,
         snapToGrid: typeof v.snapToGrid === 'boolean' ? v.snapToGrid : false,
         wheelMode: v.wheelMode === 'zoom' ? 'zoom' : 'scroll',
+        pageTransition: PAGE_TRANSITIONS.some(t => t.mode === v.pageTransition) ? v.pageTransition : 'slide',
       };
     }
   } catch { /* дефолт */ }
 }
+
+/** Варианты анимации перехода на другую страницу (в настройках доски). */
+const PAGE_TRANSITIONS: { mode: PageTransition; name: string; hint: string }[] = [
+  { mode: 'none', name: 'Нет', hint: 'Страница сменяется мгновенно' },
+  { mode: 'slide', name: 'Слайд', hint: 'Страницы сдвигаются в сторону, как слайды' },
+  { mode: 'fade', name: 'Затухание', hint: 'Прежняя страница плавно растворяется' },
+  { mode: 'zoom', name: 'Приближение', hint: 'Новая страница выплывает из глубины' },
+];
 
 function persistSettings(): void {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings));
@@ -1145,6 +1157,25 @@ function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
     wheelRow.appendChild(b);
   }
   pop.appendChild(wheelRow);
+  const lbl5 = document.createElement('div');
+  lbl5.className = 'ctx-label';
+  lbl5.textContent = 'Анимация перехода на другую страницу';
+  pop.appendChild(lbl5);
+  const transRow = document.createElement('div');
+  transRow.className = 'ctx-toolbar-pos ctx-options';
+  for (const { mode, name, hint } of PAGE_TRANSITIONS) {
+    const b = document.createElement('button');
+    b.textContent = name;
+    b.title = hint;
+    b.className = state.settings.pageTransition === mode ? 'active' : '';
+    b.addEventListener('click', () => {
+      setSettings({ pageTransition: mode });
+      persistSettings();
+      rerender();
+    });
+    transRow.appendChild(b);
+  }
+  pop.appendChild(transRow);
 }
 
 function applyToolbarPos(): void {
@@ -1380,28 +1411,45 @@ function scheduleSave(): void {
 
 // ----- Страницы и проекты -----
 
+/** Холсты, на которых играет переход между страницами: основной и окно демонстрации. */
+function transitionCanvases(): HTMLCanvasElement[] {
+  const pc = presentCanvas();
+  return pc ? [canvas, pc] : [canvas];
+}
+
+function pageIndex(pageId: string): number {
+  return state.project.pages.findIndex(p => p.id === pageId);
+}
+
+/** Смена активной страницы (переключение, новая, удаление) — с анимацией перехода из настроек. */
+function changePage(change: () => void): void {
+  const fromId = state.pageId;
+  const from = pageIndex(fromId);
+  const play = state.view === 'board' ? capturePageTransition(state.settings.pageTransition, transitionCanvases()) : null;
+  change();
+  refresh();
+  fitContent();
+  // кадр новой страницы — сразу и начисто, не дожидаясь покоя камеры
+  renderNow();
+  if (play && state.pageId !== fromId) play(pageIndex(state.pageId) >= from ? 1 : -1);
+}
+
 async function switchPageHandler(pageId: string): Promise<void> {
   if (pageId === state.pageId || state.view !== 'board') return;
   await saveNow();
-  switchPage(pageId);
-  refresh();
-  fitContent();
+  changePage(() => switchPage(pageId));
 }
 
 async function newPageHandler(): Promise<void> {
   await saveNow();
-  addPage();
-  refresh();
-  fitContent();
+  changePage(() => addPage());
 }
 
 async function deletePageHandler(pageId: string): Promise<void> {
   const page = state.project.pages.find(p => p.id === pageId);
   if (!page || !confirm(`Удалить страницу «${page.name}»?`)) return;
   await saveNow();
-  deletePage(pageId);
-  refresh();
-  fitContent();
+  changePage(() => deletePage(pageId));
 }
 
 async function renamePageHandler(pageId: string, name: string): Promise<void> {
@@ -1409,10 +1457,13 @@ async function renamePageHandler(pageId: string, name: string): Promise<void> {
   await saveNow();
 }
 
+const THUMB_W = 164;
+const THUMB_H = 100;
+
 /** Мини-превью страницы: вписывает содержимое в карточку. */
 function renderPageThumb(page: Page, cv: HTMLCanvasElement): void {
-  const W = 148;
-  const H = 92;
+  const W = THUMB_W;
+  const H = THUMB_H;
   cv.width = W * 2;
   cv.height = H * 2;
   cv.style.width = `${W}px`;
@@ -1420,7 +1471,7 @@ function renderPageThumb(page: Page, cv: HTMLCanvasElement): void {
   const c = cv.getContext('2d');
   if (!c) return;
   if (page.elements.length === 0) {
-    renderScene(c, [], { x: -W / 2, y: -H / 2, zoom: 1 }, W, H, 2, 'none');
+    renderScene(c, [], { x: -W / 2, y: -H / 2, zoom: 1 }, W, H, 2, page.grid === 'coord' ? 'none' : page.grid);
     return;
   }
   const bb = contentBBox(page.elements);
@@ -1436,6 +1487,7 @@ function renderPageThumb(page: Page, cv: HTMLCanvasElement): void {
 function pagesKey(): string {
   return [
     state.project.id,
+    state.project.name,
     state.pageId,
     state.projects.length,
     state.project.updatedAt,
@@ -1443,67 +1495,224 @@ function pagesKey(): string {
   ].join('#');
 }
 
+// ----- Плавающая кнопка страниц и список под ней -----
+
+/** Список страниц показан: кнопка приподнята над ним. */
+let pagesOpen = false;
+
+interface PageCard {
+  el: HTMLElement;
+  thumb: HTMLCanvasElement;
+  num: HTMLElement;
+  grid: HTMLElement;
+  name: HTMLElement;
+  gridMode: GridMode | null;
+  /** С чего снято превью: массивы элементов иммутабельны — сравниваем по ссылке. */
+  shot: { elements: Element[]; grid: GridMode; epoch: number } | null;
+}
+const pageCards = new Map<string, PageCard>();
+let addPageTile: HTMLButtonElement | null = null;
+let revealedPageId = '';
+
+/** Гость совместной работы страниц не добавляет и не удаляет. */
+function canEditPages(): boolean {
+  return !(collabActive() && !isHost());
+}
+
+function makePageCard(pageId: string): PageCard {
+  const el = document.createElement('div');
+  el.className = 'page-item';
+  const thumbBox = document.createElement('div');
+  thumbBox.className = 'page-thumb';
+  const thumb = document.createElement('canvas');
+  // размер — сразу: превью рисуются при первом открытии списка
+  thumb.style.width = `${THUMB_W}px`;
+  thumb.style.height = `${THUMB_H}px`;
+  const num = document.createElement('span');
+  num.className = 'page-num';
+  thumbBox.append(thumb, num);
+  const row = document.createElement('div');
+  row.className = 'page-row';
+  const grid = document.createElement('span');
+  grid.className = 'page-grid-icon';
+  grid.title = 'Фон страницы';
+  const name = document.createElement('span');
+  name.className = 'page-name';
+  name.title = 'Двойной клик — переименовать';
+  row.append(grid, name);
+  const del = document.createElement('button');
+  del.className = 'page-del';
+  del.title = 'Удалить страницу';
+  del.innerHTML = ICONS.del;
+  el.append(thumbBox, row, del);
+  const card: PageCard = { el, thumb, num, grid, name, gridMode: null, shot: null };
+  el.addEventListener('click', e => {
+    if ((e.target as HTMLElement).closest('.page-del, input')) return;
+    void switchPageHandler(pageId);
+  });
+  name.addEventListener('dblclick', () => startPageRename(card, pageId));
+  del.addEventListener('click', e => {
+    e.stopPropagation();
+    void deletePageHandler(pageId);
+  });
+  pageCards.set(pageId, card);
+  return card;
+}
+
+/** Последний элемент списка — плитка с пунктиром: новая страница. */
+function makeAddPageTile(): HTMLButtonElement {
+  const b = document.createElement('button');
+  b.className = 'page-add';
+  b.title = 'Новая страница';
+  b.innerHTML = ICONS.plus;
+  b.addEventListener('click', () => { void newPageHandler(); });
+  return b;
+}
+
+/** Превью перерисовывается, только если содержимое или фон страницы изменились. */
+function syncPageThumb(card: PageCard, page: Page): void {
+  const epoch = imageEpoch();
+  const shot = card.shot;
+  if (shot && shot.elements === page.elements && shot.grid === page.grid && shot.epoch === epoch) return;
+  card.shot = { elements: page.elements, grid: page.grid, epoch };
+  renderPageThumb(page, card.thumb);
+}
+
+/** Список страниц сверяется с проектом: карточки переиспользуются, а не пересоздаются. */
 function renderPages(): void {
   try {
-  const list = document.getElementById('pages-list')!;
-  list.textContent = '';
-  document.getElementById('sidebar-project')!.textContent = state.project.name;
-  for (const page of state.project.pages) {
-    const item = document.createElement('div');
-    item.className = `page-item${page.id === state.pageId ? ' active' : ''}`;
-    const thumb = document.createElement('canvas');
-    renderPageThumb(page, thumb);
-    const row = document.createElement('div');
-    row.className = 'page-row';
-    const gicon = document.createElement('span');
-    gicon.className = 'page-grid-icon';
-    gicon.innerHTML = GRID_ICONS[page.grid];
-    gicon.title = 'Фон страницы';
-    const name = document.createElement('span');
-    name.className = 'page-name';
-    name.textContent = page.name;
-    name.title = 'Двойной клик — переименовать';
-    const del = document.createElement('button');
-    del.className = 'page-del';
-    del.title = 'Удалить страницу';
-    del.innerHTML = ICONS.del;
-    row.append(gicon, name, del);
-    item.append(thumb, row);
-    item.addEventListener('click', e => {
-      if ((e.target as HTMLElement).closest('.page-del')) return;
-      void switchPageHandler(page.id);
+    document.getElementById('project-name')!.textContent = state.project.name;
+    const list = document.getElementById('pages-list')!;
+    const pages = state.project.pages;
+    const seen = new Set<string>();
+    pages.forEach((page, i) => {
+      seen.add(page.id);
+      const card = pageCards.get(page.id) ?? makePageCard(page.id);
+      card.el.classList.toggle('active', page.id === state.pageId);
+      card.el.style.setProperty('--i', String(i));
+      card.num.textContent = String(i + 1);
+      if (card.name.textContent !== page.name) card.name.textContent = page.name;
+      if (card.gridMode !== page.grid) {
+        card.gridMode = page.grid;
+        card.grid.innerHTML = GRID_ICONS[page.grid];
+      }
+      // превью рисуются только у открытого списка
+      if (pagesOpen) syncPageThumb(card, page);
+      // переставляем, только если не на месте: перенос узла сбросил бы фокус переименования
+      if (list.children[i] !== card.el) list.insertBefore(card.el, list.children[i] ?? null);
     });
-    name.addEventListener('dblclick', () => startPageRename(item, page.id, page.name));
-    del.addEventListener('click', e => {
-      e.stopPropagation();
-      void deletePageHandler(page.id);
-    });
-    list.appendChild(item);
-  }
+    for (const [id, card] of pageCards) {
+      if (seen.has(id)) continue;
+      card.el.remove();
+      pageCards.delete(id);
+    }
+    if (canEditPages()) {
+      addPageTile ??= makeAddPageTile();
+      addPageTile.style.setProperty('--i', String(pages.length));
+      if (list.lastElementChild !== addPageTile) list.appendChild(addPageTile);
+    } else {
+      addPageTile?.remove();
+    }
+    syncPagesButton();
+    const tray = document.getElementById('pages-tray')!;
+    document.getElementById('pages-dock')!.style.setProperty('--tray-h', `${tray.offsetHeight}px`);
+    if (pagesOpen && revealedPageId !== state.pageId) {
+      revealedPageId = state.pageId;
+      revealActivePage(true);
+    }
   } catch (err) { console.error('[doska] renderPages failed:', err); }
 }
 
-function startPageRename(item: HTMLElement, pageId: string, oldName: string): void {
-  const nameEl = item.querySelector('.page-name')!;
+/** Кнопка: «Страница +», пока страница одна (добавляет вторую), иначе «Страницы» с числом. */
+function syncPagesButton(): void {
+  const btn = document.getElementById('btn-pages')!;
+  const n = state.project.pages.length;
+  const add = n === 1 && !pagesOpen && canEditPages();
+  const key = `${add}:${n}:${pagesOpen}`;
+  if (btn.dataset.key === key) return;
+  btn.dataset.key = key;
+  btn.classList.toggle('add', add);
+  btn.setAttribute('aria-expanded', String(pagesOpen));
+  btn.innerHTML = add
+    ? `${ICONS.pages}<span class="pages-label">Страница</span> <span class="pages-plus">+</span>`
+    : `${ICONS.pages}<span class="pages-label">Страницы</span> <span class="pages-count">${n}</span>`
+      + `<span class="pages-chev">${ICONS.chevronUp}</span>`;
+  btn.title = add ? 'Новая страница' : pagesOpen ? 'Скрыть страницы (B)' : 'Показать страницы (B)';
+}
+
+/** Прокручивает список так, чтобы активная страница была видна. */
+function revealActivePage(smooth: boolean): void {
+  const list = document.getElementById('pages-list')!;
+  const el = pageCards.get(state.pageId)?.el;
+  if (!el) return;
+  const pad = 12;
+  const l = el.offsetLeft - pad;
+  const r = el.offsetLeft + el.offsetWidth + pad;
+  let to = list.scrollLeft;
+  if (l < to) to = l;
+  else if (r > to + list.clientWidth) to = r - list.clientWidth;
+  if (to !== list.scrollLeft) list.scrollTo({ left: to, behavior: smooth ? 'smooth' : 'auto' });
+}
+
+function setPagesOpen(open: boolean): void {
+  if (pagesOpen === open) return;
+  pagesOpen = open;
+  renderPages();
+  document.getElementById('pages-dock')!.classList.toggle('open', open);
+  if (open) {
+    revealedPageId = state.pageId;
+    revealActivePage(false);
+  }
+}
+
+/** Показать или скрыть список страниц (кнопка «Страницы», клавиша B). */
+export function togglePages(): void {
+  setPagesOpen(!pagesOpen);
+}
+
+function wirePagesDock(): void {
+  document.getElementById('btn-pages')!.addEventListener('click', () => {
+    if (!pagesOpen && state.project.pages.length === 1 && canEditPages()) {
+      // «Страница +»: добавляет вторую страницу и показывает обе
+      void newPageHandler().then(() => setPagesOpen(true));
+      return;
+    }
+    togglePages();
+  });
+  const list = document.getElementById('pages-list')!;
+  list.addEventListener('wheel', e => {
+    // обычное колёсико листает горизонтальный список
+    if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+    e.preventDefault();
+    list.scrollLeft += e.deltaY;
+  }, { passive: false });
+}
+
+function startPageRename(card: PageCard, pageId: string): void {
+  if (card.el.querySelector('input')) return;
+  const oldName = state.project.pages.find(p => p.id === pageId)?.name;
+  if (oldName === undefined) return;
   const input = document.createElement('input');
   input.value = oldName;
   input.spellcheck = false;
-  nameEl.replaceWith(input);
+  card.name.hidden = true;
+  card.name.after(input);
   input.focus();
   input.select();
   let done = false;
-  const commit = () => {
+  const finish = (commit: boolean) => {
     if (done) return;
     done = true;
+    input.remove();
+    card.name.hidden = false;
     const v = input.value.trim();
-    if (v && v !== oldName) void renamePageHandler(pageId, v);
-    else renderPages();
+    if (commit && v && v !== oldName) void renamePageHandler(pageId, v);
   };
-  input.addEventListener('blur', commit);
+  input.addEventListener('blur', () => finish(true));
   input.addEventListener('keydown', e => {
     e.stopPropagation();
-    if (e.key === 'Enter') commit();
-    if (e.key === 'Escape') { done = true; renderPages(); }
+    if (e.key === 'Enter') finish(true);
+    if (e.key === 'Escape') finish(false);
   });
 }
 
@@ -1874,7 +2083,6 @@ function makeVsep(): HTMLElement {
 
 function wireTopbar(): void {
   document.getElementById('btn-home')!.innerHTML = ICONS.home;
-  document.getElementById('btn-sidebar')!.innerHTML = ICONS.sidebar;
   document.getElementById('btn-undo')!.innerHTML = ICONS.undo;
   document.getElementById('btn-redo')!.innerHTML = ICONS.redo;
   document.getElementById('btn-fit')!.innerHTML = ICONS.fit;
@@ -1897,7 +2105,6 @@ function wireTopbar(): void {
       setView(state.view === 'home' ? 'board' : 'home');
     })();
   });
-  document.getElementById('btn-sidebar')!.addEventListener('click', toggleSidebar);
   document.getElementById('btn-undo')!.addEventListener('click', () => undo());
   document.getElementById('btn-redo')!.addEventListener('click', () => redo());
   document.getElementById('btn-fit')!.addEventListener('click', fitContent);
@@ -1908,7 +2115,6 @@ function wireTopbar(): void {
     if (settingsPopover().hidden) openSettings();
     else closeSettings();
   });
-  document.getElementById('btn-new-page')!.addEventListener('click', () => { void newPageHandler(); });
 
   const nameInput = document.getElementById('page-name') as HTMLInputElement;
   nameInput.addEventListener('change', () => {
@@ -1951,10 +2157,6 @@ function wireTopbar(): void {
 export function togglePresent(): void {
   if (presentOpen()) { closePresent(); return; }
   if (!openPresent()) alert('Не удалось открыть окно демонстрации: разрешите всплывающие окна для этой страницы');
-}
-
-export function toggleSidebar(): void {
-  document.getElementById('sidebar')!.classList.toggle('hidden');
 }
 
 // ----- Совместная работа: диалог автора -----
@@ -2175,6 +2377,7 @@ export function initApp(c: HTMLCanvasElement): void {
   buildToolbar();
   applyToolbarPos();
   wireTopbar();
+  wirePagesDock();
   wireImageInput();
   try { refresh(); } catch (err) { console.error('[doska] refresh failed:', err); }
   onToolbarChange(() => {

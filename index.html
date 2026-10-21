@@ -8,7 +8,8 @@
 <body>
   <div id="topbar">
     <button id="btn-home" class="icon" title="Проекты (домашняя страница)"></button>
-    <button id="btn-sidebar" class="icon" title="Страницы (B)"></button>
+    <span id="project-name" title="Текущий проект">Проект</span>
+    <span class="crumb-sep" aria-hidden="true">/</span>
     <input id="page-name" title="Название страницы" spellcheck="false" />
     <div class="sep"></div>
     <button id="btn-undo" class="icon" title="Отменить (Ctrl+Z)"></button>
@@ -32,17 +33,14 @@
     </div>
   </div>
   <div id="main">
-    <aside id="sidebar">
-      <div class="sidebar-head">
-        <span id="sidebar-project" title="Текущий проект">Проект</span>
-        <button id="btn-new-page" title="Новая страница">+</button>
-      </div>
-      <div id="pages-list"></div>
-    </aside>
     <div id="canvas-wrap">
       <div id="toolbar"></div>
       <canvas id="board"></canvas>
       <div id="overlay"></div>
+      <div id="pages-dock" data-tip-side="top">
+        <div id="pages-tray"><div id="pages-list"></div></div>
+        <button id="btn-pages"></button>
+      </div>
       <div id="ctx-layer"></div>
       <div id="quick-menu" hidden></div>
     </div>

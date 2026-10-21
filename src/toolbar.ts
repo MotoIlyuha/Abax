@@ -63,7 +63,7 @@ const DEFAULT_KEYS: Partial<Record<ToolId, string>> = {
 };
 
 /** Клавиши без модификаторов, которые занимает само приложение. */
-const RESERVED_KEYS: Record<string, string> = { KeyB: 'панель страниц', Digit0: 'показать всё содержимое' };
+const RESERVED_KEYS: Record<string, string> = { KeyB: 'список страниц', Digit0: 'показать всё содержимое' };
 
 /** «KeyR» → «R», «Digit3» → «3». */
 export function keyLabel(code: string): string {

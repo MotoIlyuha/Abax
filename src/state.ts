@@ -111,7 +111,7 @@ export const state: AppState = {
     other: { list: [{ color: '#1f2329', width: 4 }], active: 0 },
   },
   noteColor: '#ffe066',
-  settings: { toolbarPos: 'left', coordLabels: true, snapToGrid: false, wheelMode: 'scroll' },
+  settings: { toolbarPos: 'left', coordLabels: true, snapToGrid: false, wheelMode: 'scroll', pageTransition: 'slide' },
   selection: new Set(),
   liveStroke: null,
   liveShape: null,

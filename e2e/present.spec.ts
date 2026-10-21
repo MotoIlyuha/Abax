@@ -66,6 +66,21 @@ test.describe('окно демонстрации', () => {
     await expect.poll(() => popup.isClosed()).toBe(true);
   });
 
+  test('переход на другую страницу виден и в окне демонстрации', async ({ page }) => {
+    const popup = await openPresent(page);
+    await popup.evaluate(() => {
+      const w = window as any;
+      w.__transitions = 0;
+      new MutationObserver(ms => {
+        for (const m of ms) for (const n of m.addedNodes) if ((n as HTMLElement).classList?.contains('page-transition')) w.__transitions++;
+      }).observe(document.body, { childList: true });
+    });
+    await page.locator('#btn-pages').click(); // «Страница +»: вторая страница, по умолчанию — слайд
+    await expect.poll(() => popup.evaluate(() => (window as any).__transitions)).toBe(1);
+    // после анимации в окне снова только холст
+    await expect.poll(() => popup.evaluate(() => [...document.body.children].map(e => e.tagName))).toEqual(['CANVAS']);
+  });
+
   test('закрытие окна снимает отметку с кнопки', async ({ page }) => {
     const popup = await openPresent(page);
     await popup.close();

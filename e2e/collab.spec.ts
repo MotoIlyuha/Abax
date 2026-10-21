@@ -17,9 +17,17 @@ test.describe('совместная работа', () => {
     await expect(guest.page.locator('body')).toHaveClass(/collab-guest/);
     await expect(guest.page.locator('body')).toHaveClass(/readonly-mode/);
     await expect(guest.page.locator('#toolbar')).toBeHidden();
-    for (const id of ['btn-home', 'btn-import', 'btn-image', 'btn-share', 'btn-new-page']) {
+    for (const id of ['btn-home', 'btn-import', 'btn-image', 'btn-share']) {
       await expect(guest.page.locator(`#${id}`)).toBeHidden();
     }
+    // страницы гость листает, но не добавляет и не удаляет
+    await expect(guest.page.locator('#btn-pages')).toHaveText('Страницы 1');
+    await guest.page.locator('#btn-pages').click();
+    await expect(guest.page.locator('#pages-tray')).toBeVisible();
+    await expect(guest.page.locator('#pages-list .page-item')).toHaveCount(1);
+    await expect(guest.page.locator('#pages-list .page-add')).toHaveCount(0);
+    await guest.page.locator('#pages-list .page-item').hover();
+    await expect(guest.page.locator('#pages-list .page-del')).toBeHidden();
 
     // попытка рисовать без права edit ничего не меняет ни у гостя, ни у автора
     await guest.board.drag([{ x: 300, y: 300 }, { x: 600, y: 400 }]);
@@ -68,7 +76,7 @@ test.describe('совместная работа', () => {
       .toBe('x² + y² = r²');
 
     // новая страница и её название
-    await host.page.locator('#btn-new-page').click();
+    await host.board.addPage();
     await host.page.locator('#page-name').fill('Задачи');
     await host.page.locator('#page-name').press('Enter');
     await expect(guest.page.locator('#pages-list .page-name')).toHaveText(['Страница 1', 'Задачи'], { timeout: 5000 });
@@ -96,8 +104,9 @@ test.describe('совместная работа', () => {
     await expect(guest.page.locator('#remote-cursors .remote-cursor span', { hasText: 'Автор' })).toBeVisible();
 
     // гость на другой странице — его курсор у автора не показывается
-    await host.page.locator('#btn-new-page').click();
+    await host.board.addPage();
     await expect(guest.page.locator('#pages-list .page-item')).toHaveCount(2, { timeout: 5000 });
+    await guest.board.openPages();
     await guest.page.locator('#pages-list .page-item').nth(1).click();
     await guest.board.move({ x: 300, y: 300 });
     await guest.board.move({ x: 320, y: 300 }, 3);
@@ -136,8 +145,8 @@ test.describe('совместная работа', () => {
   });
 
   test('права по страницам: правка одной, просмотр и скрытие других', async ({ host, join }) => {
-    await host.page.locator('#btn-new-page').click();
-    await host.page.locator('#btn-new-page').click();
+    await host.board.addPage();
+    await host.board.addPage();
     await expect(host.page.locator('#pages-list .page-item')).toHaveCount(3);
     const url = await host.share();
     const guest = await join(url, 'Ученик');
@@ -150,6 +159,7 @@ test.describe('совместная работа', () => {
     await expect(guest.page.locator('#pages-list .page-name')).toHaveText(['Страница 1', 'Страница 2'], { timeout: 5000 });
 
     // на первой странице — только просмотр
+    await guest.board.openPages();
     await guest.page.locator('#pages-list .page-item').first().click();
     await expect(guest.page.locator('body')).toHaveClass(/readonly-mode/);
     // на второй — правка

@@ -139,6 +139,25 @@ export class Board {
     return els[els.length - 1];
   }
 
+  /** Показать список страниц под плавающей кнопкой (клавишей B: кнопка при одной странице добавляет вторую). */
+  async openPages(): Promise<void> {
+    if (await this.page.locator('#pages-dock.open').count() === 0) await this.tool('b');
+    await expect(this.page.locator('#pages-tray')).toBeVisible();
+  }
+
+  /** Новая страница — плитка «+» в конце списка страниц. */
+  async addPage(): Promise<void> {
+    await this.openPages();
+    const before = (await this.state()).project.pages.length;
+    await this.page.locator('#pages-list .page-add').click();
+    await expect.poll(async () => (await this.state()).project.pages.length).toBe(before + 1);
+  }
+
+  /** Дождаться конца CSS-переходов и анимаций (подъём кнопки, появление карточек, смена страницы). */
+  async settled(): Promise<void> {
+    await this.page.waitForFunction(() => document.getAnimations().every(a => a.playState !== 'running'));
+  }
+
   /** Дождаться автосохранения в localStorage. */
   async saved(): Promise<void> {
     await expect.poll(async () => (await this.state()).dirty).toBe(false);

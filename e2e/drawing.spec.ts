@@ -8,7 +8,7 @@ test.describe('загрузка', () => {
     expect(s.project.pages.map(p => p.name)).toEqual(['Страница 1']);
     expect(s.tool).toBe('pen');
     await expect(page.locator('#page-name')).toHaveValue('Страница 1');
-    await expect(page.locator('#sidebar-project')).toHaveText('Проект 1');
+    await expect(page.locator('#project-name')).toHaveText('Проект 1');
     await expect(page.locator('.tool[data-tool="pen"]')).toHaveClass(/active/);
     await expect(page.locator('#btn-undo')).toBeDisabled();
     await expect(page.locator('#btn-redo')).toBeDisabled();

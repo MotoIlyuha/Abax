@@ -27,7 +27,7 @@ export default defineConfig({
       // интерфейс (DOM, canvas, события) проверяют сквозные тесты Playwright в e2e/
       exclude: [
         'src/app.ts', 'src/controller.ts', 'src/renderer.ts', 'src/main.ts', 'src/types.ts',
-        'src/settings-dialog.ts', 'src/toolbar-editor.ts',
+        'src/settings-dialog.ts', 'src/toolbar-editor.ts', 'src/page-transition.ts',
       ],
       reporter: ['text', 'html'],
     },
