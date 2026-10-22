@@ -3,7 +3,7 @@ import {
   addElement, addPage, applyStyleToSelection, beginStroke, blankPage, blankProject, bringForward, canRedo, canUndo,
   commitPoly, deletePage, deleteSelected, endStroke, expandSelectionWithGroups, extendStroke, groupSelected,
   onChange, openProject, projectMeta, pushHistory, redo, renamePage, replaceElements, sendBackward, setGrid,
-  presetKind, selectPreset, setNoteColor, setSelection, setSettings, setSolidSides, setStyleColor, setStyleWidth, setTool, setView, state,
+  presetKind, selectAll, selectPreset, setNoteColor, setSelection, setSettings, setSolidSides, setStyleColor, setStyleWidth, setTool, setView, state,
   switchPage, uid, undo, ungroupSelected, update,
 } from '../../src/state';
 import type { Element, ShapeEl, SolidEl, TextEl } from '../../src/types';
@@ -370,6 +370,23 @@ describe('инструменты и живые объекты', () => {
     setSolidSides(8);
     undo();
     expect(canUndo()).toBe(false);
+  });
+});
+
+describe('selectAll', () => {
+  it('выделяет все элементы страницы и включает выделение', () => {
+    replaceElements([rect('a'), rect('b'), rect('c')]);
+    setTool('pen');
+    selectAll();
+    expect([...state.selection]).toEqual(['a', 'b', 'c']);
+    expect(state.tool).toBe('select');
+  });
+
+  it('на пустой странице ничего не меняет', () => {
+    setTool('pen');
+    selectAll();
+    expect(state.selection.size).toBe(0);
+    expect(state.tool).toBe('pen');
   });
 });
 

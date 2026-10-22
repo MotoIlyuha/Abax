@@ -276,6 +276,19 @@ test.describe('камера', () => {
 });
 
 test.describe('буфер обмена и дублирование', () => {
+  test('Ctrl+A выделяет все элементы и включает выделение', async ({ board, page }) => {
+    const a = await board.rect(400, 300, 450, 350);
+    const b = await board.rect(500, 300, 550, 350);
+    await page.keyboard.press('Control+a');
+    const st = await board.state();
+    expect(st.selection.sort()).toEqual([a.id, b.id].sort());
+    expect(st.tool).toBe('select');
+    await expect(board.quickMenu).toBeVisible();
+    // выделенное сразу двигается вместе
+    await board.drag([{ x: 420, y: 320 }, { x: 440, y: 340 }]);
+    expect((await board.elements()).map(e => e.x)).toEqual([420, 520]);
+  });
+
   test('Ctrl+C / Ctrl+V копируют выделенное, Ctrl+X вырезает, Ctrl+Z отменяет', async ({ board, page }) => {
     const a = await board.rect(400, 300, 450, 350);
     await board.tool('v');
