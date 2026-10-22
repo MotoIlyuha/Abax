@@ -133,6 +133,8 @@ export interface Project {
   createdAt: number;
   updatedAt: number;
   pages: Page[];
+  /** Закреплён в избранном на домашней странице. */
+  pinned?: boolean;
 }
 
 export interface ProjectMeta {
@@ -141,6 +143,7 @@ export interface ProjectMeta {
   createdAt: number;
   updatedAt: number;
   pageCount: number;
+  pinned?: boolean;
 }
 
 export type GridMode = 'none' | 'dots' | 'square' | 'coord';
@@ -179,6 +182,9 @@ export type WheelMode = 'scroll' | 'zoom';
 /** Анимация перехода на другую страницу. */
 export type PageTransition = 'none' | 'slide' | 'fade' | 'zoom';
 
+/** Модификатор перехода на страницу по номеру: Ctrl+1…9 или Alt+1…9. */
+export type PageKeyMod = 'ctrl' | 'alt';
+
 export interface BoardSettings {
   toolbarPos: ToolbarPos;
   /** Подписи делений на координатной плоскости. */
@@ -188,4 +194,7 @@ export interface BoardSettings {
   /** Колёсико без модификаторов: прокрутка или масштаб. */
   wheelMode: WheelMode;
   pageTransition: PageTransition;
+  pageKeyMod: PageKeyMod;
+  /** Сочетание «новая страница» («Ctrl+KeyN», см. hotkeys.ts); null — без сочетания. */
+  newPageKey: string | null;
 }

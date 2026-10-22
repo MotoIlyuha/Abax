@@ -88,6 +88,7 @@ ipcMain.handle('boards:list', async () => {
       out.push({
         id: b.id, name: b.name, createdAt: b.createdAt, updatedAt: b.updatedAt,
         pageCount: Array.isArray(b.pages) ? b.pages.length : 1,
+        ...(b.pinned ? { pinned: true } : {}),
       });
     } catch { /* битый файл пропускаем */ }
   }

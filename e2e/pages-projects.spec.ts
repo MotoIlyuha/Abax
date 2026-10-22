@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 
 /** Ответ на следующий confirm(). */
@@ -7,6 +7,16 @@ function onConfirm(page: Page, accept: boolean): Promise<string> {
     resolve(d.message());
     void (accept ? d.accept() : d.dismiss());
   }));
+}
+
+/** Перетаскивает карточку мышью на место другой (по шагам — как рука). */
+async function dragOnto(page: Page, from: Locator, to: Locator): Promise<void> {
+  const a = (await from.boundingBox())!;
+  const b = (await to.boundingBox())!;
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 3);
+  await page.mouse.down();
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 3, { steps: 12 });
+  await page.mouse.up();
 }
 
 /** Считает слои анимации перехода, появившиеся над холстом (в основном окне или окне демонстрации). */
@@ -296,6 +306,31 @@ test.describe('страницы проекта', () => {
     expect(s.pageId).toBe(s.project.pages[1].id); // открыта последняя страница
   });
 
+  test('страницы в списке переставляются перетаскиванием', async ({ board, page }) => {
+    await board.rect(400, 300, 500, 400);
+    await board.addPage();
+    await board.addPage();
+    await board.settled();
+    const cards = page.locator('#pages-list .page-item');
+    await expect(cards.locator('.page-name')).toHaveText(['Страница 1', 'Страница 2', 'Страница 3']);
+    const active = (await board.state()).pageId;
+
+    await dragOnto(page, cards.first(), cards.nth(2));
+    await expect(cards.locator('.page-name')).toHaveText(['Страница 2', 'Страница 3', 'Страница 1']);
+    await expect(page.locator('#pages-list .page-num')).toHaveText(['1', '2', '3']);
+    const s = await board.state();
+    expect(s.project.pages.map(p => p.name)).toEqual(['Страница 2', 'Страница 3', 'Страница 1']);
+    // перетаскивание — не клик: активная страница та же, переходов не было
+    expect(s.pageId).toBe(active);
+    expect(s.project.pages[2].count).toBe(1);
+    await board.saved();
+
+    // порядок пережил перезагрузку
+    await page.reload();
+    await board.ready();
+    expect((await board.state()).project.pages.map(p => p.name)).toEqual(['Страница 2', 'Страница 3', 'Страница 1']);
+  });
+
   test('Ctrl+S сохраняет сразу', async ({ board, page }) => {
     await board.rect(400, 300, 500, 400);
     await page.keyboard.press('Control+s');
@@ -400,17 +435,17 @@ test.describe('домашняя страница: проекты', () => {
     await expect(card.locator('.project-info')).toContainText('Страниц: 2');
 
     await card.locator('.home-page-name').first().dblclick();
-    await card.locator('.home-page-row input').fill('Введение');
-    await card.locator('.home-page-row input').press('Enter');
+    await card.locator('.home-page input').fill('Введение');
+    await card.locator('.home-page input').press('Enter');
     await expect(card.locator('.home-page-name')).toHaveText(['Введение', 'Страница 2']);
 
     const msg = onConfirm(page, true);
-    await card.locator('.home-page-row').nth(1).hover();
-    await card.locator('.home-page-row').nth(1).locator('.page-del').click();
+    await card.locator('.home-page').nth(1).hover();
+    await card.locator('.home-page').nth(1).locator('.page-del').click();
     await msg;
     await expect(card.locator('.home-page-name')).toHaveText(['Введение']);
 
-    await card.locator('.home-page-row').first().click();
+    await card.locator('.home-page').first().click();
     await expect(page.locator('#home')).toBeHidden();
     await expect(page.locator('#page-name')).toHaveValue('Введение');
   });
@@ -420,9 +455,11 @@ test.describe('домашняя страница: проекты', () => {
     await page.locator('#home .new-project').click();
     await page.locator('#btn-home').click();
     const other = page.locator('#home .project-card').nth(1);
-    await expect(other.locator('.home-pages-hint')).toBeVisible();
+    // страницы неоткрытого проекта видны с превью
+    await expect(other.locator('.home-page canvas')).toHaveCount(1);
     await other.locator('.home-add-page').click();
     await expect(other.locator('.project-info')).toContainText('Страниц: 2');
+    await expect(other.locator('.home-page-name')).toHaveText(['Страница 1', 'Страница 2']);
     await other.locator('.project-open').click();
     expect((await board.state()).project.pages.map(p => p.name)).toEqual(['Страница 1', 'Страница 2']);
   });
@@ -437,5 +474,87 @@ test.describe('домашняя страница: проекты', () => {
     const s = await board.state();
     expect(s.projects.map(p => p.name).sort()).toEqual(['Проект 1', 'Проект 2', 'Проект 3']);
     expect(s.project.name).toBe('Проект 3');
+  });
+
+  test('на карточке проекта — превью страниц', async ({ board, page }) => {
+    await board.rect(400, 300, 500, 400);
+    await board.addPage();
+    await page.locator('#btn-home').click();
+    const card = page.locator('#home .project-card');
+    const tiles = card.locator('.home-page');
+    await expect(tiles).toHaveCount(2);
+    await expect(tiles.locator('canvas')).toHaveCount(2);
+    await expect(tiles.locator('.page-num')).toHaveText(['1', '2']);
+    await expect(tiles.nth(1)).toHaveClass(/active/);
+    // превью первой страницы с прямоугольником отличается от пустой второй
+    const shots = await tiles.locator('canvas').evaluateAll(cs => cs.map(c => (c as HTMLCanvasElement).toDataURL()));
+    expect(shots[0]).not.toBe(shots[1]);
+    // клик по превью открывает страницу
+    await tiles.first().click();
+    await expect(page.locator('#home')).toBeHidden();
+    await expect(page.locator('#page-name')).toHaveValue('Страница 1');
+  });
+
+  test('страницы переставляются перетаскиванием на домашней', async ({ board, page }) => {
+    await page.locator('#btn-home').click();
+    const card = page.locator('#home .project-card');
+    await card.locator('.home-add-page').click();
+    await card.locator('.home-add-page').click();
+    const names = card.locator('.home-page-name');
+    await expect(names).toHaveText(['Страница 1', 'Страница 2', 'Страница 3']);
+
+    await dragOnto(page, card.locator('.home-page').nth(2), card.locator('.home-page').first());
+    await expect(names).toHaveText(['Страница 3', 'Страница 1', 'Страница 2']);
+    await expect(card.locator('.page-num')).toHaveText(['1', '2', '3']);
+    await expect(page.locator('#home')).toBeVisible(); // перетаскивание не открыло страницу
+    expect((await board.state()).project.pages.map(p => p.name)).toEqual(['Страница 3', 'Страница 1', 'Страница 2']);
+
+    // и в неоткрытом проекте
+    await page.locator('#home .new-project').click();
+    await page.locator('#btn-home').click();
+    const other = page.locator('#home .project-card').nth(1);
+    await dragOnto(page, other.locator('.home-page').first(), other.locator('.home-page').nth(1));
+    await expect(other.locator('.home-page-name')).toHaveText(['Страница 1', 'Страница 3', 'Страница 2']);
+    await other.locator('.project-open').click();
+    expect((await board.state()).project.pages.map(p => p.name)).toEqual(['Страница 1', 'Страница 3', 'Страница 2']);
+  });
+
+  test('закрепление проектов в избранном', async ({ board, page }) => {
+    await page.locator('#btn-home').click();
+    await page.locator('#home .new-project').click();
+    await page.locator('#btn-home').click();
+    const home = page.locator('#home');
+    await expect(home.locator('.home-section-title')).toHaveCount(0); // пока избранного нет — без разделов
+    await expect(home.locator('.project-name')).toHaveText(['Проект 2', 'Проект 1']);
+
+    // закрепляем неоткрытый проект: он уходит наверх, в «Избранное»
+    const pin = home.locator('.project-card').nth(1).locator('.project-pin');
+    await expect(pin).toHaveAttribute('aria-pressed', 'false');
+    await pin.click();
+    await expect(home.locator('.home-section-title')).toHaveText(['Избранное', 'Остальные проекты']);
+    const fav = home.locator('.home-section').first();
+    await expect(fav.locator('.project-name')).toHaveText(['Проект 1']);
+    await expect(fav.locator('.project-pin')).toHaveAttribute('aria-pressed', 'true');
+    await expect(fav.locator('.new-project')).toHaveCount(0);
+    await expect(home.locator('.home-section').nth(1).locator('.project-name')).toHaveText(['Проект 2']);
+
+    // и открытый тоже
+    await home.locator('.home-section').nth(1).locator('.project-pin').click();
+    await expect(fav.locator('.project-name')).toHaveText(['Проект 2', 'Проект 1']);
+    await expect(home.locator('.home-section').nth(1).locator('.project-card')).toHaveCount(0);
+    await expect(home.locator('.new-project')).toBeVisible();
+
+    // избранное переживает перезагрузку
+    await page.reload();
+    await board.ready();
+    await page.locator('#btn-home').click();
+    await expect(home.locator('.home-section').first().locator('.project-name')).toHaveText(['Проект 2', 'Проект 1']);
+
+    // открепляем
+    await home.locator('.project-card', { hasText: 'Проект 1' }).locator('.project-pin').click();
+    await expect(home.locator('.home-section').first().locator('.project-name')).toHaveText(['Проект 2']);
+    await home.locator('.project-card', { hasText: 'Проект 2' }).locator('.project-pin').click();
+    await expect(home.locator('.home-section-title')).toHaveCount(0);
+    await expect(home.locator('.project-card')).toHaveCount(2);
   });
 });

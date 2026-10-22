@@ -36,7 +36,7 @@ test.describe('окно «Все настройки»', () => {
     await page.locator('#settings-popover .settings-all').click();
     await expect(dialog(page)).toBeVisible();
     await expect(page.locator('#settings-popover')).toBeHidden();
-    await expect(page.locator('.sd-nav-item')).toHaveText(['Доска', 'Панель инструментов', 'О проекте']);
+    await expect(page.locator('.sd-nav-item')).toHaveText(['Доска', 'Панель инструментов', 'Горячие клавиши', 'О проекте']);
     await expect(page.locator('#sd-title')).toHaveText('Доска');
 
     // раздел «Доска» — те же настройки, что в поповере

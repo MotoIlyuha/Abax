@@ -1,14 +1,15 @@
-import type { Element, GridMode, ImageEl, NoteEl, Page, PageTransition, Project, TextEl, ToolId, ToolbarPos, WheelMode } from './types';
+import type { Element, GridMode, ImageEl, NoteEl, Page, PageTransition, Project, ProjectMeta, TextEl, ToolId, ToolbarPos, WheelMode } from './types';
 import {
   state, update, onChange, undo, redo, canUndo, canRedo, setTool, setGrid, setStyleColor,
   setStyleWidth, setNoteColor, selectPreset, presetKind, addElement, replaceElements, pushHistory, uid,
   applyStyleToSelection, setSettings, setView, switchPage, addPage, deletePage, renamePage, setSelection,
-  openProject, blankProject, projectMeta, groupSelected, ungroupSelected,
+  openProject, blankProject, blankPage, projectMeta, groupSelected, ungroupSelected, movePage, moveItem,
   bringForward, sendBackward, deleteSelected, setSolidSides, duplicateSelected,
 } from './state';
 import type { PresetKind, StyleValue } from './state';
 import { storage } from './storage';
-import { renderScene, contentBBox, imageEpoch, presentCanvas, renderNow } from './renderer';
+import { renderScene, contentBBox, imageEpoch, imagesLoaded, presentCanvas, renderNow } from './renderer';
+import { makeSortable, reordering } from './reorder';
 import { capturePageTransition } from './page-transition';
 import { hasBaseSides, SIDES_MAX, SIDES_MIN, solidSides } from './solid';
 import { type AABB, elementAABB, NOTE_W, NOTE_H, NOTE_PAD, NOTE_FONT, NOTE_TEXT_COLOR, TEXT_SIZE } from './geom';
@@ -20,6 +21,8 @@ import { closePresent, openPresent, presentOpen } from './present';
 import { type ToolbarGroup, onToolbarChange, restoreToolbar, svg, toolDef, toolTip, toolbarConfig } from './toolbar';
 import { openSettingsDialog, settingsDialogOpen } from './settings-dialog';
 import { renderToolbarEditor } from './toolbar-editor';
+import { renderHotkeysSettings } from './hotkeys-settings';
+import { DEFAULT_NEW_PAGE_KEY, comboLabel, newPageKeyProblem } from './hotkeys';
 import { renderAbout } from './about';
 import { copySelection, COPY_STEP_PX, pasteFromMemory, pasteFromSystem } from './clipboard';
 
@@ -30,6 +33,7 @@ const ICONS = {
   pages: svg('<rect x="8" y="3" width="12" height="15" rx="2"/><path d="M4.5 7v11.5A2.5 2.5 0 0 0 7 21h9"/>'),
   plus: svg('<path d="M12 5v14M5 12h14"/>'),
   chevronUp: svg('<path d="M6 15l6-6 6 6"/>'),
+  keyboard: svg('<rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M18 14h.01M9 14h6"/>'),
   image: svg('<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M21 15l-5-5L5 19"/>'),
   undo: svg('<path d="M4 10h9a5 5 0 0 1 0 10h-3"/><path d="M8 6l-4 4 4 4"/>'),
   redo: svg('<path d="M20 10h-9a5 5 0 0 0 0 10h3"/><path d="M16 6l4 4-4 4"/>'),
@@ -47,6 +51,7 @@ const ICONS = {
   trash: svg('<path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/>'),
   toolbar: svg('<rect x="3" y="3" width="7" height="18" rx="2"/><path d="M14 7h7M14 12h7M14 17h7"/>'),
   chevron: svg('<path d="M9 6l6 6-6 6"/>'),
+  star: svg('<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/>'),
   info: svg('<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.5v.01"/>'),
 };
 
@@ -150,7 +155,13 @@ function restoreSettings(): void {
         snapToGrid: typeof v.snapToGrid === 'boolean' ? v.snapToGrid : false,
         wheelMode: v.wheelMode === 'zoom' ? 'zoom' : 'scroll',
         pageTransition: PAGE_TRANSITIONS.some(t => t.mode === v.pageTransition) ? v.pageTransition : 'slide',
+        pageKeyMod: v.pageKeyMod === 'alt' ? 'alt' : 'ctrl',
+        newPageKey: DEFAULT_NEW_PAGE_KEY,
       };
+      // null — пользователь снял сочетание; занятое или битое значение — снова по умолчанию
+      const k = v.newPageKey;
+      if (k === null) state.settings.newPageKey = null;
+      else if (typeof k === 'string' && !newPageKeyProblem(k, state.settings.pageKeyMod)) state.settings.newPageKey = k;
     }
   } catch { /* дефолт */ }
 }
@@ -1094,6 +1105,19 @@ export function openAllSettings(section?: string): void {
       },
     },
     { id: 'toolbar', title: 'Панель инструментов', icon: ICONS.toolbar, render: host => renderToolbarEditor(host) },
+    {
+      id: 'hotkeys',
+      title: 'Горячие клавиши',
+      icon: ICONS.keyboard,
+      render: host => renderHotkeysSettings(host, {
+        save: patch => {
+          setSettings(patch);
+          persistSettings();
+          renderPages(); // подсказки кнопки и плитки «новая страница» показывают сочетание
+        },
+        editToolKeys: () => openAllSettings('toolbar'),
+      }),
+    },
     { id: 'about', title: 'О проекте', icon: ICONS.info, render: host => renderAbout(host) },
   ], section);
 }
@@ -1492,6 +1516,24 @@ async function switchPageHandler(pageId: string): Promise<void> {
   changePage(() => switchPage(pageId));
 }
 
+/** Переход на страницу по номеру (Ctrl или Alt + 1…9); такой страницы нет — ничего. */
+export function switchToPage(n: number): void {
+  const page = state.project.pages[n - 1];
+  if (page) void switchPageHandler(page.id);
+}
+
+/** Новая страница по горячей клавише (гость совместной работы страниц не добавляет). */
+export function addPageFromKey(): void {
+  if (state.view !== 'board' || !canEditPages()) return;
+  void newPageHandler();
+}
+
+/** Подсказка «Новая страница (Ctrl+N)» — с сочетанием из настроек, если оно есть. */
+function newPageTip(): string {
+  const k = state.settings.newPageKey;
+  return k ? `Новая страница (${comboLabel(k)})` : 'Новая страница';
+}
+
 async function newPageHandler(): Promise<void> {
   await saveNow();
   changePage(() => addPage());
@@ -1509,6 +1551,11 @@ async function renamePageHandler(pageId: string, name: string): Promise<void> {
   await saveNow();
 }
 
+async function movePageHandler(from: number, to: number): Promise<void> {
+  movePage(from, to);
+  await saveNow();
+}
+
 const THUMB_W = 164;
 const THUMB_H = 100;
 
@@ -1518,8 +1565,6 @@ function renderPageThumb(page: Page, cv: HTMLCanvasElement): void {
   const H = THUMB_H;
   cv.width = W * 2;
   cv.height = H * 2;
-  cv.style.width = `${W}px`;
-  cv.style.height = `${H}px`;
   const c = cv.getContext('2d');
   if (!c) return;
   if (page.elements.length === 0) {
@@ -1632,6 +1677,8 @@ function syncPageThumb(card: PageCard, page: Page): void {
 
 /** Список страниц сверяется с проектом: карточки переиспользуются, а не пересоздаются. */
 function renderPages(): void {
+  // карточку тащат: список сверится с проектом, когда её отпустят
+  if (reordering()) return;
   try {
     document.getElementById('project-name')!.textContent = state.project.name;
     const list = document.getElementById('pages-list')!;
@@ -1661,6 +1708,9 @@ function renderPages(): void {
     if (canEditPages()) {
       addPageTile ??= makeAddPageTile();
       addPageTile.style.setProperty('--i', String(pages.length));
+      // подсказка уже могла переехать в data-tip (см. tooltip.ts) — обновляем, только если сочетание сменилось
+      const tip = newPageTip();
+      if ((addPageTile.getAttribute('title') ?? addPageTile.dataset.tip) !== tip) addPageTile.title = tip;
       if (list.lastElementChild !== addPageTile) list.appendChild(addPageTile);
     } else {
       addPageTile?.remove();
@@ -1680,7 +1730,7 @@ function syncPagesButton(): void {
   const btn = document.getElementById('btn-pages')!;
   const n = state.project.pages.length;
   const add = n === 1 && !pagesOpen && canEditPages();
-  const key = `${add}:${n}:${pagesOpen}`;
+  const key = `${add}:${n}:${pagesOpen}:${state.settings.newPageKey}`;
   if (btn.dataset.key === key) return;
   btn.dataset.key = key;
   btn.classList.toggle('add', add);
@@ -1689,7 +1739,7 @@ function syncPagesButton(): void {
     ? `${ICONS.pages}<span class="pages-label">Страница</span> <span class="pages-plus">${ICONS.plus}</span>`
     : `${ICONS.pages}<span class="pages-label">Страницы</span> <span class="pages-count">${n}</span>`
       + `<span class="pages-chev">${ICONS.chevronUp}</span>`;
-  btn.title = add ? 'Новая страница' : pagesOpen ? 'Скрыть страницы (B)' : 'Показать страницы (B)';
+  btn.title = add ? newPageTip() : pagesOpen ? 'Скрыть страницы (B)' : 'Показать страницы (B)';
 }
 
 /** Прокручивает список так, чтобы активная страница была видна. */
@@ -1732,6 +1782,15 @@ function wirePagesDock(): void {
     togglePages();
   });
   const list = document.getElementById('pages-list')!;
+  makeSortable(list, {
+    items: () => [...list.querySelectorAll<HTMLElement>(':scope > .page-item')],
+    enabled: canEditPages,
+    scroller: list,
+    onEnd: (from, to) => {
+      if (from !== to) void movePageHandler(from, to);
+      else renderPages();
+    },
+  });
   list.addEventListener('wheel', e => {
     // обычное колёсико листает горизонтальный список
     if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
@@ -1770,16 +1829,77 @@ function startPageRename(card: PageCard, pageId: string): void {
 
 // ----- Домашняя страница: проекты -----
 
+/**
+ * Неоткрытые проекты, загруженные ради превью страниц; at — updatedAt из метаданных на момент загрузки
+ * (разошлось — перезагружаем). project = null — файл не прочитался.
+ */
+const homeProjects = new Map<string, { at: number; project: Project | null }>();
+const homeLoading = new Set<string>();
+/** Превью страниц на домашней: холсты переживают перестройку списка, перерисовываются по изменению. */
+const homeThumbs = new Map<string, { cv: HTMLCanvasElement; shot: { elements: Element[]; grid: GridMode } | null }>();
+/** Список перестроить не дали (тащили страницу) — перестроим, когда отпустят. */
+let homeRenderPending = false;
+
+/** Проект для карточки на домашней: открытый — из состояния, остальные — из кэша (null — ещё грузится). */
+function homeProject(meta: ProjectMeta): Project | null {
+  if (state.project.id === meta.id) return state.project;
+  const cached = homeProjects.get(meta.id);
+  return cached && cached.at === meta.updatedAt ? cached.project : null;
+}
+
+function homeProjectFailed(meta: ProjectMeta): boolean {
+  const cached = homeProjects.get(meta.id);
+  return !!cached && cached.at === meta.updatedAt && !cached.project;
+}
+
+/** Догружает проекты, превью которых ещё нет, и перестраивает список. */
+function loadHomeProjects(): void {
+  const missing = state.projects.filter(m =>
+    m.id !== state.project.id && !homeLoading.has(m.id) && homeProjects.get(m.id)?.at !== m.updatedAt);
+  if (missing.length === 0) return;
+  for (const m of missing) homeLoading.add(m.id);
+  void Promise.all(missing.map(async m => {
+    const project = await storage.load(m.id).catch(() => null);
+    homeProjects.set(m.id, { at: m.updatedAt, project });
+    homeLoading.delete(m.id);
+  })).then(() => { if (state.view === 'home') renderHome(); });
+}
+
+/** Уходим из открытого проекта: его текущий вид — превью на домашней без повторной загрузки. */
+function rememberOpenProject(): void {
+  homeProjects.set(state.project.id, { at: state.project.updatedAt, project: state.project });
+}
+
+/** Правка неоткрытого проекта: загрузить, изменить, сохранить; метаданные и превью — следом. */
+async function editClosedProject(id: string, edit: (p: Project) => Project, touch = true): Promise<Project | null> {
+  const loaded = await storage.load(id);
+  if (!loaded) return null;
+  const p = edit(loaded);
+  if (touch) p.updatedAt = Date.now();
+  await storage.save(p);
+  homeProjects.set(id, { at: p.updatedAt, project: p });
+  state.projects = state.projects.map(m => (m.id === id ? projectMeta(p) : m));
+  return p;
+}
+
 async function openProjectHandler(project: Project, pageId?: string): Promise<void> {
   await saveNow();
+  if (project.id !== state.project.id) rememberOpenProject();
   openProject(project, pageId);
   localStorage.setItem('doska.last', JSON.stringify({ pid: project.id, pageId: state.pageId }));
   refresh();
   fitContent();
 }
 
+/** Открывает проект с домашней (на заданной странице или первой). */
+async function openFromHome(projectId: string, pageId?: string): Promise<void> {
+  const p = state.project.id === projectId ? state.project : await storage.load(projectId);
+  if (p) await openProjectHandler(p, pageId);
+}
+
 async function newProjectHandler(): Promise<void> {
   await saveNow();
+  rememberOpenProject();
   const p = blankProject(`Проект ${state.projects.length + 1}`);
   await storage.save(p);
   state.projects = [projectMeta(p), ...state.projects];
@@ -1792,6 +1912,7 @@ async function deleteProjectHandler(id: string): Promise<void> {
   const meta = state.projects.find(m => m.id === id);
   if (!meta || !confirm(`Удалить проект «${meta.name}» со всеми страницами?`)) return;
   await storage.remove(id);
+  homeProjects.delete(id);
   state.projects = state.projects.filter(m => m.id !== id);
   if (state.project.id === id) {
     // удаляют из списка проектов — там и остаёмся
@@ -1819,30 +1940,35 @@ async function renameProjectHandler(id: string, name: string): Promise<void> {
     state.project = { ...state.project, name };
     await storage.save(state.project);
   } else {
-    const p = await storage.load(id);
-    if (p) {
-      p.name = name;
-      await storage.save(p);
-    }
+    await editClosedProject(id, p => ({ ...p, name }), false);
   }
   renderHome();
   renderPages();
 }
 
+/** Закрепить проект в избранном или открепить (дата изменения не трогается — это не правка содержимого). */
+async function togglePinnedHandler(id: string): Promise<void> {
+  const meta = state.projects.find(m => m.id === id);
+  if (!meta) return;
+  const pinned = meta.pinned ? undefined : true;
+  if (state.project.id === id) {
+    await saveNow();
+    state.project = { ...state.project, pinned };
+    await storage.save(state.project);
+    state.projects = state.projects.map(m => (m.id === id ? projectMeta(state.project) : m));
+  } else {
+    await editClosedProject(id, p => ({ ...p, pinned }), false);
+  }
+  renderHome();
+}
+
 async function homeAddPage(projectId: string): Promise<void> {
-  const p = state.project.id === projectId
-    ? state.project
-    : await storage.load(projectId);
-  if (!p) return;
   if (state.project.id === projectId) {
     await saveNow();
     addPage();
     await saveNow();
   } else {
-    p.pages = [...p.pages, { id: uid(), name: `Страница ${p.pages.length + 1}`, grid: 'square', elements: [] }];
-    p.updatedAt = Date.now();
-    await storage.save(p);
-    state.projects = state.projects.map(m => (m.id === projectId ? { ...m, pageCount: p.pages.length, updatedAt: p.updatedAt } : m));
+    await editClosedProject(projectId, p => ({ ...p, pages: [...p.pages, blankPage(`Страница ${p.pages.length + 1}`)] }));
   }
   renderHome();
 }
@@ -1857,12 +1983,13 @@ async function homeDeletePage(projectId: string, pageId: string): Promise<void> 
     renderHome();
     return;
   }
-  const p = await storage.load(projectId);
-  if (!p || p.pages.length <= 1) return;
-  p.pages = p.pages.filter(pg => pg.id !== pageId);
-  p.updatedAt = Date.now();
-  await storage.save(p);
-  state.projects = state.projects.map(m => (m.id === projectId ? { ...m, pageCount: p.pages.length, updatedAt: p.updatedAt } : m));
+  const meta = state.projects.find(m => m.id === projectId);
+  const page = meta && homeProject(meta)?.pages.find(p => p.id === pageId);
+  if (!page || !confirm(`Удалить страницу «${page.name}»?`)) return;
+  await editClosedProject(projectId, p => {
+    const pages = p.pages.filter(pg => pg.id !== pageId);
+    return { ...p, pages: pages.length > 0 ? pages : [blankPage('Страница 1')] };
+  });
   renderHome();
 }
 
@@ -1870,23 +1997,50 @@ async function homeRenamePage(projectId: string, pageId: string, name: string): 
   if (state.project.id === projectId) {
     renamePage(pageId, name);
     await saveNow();
-    renderHome();
-    return;
+  } else {
+    await editClosedProject(projectId, p => ({ ...p, pages: p.pages.map(pg => (pg.id === pageId ? { ...pg, name } : pg)) }));
   }
-  const p = await storage.load(projectId);
-  if (!p) return;
-  p.pages = p.pages.map(pg => (pg.id === pageId ? { ...pg, name } : pg));
-  p.updatedAt = Date.now();
-  await storage.save(p);
+  renderHome();
+}
+
+async function homeMovePage(projectId: string, from: number, to: number): Promise<void> {
+  if (state.project.id === projectId) {
+    movePage(from, to);
+    await saveNow();
+  } else {
+    await editClosedProject(projectId, p => ({ ...p, pages: moveItem(p.pages, from, to) }));
+  }
   renderHome();
 }
 
 function homeKey(): string {
-  return state.projects.map(m => `${m.id}:${m.name}:${m.updatedAt}:${m.pageCount}`).join('#') + `@${state.project.id}`;
+  return state.projects.map(m => `${m.id}:${m.name}:${m.updatedAt}:${m.pageCount}:${m.pinned ? 1 : 0}`).join('#') + `@${state.project.id}`;
+}
+
+/** Холст превью страницы: перерисовывается, только если содержимое или фон поменялись. */
+function homeThumb(page: Page): HTMLCanvasElement {
+  let entry = homeThumbs.get(page.id);
+  if (!entry) {
+    entry = { cv: document.createElement('canvas'), shot: null };
+    homeThumbs.set(page.id, entry);
+  }
+  const t = entry;
+  if (!t.shot || t.shot.elements !== page.elements || t.shot.grid !== page.grid) {
+    const shot = { elements: page.elements, grid: page.grid };
+    t.shot = shot;
+    renderPageThumb(page, t.cv);
+    // картинки неоткрытого проекта ещё грузятся — дорисуем, когда загрузятся
+    void imagesLoaded(page.elements)?.then(() => { if (t.shot === shot) renderPageThumb(page, t.cv); });
+  }
+  return t.cv;
 }
 
 function renderHome(): void {
+  // страницу тащат: перестроим список, когда её отпустят
+  if (reordering()) { homeRenderPending = true; return; }
+  homeRenderPending = false;
   const home = document.getElementById('home')!;
+  const scroll = home.scrollTop;
   home.textContent = '';
   const head = document.createElement('div');
   head.className = 'home-head';
@@ -1894,91 +2048,153 @@ function renderHome(): void {
   h.textContent = 'Проекты';
   head.appendChild(h);
   home.appendChild(head);
+  const pinned = state.projects.filter(m => m.pinned);
+  const rest = state.projects.filter(m => !m.pinned);
+  const seen = new Set<string>();
+  if (pinned.length > 0) home.appendChild(homeSection('Избранное', pinned, false, seen));
+  home.appendChild(homeSection(pinned.length > 0 ? 'Остальные проекты' : '', rest, true, seen));
+  for (const id of homeThumbs.keys()) if (!seen.has(id)) homeThumbs.delete(id);
+  home.scrollTop = scroll;
+  loadHomeProjects();
+}
+
+/** Раздел домашней: заголовок (если есть) и сетка карточек проектов. */
+function homeSection(title: string, metas: ProjectMeta[], withNew: boolean, seen: Set<string>): HTMLElement {
+  const section = document.createElement('section');
+  section.className = 'home-section';
+  if (title) {
+    const h = document.createElement('h2');
+    h.className = 'home-section-title';
+    h.textContent = title;
+    section.appendChild(h);
+  }
   const grid = document.createElement('div');
   grid.className = 'home-grid';
-  for (const meta of state.projects) {
-    const card = document.createElement('div');
-    card.className = 'project-card';
-    const title = document.createElement('div');
-    title.className = 'project-title';
-    const name = document.createElement('span');
-    name.className = 'project-name';
-    name.textContent = meta.name;
-    name.title = 'Двойной клик — переименовать';
-    const openBtn = document.createElement('button');
-    openBtn.className = 'project-open';
-    openBtn.textContent = 'Открыть';
-    const delBtn = document.createElement('button');
-    delBtn.className = 'icon';
-    delBtn.title = 'Удалить проект';
-    delBtn.innerHTML = ICONS.trash;
-    title.append(name, openBtn, delBtn);
-    const info = document.createElement('div');
-    info.className = 'project-info';
-    info.textContent = `Страниц: ${meta.pageCount} · ${new Date(meta.updatedAt).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`;
-    const pages = document.createElement('div');
-    pages.className = 'project-pages';
-    if (state.project.id === meta.id) {
-      for (const pg of state.project.pages) {
-        const row = document.createElement('div');
-        row.className = 'home-page-row';
-        const gi = document.createElement('span');
-        gi.className = 'page-grid-icon';
-        gi.innerHTML = GRID_ICONS[pg.grid];
-        const pn = document.createElement('span');
-        pn.className = 'home-page-name';
-        pn.textContent = pg.name;
-        pn.title = 'Двойной клик — переименовать';
-        const pd = document.createElement('button');
-        pd.className = 'page-del';
-        pd.title = 'Удалить страницу';
-        pd.innerHTML = ICONS.del;
-        row.append(gi, pn, pd);
-        // клик по названию ждёт: это может быть начало двойного клика (переименование)
-        let openTimer = 0;
-        row.addEventListener('click', e => {
-          clearTimeout(openTimer);
-          const delay = (e.target as HTMLElement).closest('.home-page-name') ? 300 : 0;
-          openTimer = window.setTimeout(() => { void openProjectHandler(state.project, pg.id); }, delay);
-        });
-        pn.addEventListener('dblclick', e => {
-          e.stopPropagation();
-          clearTimeout(openTimer);
-          startHomePageRename(row, meta.id, pg.id, pg.name);
-        });
-        pd.addEventListener('click', e => {
-          e.stopPropagation();
-          void homeDeletePage(meta.id, pg.id);
-        });
-        pages.appendChild(row);
-      }
-    } else {
-      const hint = document.createElement('div');
-      hint.className = 'home-pages-hint';
-      hint.textContent = 'Откройте проект, чтобы управлять страницами';
-      pages.appendChild(hint);
-    }
-    const addPage = document.createElement('button');
-    addPage.className = 'home-add-page';
-    addPage.textContent = '+ Страница';
-    card.append(title, info, pages, addPage);
-    openBtn.addEventListener('click', () => {
-      void (async () => {
-        const p = state.project.id === meta.id ? state.project : await storage.load(meta.id);
-        if (p) await openProjectHandler(p);
-      })();
-    });
-    name.addEventListener('dblclick', () => startProjectRename(card, meta.id, meta.name));
-    delBtn.addEventListener('click', () => { void deleteProjectHandler(meta.id); });
-    addPage.addEventListener('click', () => { void homeAddPage(meta.id); });
-    grid.appendChild(card);
+  for (const meta of metas) grid.appendChild(projectCard(meta, seen));
+  if (withNew) {
+    const newCard = document.createElement('button');
+    newCard.className = 'new-project';
+    newCard.textContent = '+ Новый проект';
+    newCard.addEventListener('click', () => { void newProjectHandler(); });
+    grid.appendChild(newCard);
   }
-  const newCard = document.createElement('button');
-  newCard.className = 'new-project';
-  newCard.textContent = '+ Новый проект';
-  newCard.addEventListener('click', () => { void newProjectHandler(); });
-  grid.appendChild(newCard);
-  home.appendChild(grid);
+  section.appendChild(grid);
+  return section;
+}
+
+function projectCard(meta: ProjectMeta, seen: Set<string>): HTMLElement {
+  const card = document.createElement('div');
+  card.className = 'project-card';
+  card.classList.toggle('pinned', !!meta.pinned);
+  card.classList.toggle('current', state.project.id === meta.id);
+  const title = document.createElement('div');
+  title.className = 'project-title';
+  const pin = document.createElement('button');
+  pin.className = 'project-pin';
+  pin.title = meta.pinned ? 'Убрать из избранного' : 'Закрепить в избранном';
+  pin.setAttribute('aria-pressed', String(!!meta.pinned));
+  pin.innerHTML = ICONS.star;
+  const name = document.createElement('span');
+  name.className = 'project-name';
+  name.textContent = meta.name;
+  name.title = 'Двойной клик — переименовать';
+  const openBtn = document.createElement('button');
+  openBtn.className = 'project-open';
+  openBtn.textContent = 'Открыть';
+  const delBtn = document.createElement('button');
+  delBtn.className = 'icon';
+  delBtn.title = 'Удалить проект';
+  delBtn.innerHTML = ICONS.trash;
+  title.append(pin, name, openBtn, delBtn);
+  const info = document.createElement('div');
+  info.className = 'project-info';
+  info.textContent = `Страниц: ${meta.pageCount} · ${new Date(meta.updatedAt).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`;
+  const pages = document.createElement('div');
+  pages.className = 'home-pages';
+  const project = homeProject(meta);
+  if (project) {
+    project.pages.forEach((pg, i) => pages.appendChild(homePageTile(meta.id, project, pg, i, seen)));
+    makeSortable(pages, {
+      items: () => [...pages.querySelectorAll<HTMLElement>(':scope > .home-page')],
+      scroller: document.getElementById('home')!,
+      onEnd: (from, to) => {
+        if (from !== to) void homeMovePage(meta.id, from, to);
+        else if (homeRenderPending) renderHome();
+      },
+    });
+  } else if (homeProjectFailed(meta)) {
+    const hint = document.createElement('div');
+    hint.className = 'home-pages-hint';
+    hint.textContent = 'Не удалось загрузить страницы';
+    pages.appendChild(hint);
+  } else {
+    // пока проект грузится — пустые плитки по числу страниц, чтобы карточка не прыгала
+    for (let i = 0; i < meta.pageCount; i++) {
+      const sk = document.createElement('div');
+      sk.className = 'home-page skeleton';
+      pages.appendChild(sk);
+    }
+  }
+  const addPage = document.createElement('button');
+  addPage.className = 'home-add-page';
+  addPage.title = 'Новая страница';
+  addPage.innerHTML = ICONS.plus;
+  pages.appendChild(addPage);
+  card.append(title, info, pages);
+  pin.addEventListener('click', () => { void togglePinnedHandler(meta.id); });
+  openBtn.addEventListener('click', () => { void openFromHome(meta.id); });
+  name.addEventListener('dblclick', () => startProjectRename(card, meta.id, meta.name));
+  delBtn.addEventListener('click', () => { void deleteProjectHandler(meta.id); });
+  addPage.addEventListener('click', () => { void homeAddPage(meta.id); });
+  return card;
+}
+
+/** Плитка страницы: превью, номер, фон и название; тянется для перестановки. */
+function homePageTile(projectId: string, project: Project, pg: Page, i: number, seen: Set<string>): HTMLElement {
+  seen.add(pg.id);
+  const tile = document.createElement('div');
+  tile.className = 'home-page';
+  tile.classList.toggle('active', state.project.id === projectId && pg.id === state.pageId);
+  const thumbBox = document.createElement('div');
+  thumbBox.className = 'page-thumb';
+  const num = document.createElement('span');
+  num.className = 'page-num';
+  num.textContent = String(i + 1);
+  thumbBox.append(homeThumb(pg), num);
+  const caption = document.createElement('div');
+  caption.className = 'home-page-caption';
+  const gi = document.createElement('span');
+  gi.className = 'page-grid-icon';
+  gi.innerHTML = GRID_ICONS[pg.grid];
+  const pn = document.createElement('span');
+  pn.className = 'home-page-name';
+  pn.textContent = pg.name;
+  pn.title = 'Двойной клик — переименовать';
+  caption.append(gi, pn);
+  const pd = document.createElement('button');
+  pd.className = 'page-del';
+  pd.title = 'Удалить страницу';
+  pd.innerHTML = ICONS.del;
+  tile.append(thumbBox, caption, pd);
+  tile.title = `${pg.name} — открыть; перетащите, чтобы переставить`;
+  // клик по названию ждёт: это может быть начало двойного клика (переименование)
+  let openTimer = 0;
+  tile.addEventListener('click', e => {
+    if ((e.target as HTMLElement).closest('.page-del, input')) return;
+    clearTimeout(openTimer);
+    const delay = (e.target as HTMLElement).closest('.home-page-name') ? 300 : 0;
+    openTimer = window.setTimeout(() => { void openFromHome(project.id, pg.id); }, delay);
+  });
+  pn.addEventListener('dblclick', e => {
+    e.stopPropagation();
+    clearTimeout(openTimer);
+    startHomePageRename(tile, projectId, pg.id, pg.name);
+  });
+  pd.addEventListener('click', e => {
+    e.stopPropagation();
+    void homeDeletePage(projectId, pg.id);
+  });
+  return tile;
 }
 
 function startProjectRename(card: HTMLElement, projectId: string, oldName: string): void {
@@ -2005,8 +2221,8 @@ function startProjectRename(card: HTMLElement, projectId: string, oldName: strin
   });
 }
 
-function startHomePageRename(row: HTMLElement, projectId: string, pageId: string, oldName: string): void {
-  const nameEl = row.querySelector('.home-page-name')!;
+function startHomePageRename(tile: HTMLElement, projectId: string, pageId: string, oldName: string): void {
+  const nameEl = tile.querySelector('.home-page-name')!;
   const input = document.createElement('input');
   input.value = oldName;
   input.spellcheck = false;
