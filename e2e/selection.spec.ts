@@ -274,3 +274,64 @@ test.describe('камера', () => {
     expect((await board.state()).camera.zoom).toBe(1);
   });
 });
+
+test.describe('буфер обмена и дублирование', () => {
+  test('Ctrl+C / Ctrl+V копируют выделенное, Ctrl+X вырезает, Ctrl+Z отменяет', async ({ board, page }) => {
+    const a = await board.rect(400, 300, 450, 350);
+    await board.tool('v');
+    await board.click({ x: 420, y: 320 });
+    await page.keyboard.press('Control+c');
+    await page.keyboard.press('Control+v');
+    await expect.poll(() => board.count()).toBe(2);
+    const [, copy] = await board.elements();
+    expect(copy.id).not.toBe(a.id);
+    expect(copy).toMatchObject({ type: 'shape', x: 424, y: 324, w: 50, h: 50 });
+    expect((await board.state()).selection).toEqual([copy.id]);
+    // повторная вставка — ещё на шаг дальше
+    await page.keyboard.press('Control+v');
+    await expect.poll(() => board.count()).toBe(3);
+    expect((await board.elements())[2]).toMatchObject({ x: 448, y: 348 });
+    await page.keyboard.press('Control+z');
+    expect(await board.count()).toBe(2);
+    // вырезание: оригинал пропадает, вставка — на его место
+    await board.click({ x: 420, y: 320 });
+    await page.keyboard.press('Control+x');
+    expect(await board.count()).toBe(1);
+    await page.keyboard.press('Control+v');
+    await expect.poll(() => board.count()).toBe(2);
+    expect((await board.elements())[1]).toMatchObject({ x: 424, y: 324 });
+  });
+
+  test('копирование на другую страницу сохраняет группу', async ({ board, page }) => {
+    await board.rect(400, 300, 450, 350);
+    await board.rect(500, 300, 550, 350);
+    await board.tool('v');
+    await board.drag([{ x: 380, y: 280 }, { x: 560, y: 360 }]);
+    await page.keyboard.press('Control+g');
+    await page.keyboard.press('Control+c');
+    await board.addPage();
+    await board.tool('Escape');
+    await page.keyboard.press('Control+v');
+    await expect.poll(() => board.count()).toBe(2);
+    const els = await board.elements();
+    expect(els.map(e => e.x)).toEqual([400, 500]);
+    expect(els[0].groupId).toBeTruthy();
+    expect(els[1].groupId).toBe(els[0].groupId);
+  });
+
+  test('Ctrl+D и кнопка быстрого меню дублируют выделенное', async ({ board, page }) => {
+    await board.rect(400, 300, 450, 350);
+    await board.tool('v');
+    await board.click({ x: 420, y: 320 });
+    await page.keyboard.press('Control+d');
+    expect(await board.count()).toBe(2);
+    const [, dup] = await board.elements();
+    expect(dup).toMatchObject({ x: 424, y: 324 });
+    expect((await board.state()).selection).toEqual([dup.id]);
+    await byTip(board.quickMenu, 'Дублировать (Ctrl+D)').click();
+    expect(await board.count()).toBe(3);
+    expect((await board.elements())[2]).toMatchObject({ x: 448, y: 348 });
+    await page.keyboard.press('Control+z');
+    expect(await board.count()).toBe(2);
+  });
+});

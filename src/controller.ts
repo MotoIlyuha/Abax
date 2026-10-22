@@ -6,12 +6,12 @@ import {
 } from './state';
 import {
   hitTest, aabbIntersects, elementAABB, elementHandles, applyHandle,
-  insertPolyNode, removePolyNode, gridStepFor, snapValue,
+  insertPolyNode, removePolyNode, gridStepFor, snapValue, translateElement,
 } from './geom';
 import { collabActive, noteCursor, readOnly } from './collab';
 import { eraseRadius, presenting, requestRender } from './renderer';
 import { fitSolid, SOLID_CLICK_SIZE, solidKeepsAspect } from './solid';
-import { beginTextEdit, exportPng, fitContent, openAllSettings, saveNow, togglePages } from './app';
+import { beginTextEdit, duplicateSelection, exportPng, fitContent, openAllSettings, saveNow, togglePages } from './app';
 import { toolByKey } from './toolbar';
 
 const SELECT_TOL = 6; // px экрана
@@ -92,13 +92,6 @@ export function initController(canvas: HTMLCanvasElement): void {
   function zoomAtCenter(factor: number): void {
     const r = canvas.getBoundingClientRect();
     zoomAtScreen(r.width / 2, r.height / 2, factor);
-  }
-
-  function translateEl(el: Element, dx: number, dy: number): Element {
-    if (el.type === 'stroke' || el.type === 'poly') {
-      return { ...el, pts: el.pts.map(p => ({ x: p.x + dx, y: p.y + dy, p: p.p })) };
-    }
-    return { ...el, x: el.x + dx, y: el.y + dy };
   }
 
   function eraseAt(x: number, y: number, a: Extract<Action, { kind: 'erase' }>): void {
@@ -570,7 +563,7 @@ export function initController(canvas: HTMLCanvasElement): void {
           dy = snapValue(ry + dy, step) - ry;
         }
         replaceElements(
-          state.board.elements.map(el => (a.orig.has(el.id) ? translateEl(a.orig.get(el.id)!, dx, dy) : el)),
+          state.board.elements.map(el => (a.orig.has(el.id) ? translateElement(a.orig.get(el.id)!, dx, dy) : el)),
         );
         break;
       }
@@ -693,6 +686,8 @@ export function initController(canvas: HTMLCanvasElement): void {
           if (e.shiftKey) ungroupSelected(); else groupSelected();
           return;
         case 'KeyE': e.preventDefault(); void exportPng(); return;
+        // Ctrl+C / Ctrl+X / Ctrl+V — события copy/cut/paste (см. app.ts): так работает и системный буфер
+        case 'KeyD': e.preventDefault(); duplicateSelection(); return;
         case 'Comma': e.preventDefault(); openAllSettings(); return;
       }
       return;
