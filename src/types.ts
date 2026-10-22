@@ -179,6 +179,9 @@ export type WheelMode = 'scroll' | 'zoom';
 /** Анимация перехода на другую страницу. */
 export type PageTransition = 'none' | 'slide' | 'fade' | 'zoom';
 
+/** Модификатор перехода на страницу по номеру: Ctrl+1…9 или Alt+1…9. */
+export type PageKeyMod = 'ctrl' | 'alt';
+
 export interface BoardSettings {
   toolbarPos: ToolbarPos;
   /** Подписи делений на координатной плоскости. */
@@ -188,4 +191,7 @@ export interface BoardSettings {
   /** Колёсико без модификаторов: прокрутка или масштаб. */
   wheelMode: WheelMode;
   pageTransition: PageTransition;
+  pageKeyMod: PageKeyMod;
+  /** Сочетание «новая страница» («Ctrl+KeyN», см. hotkeys.ts); null — без сочетания. */
+  newPageKey: string | null;
 }

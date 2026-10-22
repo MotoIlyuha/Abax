@@ -20,6 +20,8 @@ import { closePresent, openPresent, presentOpen } from './present';
 import { type ToolbarGroup, onToolbarChange, restoreToolbar, svg, toolDef, toolTip, toolbarConfig } from './toolbar';
 import { openSettingsDialog, settingsDialogOpen } from './settings-dialog';
 import { renderToolbarEditor } from './toolbar-editor';
+import { renderHotkeysSettings } from './hotkeys-settings';
+import { DEFAULT_NEW_PAGE_KEY, comboLabel, newPageKeyProblem } from './hotkeys';
 import { copySelection, COPY_STEP_PX, pasteFromMemory, pasteFromSystem } from './clipboard';
 
 pdfjsLib.GlobalWorkerOptions.workerPort = new PdfWorker();
@@ -29,6 +31,7 @@ const ICONS = {
   pages: svg('<rect x="8" y="3" width="12" height="15" rx="2"/><path d="M4.5 7v11.5A2.5 2.5 0 0 0 7 21h9"/>'),
   plus: svg('<path d="M12 5v14M5 12h14"/>'),
   chevronUp: svg('<path d="M6 15l6-6 6 6"/>'),
+  keyboard: svg('<rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M18 14h.01M9 14h6"/>'),
   image: svg('<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M21 15l-5-5L5 19"/>'),
   undo: svg('<path d="M4 10h9a5 5 0 0 1 0 10h-3"/><path d="M8 6l-4 4 4 4"/>'),
   redo: svg('<path d="M20 10h-9a5 5 0 0 0 0 10h3"/><path d="M16 6l4 4-4 4"/>'),
@@ -148,7 +151,13 @@ function restoreSettings(): void {
         snapToGrid: typeof v.snapToGrid === 'boolean' ? v.snapToGrid : false,
         wheelMode: v.wheelMode === 'zoom' ? 'zoom' : 'scroll',
         pageTransition: PAGE_TRANSITIONS.some(t => t.mode === v.pageTransition) ? v.pageTransition : 'slide',
+        pageKeyMod: v.pageKeyMod === 'alt' ? 'alt' : 'ctrl',
+        newPageKey: DEFAULT_NEW_PAGE_KEY,
       };
+      // null — пользователь снял сочетание; занятое или битое значение — снова по умолчанию
+      const k = v.newPageKey;
+      if (k === null) state.settings.newPageKey = null;
+      else if (typeof k === 'string' && !newPageKeyProblem(k, state.settings.pageKeyMod)) state.settings.newPageKey = k;
     }
   } catch { /* дефолт */ }
 }
@@ -1092,6 +1101,19 @@ export function openAllSettings(section?: string): void {
       },
     },
     { id: 'toolbar', title: 'Панель инструментов', icon: ICONS.toolbar, render: host => renderToolbarEditor(host) },
+    {
+      id: 'hotkeys',
+      title: 'Горячие клавиши',
+      icon: ICONS.keyboard,
+      render: host => renderHotkeysSettings(host, {
+        save: patch => {
+          setSettings(patch);
+          persistSettings();
+          renderPages(); // подсказки кнопки и плитки «новая страница» показывают сочетание
+        },
+        editToolKeys: () => openAllSettings('toolbar'),
+      }),
+    },
   ], section);
 }
 
@@ -1489,13 +1511,22 @@ async function switchPageHandler(pageId: string): Promise<void> {
   changePage(() => switchPage(pageId));
 }
 
-/** Соседняя страница по кругу (Ctrl+N): вперёд или назад по списку. */
-export function switchPageBy(step: 1 | -1): void {
-  const pages = state.project.pages;
-  if (pages.length < 2) return;
-  const i = pageIndex(state.pageId);
-  const next = pages[(i + step + pages.length) % pages.length];
-  void switchPageHandler(next.id);
+/** Переход на страницу по номеру (Ctrl или Alt + 1…9); такой страницы нет — ничего. */
+export function switchToPage(n: number): void {
+  const page = state.project.pages[n - 1];
+  if (page) void switchPageHandler(page.id);
+}
+
+/** Новая страница по горячей клавише (гость совместной работы страниц не добавляет). */
+export function addPageFromKey(): void {
+  if (state.view !== 'board' || !canEditPages()) return;
+  void newPageHandler();
+}
+
+/** Подсказка «Новая страница (Ctrl+N)» — с сочетанием из настроек, если оно есть. */
+function newPageTip(): string {
+  const k = state.settings.newPageKey;
+  return k ? `Новая страница (${comboLabel(k)})` : 'Новая страница';
 }
 
 async function newPageHandler(): Promise<void> {
@@ -1667,6 +1698,9 @@ function renderPages(): void {
     if (canEditPages()) {
       addPageTile ??= makeAddPageTile();
       addPageTile.style.setProperty('--i', String(pages.length));
+      // подсказка уже могла переехать в data-tip (см. tooltip.ts) — обновляем, только если сочетание сменилось
+      const tip = newPageTip();
+      if ((addPageTile.getAttribute('title') ?? addPageTile.dataset.tip) !== tip) addPageTile.title = tip;
       if (list.lastElementChild !== addPageTile) list.appendChild(addPageTile);
     } else {
       addPageTile?.remove();
@@ -1686,7 +1720,7 @@ function syncPagesButton(): void {
   const btn = document.getElementById('btn-pages')!;
   const n = state.project.pages.length;
   const add = n === 1 && !pagesOpen && canEditPages();
-  const key = `${add}:${n}:${pagesOpen}`;
+  const key = `${add}:${n}:${pagesOpen}:${state.settings.newPageKey}`;
   if (btn.dataset.key === key) return;
   btn.dataset.key = key;
   btn.classList.toggle('add', add);
@@ -1695,7 +1729,7 @@ function syncPagesButton(): void {
     ? `${ICONS.pages}<span class="pages-label">Страница</span> <span class="pages-plus">${ICONS.plus}</span>`
     : `${ICONS.pages}<span class="pages-label">Страницы</span> <span class="pages-count">${n}</span>`
       + `<span class="pages-chev">${ICONS.chevronUp}</span>`;
-  btn.title = add ? 'Новая страница' : pagesOpen ? 'Скрыть страницы (B)' : 'Показать страницы (B)';
+  btn.title = add ? newPageTip() : pagesOpen ? 'Скрыть страницы (B)' : 'Показать страницы (B)';
 }
 
 /** Прокручивает список так, чтобы активная страница была видна. */
