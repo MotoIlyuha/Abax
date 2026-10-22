@@ -133,6 +133,8 @@ export interface Project {
   createdAt: number;
   updatedAt: number;
   pages: Page[];
+  /** Закреплён в избранном на домашней странице. */
+  pinned?: boolean;
 }
 
 export interface ProjectMeta {
@@ -141,6 +143,7 @@ export interface ProjectMeta {
   createdAt: number;
   updatedAt: number;
   pageCount: number;
+  pinned?: boolean;
 }
 
 export type GridMode = 'none' | 'dots' | 'square' | 'coord';

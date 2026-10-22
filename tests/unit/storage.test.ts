@@ -42,6 +42,19 @@ describe('localStorage-хранилище (браузер)', () => {
     expect(await storage.load('a')).toBeNull();
   });
 
+  it('избранное сохраняется в метаданных', async () => {
+    const { storage } = await load();
+    await storage.save({ ...project('a', 10), pinned: true });
+    await storage.save(project('b', 20));
+    const metas = await storage.list();
+    expect(metas.find(m => m.id === 'a')?.pinned).toBe(true);
+    expect(metas.find(m => m.id === 'b')).not.toHaveProperty('pinned');
+    expect((await storage.load('a'))?.pinned).toBe(true);
+    // открепили — пропало и из метаданных
+    await storage.save({ ...project('a', 10), pinned: undefined });
+    expect((await storage.list()).find(m => m.id === 'a')).not.toHaveProperty('pinned');
+  });
+
   it('битые данные не роняют хранилище', async () => {
     const { storage } = await load();
     localStorage.setItem('doska.projects', '{oops');
