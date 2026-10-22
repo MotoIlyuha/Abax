@@ -1,5 +1,6 @@
 import type { BoardSettings, Element, FadeStroke, Flash, GridMode, LaserPt, NoteEl, Page, Project, ProjectMeta, Pt, SolidKind, TextEl, ToolId } from './types';
 import { hasBaseSides, SIDES_MAX, SIDES_MIN, solidSides } from './solid';
+import { DEFAULT_NEW_PAGE_KEY } from './hotkeys';
 import { translateElement } from './geom';
 
 export interface LiveStroke {
@@ -112,7 +113,10 @@ export const state: AppState = {
     other: { list: [{ color: '#1f2329', width: 4 }], active: 0 },
   },
   noteColor: '#ffe066',
-  settings: { toolbarPos: 'left', coordLabels: true, snapToGrid: false, wheelMode: 'scroll', pageTransition: 'slide', uiAnimations: true },
+  settings: {
+    toolbarPos: 'left', coordLabels: true, snapToGrid: false, wheelMode: 'scroll', pageTransition: 'slide',
+    pageKeyMod: 'ctrl', newPageKey: DEFAULT_NEW_PAGE_KEY, uiAnimations: true,
+  },
   selection: new Set(),
   liveStroke: null,
   liveShape: null,
@@ -232,6 +236,13 @@ export function insertCopies(els: Element[], dx: number, dy: number): Element[] 
 /** Дублирует выделенное со сдвигом; выделение переходит на копии. */
 export function duplicateSelected(dx: number, dy: number): void {
   insertCopies(selectedElements(), dx, dy);
+}
+
+/** Выделяет все элементы страницы и включает инструмент «Выделение», чтобы их сразу можно было двигать. */
+export function selectAll(): void {
+  if (state.board.elements.length === 0) return;
+  setTool('select');
+  setSelection(state.board.elements.map(e => e.id));
 }
 
 export function setSelection(ids: string[]): void {
@@ -379,7 +390,19 @@ export function commitPoly(closed: boolean): void {
 export { blankProject, blankPage };
 
 export function projectMeta(p: Project): ProjectMeta {
-  return { id: p.id, name: p.name, createdAt: p.createdAt, updatedAt: p.updatedAt, pageCount: p.pages.length };
+  return {
+    id: p.id, name: p.name, createdAt: p.createdAt, updatedAt: p.updatedAt, pageCount: p.pages.length,
+    ...(p.pinned ? { pinned: true } : {}),
+  };
+}
+
+/** Копия списка, где элемент с позиции from стоит на позиции to (индексы вне списка — без изменений). */
+export function moveItem<T>(list: readonly T[], from: number, to: number): T[] {
+  const out = list.slice();
+  if (from === to || from < 0 || to < 0 || from >= out.length || to >= out.length) return out;
+  const [it] = out.splice(from, 1);
+  out.splice(to, 0, it);
+  return out;
 }
 
 /** Открывает проект на заданной (или первой) странице. */
@@ -457,6 +480,14 @@ export function renamePage(pageId: string, name: string): void {
   };
   // активная страница — тот же объект, что в проекте: иначе правки уйдут в осиротевшую копию
   if (pageId === state.pageId) state.board = state.project.pages.find(p => p.id === pageId)!;
+  update(true);
+}
+
+/** Переставляет страницу открытого проекта; активная страница остаётся активной. */
+export function movePage(from: number, to: number): void {
+  const pages = moveItem(state.project.pages, from, to);
+  if (pages.every((p, i) => p === state.project.pages[i])) return;
+  state.project = { ...state.project, pages };
   update(true);
 }
 

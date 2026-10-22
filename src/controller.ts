@@ -2,7 +2,7 @@ import type { Camera, Element, FadeStroke, Handle, Pt, ShapeEl, ToolId } from '.
 import {
   state, update, onChange, beginStroke, extendStroke, endStroke, pushHistory, replaceElements,
   addElement, setSelection, deleteSelected, undo, redo, setTool, uid, commitPoly,
-  expandSelectionWithGroups, groupSelected, ungroupSelected,
+  expandSelectionWithGroups, groupSelected, ungroupSelected, selectAll,
 } from './state';
 import {
   hitTest, aabbIntersects, elementAABB, elementHandles, applyHandle,
@@ -11,7 +11,8 @@ import {
 import { collabActive, noteCursor, readOnly } from './collab';
 import { eraseRadius, presenting, requestRender } from './renderer';
 import { fitSolid, SOLID_CLICK_SIZE, solidKeepsAspect } from './solid';
-import { beginTextEdit, duplicateSelection, exportPng, fitContent, openAllSettings, saveNow, togglePages } from './app';
+import { addPageFromKey, beginTextEdit, duplicateSelection, exportPng, fitContent, openAllSettings, saveNow, switchToPage, togglePages } from './app';
+import { comboFromEvent, pageNumberFromEvent } from './hotkeys';
 import { toolByKey } from './toolbar';
 
 const SELECT_TOL = 6; // px экрана
@@ -676,6 +677,14 @@ export function initController(canvas: HTMLCanvasElement): void {
 
   function onKeyDown(e: KeyboardEvent): void {
     if (isTypingTarget(e.target)) return;
+    // страницы: переход Ctrl/Alt + номер и новая страница — сочетания из «Горячих клавиш»
+    const pageNo = pageNumberFromEvent(e, state.settings.pageKeyMod);
+    if (pageNo) { e.preventDefault(); switchToPage(pageNo); return; }
+    if (state.settings.newPageKey && comboFromEvent(e) === state.settings.newPageKey) {
+      e.preventDefault();
+      if (!e.repeat) addPageFromKey(); // зажатая клавиша не плодит страницы
+      return;
+    }
     if (e.ctrlKey || e.metaKey) {
       switch (e.code) {
         case 'KeyZ': e.preventDefault(); if (e.shiftKey) redo(); else undo(); return;
@@ -688,6 +697,11 @@ export function initController(canvas: HTMLCanvasElement): void {
         case 'KeyE': e.preventDefault(); void exportPng(); return;
         // Ctrl+C / Ctrl+X / Ctrl+V — события copy/cut/paste (см. app.ts): так работает и системный буфер
         case 'KeyD': e.preventDefault(); duplicateSelection(); return;
+        case 'KeyA':
+          e.preventDefault();
+          // без права правки выделять нечего: выделенное можно было бы удалить
+          if (!(collabActive() && readOnly())) selectAll();
+          return;
         case 'Comma': e.preventDefault(); openAllSettings(); return;
       }
       return;

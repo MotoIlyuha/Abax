@@ -36,4 +36,38 @@ test.describe('сенсорный экран', () => {
     await send('touchEnd', []);
     expect(await board.count('stroke')).toBe(1);
   });
+
+  test('страницу на домашней переставляют долгим нажатием пальца, короткое движение — прокрутка', async ({ board, page }) => {
+    await page.locator('#btn-home').click();
+    const card = page.locator('#home .project-card');
+    await card.locator('.home-add-page').click();
+    await card.locator('.home-add-page').click();
+    const names = card.locator('.home-page-name');
+    await expect(names).toHaveText(['Страница 1', 'Страница 2', 'Страница 3']);
+    const cdp = await page.context().newCDPSession(page);
+    const send = (type: 'touchStart' | 'touchMove' | 'touchEnd', touchPoints: Touch[]) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints });
+    const center = async (i: number) => {
+      const b = (await card.locator('.home-page').nth(i).boundingBox())!;
+      return { x: b.x + b.width / 2, y: b.y + b.height / 3 };
+    };
+
+    // сразу повели пальцем — перетаскивания нет
+    let a = await center(0);
+    let b = await center(2);
+    await send('touchStart', [{ ...a, id: 0 }]);
+    for (let i = 1; i <= 8; i++) await send('touchMove', [{ x: a.x + (b.x - a.x) * i / 8, y: a.y + (b.y - a.y) * i / 8, id: 0 }]);
+    await send('touchEnd', []);
+    await expect(names).toHaveText(['Страница 1', 'Страница 2', 'Страница 3']);
+
+    // подержали — карточка поехала за пальцем
+    a = await center(0);
+    b = await center(2);
+    await send('touchStart', [{ ...a, id: 1 }]);
+    await page.waitForTimeout(500);
+    for (let i = 1; i <= 8; i++) await send('touchMove', [{ x: a.x + (b.x - a.x) * i / 8, y: a.y + (b.y - a.y) * i / 8, id: 1 }]);
+    await send('touchEnd', []);
+    await expect(names).toHaveText(['Страница 2', 'Страница 3', 'Страница 1']);
+    await expect(page.locator('#home')).toBeVisible();
+    expect((await board.state()).project.pages.map(p => p.name)).toEqual(['Страница 2', 'Страница 3', 'Страница 1']);
+  });
 });

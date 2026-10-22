@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   addElement, addPage, applyStyleToSelection, beginStroke, blankPage, blankProject, bringForward, canRedo, canUndo,
   commitPoly, deletePage, deleteSelected, endStroke, expandSelectionWithGroups, extendStroke, groupSelected,
-  onChange, openProject, projectMeta, pushHistory, redo, renamePage, replaceElements, sendBackward, setGrid,
-  presetKind, selectPreset, setNoteColor, setSelection, setSettings, setSolidSides, setStyleColor, setStyleWidth, setTool, setView, state,
+  moveItem, movePage, onChange, openProject, projectMeta, pushHistory, redo, renamePage, replaceElements, sendBackward, setGrid,
+  presetKind, selectAll, selectPreset, setNoteColor, setSelection, setSettings, setSolidSides, setStyleColor, setStyleWidth, setTool, setView, state,
   switchPage, uid, undo, ungroupSelected, update,
 } from '../../src/state';
 import type { Element, ShapeEl, SolidEl, TextEl } from '../../src/types';
@@ -51,6 +51,43 @@ describe('проекты и страницы', () => {
   it('projectMeta', () => {
     const p = blankProject('X');
     expect(projectMeta(p)).toEqual({ id: p.id, name: 'X', createdAt: p.createdAt, updatedAt: p.updatedAt, pageCount: 1 });
+    // избранное попадает в метаданные, только когда проект закреплён
+    expect(projectMeta({ ...p, pinned: true }).pinned).toBe(true);
+    expect('pinned' in projectMeta({ ...p, pinned: undefined })).toBe(false);
+  });
+
+  it('moveItem переставляет копию списка', () => {
+    const src = ['a', 'b', 'c', 'd'];
+    expect(moveItem(src, 0, 2)).toEqual(['b', 'c', 'a', 'd']);
+    expect(moveItem(src, 3, 0)).toEqual(['d', 'a', 'b', 'c']);
+    expect(moveItem(src, 1, 1)).toEqual(src);
+    expect(moveItem(src, -1, 2)).toEqual(src);
+    expect(moveItem(src, 0, 4)).toEqual(src);
+    expect(src).toEqual(['a', 'b', 'c', 'd']); // исходный не тронут
+  });
+
+  it('movePage переставляет страницы, активная остаётся активной', () => {
+    const first = state.board;
+    const second = addPage();
+    const third = addPage();
+    switchPage(first.id);
+    state.dirty = false;
+    const calls = vi.fn();
+    const off = onChange(calls);
+    movePage(0, 2);
+    off();
+    expect(state.project.pages.map(p => p.id)).toEqual([second.id, third.id, first.id]);
+    expect(state.pageId).toBe(first.id);
+    expect(state.board).toBe(first);
+    expect(state.dirty).toBe(true);
+    expect(calls).toHaveBeenCalledTimes(1);
+    // на месте или за пределами списка — ничего не меняется и не помечается
+    state.dirty = false;
+    const before = state.project;
+    movePage(1, 1);
+    movePage(0, 9);
+    expect(state.project).toBe(before);
+    expect(state.dirty).toBe(false);
   });
 
   it('openProject открывает нужную страницу и сбрасывает историю', () => {
@@ -370,6 +407,23 @@ describe('инструменты и живые объекты', () => {
     setSolidSides(8);
     undo();
     expect(canUndo()).toBe(false);
+  });
+});
+
+describe('selectAll', () => {
+  it('выделяет все элементы страницы и включает выделение', () => {
+    replaceElements([rect('a'), rect('b'), rect('c')]);
+    setTool('pen');
+    selectAll();
+    expect([...state.selection]).toEqual(['a', 'b', 'c']);
+    expect(state.tool).toBe('select');
+  });
+
+  it('на пустой странице ничего не меняет', () => {
+    setTool('pen');
+    selectAll();
+    expect(state.selection.size).toBe(0);
+    expect(state.tool).toBe('pen');
   });
 });
 
