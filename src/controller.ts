@@ -2,7 +2,7 @@ import type { Camera, Element, FadeStroke, Handle, Pt, ShapeEl, ToolId } from '.
 import {
   state, update, onChange, beginStroke, extendStroke, endStroke, pushHistory, replaceElements,
   addElement, setSelection, deleteSelected, undo, redo, setTool, uid, commitPoly,
-  expandSelectionWithGroups, groupSelected, ungroupSelected,
+  expandSelectionWithGroups, groupSelected, ungroupSelected, selectAll,
 } from './state';
 import {
   hitTest, aabbIntersects, elementAABB, elementHandles, applyHandle,
@@ -688,6 +688,11 @@ export function initController(canvas: HTMLCanvasElement): void {
         case 'KeyE': e.preventDefault(); void exportPng(); return;
         // Ctrl+C / Ctrl+X / Ctrl+V — события copy/cut/paste (см. app.ts): так работает и системный буфер
         case 'KeyD': e.preventDefault(); duplicateSelection(); return;
+        case 'KeyA':
+          e.preventDefault();
+          // без права правки выделять нечего: выделенное можно было бы удалить
+          if (!(collabActive() && readOnly())) selectAll();
+          return;
         case 'Comma': e.preventDefault(); openAllSettings(); return;
       }
       return;
