@@ -95,6 +95,30 @@ test.describe('страницы проекта', () => {
     expect((await board.state()).project.pages).toHaveLength(1);
   });
 
+  test('Ctrl+N переключает на следующую страницу по кругу', async ({ board, page }) => {
+    await board.addPage();
+    await board.addPage();
+    await board.rect(400, 300, 500, 400); // на третьей странице
+    const s = await board.state();
+    expect(s.project.pages.map(p => p.name)).toEqual(['Страница 1', 'Страница 2', 'Страница 3']);
+    expect(s.pageId).toBe(s.project.pages[2].id);
+
+    await page.keyboard.press('Control+n'); // по кругу: с третьей на первую
+    await expect(page.locator('#page-name')).toHaveValue('Страница 1');
+    await page.keyboard.press('Control+n');
+    await expect(page.locator('#page-name')).toHaveValue('Страница 2');
+    expect(await board.count()).toBe(0); // у страницы своё содержимое
+    await page.keyboard.press('Control+n');
+    await expect(page.locator('#page-name')).toHaveValue('Страница 3');
+    expect(await board.count('shape')).toBe(1);
+  });
+
+  test('Ctrl+N с одной страницей ничего не делает', async ({ board, page }) => {
+    await page.keyboard.press('Control+n');
+    await expect(page.locator('#page-name')).toHaveValue('Страница 1');
+    expect((await board.state()).project.pages).toHaveLength(1);
+  });
+
   test('новая страница, переключение и независимое содержимое', async ({ board, page }) => {
     await board.rect(400, 300, 500, 400);
     await board.addPage();

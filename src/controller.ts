@@ -11,7 +11,7 @@ import {
 import { collabActive, noteCursor, readOnly } from './collab';
 import { eraseRadius, presenting, requestRender } from './renderer';
 import { fitSolid, SOLID_CLICK_SIZE, solidKeepsAspect } from './solid';
-import { beginTextEdit, duplicateSelection, exportPng, fitContent, openAllSettings, saveNow, togglePages } from './app';
+import { beginTextEdit, duplicateSelection, exportPng, fitContent, openAllSettings, saveNow, switchPageBy, togglePages } from './app';
 import { toolByKey } from './toolbar';
 
 const SELECT_TOL = 6; // px экрана
@@ -689,6 +689,7 @@ export function initController(canvas: HTMLCanvasElement): void {
         // Ctrl+C / Ctrl+X / Ctrl+V — события copy/cut/paste (см. app.ts): так работает и системный буфер
         case 'KeyD': e.preventDefault(); duplicateSelection(); return;
         case 'Comma': e.preventDefault(); openAllSettings(); return;
+        case 'KeyN': e.preventDefault(); switchPageBy(1); return;
       }
       return;
     }

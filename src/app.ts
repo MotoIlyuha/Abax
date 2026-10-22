@@ -1489,6 +1489,15 @@ async function switchPageHandler(pageId: string): Promise<void> {
   changePage(() => switchPage(pageId));
 }
 
+/** Соседняя страница по кругу (Ctrl+N): вперёд или назад по списку. */
+export function switchPageBy(step: 1 | -1): void {
+  const pages = state.project.pages;
+  if (pages.length < 2) return;
+  const i = pageIndex(state.pageId);
+  const next = pages[(i + step + pages.length) % pages.length];
+  void switchPageHandler(next.id);
+}
+
 async function newPageHandler(): Promise<void> {
   await saveNow();
   changePage(() => addPage());
