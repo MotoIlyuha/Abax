@@ -803,6 +803,17 @@ body.reordering, body.reordering * { cursor: grabbing !important; user-select: n
 }
 .sd-btn:hover { border-color: var(--accent); color: var(--accent); }
 
+/* ----- О проекте ----- */
+.sd-about { max-width: 520px; }
+.sd-about-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+.sd-about-name { font-size: 24px; font-weight: 700; }
+.sd-about-version { color: var(--muted); }
+.sd-about-desc { margin-bottom: 18px; line-height: 1.5; }
+.sd-about-features { margin: 0 0 20px; padding-left: 20px; line-height: 1.7; }
+.sd-about-links { display: flex; flex-wrap: wrap; gap: 8px; }
+.sd-about-link { text-decoration: none; }
+.sd-about-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
 /* ----- Настройка панели инструментов ----- */
 .tbe { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 14px; }
 .tbe-top { display: flex; align-items: center; gap: 12px; }

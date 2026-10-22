@@ -18,10 +18,10 @@ class FakeWindow {
   url = '';
   file = '';
   listeners = new Map<string, (...a: unknown[]) => void>();
-  openHandler: ((d: { frameName: string }) => Record<string, any>) | null = null;
+  openHandler: ((d: { url?: string; frameName: string }) => Record<string, any>) | null = null;
   webContents = {
     on: (ev: string, fn: (...a: unknown[]) => void) => { this.listeners.set(ev, fn); },
-    setWindowOpenHandler: (fn: (d: { frameName: string }) => Record<string, any>) => { this.openHandler = fn; },
+    setWindowOpenHandler: (fn: (d: { url?: string; frameName: string }) => Record<string, any>) => { this.openHandler = fn; },
   };
   constructor(public opts: Record<string, unknown>) { FakeWindow.all.push(this); }
   async loadURL(u: string) { this.url = u; }
@@ -50,6 +50,7 @@ const fakeElectron = {
   BrowserWindow: FakeWindow,
   ipcMain: { handle: (ch: string, fn: Handler) => { handlers.set(ch, fn); } },
   dialog,
+  shell: { openExternal: vi.fn() },
   contextBridge: { exposeInMainWorld: vi.fn() },
   ipcRenderer: { invoke: vi.fn(async (...a: unknown[]) => a) },
 };
@@ -139,6 +140,18 @@ describe('окно', () => {
     const other = { removeMenu: vi.fn() };
     w.listeners.get('did-create-window')!(other, { frameName: '' });
     expect(other.removeMenu).not.toHaveBeenCalled();
+  });
+
+  it('внешние ссылки открываются в браузере системы', async () => {
+    await loadMain();
+    const w = FakeWindow.all[0];
+    fakeElectron.shell.openExternal.mockClear();
+    expect(w.openHandler!({ url: 'https://github.com/MotoIlyuha/Doska', frameName: '' })).toEqual({ action: 'deny' });
+    expect(fakeElectron.shell.openExternal).toHaveBeenCalledWith('https://github.com/MotoIlyuha/Doska');
+    // окно демонстрации и about:blank — по-прежнему окна приложения
+    expect(w.openHandler!({ url: 'about:blank', frameName: '' })).toEqual({ action: 'allow' });
+    expect(w.openHandler!({ url: 'about:blank', frameName: 'doska-present' })).toMatchObject({ action: 'allow' });
+    expect(fakeElectron.shell.openExternal).toHaveBeenCalledTimes(1);
   });
 
   it('закрытие всех окон завершает приложение', async () => {
