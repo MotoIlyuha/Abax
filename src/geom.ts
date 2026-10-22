@@ -480,6 +480,14 @@ export function removePolyNode(el: PolyEl, i: number): PolyEl | null {
   return { ...el, pts: el.pts.filter((_, k) => k !== i) };
 }
 
+/** Сдвиг элемента на (dx, dy) в координатах сцены. */
+export function translateElement(el: Element, dx: number, dy: number): Element {
+  if (el.type === 'stroke' || el.type === 'poly') {
+    return { ...el, pts: el.pts.map(p => ({ x: p.x + dx, y: p.y + dy, p: p.p })) };
+  }
+  return { ...el, x: el.x + dx, y: el.y + dy };
+}
+
 export function aabbUnion(a: AABB, b: AABB): AABB {
   return {
     x0: Math.min(a.x0, b.x0), y0: Math.min(a.y0, b.y0),

@@ -1,5 +1,6 @@
 import type { BoardSettings, Element, FadeStroke, Flash, GridMode, LaserPt, NoteEl, Page, Project, ProjectMeta, Pt, SolidKind, TextEl, ToolId } from './types';
 import { hasBaseSides, SIDES_MAX, SIDES_MIN, solidSides } from './solid';
+import { translateElement } from './geom';
 
 export interface LiveStroke {
   tool: 'pen' | 'highlighter';
@@ -199,6 +200,38 @@ export function deleteSelected(): void {
   replaceElements(state.board.elements.filter(e => !state.selection.has(e.id)));
   state.selection = new Set();
   update();
+}
+
+/** Выделенные элементы в порядке слоёв. */
+export function selectedElements(): Element[] {
+  return state.board.elements.filter(e => state.selection.has(e.id));
+}
+
+/**
+ * Добавляет поверх доски копии элементов со сдвигом (dx, dy) и выделяет их (запись в историю).
+ * Копии получают новые id; группы внутри набора сохраняются, но под новыми groupId —
+ * иначе копия слилась бы в одну группу с оригиналом.
+ */
+export function insertCopies(els: Element[], dx: number, dy: number): Element[] {
+  if (els.length === 0) return [];
+  const gids = new Map<string, string>();
+  const copies = els.map(el => {
+    const copy = { ...translateElement(structuredClone(el), dx, dy), id: uid() };
+    if (copy.groupId) {
+      if (!gids.has(copy.groupId)) gids.set(copy.groupId, uid());
+      copy.groupId = gids.get(copy.groupId)!;
+    }
+    return copy;
+  });
+  pushHistory(state.board.elements);
+  replaceElements([...state.board.elements, ...copies]);
+  setSelection(copies.map(c => c.id));
+  return copies;
+}
+
+/** Дублирует выделенное со сдвигом; выделение переходит на копии. */
+export function duplicateSelected(dx: number, dy: number): void {
+  insertCopies(selectedElements(), dx, dy);
 }
 
 export function setSelection(ids: string[]): void {

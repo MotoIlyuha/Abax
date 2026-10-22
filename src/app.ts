@@ -4,14 +4,14 @@ import {
   setStyleWidth, setNoteColor, selectPreset, presetKind, addElement, replaceElements, pushHistory, uid,
   applyStyleToSelection, setSettings, setView, switchPage, addPage, deletePage, renamePage, setSelection,
   openProject, blankProject, projectMeta, groupSelected, ungroupSelected,
-  bringForward, sendBackward, deleteSelected, setSolidSides,
+  bringForward, sendBackward, deleteSelected, setSolidSides, duplicateSelected,
 } from './state';
 import type { PresetKind, StyleValue } from './state';
 import { storage } from './storage';
 import { renderScene, contentBBox, imageEpoch, presentCanvas, renderNow } from './renderer';
 import { capturePageTransition } from './page-transition';
 import { hasBaseSides, SIDES_MAX, SIDES_MIN, solidSides } from './solid';
-import { elementAABB, NOTE_W, NOTE_H, NOTE_PAD, NOTE_FONT, NOTE_TEXT_COLOR, TEXT_SIZE } from './geom';
+import { type AABB, elementAABB, NOTE_W, NOTE_H, NOTE_PAD, NOTE_FONT, NOTE_TEXT_COLOR, TEXT_SIZE } from './geom';
 import * as pdfjsLib from 'pdfjs-dist';
 // ?worker&inline: воркер инлайнится в бандл и работает из file:// (Electron)
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker&inline';
@@ -20,6 +20,7 @@ import { closePresent, openPresent, presentOpen } from './present';
 import { type ToolbarGroup, onToolbarChange, restoreToolbar, svg, toolDef, toolTip, toolbarConfig } from './toolbar';
 import { openSettingsDialog, settingsDialogOpen } from './settings-dialog';
 import { renderToolbarEditor } from './toolbar-editor';
+import { copySelection, COPY_STEP_PX, pasteFromMemory, pasteFromSystem } from './clipboard';
 
 pdfjsLib.GlobalWorkerOptions.workerPort = new PdfWorker();
 
@@ -40,6 +41,7 @@ const ICONS = {
   up: svg('<path d="M12 19V5"/><path d="M5 12l7-7 7 7"/>'),
   down: svg('<path d="M12 5v14"/><path d="M19 12l-7 7-7-7"/>'),
   group: svg('<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/><path d="M11 11l2 2"/>'),
+  duplicate: svg('<rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/>'),
   ungroup: svg('<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/><path d="M13 6h4M15 4v4M7 13v4M5 15h4"/>'),
   trash: svg('<path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/>'),
   toolbar: svg('<rect x="3" y="3" width="7" height="18" rx="2"/><path d="M14 7h7M14 12h7M14 17h7"/>'),
@@ -991,6 +993,13 @@ function updateQuickMenu(): void {
     ug.addEventListener('click', () => { ungroupSelected(); });
     qm.appendChild(ug);
   }
+  // дублирование
+  const dup = document.createElement('button');
+  dup.className = 'qm-btn';
+  dup.title = 'Дублировать (Ctrl+D)';
+  dup.innerHTML = ICONS.duplicate;
+  dup.addEventListener('click', () => { duplicateSelection(); });
+  qm.appendChild(dup);
   // удаление
   const del = document.createElement('button');
   del.className = 'qm-btn';
@@ -1341,13 +1350,52 @@ function fileToDataUrl(f: File): Promise<string | null> {
   return promise;
 }
 
+/** Событие буфера обмена относится к доске, а не к полю ввода или окну настроек. */
+function boardClipboardEvent(e: ClipboardEvent): boolean {
+  if (state.view !== 'board' || settingsDialogOpen()) return false;
+  const t = e.target;
+  return !(t instanceof HTMLElement && (
+    t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable
+  ));
+}
+
+/** Можно менять содержимое активной страницы (в совместной работе — нужно право edit). */
+export function canEditBoard(): boolean {
+  return !(collabActive() && readOnly());
+}
+
+/** Видимая область холста в координатах сцены. */
+export function viewRect(): AABB {
+  const r = canvas.getBoundingClientRect();
+  const cam = state.camera;
+  return { x0: cam.x, y0: cam.y, x1: cam.x + r.width / cam.zoom, y1: cam.y + r.height / cam.zoom };
+}
+
+/** Ctrl+D: копия выделенного со сдвигом, выделение переходит на неё. */
+export function duplicateSelection(): void {
+  if (!canEditBoard()) return;
+  const step = COPY_STEP_PX / state.camera.zoom;
+  duplicateSelected(step, step);
+}
+
 function wireImageInput(): void {
   document.getElementById('btn-image')!.addEventListener('click', () => { void insertImage(); });
-  // Ctrl+V из буфера обмена
+  // Ctrl+C / Ctrl+X / Ctrl+V: элементы доски и картинки из буфера обмена
+  const copyOrCut = (e: ClipboardEvent, cut: boolean) => {
+    if (!boardClipboardEvent(e)) return;
+    // выделенный текст интерфейса копируется как обычно
+    const sel = window.getSelection();
+    if (sel && !sel.isCollapsed) return;
+    if (cut && !canEditBoard()) return;
+    if (copySelection(e.clipboardData, cut)) e.preventDefault();
+  };
+  document.addEventListener('copy', e => copyOrCut(e, false));
+  document.addEventListener('cut', e => copyOrCut(e, true));
   document.addEventListener('paste', e => {
-    const items = e.clipboardData?.items;
-    if (!items) return;
-    for (const it of items) {
+    if (!boardClipboardEvent(e) || !canEditBoard()) return;
+    // скопированное на доске важнее картинки: системный буфер хранит последнее копирование
+    if (pasteFromSystem(e.clipboardData, viewRect())) { e.preventDefault(); return; }
+    for (const it of e.clipboardData?.items ?? []) {
       if (it.kind === 'file' && it.type.startsWith('image/')) {
         const f = it.getAsFile();
         if (f) {
@@ -1357,6 +1405,7 @@ function wireImageInput(): void {
         }
       }
     }
+    if (pasteFromMemory(viewRect())) e.preventDefault();
   });
   // перетаскивание файла на доску
   const wrap = document.getElementById('canvas-wrap')!;
