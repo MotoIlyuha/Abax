@@ -234,6 +234,13 @@ export function duplicateSelected(dx: number, dy: number): void {
   insertCopies(selectedElements(), dx, dy);
 }
 
+/** Выделяет все элементы страницы и включает инструмент «Выделение», чтобы их сразу можно было двигать. */
+export function selectAll(): void {
+  if (state.board.elements.length === 0) return;
+  setTool('select');
+  setSelection(state.board.elements.map(e => e.id));
+}
+
 export function setSelection(ids: string[]): void {
   state.selection = new Set(ids);
   syncStyleFromSelection();
