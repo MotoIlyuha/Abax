@@ -1683,7 +1683,7 @@ function syncPagesButton(): void {
   btn.classList.toggle('add', add);
   btn.setAttribute('aria-expanded', String(pagesOpen));
   btn.innerHTML = add
-    ? `${ICONS.pages}<span class="pages-label">Страница</span> <span class="pages-plus">+</span>`
+    ? `${ICONS.pages}<span class="pages-label">Страница</span> <span class="pages-plus">${ICONS.plus}</span>`
     : `${ICONS.pages}<span class="pages-label">Страницы</span> <span class="pages-count">${n}</span>`
       + `<span class="pages-chev">${ICONS.chevronUp}</span>`;
   btn.title = add ? 'Новая страница' : pagesOpen ? 'Скрыть страницы (B)' : 'Показать страницы (B)';

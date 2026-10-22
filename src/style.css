@@ -179,6 +179,7 @@ select {
   align-items: center;
   justify-content: center;
 }
+.pages-plus svg { width: 14px; height: 14px; stroke-width: 2.6; }
 .pages-chev { display: inline-flex; color: var(--muted); transition: transform 0.38s var(--dock-ease); }
 .pages-chev svg { width: 16px; height: 16px; }
 /* открыт: кнопка приподнимается над списком, стрелка смотрит вниз — «опустить» */
