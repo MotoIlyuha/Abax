@@ -188,4 +188,6 @@ export interface BoardSettings {
   /** Колёсико без модификаторов: прокрутка или масштаб. */
   wheelMode: WheelMode;
   pageTransition: PageTransition;
+  /** Плавное появление меню и панелей (кроме плавающего меню выделения). */
+  uiAnimations: boolean;
 }

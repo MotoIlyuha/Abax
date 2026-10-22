@@ -148,6 +148,7 @@ function restoreSettings(): void {
         snapToGrid: typeof v.snapToGrid === 'boolean' ? v.snapToGrid : false,
         wheelMode: v.wheelMode === 'zoom' ? 'zoom' : 'scroll',
         pageTransition: PAGE_TRANSITIONS.some(t => t.mode === v.pageTransition) ? v.pageTransition : 'slide',
+        uiAnimations: typeof v.uiAnimations === 'boolean' ? v.uiAnimations : true,
       };
     }
   } catch { /* дефолт */ }
@@ -163,6 +164,11 @@ const PAGE_TRANSITIONS: { mode: PageTransition; name: string; hint: string }[] =
 
 function persistSettings(): void {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings));
+}
+
+/** Анимации появления панелей живут в CSS; выключенные — класс на body их гасит. */
+function applyUiAnimations(): void {
+  document.body.classList.toggle('no-ui-anim', !state.settings.uiAnimations);
 }
 
 /** Выбор цвета: применяется к выделению (если есть) и становится текущим. */
@@ -392,6 +398,8 @@ function openCtxPanel(kind: CtxKind, source: CtxSource): void {
   const el = document.createElement('div');
   el.className = 'ctx-panel';
   el.style.zIndex = String(++ctxZ);
+  // откуда выплывает при появлении: от панели инструментов или из-под меню выделения
+  el.dataset.from = source === 'quick' ? 'quick' : state.settings.toolbarPos;
   const cp: CtxPanel = { el, kind, source, baseHeight: 0, detached: false };
   ctxPanels.push(cp);
   el.addEventListener('pointerdown', () => { el.style.zIndex = String(++ctxZ); }, { capture: true });
@@ -1185,6 +1193,21 @@ function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
     transRow.appendChild(b);
   }
   pop.appendChild(transRow);
+  const lbl6 = document.createElement('label');
+  lbl6.className = 'ctx-check';
+  lbl6.title = 'Меню и панели плавно выплывают при открытии';
+  const cb6 = document.createElement('input');
+  cb6.type = 'checkbox';
+  cb6.checked = state.settings.uiAnimations;
+  cb6.addEventListener('change', () => {
+    setSettings({ uiAnimations: cb6.checked });
+    persistSettings();
+    applyUiAnimations();
+  });
+  const span6 = document.createElement('span');
+  span6.textContent = 'Анимация меню и панелей';
+  lbl6.append(cb6, span6);
+  pop.appendChild(lbl6);
 }
 
 function applyToolbarPos(): void {
@@ -2422,6 +2445,7 @@ export function initApp(c: HTMLCanvasElement): void {
   canvas = c;
   restoreStyle();
   restoreSettings();
+  applyUiAnimations();
   restoreToolbar();
   buildToolbar();
   applyToolbarPos();

@@ -336,6 +336,9 @@ select {
   #btn-pages, .pages-chev, #pages-tray, #pages-dock.open #pages-tray, .page-item, .page-add { transition: none; }
   #pages-dock.open .page-item, #pages-dock.open .page-add { animation: none; }
 }
+/* «Анимация меню и панелей» выключена в настройках */
+body.no-ui-anim :is(#btn-pages, .pages-chev, #pages-tray, #pages-dock.open #pages-tray, .page-item, .page-add) { transition: none; }
+body.no-ui-anim #pages-dock.open :is(.page-item, .page-add) { animation: none; }
 
 /* ----- Панель инструментов: позиция из настроек ----- */
 #toolbar {
@@ -1160,3 +1163,27 @@ body.collab-guest.readonly-mode #toolbar { display: none; }
 #tooltip[data-side="left"]::before { left: 100%; top: var(--arrow); margin-top: -5px; border-left-color: var(--tip-bg); }
 #tooltip[data-side="bottom"]::before { bottom: 100%; left: var(--arrow); margin-left: -5px; border-bottom-color: var(--tip-bg); }
 #tooltip[data-side="top"]::before { top: 100%; left: var(--arrow); margin-left: -5px; border-top-color: var(--tip-bg); }
+
+/* ----- Плавное появление меню и панелей ----- */
+/* только появление: закрываются мгновенно. Плавающее меню выделения на холсте не анимируем —
+   оно ездит за объектами и мерцало бы. Кадр «from» без fill — после анимации transform не остаётся */
+@keyframes ui-pop {
+  from { opacity: 0; transform: translate(var(--pop-x, 0), var(--pop-y, 0)) scale(0.97); }
+}
+@keyframes ui-fade { from { opacity: 0; } }
+.ctx-panel, #settings-popover, #share-dialog, .sd-window {
+  animation: ui-pop 0.18s cubic-bezier(0.22, 0.8, 0.24, 1);
+}
+#settings-dialog { animation: ui-fade 0.18s ease-out; }
+/* панель выплывает со стороны своей кнопки-вызова */
+.ctx-panel[data-from="left"] { --pop-x: -8px; transform-origin: left center; }
+.ctx-panel[data-from="right"] { --pop-x: 8px; transform-origin: right center; }
+.ctx-panel[data-from="top"], .ctx-panel[data-from="quick"] { --pop-y: -8px; transform-origin: top center; }
+.ctx-panel[data-from="bottom"] { --pop-y: 8px; transform-origin: bottom center; }
+/* поповер и окно «Поделиться» — из-под кнопок шапки справа */
+#settings-popover, #share-dialog { --pop-y: -6px; transform-origin: top right; }
+.sd-window { --pop-y: 10px; animation-duration: 0.22s; }
+body.no-ui-anim :is(.ctx-panel, #settings-popover, #share-dialog, #settings-dialog, .sd-window) { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  .ctx-panel, #settings-popover, #share-dialog, #settings-dialog, .sd-window { animation: none; }
+}

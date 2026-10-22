@@ -226,6 +226,46 @@ test.describe('настройки доски', () => {
     expect((await board.state()).settings.coordLabels).toBe(false);
   });
 
+  test('панели плавно появляются, анимацию можно выключить', async ({ board, page }) => {
+    const anim = (sel: string) => page.locator(sel).evaluate(e => getComputedStyle(e).animationName);
+    await page.locator('#btn-style').click();
+    expect(await anim('.ctx-panel[data-kind="style"]')).toBe('ui-pop');
+    await page.keyboard.press('Escape');
+    await page.locator('#btn-settings').click();
+    expect(await anim('#settings-popover')).toBe('ui-pop');
+    await page.keyboard.press('Control+Comma');
+    expect(await anim('#settings-dialog')).toBe('ui-fade');
+    expect(await anim('.sd-window')).toBe('ui-pop');
+    await page.keyboard.press('Escape');
+    // плавающее меню выделения не анимируется
+    await board.rect(300, 300, 400, 400);
+    await board.tool('v');
+    await board.click({ x: 300, y: 350 });
+    await expect(board.quickMenu).toBeVisible();
+    expect(await anim('#quick-menu')).toBe('none');
+
+    await page.locator('#btn-settings').click();
+    const cb = page.locator('#settings-popover label', { hasText: 'Анимация меню и панелей' }).locator('input');
+    await expect(cb).toBeChecked();
+    await cb.uncheck();
+    expect((await board.state()).settings.uiAnimations).toBe(false);
+    expect(await anim('#settings-popover')).toBe('none');
+    await page.keyboard.press('Escape');
+    await page.locator('#btn-style').click();
+    expect(await anim('.ctx-panel[data-kind="style"]')).toBe('none');
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Control+Comma');
+    expect(await anim('.sd-window')).toBe('none');
+    await expect(page.locator('.sd-general label', { hasText: 'Анимация меню и панелей' }).locator('input')).not.toBeChecked();
+    await page.keyboard.press('Escape');
+
+    await page.reload();
+    await board.ready();
+    expect((await board.state()).settings.uiAnimations).toBe(false);
+    await page.locator('#btn-shapes').click();
+    expect(await anim('.ctx-panel[data-kind="shapes"]')).toBe('none');
+  });
+
   test('битые настройки в localStorage не ломают загрузку', async ({ board, page }) => {
     await page.evaluate(() => {
       localStorage.setItem('doska.settings', '{oops');
