@@ -1,7 +1,8 @@
 /**
  * Перестановка карточек перетаскиванием (мышь, перо, палец).
- * Карточка едет за указателем, соседи раздвигаются перестановкой узлов в DOM;
- * по отпусканию вызывается onEnd с исходным и новым индексом.
+ * За указателем едет копия карточки поверх страницы (её не обрезают края прокручиваемого списка),
+ * а сама карточка остаётся в списке местом, куда встанет: соседи раздвигаются перестановкой узлов в DOM.
+ * По отпусканию вызывается onEnd с исходным и новым индексом.
  * Палец сначала задерживают на месте (долгое нажатие) — обычное движение пальцем прокручивает список.
  */
 
@@ -22,6 +23,8 @@ const DRAG_SLOP = 5;
 const TOUCH_HOLD_MS = 350;
 const EDGE = 40;
 const EDGE_SPEED = 14;
+/** Копия карточки долетает до её нового места. */
+const DROP_MS = 160;
 
 interface Drag {
   item: HTMLElement;
@@ -36,12 +39,44 @@ interface Drag {
   /** Точка захвата внутри карточки. */
   grabX: number;
   grabY: number;
+  /** Копия карточки, которая едет за указателем (есть, пока идёт перетаскивание). */
+  ghost: HTMLElement | null;
   active: boolean;
   holdTimer: number;
   raf: number;
 }
 
 let current: Drag | null = null;
+
+/** Копия карточки для перетаскивания: те же размеры и содержимое холстов (cloneNode их пиксели не копирует). */
+function makeGhost(item: HTMLElement): HTMLElement {
+  const r = item.getBoundingClientRect();
+  const ghost = item.cloneNode(true) as HTMLElement;
+  ghost.classList.add('reorder-ghost');
+  ghost.removeAttribute('title');
+  ghost.setAttribute('aria-hidden', 'true');
+  Object.assign(ghost.style, { left: `${r.left}px`, top: `${r.top}px`, width: `${r.width}px`, height: `${r.height}px` });
+  const src = item.querySelectorAll('canvas');
+  ghost.querySelectorAll('canvas').forEach((cv, i) => {
+    const from = src[i];
+    if (!from || from.width === 0 || from.height === 0) return;
+    cv.width = from.width;
+    cv.height = from.height;
+    cv.getContext('2d')?.drawImage(from, 0, 0);
+  });
+  document.body.appendChild(ghost);
+  return ghost;
+}
+
+/** Копия долетает до места карточки в списке и исчезает. */
+function dropGhost(ghost: HTMLElement, to: DOMRect): void {
+  const reduce = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduce || typeof ghost.animate !== 'function') { ghost.remove(); return; }
+  const anim = ghost.animate([{ left: `${to.left}px`, top: `${to.top}px`, transform: 'none', boxShadow: 'none' }], {
+    duration: DROP_MS, easing: 'ease-out', fill: 'forwards',
+  });
+  anim.finished.then(() => ghost.remove(), () => ghost.remove());
+}
 
 /** Идёт перетаскивание: перерисовка списка подождёт до его конца. */
 export function reordering(): boolean {
@@ -57,10 +92,10 @@ export function makeSortable(container: HTMLElement, opts: SortableOptions): voi
     cancelAnimationFrame(d.raf);
     if (container.hasPointerCapture(d.pointerId)) container.releasePointerCapture(d.pointerId);
     if (!d.active) return;
-    d.item.classList.remove('dragging');
-    d.item.style.transform = '';
     document.body.classList.remove('reordering');
     if (!commit) container.insertBefore(d.item, d.origNext);
+    if (d.ghost) dropGhost(d.ghost, d.item.getBoundingClientRect());
+    d.item.classList.remove('drag-source');
     // клик, который браузер пришлёт за отпусканием, — не выбор карточки
     const swallow = (e: Event) => { e.stopPropagation(); e.preventDefault(); };
     window.addEventListener('click', swallow, { capture: true, once: true });
@@ -68,11 +103,11 @@ export function makeSortable(container: HTMLElement, opts: SortableOptions): voi
     opts.onEnd(d.from, commit ? opts.items().indexOf(d.item) : d.from);
   };
 
-  /** Карточка следует за указателем от своего текущего места в раскладке. */
+  /** Копия карточки следует за указателем, держась за точку захвата. */
   const follow = (d: Drag) => {
-    d.item.style.transform = '';
-    const r = d.item.getBoundingClientRect();
-    d.item.style.transform = `translate(${d.x - d.grabX - r.left}px, ${d.y - d.grabY - r.top}px)`;
+    if (!d.ghost) return;
+    d.ghost.style.left = `${d.x - d.grabX}px`;
+    d.ghost.style.top = `${d.y - d.grabY}px`;
   };
 
   /** Встаёт на место карточки под указателем: правее/ниже неё, если шла сверху, иначе перед ней. */
@@ -115,7 +150,8 @@ export function makeSortable(container: HTMLElement, opts: SortableOptions): voi
     d.active = true;
     // захват — только у начатого перетаскивания: иначе клик по карточке ушёл бы контейнеру
     container.setPointerCapture(d.pointerId);
-    d.item.classList.add('dragging');
+    d.ghost = makeGhost(d.item);
+    d.item.classList.add('drag-source');
     document.body.classList.add('reordering');
     follow(d);
     d.raf = requestAnimationFrame(autoScroll);
@@ -135,7 +171,7 @@ export function makeSortable(container: HTMLElement, opts: SortableOptions): voi
       from: opts.items().indexOf(item), origNext: item.nextSibling,
       startX: e.clientX, startY: e.clientY, x: e.clientX, y: e.clientY,
       grabX: e.clientX - r.left, grabY: e.clientY - r.top,
-      active: false, holdTimer: 0, raf: 0,
+      ghost: null, active: false, holdTimer: 0, raf: 0,
     };
     current = d;
     if (e.pointerType === 'touch') d.holdTimer = window.setTimeout(() => { if (current === d) begin(d); }, TOUCH_HOLD_MS);

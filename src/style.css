@@ -310,14 +310,20 @@ select {
 .page-item:hover .page-del, .home-page:hover .page-del { visibility: visible; opacity: 1; transform: none; transition: opacity 0.15s ease, transform 0.15s ease, visibility 0s; }
 .page-item .page-del:hover, .home-page .page-del:hover { background: #fdecec; border-color: #f3c1c1; color: var(--danger); }
 .page-item .page-del svg, .home-page .page-del svg { width: 11px; height: 11px; }
-/* карточку тащат, чтобы переставить: она над соседями и едет за указателем без задержки */
-.page-item.dragging, .home-page.dragging, .page-item.active.dragging, .home-page.active.dragging {
-  z-index: 5;
+/* карточку тащат, чтобы переставить: за указателем едет её копия поверх всего (края списка её не обрезают),
+   а сама карточка бледным местом показывает, куда встанет */
+.reorder-ghost, .reorder-ghost.active {
+  position: fixed;
+  z-index: 1000;
+  margin: 0;
+  pointer-events: none;
   transition: none;
   animation: none;
-  box-shadow: 0 10px 28px rgba(16, 24, 40, 0.22);
+  transform: rotate(-1.5deg) scale(1.03);
+  box-shadow: 0 12px 30px rgba(16, 24, 40, 0.24);
 }
-.page-item.dragging .page-del, .home-page.dragging .page-del { visibility: hidden; }
+.reorder-ghost .page-del { visibility: hidden; }
+.page-item.drag-source, .home-page.drag-source { opacity: 0.35; transform: none; box-shadow: none; }
 body.reordering, body.reordering * { cursor: grabbing !important; user-select: none; }
 /* последний элемент: такая же карточка, но пунктиром и с «+» — новая страница */
 .page-add {

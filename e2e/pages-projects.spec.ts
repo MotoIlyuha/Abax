@@ -331,6 +331,37 @@ test.describe('страницы проекта', () => {
     expect((await board.state()).project.pages.map(p => p.name)).toEqual(['Страница 2', 'Страница 3', 'Страница 1']);
   });
 
+  test('перетаскиваемую карточку не обрезают края списка', async ({ board, page }) => {
+    await board.addPage();
+    await board.settled();
+    const list = page.locator('#pages-list');
+    const card = list.locator('.page-item').first();
+    const lb = (await list.boundingBox())!;
+    const cb = (await card.boundingBox())!;
+    await page.mouse.move(cb.x + cb.width / 2, cb.y + cb.height / 2);
+    await page.mouse.down();
+    // уводим карточку выше списка — туда, где список её обрезал бы
+    await page.mouse.move(cb.x + cb.width / 2 + 20, lb.y - 60, { steps: 8 });
+    const ghost = page.locator('body > .reorder-ghost');
+    await expect(ghost).toHaveCount(1);
+    const gb = (await ghost.boundingBox())!;
+    expect(gb.y + gb.height).toBeLessThan(lb.y + lb.height / 2);
+    // копия лежит прямо в body поверх всего: прокручиваемый список её не обрезает
+    expect(await ghost.evaluate(e => getComputedStyle(e).position)).toBe('fixed');
+    // на месте карточки в списке — бледная заглушка, превью копии нарисовано
+    await expect(card).toHaveClass(/drag-source/);
+    const painted = await ghost.locator('canvas').evaluate(c => {
+      const cv = c as HTMLCanvasElement;
+      const px = cv.getContext('2d')!.getImageData(0, 0, cv.width, cv.height).data;
+      return px.some(v => v !== 0);
+    });
+    expect(painted).toBe(true);
+    await page.mouse.up();
+    await expect(ghost).toHaveCount(0);
+    await expect(card).not.toHaveClass(/drag-source/);
+    expect((await board.state()).project.pages.map(p => p.name)).toEqual(['Страница 1', 'Страница 2']);
+  });
+
   test('Ctrl+S сохраняет сразу', async ({ board, page }) => {
     await board.rect(400, 300, 500, 400);
     await page.keyboard.press('Control+s');
