@@ -232,6 +232,39 @@ test.describe('настройки доски', () => {
     expect((await board.state()).settings.coordLabels).toBe(false);
   });
 
+  test('ось Y координатной плоскости направлена вверх', async ({ board, page }) => {
+    // перехватываем подписи на холсте: текст и экранная позиция
+    await page.evaluate(() => {
+      const calls: { t: string; x: number; y: number }[] = [];
+      (window as any).__labels = calls;
+      const orig = CanvasRenderingContext2D.prototype.fillText;
+      CanvasRenderingContext2D.prototype.fillText = function (t: string, x: number, y: number, ...rest: any[]) {
+        calls.push({ t, x, y });
+        return orig.call(this, t, x, y, ...rest);
+      };
+    });
+    await board.grid('coord');
+    // начало координат — в середину экрана, чтобы были видны обе полуоси Y
+    await page.evaluate(() => {
+      const d = (window as any).__doska;
+      d.state.camera = { x: -700, y: -400, zoom: 1 };
+      d.requestRender();
+    });
+    await page.waitForTimeout(150);
+    const { cam, labels } = await page.evaluate(() => ({
+      cam: (window as any).__doska.state.camera,
+      labels: (window as any).__labels as { t: string; x: number; y: number }[],
+    }));
+    const ox = -cam.x * cam.zoom; // экранная x оси Y
+    const oy = -cam.y * cam.zoom; // экранная y оси X
+    // подписи оси Y — справа выровнены по ox - 5
+    const yLabel = (t: string) => labels.find(l => l.t === t && Math.abs(l.x - (ox - 5)) < 1);
+    const plus = yLabel('1'), minus = yLabel('-1');
+    expect(plus && minus).toBeTruthy();
+    expect(plus!.y).toBeLessThan(oy);
+    expect(minus!.y).toBeGreaterThan(oy);
+  });
+
   test('панели плавно появляются, анимацию можно выключить', async ({ board, page }) => {
     const anim = (sel: string) => page.locator(sel).evaluate(e => getComputedStyle(e).animationName);
     await page.locator('#btn-style').click();
@@ -355,6 +388,17 @@ test.describe('страница', () => {
     for (const b of await buttons.all()) {
       await expect(b.locator('svg'), (await b.getAttribute('id')) ?? '').toHaveCount(1);
     }
+    void board;
+  });
+
+  test('на узком экране название проекта не обрезается, пока есть место', async ({ board, page }) => {
+    await page.setViewportSize({ width: 800, height: 900 });
+    const fits = (sel: string) => page.locator(sel).evaluate(e => e.scrollWidth <= e.clientWidth + 1);
+    await expect.poll(() => fits('#project-name')).toBe(true);
+    // поле названия страницы — по ширине текста, а не фиксированные 240px
+    const pageW = await page.locator('#page-name').evaluate(e => e.getBoundingClientRect().width);
+    expect(pageW).toBeLessThan(140);
+    expect(await page.locator('#topbar').evaluate(e => e.scrollWidth <= e.clientWidth)).toBe(true);
     void board;
   });
 

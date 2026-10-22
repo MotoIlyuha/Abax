@@ -219,7 +219,8 @@ function drawCoordAxes(ctx: CanvasRenderingContext2D, cam: Camera, w: number, h:
     for (let y = ly0; y <= cam.y + h / z; y += lstep) {
       if (y === 0) continue;
       const sy = (y - cam.y) * z;
-      ctx.fillText(fmt(y), ox - 5, sy + 4);
+      // ось Y в математике смотрит вверх, а экранная — вниз: выше оси X положительные значения
+      ctx.fillText(fmt(-y), ox - 5, sy + 4);
     }
     ctx.textAlign = 'left';
   }
@@ -835,7 +836,7 @@ function draw(): void {
     }
     ctx.setLineDash([]);
   }
-  if (state.tool === 'eraser' && state.hover) {
+  if ((state.tool === 'eraser' || state.tool === 'partEraser') && state.hover) {
     ctx.strokeStyle = '#7a828e';
     ctx.lineWidth = 1.25;
     ctx.beginPath();
@@ -923,7 +924,7 @@ function drawPresent(camSettled: boolean): void {
   if (hover && state.tool !== 'laser') {
     const x = hover.x * k + ox;
     const y = hover.y * k + oy;
-    if (state.tool === 'eraser') {
+    if (state.tool === 'eraser' || state.tool === 'partEraser') {
       c.strokeStyle = '#7a828e';
       c.lineWidth = 1.25;
       c.beginPath();

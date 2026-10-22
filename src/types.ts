@@ -4,7 +4,7 @@ export type SolidKind =
   | 'cylinder' | 'cone' | 'truncCone' | 'sphere';
 
 export type ToolId =
-  | 'select' | 'pen' | 'highlighter' | 'eraser' | 'pan'
+  | 'select' | 'pen' | 'highlighter' | 'eraser' | 'partEraser' | 'pan'
   | 'text' | 'note' | 'rect' | 'ellipse' | 'triangle' | 'line' | 'arrow' | 'poly'
   | PointerKind
   | SolidKind;

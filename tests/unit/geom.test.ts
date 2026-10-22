@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  aabbIntersects, aabbUnion, applyHandle, distToSeg, elementAABB, elementHandles, gridStepFor,
+  aabbIntersects, aabbUnion, applyHandle, distToSeg, elementAABB, elementHandles, erasePart, gridStepFor,
   hitTest, insertPolyNode, pointInPoly, presentCamera, removePolyNode, snapValue, TEXT_FONT, textSize, wrapText,
 } from '../../src/geom';
 import type { Handle, ImageEl, NoteEl, PolyEl, ShapeEl, SolidEl, StrokeEl, TextEl } from '../../src/types';
@@ -382,5 +382,47 @@ describe('камера окна демонстрации', () => {
     expect(c.zoom).toBeCloseTo(1);
     expect(400 / c.zoom).toBeCloseTo(400);
     expect(center(c, 400, 800)).toEqual({ x: 300, y: 200 });
+  });
+});
+
+describe('erasePart: ластик для пера и маркера', () => {
+  // горизонтальная линия из двух точек: 0…100 по x, толщина 2
+  const line = [{ x: 0, y: 0, p: 0.5 }, { x: 100, y: 0, p: 0.5 }];
+
+  it('мимо линии — null', () => {
+    expect(erasePart(line, 2, 50, 40, 5)).toBeNull();
+    expect(erasePart(line, 2, 300, 0, 5)).toBeNull();
+  });
+
+  it('середина длинного отрезка разрезает линию надвое, край — ровно у ластика', () => {
+    const pieces = erasePart(line, 2, 50, 0, 5)!;
+    expect(pieces).toHaveLength(2);
+    const [left, right] = pieces;
+    const leftEnd = left[left.length - 1].x, rightStart = right[0].x;
+    // стёрто только под кругом (радиус 5 + полтолщины), а не до концов отрезка
+    expect(leftEnd).toBeGreaterThan(40);
+    expect(leftEnd).toBeLessThan(45);
+    expect(rightStart).toBeGreaterThan(55);
+    expect(rightStart).toBeLessThan(60);
+    expect(left[0]).toEqual(line[0]);
+    expect(right[right.length - 1]).toEqual(line[1]);
+  });
+
+  it('конец линии — укорачивает без новых кусков', () => {
+    const pieces = erasePart(line, 2, 100, 0, 5)!;
+    expect(pieces).toHaveLength(1);
+    expect(pieces[0][0]).toEqual(line[0]);
+    expect(pieces[0][pieces[0].length - 1].x).toBeLessThan(95);
+  });
+
+  it('ластик больше линии стирает её целиком', () => {
+    expect(erasePart([{ x: 0, y: 0, p: 0.5 }, { x: 4, y: 0, p: 0.5 }], 2, 2, 0, 10)).toEqual([]);
+  });
+
+  it('давление в новых точках — по интерполяции', () => {
+    const ramp = [{ x: 0, y: 0, p: 0 }, { x: 100, y: 0, p: 1 }];
+    const [left] = erasePart(ramp, 2, 50, 0, 5)!;
+    const last = left[left.length - 1];
+    expect(last.p).toBeCloseTo(last.x / 100, 5);
   });
 });

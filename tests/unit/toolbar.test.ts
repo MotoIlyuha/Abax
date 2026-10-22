@@ -99,6 +99,15 @@ describe('sanitizeToolbar', () => {
     expect(cfg.keys.cube).toBe('KeyR');
     expect(cfg.keys.rect).toBeUndefined();
   });
+
+  it('новый инструмент в сохранённой панели встаёт за соседом по умолчанию, а не в конец', () => {
+    // панель, сохранённая до появления ластика для пера и маркера
+    const saved = { items: [{ type: 'tool', id: 'pen' }, { type: 'tool', id: 'eraser' }, { type: 'tool', id: 'text' }] };
+    const cfg = sanitizeToolbar(saved);
+    // недостающий маркер тоже встаёт за своим соседом — пером
+    expect(layout(cfg).slice(0, 5)).toEqual(['pen', 'highlighter', 'eraser', 'partEraser', 'text']);
+    expect(cfg.keys.partEraser).toBe('KeyX');
+  });
 });
 
 describe('клавиши', () => {
@@ -155,7 +164,7 @@ describe('операции', () => {
     const base = defaultToolbar();
     const r = combineTools(base, 'pen', 'eraser', 'Рисование');
     expect(r.group).toBeTruthy();
-    expect(layout(r.cfg).slice(0, 5)).toEqual(['select', 'pan', `${r.group}[pen,eraser]`, 'highlighter', 'text']);
+    expect(layout(r.cfg).slice(0, 6)).toEqual(['select', 'pan', `${r.group}[pen,eraser]`, 'highlighter', 'partEraser', 'text']);
     expect(r.cfg.items.find(it => it.type === 'group' && it.id === r.group)).toMatchObject({ name: 'Рисование' });
     // из группы тоже можно
     const r2 = combineTools(base, 'select', 'ellipse', 'Г');

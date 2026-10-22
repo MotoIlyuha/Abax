@@ -70,4 +70,38 @@ test.describe('сенсорный экран', () => {
     await expect(page.locator('#home')).toBeVisible();
     expect((await board.state()).project.pages.map(p => p.name)).toEqual(['Страница 2', 'Страница 3', 'Страница 1']);
   });
+
+  for (const [tool, key, cls] of [['стикер', 'n', '.inplace-edit.note'], ['текст', 't', '.inplace-edit']] as const) {
+    test(`касание пальцем создаёт ${tool}: поле ввода не пропадает сразу`, async ({ board, page }) => {
+      const cdp = await page.context().newCDPSession(page);
+      const box = (await board.canvas.boundingBox())!;
+      const tap = async (x: number, y: number) => {
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: box.x + x, y: box.y + y, id: 0 }] });
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+      };
+      await board.tool(key);
+      await tap(500, 400);
+      // после касания браузер шлёт эмулированные mousedown и click — они не должны снимать фокус
+      await page.waitForTimeout(400);
+      const editor = page.locator(cls);
+      await expect(editor).toBeVisible();
+      await expect(editor).toBeFocused();
+      await page.keyboard.type('Задача 1');
+      await page.keyboard.press('Enter');
+      await expect(editor).toHaveCount(0);
+      expect(await board.count(tool === 'стикер' ? 'note' : 'text')).toBe(1);
+    });
+  }
+
+  test('касание холста снимает фокус с поля названия страницы', async ({ board, page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    const box = (await board.canvas.boundingBox())!;
+    const name = page.locator('#page-name');
+    await name.fill('Геометрия');
+    await expect(name).toBeFocused();
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: box.x + 500, y: box.y + 400, id: 0 }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await expect(name).not.toBeFocused();
+    expect((await board.state()).project.pages[0].name).toBe('Геометрия');
+  });
 });

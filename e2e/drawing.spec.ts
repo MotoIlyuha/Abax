@@ -51,7 +51,7 @@ test.describe('перо и маркер', () => {
   });
 
   test('выбор инструмента кликом по тулбару', async ({ board, page }) => {
-    for (const id of ['select', 'pan', 'highlighter', 'eraser', 'text', 'pen']) {
+    for (const id of ['select', 'pan', 'highlighter', 'eraser', 'partEraser', 'text', 'pen']) {
       await page.locator(`.tool[data-tool="${id}"]`).click();
       expect((await board.state()).tool).toBe(id);
       await expect(page.locator(`.tool[data-tool="${id}"]`)).toHaveClass(/active/);
@@ -60,7 +60,7 @@ test.describe('перо и маркер', () => {
 
   test('горячие клавиши инструментов', async ({ board }) => {
     const map: Record<string, string> = {
-      v: 'select', p: 'pen', m: 'highlighter', e: 'eraser', h: 'pan', t: 'text', r: 'rect', o: 'ellipse',
+      v: 'select', p: 'pen', m: 'highlighter', e: 'eraser', x: 'partEraser', h: 'pan', t: 'text', r: 'rect', o: 'ellipse',
       y: 'triangle', l: 'line', a: 'arrow', i: 'laser', k: 'poly', n: 'note',
     };
     for (const [key, tool] of Object.entries(map)) {
@@ -212,6 +212,30 @@ test.describe('ластик', () => {
     expect(await board.count()).toBe(1);
     await page.keyboard.press('Control+z'); // отменяется сам штрих, а не «пустое» стирание
     expect(await board.count()).toBe(0);
+  });
+
+  test('ластик для пера и маркера разрезает линию и не трогает фигуры', async ({ board, page }) => {
+    await board.drag([{ x: 300, y: 300 }, { x: 700, y: 300 }]); // перо
+    await board.tool('m');
+    await board.drag([{ x: 300, y: 500 }, { x: 700, y: 500 }]); // маркер
+    await board.rect(450, 380, 550, 440);
+    const [orig] = (await board.elements()).filter(e => e.type === 'stroke') as any[];
+    const xs: number[] = orig.pts.map((p: { x: number }) => p.x);
+    const [x0, x1] = [Math.min(...xs), Math.max(...xs)];
+    await board.tool('x');
+    // одно вертикальное движение через обе линии и через прямоугольник
+    await board.drag([{ x: 500, y: 250 }, { x: 500, y: 550 }], { steps: 1 });
+    const els = await board.elements();
+    expect(els.filter(e => e.type === 'stroke')).toHaveLength(4);
+    expect(els.filter(e => e.type === 'shape')).toHaveLength(1);
+    // у линии пера стёрта только середина под ластиком, концы на месте
+    const pen = els.filter(e => e.type === 'stroke' && (e as any).tool === 'pen') as any[];
+    const ends = pen.map(e => [e.pts[0].x, e.pts[e.pts.length - 1].x].sort((a, b) => a - b));
+    expect(ends.some(([a, b]) => a === x0 && b > 480 && b < 500)).toBe(true);
+    expect(ends.some(([a, b]) => a > 500 && a < 520 && b === x1)).toBe(true);
+    // стирание — одно действие истории
+    await page.keyboard.press('Control+z');
+    expect(await board.count('stroke')).toBe(2);
   });
 });
 
