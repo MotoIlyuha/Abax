@@ -1,5 +1,6 @@
 import type { BoardSettings, Element, FadeStroke, Flash, GridMode, LaserPt, NoteEl, Page, Project, ProjectMeta, Pt, SolidKind, TextEl, ToolId } from './types';
 import { hasBaseSides, SIDES_MAX, SIDES_MIN, solidSides } from './solid';
+import { DEFAULT_NEW_PAGE_KEY } from './hotkeys';
 import { translateElement } from './geom';
 
 export interface LiveStroke {
@@ -112,7 +113,10 @@ export const state: AppState = {
     other: { list: [{ color: '#1f2329', width: 4 }], active: 0 },
   },
   noteColor: '#ffe066',
-  settings: { toolbarPos: 'left', coordLabels: true, snapToGrid: false, wheelMode: 'scroll', pageTransition: 'slide' },
+  settings: {
+    toolbarPos: 'left', coordLabels: true, snapToGrid: false, wheelMode: 'scroll', pageTransition: 'slide',
+    pageKeyMod: 'ctrl', newPageKey: DEFAULT_NEW_PAGE_KEY,
+  },
   selection: new Set(),
   liveStroke: null,
   liveShape: null,
