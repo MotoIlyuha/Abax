@@ -36,7 +36,7 @@ test.describe('окно «Все настройки»', () => {
     await page.locator('#settings-popover .settings-all').click();
     await expect(dialog(page)).toBeVisible();
     await expect(page.locator('#settings-popover')).toBeHidden();
-    await expect(page.locator('.sd-nav-item')).toHaveText(['Доска', 'Панель инструментов']);
+    await expect(page.locator('.sd-nav-item')).toHaveText(['Доска', 'Панель инструментов', 'О проекте']);
     await expect(page.locator('#sd-title')).toHaveText('Доска');
 
     // раздел «Доска» — те же настройки, что в поповере
@@ -74,6 +74,19 @@ test.describe('окно «Все настройки»', () => {
     await page.keyboard.press('Escape');
     await page.keyboard.press('e');
     expect((await board.state()).tool).toBe('eraser');
+  });
+
+  test('раздел «О проекте»: версия и ссылки на репозиторий', async ({ page }) => {
+    await page.keyboard.press('Control+Comma');
+    await page.locator('.sd-nav-item[data-section="about"]').click();
+    await expect(page.locator('#sd-title')).toHaveText('О проекте');
+    const about = page.locator('#settings-dialog .sd-about');
+    await expect(about.locator('.sd-about-name')).toHaveText('Doska');
+    await expect(about.locator('.sd-about-version')).toHaveText(/^Версия \d+\.\d+\.\d+$/);
+    const links = about.locator('a.sd-about-link');
+    await expect(links).toHaveCount(2);
+    await expect(links.first()).toHaveAttribute('href', 'https://github.com/MotoIlyuha/Doska');
+    await expect(links.first()).toHaveAttribute('target', '_blank');
   });
 });
 

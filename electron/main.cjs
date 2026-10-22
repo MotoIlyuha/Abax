@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
 const fss = require('fs');
@@ -37,7 +37,12 @@ async function createWindow() {
     });
   }
   // окно демонстрации: без меню и без троттлинга — оно почти всегда в фоне
-  win.webContents.setWindowOpenHandler(({ frameName }) => {
+  win.webContents.setWindowOpenHandler(({ url, frameName }) => {
+    // внешние ссылки (раздел «О проекте») — в браузере системы, а не в окне с нашим preload
+    if (frameName !== PRESENT_FRAME && /^https?:\/\//.test(url ?? '')) {
+      shell.openExternal(url);
+      return { action: 'deny' };
+    }
     if (frameName !== PRESENT_FRAME) return { action: 'allow' };
     return {
       action: 'allow',

@@ -20,6 +20,7 @@ import { closePresent, openPresent, presentOpen } from './present';
 import { type ToolbarGroup, onToolbarChange, restoreToolbar, svg, toolDef, toolTip, toolbarConfig } from './toolbar';
 import { openSettingsDialog, settingsDialogOpen } from './settings-dialog';
 import { renderToolbarEditor } from './toolbar-editor';
+import { renderAbout } from './about';
 import { copySelection, COPY_STEP_PX, pasteFromMemory, pasteFromSystem } from './clipboard';
 
 pdfjsLib.GlobalWorkerOptions.workerPort = new PdfWorker();
@@ -46,6 +47,7 @@ const ICONS = {
   trash: svg('<path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/>'),
   toolbar: svg('<rect x="3" y="3" width="7" height="18" rx="2"/><path d="M14 7h7M14 12h7M14 17h7"/>'),
   chevron: svg('<path d="M9 6l6 6-6 6"/>'),
+  info: svg('<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.5v.01"/>'),
 };
 
 const GRID_ICONS: Record<GridMode, string> = {
@@ -1092,6 +1094,7 @@ export function openAllSettings(section?: string): void {
       },
     },
     { id: 'toolbar', title: 'Панель инструментов', icon: ICONS.toolbar, render: host => renderToolbarEditor(host) },
+    { id: 'about', title: 'О проекте', icon: ICONS.info, render: host => renderAbout(host) },
   ], section);
 }
 

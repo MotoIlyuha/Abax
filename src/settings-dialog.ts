@@ -127,7 +127,7 @@ export function closeSettingsDialog(): void {
 
 /** Tab не выпускает фокус из окна. */
 function trapFocus(e: KeyboardEvent, win: HTMLElement): void {
-  const items = [...win.querySelectorAll<HTMLElement>('button, input, select, [tabindex]:not([tabindex="-1"])')]
+  const items = [...win.querySelectorAll<HTMLElement>('button, a[href], input, select, [tabindex]:not([tabindex="-1"])')]
     .filter(x => !(x as HTMLButtonElement).disabled && x.offsetParent !== null);
   if (items.length === 0) return;
   const first = items[0];
