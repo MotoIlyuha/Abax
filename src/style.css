@@ -42,13 +42,21 @@ body.hide-undo-redo :is(#btn-undo, #btn-redo, .sep:has(+ #btn-undo), #btn-redo +
   font: inherit;
   font-weight: 600;
   width: 240px;
+  min-width: 72px;
+  flex: 0 1 auto;
   background: transparent;
   color: var(--fg);
+}
+/* поле по ширине названия: на узком экране не забирает место у названия проекта */
+@supports (field-sizing: content) {
+  #page-name { field-sizing: content; width: auto; max-width: 240px; }
 }
 #page-name:hover, #page-name:focus { border-color: var(--border); background: #fff; outline: none; }
 /* «Проект / Страница» в шапке */
 #project-name {
   max-width: 200px;
+  min-width: 0;
+  flex: 0 1 auto;
   padding-left: 4px;
   overflow: hidden;
   white-space: nowrap;
@@ -74,6 +82,9 @@ select {
   align-items: center;
   gap: 7px;
   width: 214px;
+  /* на узком экране сжимается первым: подпись фона уходит в многоточие, иконка остаётся */
+  flex: 0 1000 auto;
+  min-width: 112px;
   height: 31px;
   padding: 0 7px 0 8px;
   border: 1px solid var(--border);
@@ -863,7 +874,28 @@ body.no-ui-anim #pages-dock.open :is(.page-item, .page-add) { animation: none; }
 .sd-about { max-width: 520px; }
 /* цвета названия — из фирменной палитры логотипа */
 .sd-about-head { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
-.sd-about-logo { width: 56px; height: 56px; flex: none; }
+.sd-about-logo { width: 56px; height: 56px; flex: none; user-select: none; -webkit-touch-callout: none; }
+/* пасхалка «О проекте»: тост внизу окна, поверх окна настроек */
+#toast {
+  position: fixed;
+  left: 50%;
+  bottom: 32px;
+  z-index: 1100;
+  max-width: calc(100vw - 32px);
+  padding: 10px 18px;
+  border-radius: 10px;
+  background: #2e1f19;
+  color: #f3eeec;
+  font-size: 14px;
+  box-shadow: var(--shadow);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+#toast[hidden] { display: none; }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, 8px); } }
+#toast.show { animation: toast-in 0.22s cubic-bezier(0.22, 0.8, 0.24, 1); }
+body.no-ui-anim #toast.show { animation: none; }
+@media (prefers-reduced-motion: reduce) { #toast.show { animation: none; } }
 .sd-about-name { display: flex; align-items: baseline; gap: 10px; font-size: 24px; font-weight: 700; line-height: 1.2; color: #2e1f19; }
 .sd-about-greek { font-size: 17px; font-weight: 400; color: #6a5e5a; }
 .sd-about-version { color: var(--muted); }

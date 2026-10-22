@@ -91,6 +91,29 @@ test.describe('окно «Все настройки»', () => {
     await expect(links.first()).toHaveAttribute('href', 'https://github.com/MotoIlyuha/Doska');
     await expect(links.first()).toHaveAttribute('target', '_blank');
   });
+
+  test('«О проекте»: если нажать и задержать логотип, всплывает тост', async ({ page }) => {
+    await page.keyboard.press('Control+Comma');
+    await page.locator('.sd-nav-item[data-section="about"]').click();
+    const logo = page.locator('#settings-dialog .sd-about-logo');
+    const box = (await logo.boundingBox())!;
+    const toast = page.locator('#toast');
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    // короткий клик — ничего
+    await page.mouse.down();
+    await page.waitForTimeout(200);
+    await page.mouse.up();
+    await page.waitForTimeout(800);
+    await expect(toast).toHaveCount(0);
+    // нажать и держать
+    await page.mouse.down();
+    await expect(toast).toBeVisible({ timeout: 2000 });
+    await page.mouse.up();
+    await expect(toast).toHaveText('Сделано для Инны с любовью от Ильи 💚');
+    // тост поверх окна настроек и сам исчезает
+    await expect(page.locator('#settings-dialog')).toBeVisible();
+    await expect(toast).toBeHidden({ timeout: 6000 });
+  });
 });
 
 test.describe('настройка панели инструментов', () => {

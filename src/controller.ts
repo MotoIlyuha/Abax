@@ -5,7 +5,7 @@ import {
   expandSelectionWithGroups, groupSelected, ungroupSelected, selectAll,
 } from './state';
 import {
-  hitTest, aabbIntersects, elementAABB, elementHandles, applyHandle,
+  hitTest, erasePart, aabbIntersects, elementAABB, elementHandles, applyHandle,
   insertPolyNode, removePolyNode, gridStepFor, snapValue, translateElement,
 } from './geom';
 import { collabActive, noteCursor, readOnly } from './collab';
@@ -19,7 +19,7 @@ const SELECT_TOL = 6; // px экрана
 const HANDLE_HIT_PX = 8;
 const POLY_SNAP_PX = 14; // радиус примагничивания к первой точке
 const CURSORS: Record<ToolId, string> = {
-  select: 'default', pen: 'crosshair', highlighter: 'crosshair', eraser: 'none',
+  select: 'default', pen: 'crosshair', highlighter: 'crosshair', eraser: 'none', partEraser: 'none',
   pan: 'grab', text: 'text', note: 'crosshair', rect: 'crosshair',
   ellipse: 'crosshair', triangle: 'crosshair', line: 'crosshair', arrow: 'crosshair', poly: 'crosshair',
   laser: 'none', fadePen: 'crosshair', flash: 'default',
@@ -36,6 +36,7 @@ const ZOOM_MAX = 32;
 type Action = { pid: number } & (
   | { kind: 'draw' }
   | { kind: 'erase'; pre: Element[]; removed: Element[]; last: { x: number; y: number } | null }
+  | { kind: 'erasePart'; pre: Element[]; changed: boolean; last: { x: number; y: number } | null }
   | { kind: 'move'; pre: Element[]; start: Pt; orig: Map<string, Element>; moved: boolean; deselectOnUp: boolean }
   | { kind: 'shape' }
   | { kind: 'solid' }
@@ -115,6 +116,32 @@ export function initController(canvas: HTMLCanvasElement): void {
       next = kept;
     }
     if (removedNow) replaceElements(next);
+  }
+
+  /** Ластик для пера и маркера: вырезает из линий часть под ластиком, остальное не трогает. */
+  function erasePartAt(x: number, y: number, a: Extract<Action, { kind: 'erasePart' }>): void {
+    const r = eraseRadius / state.camera.zoom;
+    const from = a.last ?? { x, y };
+    const steps = Math.max(1, Math.ceil(Math.hypot(x - from.x, y - from.y) / r));
+    a.last = { x, y };
+    let next = state.board.elements;
+    let changed = false;
+    for (let i = 1; i <= steps; i++) {
+      const px = from.x + ((x - from.x) * i) / steps;
+      const py = from.y + ((y - from.y) * i) / steps;
+      const out: Element[] = [];
+      for (const el of next) {
+        if (el.type !== 'stroke') { out.push(el); continue; }
+        const stroke = el;
+        const pieces = erasePart(stroke.pts, stroke.width, px, py, r);
+        if (!pieces) { out.push(stroke); continue; }
+        changed = true;
+        // куски — на месте линии (порядок слоёв сохраняется); первый оставляет её id
+        pieces.forEach((pts, k) => out.push({ ...stroke, id: k === 0 ? stroke.id : uid(), pts }));
+      }
+      next = out;
+    }
+    if (changed) { a.changed = true; replaceElements(next); }
   }
 
   function finishShape(): void {
@@ -207,6 +234,10 @@ export function initController(canvas: HTMLCanvasElement): void {
         if (a.removed.length) pushHistory(a.pre);
         update();
         break;
+      case 'erasePart':
+        if (a.changed) pushHistory(a.pre);
+        update();
+        break;
       case 'shape': finishShape(); break;
       case 'solid': finishSolid(); break;
       case 'move':
@@ -235,6 +266,14 @@ export function initController(canvas: HTMLCanvasElement): void {
 
   function onPointerDown(e: PointerEvent): void {
     canvas.setPointerCapture(e.pointerId);
+    if (e.pointerType !== 'mouse') {
+      // палец и перо: после pointerup браузер шлёт эмулированный mousedown, и он снимал фокус
+      // с только что открытого редактора стикера (касание — в центре стикера, мимо поля ввода).
+      // Отменённый pointerdown гасит эмулированные события мыши; фокус с полей, который раньше
+      // снимал тот mousedown, снимаем сами — как при клике мышью
+      e.preventDefault();
+      (document.activeElement as HTMLElement | null)?.blur?.();
+    }
     const lp = localPos(e);
     pointers.set(e.pointerId, { x: lp.x, y: lp.y, type: e.pointerType });
 
@@ -280,6 +319,12 @@ export function initController(canvas: HTMLCanvasElement): void {
         const a: Extract<Action, { kind: 'erase' }> = { pid: e.pointerId, kind: 'erase', pre: state.board.elements, removed: [], last: null };
         action = a;
         eraseAt(s.x, s.y, a);
+        break;
+      }
+      case 'partEraser': {
+        const a: Extract<Action, { kind: 'erasePart' }> = { pid: e.pointerId, kind: 'erasePart', pre: state.board.elements, changed: false, last: null };
+        action = a;
+        erasePartAt(s.x, s.y, a);
         break;
       }
       case 'rect':
@@ -440,7 +485,7 @@ export function initController(canvas: HTMLCanvasElement): void {
     if (ptr) { ptr.x = lp.x; ptr.y = lp.y; }
     state.hover = { x: lp.x, y: lp.y };
     if (collabActive()) noteCursor(lp.x / state.camera.zoom + state.camera.x, lp.y / state.camera.zoom + state.camera.y);
-    if (state.tool === 'eraser') update();
+    if (state.tool === 'eraser' || state.tool === 'partEraser') update();
     else if (presenting()) requestRender(); // курсор в окне демонстрации
 
     if (gesture) { applyGesture(); return; }
@@ -491,6 +536,13 @@ export function initController(canvas: HTMLCanvasElement): void {
           const c = localPos(ev);
           const s = toScene(c.x, c.y);
           eraseAt(s.x, s.y, a);
+        }
+        break;
+      case 'erasePart':
+        for (const ev of coalesced(e)) {
+          const c = localPos(ev);
+          const s = toScene(c.x, c.y);
+          erasePartAt(s.x, s.y, a);
         }
         break;
       case 'shape':
@@ -591,7 +643,7 @@ export function initController(canvas: HTMLCanvasElement): void {
 
   function onPointerLeave(): void {
     state.hover = null;
-    if (state.tool === 'eraser' || state.tool === 'laser') update();
+    if (state.tool === 'eraser' || state.tool === 'partEraser' || state.tool === 'laser') update();
     else if (presenting()) requestRender();
   }
 

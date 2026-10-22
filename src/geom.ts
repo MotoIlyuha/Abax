@@ -1,5 +1,6 @@
 import type { Camera, Element, Handle, HandlePos, PolyEl, Pt, ShapeEl, StrokeEl, TextEl } from './types';
 import { applySolidParam, solidGeometry, solidHandles } from './solid';
+import { widthAt } from './stroke';
 
 export interface AABB { x0: number; y0: number; x1: number; y1: number }
 
@@ -128,6 +129,53 @@ export function distToSeg(px: number, py: number, ax: number, ay: number, bx: nu
   let t = len2 ? ((px - ax) * dx + (py - ay) * dy) / len2 : 0;
   t = Math.max(0, Math.min(1, t));
   return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
+/**
+ * Ластик для пера и маркера: стирает у линии (pts, базовая толщина width) всё, что под кругом
+ * радиуса r с центром (x, y). Точка стирается, если её след касается круга, — тогда уцелевший
+ * край линии доходит ровно до ластика. Отрезки возле круга дробятся, иначе редкие точки длинной
+ * прямой стирались бы целиком, до соседних точек.
+ * Возвращает уцелевшие куски (ноль, один или несколько); null — круг линию не задел.
+ */
+export function erasePart(pts: Pt[], width: number, x: number, y: number, r: number): Pt[][] | null {
+  const reach = r + widthAt(width, 1) / 2;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const p of pts) {
+    if (p.x < x0) x0 = p.x;
+    if (p.x > x1) x1 = p.x;
+    if (p.y < y0) y0 = p.y;
+    if (p.y > y1) y1 = p.y;
+  }
+  if (x < x0 - reach || x > x1 + reach || y < y0 - reach || y > y1 + reach) return null;
+  const step = Math.max(r / 3, 0.25);
+  const dense: Pt[] = [pts[0]];
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i];
+    if (distToSeg(x, y, a.x, a.y, b.x, b.y) <= reach) {
+      const n = Math.ceil(Math.hypot(b.x - a.x, b.y - a.y) / step);
+      for (let k = 1; k < n; k++) {
+        const f = k / n;
+        dense.push({ x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f, p: a.p + (b.p - a.p) * f });
+      }
+    }
+    dense.push(b);
+  }
+  const pieces: Pt[][] = [];
+  let run: Pt[] = [];
+  let hit = false;
+  for (const p of dense) {
+    if (Math.hypot(p.x - x, p.y - y) <= r + widthAt(width, p.p) / 2) {
+      hit = true;
+      if (run.length > 1) pieces.push(run); // одиночная точка у края — соринка, не оставляем
+      run = [];
+    } else {
+      run.push(p);
+    }
+  }
+  if (!hit) return null;
+  if (run.length > 1) pieces.push(run);
+  return pieces;
 }
 
 /** Попадание точки (координаты сцены) в элемент; tol — допуск в юнитах сцены. */
