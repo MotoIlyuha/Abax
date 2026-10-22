@@ -400,7 +400,7 @@ body.reordering, body.reordering * { cursor: grabbing !important; user-select: n
 .page-add:hover { transform: translateY(-3px); border-color: var(--accent); color: var(--accent); background: rgba(234, 240, 254, 0.9); }
 .page-add svg { width: 30px; height: 30px; }
 /* карточки поднимаются вслед за кнопкой, по очереди */
-@keyframes page-in { from { opacity: 0; transform: translateY(18px); } }
+@keyframes page-in { from { opacity: 0; transform: translateY(var(--page-in-y, 18px)); } }
 #pages-dock.open .page-item, #pages-dock.open .page-add {
   animation: page-in 0.4s var(--dock-ease) backwards;
   animation-delay: calc(var(--i, 0) * 26ms + 40ms);
@@ -409,6 +409,31 @@ body.reordering, body.reordering * { cursor: grabbing !important; user-select: n
   #btn-pages, .pages-chev, #pages-tray, #pages-dock.open #pages-tray, .page-item, .page-add { transition: none; }
   #pages-dock.open .page-item, #pages-dock.open .page-add { animation: none; }
 }
+/* панель инструментов внизу: кнопка страниц — слева вверху и никуда не едет,
+   список — колонкой под ней, карточки опускаются сверху */
+#pages-dock[data-side="top"] { top: 12px; --page-in-y: -18px; }
+#pages-dock[data-side="top"] #btn-pages { top: 0; bottom: auto; transition: none; }
+#pages-dock[data-side="top"].open #btn-pages { transform: none; }
+#pages-dock[data-side="top"] .pages-chev { transform: rotate(180deg); transition: none; }
+#pages-dock[data-side="top"].open .pages-chev { transform: none; }
+#pages-dock[data-side="top"] #pages-tray {
+  top: 52px;
+  bottom: auto;
+  max-height: calc(100% - 52px);
+  display: flex;
+  flex-direction: column;
+  transform: translateY(-28px);
+}
+#pages-dock[data-side="top"].open #pages-tray { transform: none; }
+#pages-dock[data-side="top"] #pages-list {
+  flex-direction: column;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+#pages-dock[data-side="top"] #pages-list::-webkit-scrollbar { width: 5px; }
+#pages-dock[data-side="top"] .page-add { min-height: 96px; }
 /* «Анимация меню и панелей» выключена в настройках */
 body.no-ui-anim :is(#btn-pages, .pages-chev, #pages-tray, #pages-dock.open #pages-tray, .page-item, .page-add) { transition: none; }
 body.no-ui-anim #pages-dock.open :is(.page-item, .page-add) { animation: none; }

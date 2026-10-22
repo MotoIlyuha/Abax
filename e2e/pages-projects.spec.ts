@@ -228,6 +228,57 @@ test.describe('страницы проекта', () => {
     await expect.poll(() => list.evaluate(e => e.scrollLeft)).toBeGreaterThan(0);
   });
 
+  test('панель инструментов внизу: кнопка страниц слева вверху, список колонкой, кнопка не двигается', async ({ board, page }) => {
+    await page.locator('#btn-settings').click();
+    await page.locator('#settings-popover button', { hasText: 'Снизу' }).click();
+    await page.locator('#btn-settings').click();
+    const dock = page.locator('#pages-dock');
+    await expect(dock).toHaveAttribute('data-side', 'top');
+    for (let i = 0; i < 6; i++) await board.addPage();
+    await board.openPages();
+    await board.settled();
+
+    const wrap = (await page.locator('#canvas-wrap').boundingBox())!;
+    const btn = page.locator('#btn-pages');
+    const closedBox = await (async () => {
+      await board.tool('b');
+      await expect(page.locator('#pages-tray')).toBeHidden();
+      return (await btn.boundingBox())!;
+    })();
+    expect(closedBox.y - wrap.y).toBeLessThan(20);
+    expect(closedBox.x - wrap.x).toBeLessThan(20);
+    // у кнопки нет перехода: при открытии она стоит на месте с первого кадра
+    expect(await btn.evaluate(e => getComputedStyle(e).transitionDuration)).toBe('0s');
+    await board.tool('b');
+    expect(await btn.evaluate(e => e.getAnimations().length)).toBe(0);
+    expect((await btn.boundingBox())!.y).toBe(closedBox.y);
+
+    // длинный список прокручивается внутри холста; активная (последняя) страница прокручена в видимую часть
+    await board.settled();
+    const list = page.locator('#pages-list');
+    const { sh, ch } = await list.evaluate(e => ({ sh: e.scrollHeight, ch: e.clientHeight }));
+    expect(sh).toBeGreaterThan(ch);
+    const tray = (await page.locator('#pages-tray').boundingBox())!;
+    expect(tray.y + tray.height).toBeLessThanOrEqual(wrap.y + wrap.height);
+    const active = (await page.locator('#pages-list .page-item.active').boundingBox())!;
+    expect(active.y + active.height).toBeLessThanOrEqual(wrap.y + wrap.height);
+    expect(active.y).toBeGreaterThan(closedBox.y + closedBox.height);
+
+    // карточки — колонкой под кнопкой
+    await list.evaluate(e => { e.scrollTop = 0; });
+    const cards = page.locator('#pages-list .page-item');
+    const first = (await cards.nth(0).boundingBox())!;
+    const second = (await cards.nth(1).boundingBox())!;
+    expect(first.y).toBeGreaterThan(closedBox.y + closedBox.height);
+    expect(second.x).toBeCloseTo(first.x, 0);
+    expect(second.y).toBeGreaterThan(first.y + first.height);
+
+    // панель обратно влево — кнопка снова внизу
+    await page.locator('#btn-settings').click();
+    await page.locator('#settings-popover button', { hasText: 'Слева' }).click();
+    await expect(dock).toHaveAttribute('data-side', 'bottom');
+  });
+
   test('анимация перехода на другую страницу из настроек', async ({ board, page }) => {
     const transitions = await countTransitions(page);
     const layer = page.locator('#canvas-wrap > .page-transition');

@@ -1368,7 +1368,17 @@ function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
 function applyToolbarPos(): void {
   const tb = document.getElementById('toolbar')!;
   tb.dataset.pos = state.settings.toolbarPos;
+  // панель внизу заняла бы место кнопки страниц: кнопка уходит наверх, список — колонкой под ней
+  const dock = document.getElementById('pages-dock')!;
+  const top = pagesAtTop();
+  dock.dataset.side = top ? 'top' : 'bottom';
+  dock.dataset.tipSide = top ? 'bottom' : 'top';
   positionCtxPanels();
+}
+
+/** Кнопка страниц — слева вверху, список вертикальный (когда панель инструментов внизу). */
+function pagesAtTop(): boolean {
+  return state.settings.toolbarPos === 'bottom';
 }
 
 // ----- Экспорт PNG -----
@@ -1907,12 +1917,15 @@ function revealActivePage(smooth: boolean): void {
   const el = pageCards.get(state.pageId)?.el;
   if (!el) return;
   const pad = 12;
-  const l = el.offsetLeft - pad;
-  const r = el.offsetLeft + el.offsetWidth + pad;
-  let to = list.scrollLeft;
-  if (l < to) to = l;
-  else if (r > to + list.clientWidth) to = r - list.clientWidth;
-  if (to !== list.scrollLeft) list.scrollTo({ left: to, behavior: smooth ? 'smooth' : 'auto' });
+  const vertical = pagesAtTop();
+  const start = (vertical ? el.offsetTop : el.offsetLeft) - pad;
+  const end = (vertical ? el.offsetTop + el.offsetHeight : el.offsetLeft + el.offsetWidth) + pad;
+  const scroll = vertical ? list.scrollTop : list.scrollLeft;
+  const size = vertical ? list.clientHeight : list.clientWidth;
+  let to = scroll;
+  if (start < to) to = start;
+  else if (end > to + size) to = end - size;
+  if (to !== scroll) list.scrollTo({ [vertical ? 'top' : 'left']: to, behavior: smooth ? 'smooth' : 'auto' });
 }
 
 function setPagesOpen(open: boolean): void {
@@ -1951,8 +1964,8 @@ function wirePagesDock(): void {
     },
   });
   list.addEventListener('wheel', e => {
-    // обычное колёсико листает горизонтальный список
-    if (Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+    // обычное колёсико листает горизонтальный список; вертикальный листается сам
+    if (pagesAtTop() || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
     e.preventDefault();
     list.scrollLeft += e.deltaY;
   }, { passive: false });
