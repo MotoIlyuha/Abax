@@ -28,7 +28,7 @@ test.describe('страницы проекта', () => {
     const tray = page.locator('#pages-tray');
     const wrap = (await page.locator('#canvas-wrap').boundingBox())!;
     // слева внизу, страница пока одна
-    await expect(btn).toHaveText('Страница +');
+    await expect(btn).toHaveText('Страница');
     await expect(tray).toBeHidden();
     const down = (await btn.boundingBox())!;
     expect(down.x - wrap.x).toBeLessThan(20);
@@ -91,7 +91,7 @@ test.describe('страницы проекта', () => {
     await expect(page.locator('#btn-pages')).toHaveText('Страницы 1');
     await board.tool('b');
     await expect(tray).toBeHidden();
-    await expect(page.locator('#btn-pages')).toHaveText('Страница +');
+    await expect(page.locator('#btn-pages')).toHaveText('Страница');
     expect((await board.state()).project.pages).toHaveLength(1);
   });
 
