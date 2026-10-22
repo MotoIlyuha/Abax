@@ -1,0 +1,8 @@
+{
+  "appId": "ru.abax.app",
+  "appName": "Abax",
+  "webDir": "dist",
+  "android": {
+    "backgroundColor": "#f4f5f7"
+  }
+}

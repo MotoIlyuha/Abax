@@ -4,6 +4,7 @@
 
 import type { ToolId } from './types';
 import type { SectionView } from './settings-dialog';
+import { macKeys } from './hotkeys';
 import {
   type EntryDrop, type EntryRef, type ToolbarConfig, type ToolbarGroup, type ToolbarList,
   GROUP_NAME_MAX, addGroup, combineTools, defaultToolbar, keyLabel, keyProblem, moveEntry, nextGroupName,
@@ -311,7 +312,7 @@ export function renderToolbarEditor(host: HTMLElement): SectionView {
     if (e.key === 'Tab') { stopCapture(); return false; }
     if (e.key === 'Escape') { stopCapture(); return true; }
     if (e.code === 'Backspace' || e.code === 'Delete') { assignKey(id, null); return true; }
-    if (e.ctrlKey || e.altKey || e.metaKey) { setStatus('Нужна одна клавиша, без Ctrl и Alt', true); return true; }
+    if (e.ctrlKey || e.altKey || e.metaKey) { setStatus(macKeys('Нужна одна клавиша, без Ctrl и Alt'), true); return true; }
     const problem = keyProblem(e.code);
     if (problem) { setStatus(problem, true); return true; }
     assignKey(id, e.code);

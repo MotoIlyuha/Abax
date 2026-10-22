@@ -1,12 +1,13 @@
 {
   "name": "doska",
-  "version": "1.2.0",
+  "version": "2.0.0",
   "private": true,
   "description": "Локальная доска для занятий по математике",
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
     "app:dev": "node scripts/electron-dev.mjs",
+    "icons": "node scripts/icons.mjs",
     "typecheck": "tsc --noEmit",
     "build": "npm run typecheck && vite build",
     "electron": "electron .",
@@ -20,6 +21,11 @@
     "typecheck:tests": "tsc --noEmit -p tsconfig.test.json"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.5.3",
+    "@capacitor/cli": "^8.5.3",
+    "@capacitor/core": "^8.5.3",
+    "@capacitor/filesystem": "^8.1.5",
+    "@capacitor/share": "^8.0.3",
     "@playwright/test": "1.56.1",
     "@vitest/coverage-v8": "^3.2.4",
     "electron": "^33.2.0",

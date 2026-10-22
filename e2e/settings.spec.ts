@@ -83,7 +83,8 @@ test.describe('окно «Все настройки»', () => {
     await page.locator('.sd-nav-item[data-section="about"]').click();
     await expect(page.locator('#sd-title')).toHaveText('О проекте');
     const about = page.locator('#settings-dialog .sd-about');
-    await expect(about.locator('.sd-about-name')).toHaveText('Doska');
+    await expect(about.locator('.sd-about-name')).toHaveText('Abaxἄβαξ');
+    await expect(about.locator('.sd-about-logo')).toHaveJSProperty('naturalWidth', 256);
     await expect(about.locator('.sd-about-version')).toHaveText(/^Версия \d+\.\d+\.\d+$/);
     const links = about.locator('a.sd-about-link');
     await expect(links).toHaveCount(2);

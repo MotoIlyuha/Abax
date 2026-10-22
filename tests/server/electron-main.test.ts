@@ -36,12 +36,14 @@ const dialog = {
   showErrorBox: vi.fn(),
 };
 let userData: string;
+const appData = path.join(os.tmpdir(), 'appdata-fake');
 let isPackaged = false;
 let ready: Promise<void>;
 const fakeElectron = {
   app: {
     get isPackaged() { return isPackaged; },
-    getPath: () => userData,
+    getPath: (name: string) => (name === 'appData' ? appData : userData),
+    setPath: vi.fn(),
     whenReady: () => ready,
     on: (ev: string, fn: () => void) => { appEvents.set(ev, fn); },
     quit: vi.fn(),
@@ -108,6 +110,12 @@ describe('окно', () => {
   it('в сборке грузит dist/index.html', async () => {
     await loadMain({ packaged: true });
     expect(FakeWindow.all[0].file).toBe(path.join(path.dirname(MAIN), '..', 'dist', 'index.html'));
+  });
+
+  it('после переименования в Abax данные остаются в прежней папке профиля Doska', async () => {
+    fakeElectron.app.setPath.mockClear();
+    await loadMain({ packaged: true });
+    expect(fakeElectron.app.setPath).toHaveBeenCalledWith('userData', path.join(appData, 'Doska'));
   });
 
   it('ошибки рендерера пишутся в консоль main-процесса', async () => {

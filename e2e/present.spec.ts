@@ -58,7 +58,7 @@ const around = (p: Pt, r: number) => ({ x0: p.x - r, y0: p.y - r, x1: p.x + r, y
 test.describe('окно демонстрации', () => {
   test('показывает только холст и закрывается кнопкой', async ({ page }) => {
     const popup = await openPresent(page);
-    expect(await popup.title()).toBe('Доска — демонстрация');
+    expect(await popup.title()).toBe('Abax — демонстрация');
     // ничего, кроме холста: ни тулбара, ни верхней панели
     expect(await popup.evaluate(() => [...document.body.children].map(e => e.tagName))).toEqual(['CANVAS']);
     await page.locator('#btn-present').click();

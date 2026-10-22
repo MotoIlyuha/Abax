@@ -5,7 +5,7 @@ import { attachPresent, detachPresent, requestRender } from './renderer';
 import { update } from './state';
 
 const WIN_NAME = 'doska-present';
-export const PRESENT_TITLE = 'Доска — демонстрация';
+export const PRESENT_TITLE = 'Abax — демонстрация';
 
 let win: Window | null = null;
 let closeWatch = 0;

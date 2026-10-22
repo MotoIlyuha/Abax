@@ -31,6 +31,8 @@ body {
   flex: none;
 }
 #topbar .sep { width: 1px; height: 22px; background: var(--border); margin: 0 6px; }
+/* настройка «Скрыть кнопки отмены и повтора»: уходят и оба разделителя вокруг них */
+body.hide-undo-redo :is(#btn-undo, #btn-redo, .sep:has(+ #btn-undo), #btn-redo + .sep) { display: none; }
 #topbar .spacer { flex: 1; }
 #topbar .topbar-right { display: flex; align-items: center; gap: 6px; margin-left: auto; }
 #page-name {
@@ -65,6 +67,57 @@ select {
   background: #fff;
   color: var(--fg);
 }
+
+/* фон страницы: кнопка в шапке и выпадающий список с иконками */
+#grid-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: 214px;
+  height: 31px;
+  padding: 0 7px 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  font: inherit;
+  color: var(--fg);
+  cursor: pointer;
+}
+#grid-mode:hover { border-color: #cdd2da; }
+#grid-mode[aria-expanded="true"] { border-color: var(--accent); }
+#grid-mode span { flex: 1; min-width: 0; overflow: hidden; text-align: left; white-space: nowrap; text-overflow: ellipsis; }
+#grid-mode svg { width: 16px; height: 16px; flex: none; color: #5d6470; }
+#grid-mode svg:last-child { width: 14px; height: 14px; color: var(--muted); }
+#grid-menu {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+}
+.grid-option {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 10px 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  font: inherit;
+  color: var(--fg);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.grid-option svg { width: 18px; height: 18px; flex: none; color: #5d6470; }
+.grid-option:hover, .grid-option:focus-visible { background: #f0f2f5; outline: none; }
+.grid-option[aria-selected="true"], .grid-option[aria-selected="true"] svg { color: var(--accent); }
+.grid-option[aria-selected="true"] { background: var(--accent-soft); }
 
 .icon {
   width: 32px;
@@ -112,7 +165,7 @@ select {
 .page-del svg { width: 12px; height: 12px; }
 /* (старые стили .board-item удалены вместе с досками) */
 /* display:flex у этих панелей перебивает [hidden] из UA-стилей — чиним явно */
-#quick-menu[hidden], #settings-popover[hidden], #home[hidden], #tooltip[hidden] { display: none !important; }
+#quick-menu[hidden], #settings-popover[hidden], #grid-menu[hidden], #home[hidden], #tooltip[hidden] { display: none !important; }
 
 #canvas-wrap { position: relative; flex: 1; min-width: 0; overflow: hidden; }
 #board { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; display: block; cursor: crosshair; }
@@ -808,8 +861,11 @@ body.no-ui-anim #pages-dock.open :is(.page-item, .page-add) { animation: none; }
 
 /* ----- О проекте ----- */
 .sd-about { max-width: 520px; }
-.sd-about-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 8px; }
-.sd-about-name { font-size: 24px; font-weight: 700; }
+/* цвета названия — из фирменной палитры логотипа */
+.sd-about-head { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+.sd-about-logo { width: 56px; height: 56px; flex: none; }
+.sd-about-name { display: flex; align-items: baseline; gap: 10px; font-size: 24px; font-weight: 700; line-height: 1.2; color: #2e1f19; }
+.sd-about-greek { font-size: 17px; font-weight: 400; color: #6a5e5a; }
 .sd-about-version { color: var(--muted); }
 .sd-about-desc { margin-bottom: 18px; line-height: 1.5; }
 .sd-about-features { margin: 0 0 20px; padding-left: 20px; line-height: 1.7; }
@@ -1360,7 +1416,7 @@ body.collab-guest.readonly-mode #toolbar { display: none; }
   from { opacity: 0; transform: translate(var(--pop-x, 0), var(--pop-y, 0)) scale(0.97); }
 }
 @keyframes ui-fade { from { opacity: 0; } }
-.ctx-panel, #settings-popover, #share-dialog, .sd-window {
+.ctx-panel, #settings-popover, #grid-menu, #share-dialog, .sd-window {
   animation: ui-pop 0.18s cubic-bezier(0.22, 0.8, 0.24, 1);
 }
 #settings-dialog { animation: ui-fade 0.18s ease-out; }
@@ -1371,8 +1427,9 @@ body.collab-guest.readonly-mode #toolbar { display: none; }
 .ctx-panel[data-from="bottom"] { --pop-y: 8px; transform-origin: bottom center; }
 /* поповер и окно «Поделиться» — из-под кнопок шапки справа */
 #settings-popover, #share-dialog { --pop-y: -6px; transform-origin: top right; }
+#grid-menu { --pop-y: -6px; transform-origin: top left; }
 .sd-window { --pop-y: 10px; animation-duration: 0.22s; }
-body.no-ui-anim :is(.ctx-panel, #settings-popover, #share-dialog, #settings-dialog, .sd-window) { animation: none; }
+body.no-ui-anim :is(.ctx-panel, #settings-popover, #grid-menu, #share-dialog, #settings-dialog, .sd-window) { animation: none; }
 @media (prefers-reduced-motion: reduce) {
-  .ctx-panel, #settings-popover, #share-dialog, #settings-dialog, .sd-window { animation: none; }
+  .ctx-panel, #settings-popover, #grid-menu, #share-dialog, #settings-dialog, .sd-window { animation: none; }
 }

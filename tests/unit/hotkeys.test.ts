@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  DEFAULT_NEW_PAGE_KEY, FIXED_SHORTCUTS, browserUse, codeLabel, comboFromEvent, comboLabel, newPageKeyProblem,
+  DEFAULT_NEW_PAGE_KEY, FIXED_SHORTCUTS, browserUse, codeLabel, comboFromEvent, comboLabel, macKeys, newPageKeyProblem,
   newPageKeyWarning, pageKeyWarning, pageNumberFromEvent,
 } from '../../src/hotkeys';
 
@@ -30,6 +30,14 @@ describe('сочетания клавиш', () => {
     expect(codeLabel('Numpad4')).toBe('Num 4');
   });
 
+  it('на macOS в подписях Cmd вместо Ctrl', () => {
+    expect(macKeys('Ctrl+Shift+Z', true)).toBe('Cmd+Shift+Z');
+    expect(macKeys('Отменить (Ctrl+Z) или Ctrl+Y', true)).toBe('Отменить (Cmd+Z) или Cmd+Y');
+    expect(macKeys('Нужно сочетание с Ctrl или Alt', true)).toBe('Нужно сочетание с Cmd или Alt');
+    expect(macKeys('Alt+N', true)).toBe('Alt+N');
+    expect(macKeys('Ctrl+Shift+Z', false)).toBe('Ctrl+Shift+Z');
+  });
+
   it('номер страницы: только выбранный модификатор, цифры 1–9 и цифровой блок', () => {
     expect(pageNumberFromEvent(key('Digit3', { ctrl: true }), 'ctrl')).toBe(3);
     expect(pageNumberFromEvent(key('Digit3', { meta: true }), 'ctrl')).toBe(3);
@@ -44,6 +52,8 @@ describe('сочетания клавиш', () => {
   });
 
   it('сочетание новой страницы: нужен Ctrl или Alt и свободная буква или цифра', () => {
+    expect(DEFAULT_NEW_PAGE_KEY).toBe('Alt+KeyN');
+    expect(newPageKeyProblem(DEFAULT_NEW_PAGE_KEY, 'alt')).toBeNull();
     expect(newPageKeyProblem(DEFAULT_NEW_PAGE_KEY, 'ctrl')).toBeNull();
     expect(newPageKeyProblem('Alt+Shift+KeyP', 'ctrl')).toBeNull();
     expect(newPageKeyProblem('KeyN', 'ctrl')).toMatch(/Ctrl или Alt/);

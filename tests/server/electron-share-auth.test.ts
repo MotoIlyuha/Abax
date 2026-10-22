@@ -7,7 +7,10 @@ const Module = require('node:module');
 // main.cjs регистрирует ipcMain.handle(...) при загрузке — подменяем electron заглушкой
 const handlers = new Map<string, (...args: unknown[]) => unknown>();
 const electronStub = {
-  app: { isPackaged: true, whenReady: () => new Promise(() => {}), on: () => {}, commandLine: { appendSwitch: () => {} } },
+  app: {
+    isPackaged: true, whenReady: () => new Promise(() => {}), on: () => {}, commandLine: { appendSwitch: () => {} },
+    getPath: () => require('node:os').tmpdir(), setPath: () => {},
+  },
   BrowserWindow: class {},
   dialog: {},
   ipcMain: { handle: (ch: string, fn: (...args: unknown[]) => unknown) => handlers.set(ch, fn) },

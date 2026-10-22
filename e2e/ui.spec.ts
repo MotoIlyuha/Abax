@@ -272,6 +272,38 @@ test.describe('настройки доски', () => {
     expect(await anim('.ctx-panel[data-kind="shapes"]')).toBe('none');
   });
 
+  test('кнопки отмены и повтора можно скрыть', async ({ board, page }) => {
+    const seps = page.locator('#topbar > .sep:visible');
+    await expect(page.locator('#btn-undo')).toBeVisible();
+    await expect(page.locator('#btn-redo')).toBeVisible();
+    const sepsBefore = await seps.count();
+
+    await page.locator('#btn-settings').click();
+    const cb = page.locator('#settings-popover label', { hasText: 'Скрыть кнопки отмены и повтора' }).locator('input');
+    await expect(cb).not.toBeChecked();
+    await cb.check();
+    expect((await board.state()).settings.hideUndoRedo).toBe(true);
+    await expect(page.locator('#btn-undo')).toBeHidden();
+    await expect(page.locator('#btn-redo')).toBeHidden();
+    // оба разделителя вокруг кнопок уходят вместе с ними
+    await expect(seps).toHaveCount(sepsBefore - 2);
+    await page.keyboard.press('Escape');
+
+    // отмена с клавиатуры работает и без кнопки
+    await board.rect(300, 300, 400, 400);
+    expect(await board.elements()).toHaveLength(1);
+    await page.keyboard.press('Control+z');
+    expect(await board.elements()).toHaveLength(0);
+
+    await page.reload();
+    await board.ready();
+    await expect(page.locator('#btn-undo')).toBeHidden();
+    await page.keyboard.press('Control+Comma');
+    await page.locator('.sd-general label', { hasText: 'Скрыть кнопки отмены и повтора' }).locator('input').uncheck();
+    await expect(page.locator('#btn-undo')).toBeVisible();
+    await expect(seps).toHaveCount(sepsBefore);
+  });
+
   test('битые настройки в localStorage не ломают загрузку', async ({ board, page }) => {
     await page.evaluate(() => {
       localStorage.setItem('doska.settings', '{oops');
@@ -289,14 +321,41 @@ test.describe('настройки доски', () => {
 test.describe('страница', () => {
   test('фон страницы', async ({ board, page }) => {
     for (const grid of ['none', 'dots', 'coord', 'square']) {
-      await page.locator('#grid-mode').selectOption(grid);
+      await board.grid(grid);
       expect((await board.state()).grid).toBe(grid);
     }
-    await page.locator('#grid-mode').selectOption('dots');
+    await board.grid('dots');
     await board.saved();
     await page.reload();
     await board.ready();
-    await expect(page.locator('#grid-mode')).toHaveValue('dots');
+    await expect(page.locator('#grid-mode')).toHaveAttribute('data-value', 'dots');
+  });
+
+  test('список фонов: иконки и клавиатура', async ({ board, page }) => {
+    await page.locator('#grid-mode').click();
+    const options = page.locator('#grid-menu .grid-option');
+    await expect(options).toHaveCount(4);
+    for (const o of await options.all()) await expect(o.locator('svg')).toHaveCount(1);
+    await expect(page.locator('#grid-menu [aria-selected="true"]')).toBeFocused();
+    // стрелка вниз с «Клетки» — «Координатная плоскость»; хоткеи холста при этом не срабатывают
+    await page.keyboard.press('ArrowDown');
+    await page.keyboard.press('Enter');
+    await expect(page.locator('#grid-menu')).toBeHidden();
+    expect((await board.state()).grid).toBe('coord');
+    await page.keyboard.press('ArrowDown');
+    await expect(page.locator('#grid-menu')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#grid-menu')).toBeHidden();
+    await expect(page.locator('#grid-mode')).toBeFocused();
+  });
+
+  test('у всех кнопок шапки есть иконки', async ({ board, page }) => {
+    const buttons = page.locator('#topbar button.icon');
+    expect(await buttons.count()).toBeGreaterThan(0);
+    for (const b of await buttons.all()) {
+      await expect(b.locator('svg'), (await b.getAttribute('id')) ?? '').toHaveCount(1);
+    }
+    void board;
   });
 
   test('переименование страницы в шапке', async ({ board, page }) => {
@@ -313,14 +372,20 @@ test.describe('страница', () => {
       const d = c.getContext('2d')!.getImageData(Math.round(x * devicePixelRatio), Math.round(y * devicePixelRatio), 1, 1).data;
       return [d[0], d[1], d[2]];
     }, [x, y]);
-    await page.locator('#grid-mode').selectOption('square');
+    await board.grid('square');
     await page.waitForTimeout(100);
     const onLine = await pixel(400, 401);
-    await page.locator('#grid-mode').selectOption('none');
+    await board.grid('none');
     await page.waitForTimeout(100);
     const blank = await pixel(400, 401);
     expect(blank).toEqual([255, 255, 255]);
     expect(onLine).not.toEqual(blank);
+    void board;
+  });
+
+  test('в браузере нет кнопки совместной работы: её сервер есть только в приложении', async ({ board, page }) => {
+    await expect(page.locator('#btn-share')).toBeHidden();
+    await expect(page.locator('#btn-present')).toBeVisible();
     void board;
   });
 });

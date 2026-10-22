@@ -292,7 +292,7 @@ test.describe('страницы проекта', () => {
   test('страницы и их содержимое сохраняются между запусками', async ({ board, page }) => {
     await board.rect(400, 300, 500, 400);
     await board.addPage();
-    await page.locator('#grid-mode').selectOption('coord');
+    await board.grid('coord');
     await board.tool('p');
     await board.drag([{ x: 400, y: 300 }, { x: 500, y: 300 }]);
     await board.saved();
@@ -337,6 +337,18 @@ test.describe('страницы проекта', () => {
     await board.saved();
     const stored = await page.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('doska.p.')).length);
     expect(stored).toBe(1);
+  });
+
+  test('уход в фон сохраняет сразу, не дожидаясь таймера', async ({ board, page }) => {
+    await board.rect(400, 300, 500, 400);
+    const dirtyAfterHide = await page.evaluate(() => {
+      const s = (window as any).__doska.state;
+      s.dirty = true; // несохранённое изменение, таймер автосохранения ещё не сработал
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+      document.dispatchEvent(new Event('visibilitychange'));
+      return s.dirty;
+    });
+    expect(dirtyAfterHide).toBe(false);
   });
 });
 

@@ -6,6 +6,11 @@ const { createShareServer, MAX_EDITORS } = require('./share.cjs');
 
 const isDev = !app.isPackaged;
 
+// Приложение называлось Doska, папка профиля по умолчанию идёт от названия (productName).
+// Проекты (boards/) и настройки (Local Storage) остаются в прежней папке, иначе после
+// обновления до Abax пользователь увидел бы пустой список проектов.
+app.setPath('userData', path.join(app.getPath('appData'), 'Doska'));
+
 // Окно демонстрации показывают в видеозвонке, часто спрятанным за основным окном.
 // Иначе Chromium на Windows считает перекрытое окно скрытым и перестаёт его рисовать —
 // ученик видит застывшую картинку.
@@ -33,7 +38,7 @@ async function createWindow() {
   } else {
     win.loadFile(path.join(__dirname, '..', 'dist', 'index.html')).catch(err => {
       console.error('[doska] loadFile failed:', err);
-      dialog.showErrorBox('Doska — ошибка загрузки', String(err));
+      dialog.showErrorBox('Abax — ошибка загрузки', String(err));
     });
   }
   // окно демонстрации: без меню и без троттлинга — оно почти всегда в фоне
