@@ -170,6 +170,15 @@ describe('хранение проектов', () => {
     await invoke('boards:delete', 'нет'); // несуществующий — без ошибки
   });
 
+  it('закреплённый в избранном проект отмечен в списке', async () => {
+    await invoke('boards:save', { ...project('a', 1), pinned: true });
+    await invoke('boards:save', project('b', 5));
+    expect(await invoke('boards:list')).toEqual([
+      { id: 'b', name: 'P-b', createdAt: 1, updatedAt: 5, pageCount: 1 },
+      { id: 'a', name: 'P-a', createdAt: 1, updatedAt: 1, pageCount: 1, pinned: true },
+    ]);
+  });
+
   it('запись атомарна: временный файл не остаётся', async () => {
     await invoke('boards:save', project('a', 1));
     const files = fs.readdirSync(path.join(userData, 'boards'));

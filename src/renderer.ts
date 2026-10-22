@@ -33,6 +33,13 @@ function imageOf(el: ImageEl): HTMLImageElement {
   return img;
 }
 
+/** Ждёт картинок среди элементов, которые ещё грузятся; null — все уже готовы. */
+export function imagesLoaded(els: readonly Element[]): Promise<void> | null {
+  const pending = els.filter((e): e is ImageEl => e.type === 'image').map(imageOf).filter(img => !img.complete);
+  if (pending.length === 0) return null;
+  return Promise.all(pending.map(img => img.decode().catch(() => undefined))).then(() => undefined);
+}
+
 interface ElCacheEntry {
   aabb: { x0: number; y0: number; x1: number; y1: number };
   path: Path2D | null;
