@@ -30,7 +30,15 @@ function link(href: string, text: string): HTMLAnchorElement {
 export function renderAbout(host: HTMLElement): void {
   const box = el('div', 'sd-about');
   const head = el('div', 'sd-about-head');
-  head.append(el('div', 'sd-about-name', 'Doska'), el('div', 'sd-about-version', `Версия ${__APP_VERSION__}`));
+  // логотип лежит в public/ — рядом с index.html и в Electron, и у гостей совместной работы
+  const logo = el('img', 'sd-about-logo');
+  logo.src = 'logo.svg';
+  logo.alt = '';
+  const title = el('div', 'sd-about-title');
+  const name = el('div', 'sd-about-name');
+  name.append(el('span', '', 'Abax'), el('span', 'sd-about-greek', 'ἄβαξ'));
+  title.append(name, el('div', 'sd-about-version', `Версия ${__APP_VERSION__}`));
+  head.append(logo, title);
   box.appendChild(head);
   box.appendChild(el('p', 'sd-about-desc', 'Локальная доска для занятий по математике. Доски хранятся на этом компьютере — интернет для работы не нужен.'));
 

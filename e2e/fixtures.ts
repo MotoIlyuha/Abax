@@ -132,6 +132,13 @@ export class Board {
     await expect.poll(async () => (await this.state()).tool).toBe(id);
   }
 
+  /** Фон страницы — через выпадающий список в шапке. */
+  async grid(mode: string): Promise<void> {
+    await this.page.locator('#grid-mode').click();
+    await this.page.locator(`#grid-menu [data-grid="${mode}"]`).click();
+    await expect(this.page.locator('#grid-menu')).toBeHidden();
+  }
+
   async rect(x0: number, y0: number, x1: number, y1: number): Promise<El> {
     await this.tool('r');
     await this.drag([{ x: x0, y: y0 }, { x: x1, y: y1 }]);

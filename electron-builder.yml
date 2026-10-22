@@ -1,5 +1,6 @@
+# appId прежний: по нему установщик узнаёт уже установленную Doska и обновляет её на месте
 appId: ru.doska.app
-productName: Doska
+productName: Abax
 directories:
   output: release
 files:
@@ -14,4 +15,4 @@ nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
-  shortcutName: Doska
+  shortcutName: Abax

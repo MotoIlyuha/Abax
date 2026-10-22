@@ -1,11 +1,19 @@
 // Горячие клавиши с модификаторами: переход на страницу по номеру, новая страница
 // и сочетания самой доски. Сочетание хранится строкой «Ctrl+Shift+KeyN»: модификаторы
 // в постоянном порядке и KeyboardEvent.code — работает при любой раскладке.
-// Cmd на macOS считается за Ctrl, как и во всех горячих клавишах доски.
+// Cmd на macOS считается за Ctrl, как и во всех горячих клавишах доски, и в подписях
+// на macOS вместо «Ctrl» пишем «Cmd» (см. macKeys).
 
 import type { PageKeyMod } from './types';
 
-export const DEFAULT_NEW_PAGE_KEY = 'Ctrl+KeyN';
+export const DEFAULT_NEW_PAGE_KEY = 'Alt+KeyN';
+
+const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+
+/** «Ctrl» в подписи сочетания → «Cmd» на macOS. Только для текста: сами сочетания хранятся с Ctrl. */
+export function macKeys(text: string, mac = IS_MAC): string {
+  return mac ? text.replace(/\bCtrl\b/g, 'Cmd') : text;
+}
 
 const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'AltGraph', 'OS']);
 
@@ -34,15 +42,21 @@ export function codeLabel(code: string): string {
   return CODE_LABELS[code] ?? code;
 }
 
-/** «Ctrl+Shift+KeyN» → «Ctrl+Shift+N». */
+/** «Ctrl+Shift+KeyN» → «Ctrl+Shift+N» (на macOS — «Cmd+Shift+N»). */
 export function comboLabel(combo: string): string {
   const parts = combo.split('+');
   const code = parts.pop()!;
-  return [...parts, codeLabel(code)].join('+');
+  return macKeys([...parts, codeLabel(code)].join('+'));
 }
 
-export function modLabel(mod: PageKeyMod): string {
+/** Модификатор перехода по страницам так, как он записан в сочетании. */
+function modPart(mod: PageKeyMod): 'Alt' | 'Ctrl' {
   return mod === 'alt' ? 'Alt' : 'Ctrl';
+}
+
+/** Подпись модификатора для интерфейса. */
+export function modLabel(mod: PageKeyMod): string {
+  return macKeys(modPart(mod));
 }
 
 /** Номер страницы (1–9) из сочетания «модификатор + цифра»; иначе null. */
@@ -113,10 +127,10 @@ export function newPageKeyProblem(combo: string, pageMod: PageKeyMod): string | 
   const code = parts[parts.length - 1];
   const mods = parts.slice(0, -1);
   if (!mods.includes('Ctrl') && !mods.includes('Alt')) {
-    return 'Нужно сочетание с Ctrl или Alt: одиночные клавиши — у инструментов';
+    return macKeys('Нужно сочетание с Ctrl или Alt: одиночные клавиши — у инструментов');
   }
-  if (!/^(Key[A-Z]|Digit[0-9])$/.test(code)) return 'Подойдёт Ctrl или Alt с буквой или цифрой';
-  if (mods.length === 1 && /^Digit[1-9]$/.test(code) && mods[0] === modLabel(pageMod)) {
+  if (!/^(Key[A-Z]|Digit[0-9])$/.test(code)) return macKeys('Подойдёт Ctrl или Alt с буквой или цифрой');
+  if (mods.length === 1 && /^Digit[1-9]$/.test(code) && mods[0] === modPart(pageMod)) {
     return `${comboLabel(combo)} занято: переход на страницу ${code.slice(5)}`;
   }
   const use = appUse(combo);
@@ -192,7 +206,7 @@ export function newPageKeyWarning(combo: string | null, env: KeyEnv): string | n
 
 /** Предупреждение для перехода по страницам «модификатор + цифра»; null — работает. */
 export function pageKeyWarning(mod: PageKeyMod, env: KeyEnv): string | null {
-  if (!browserUse(`${modLabel(mod)}+Digit1`, env)) return null;
+  if (!browserUse(`${modPart(mod)}+Digit1`, env)) return null;
   const where = mod === 'alt' ? 'В браузере на Linux' : 'В браузере';
   return `${where} ${modLabel(mod)}+1…9 переключают вкладки: переход по страницам может не сработать. `
     + 'В приложении для компьютера работает.';

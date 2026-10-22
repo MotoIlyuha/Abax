@@ -7,7 +7,8 @@ import {
   bringForward, sendBackward, deleteSelected, setSolidSides, duplicateSelected,
 } from './state';
 import type { PresetKind, StyleValue } from './state';
-import { storage } from './storage';
+import { doskaApi, storage } from './storage';
+import { isNativeApp, sharePng } from './native';
 import { renderScene, contentBBox, imageEpoch, imagesLoaded, presentCanvas, renderNow } from './renderer';
 import { makeSortable, reordering } from './reorder';
 import { capturePageTransition } from './page-transition';
@@ -22,7 +23,7 @@ import { type ToolbarGroup, onToolbarChange, restoreToolbar, svg, toolDef, toolT
 import { openSettingsDialog, settingsDialogOpen } from './settings-dialog';
 import { renderToolbarEditor } from './toolbar-editor';
 import { renderHotkeysSettings } from './hotkeys-settings';
-import { DEFAULT_NEW_PAGE_KEY, comboLabel, newPageKeyProblem } from './hotkeys';
+import { DEFAULT_NEW_PAGE_KEY, comboLabel, macKeys, newPageKeyProblem } from './hotkeys';
 import { renderAbout } from './about';
 import { copySelection, COPY_STEP_PX, pasteFromMemory, pasteFromSystem } from './clipboard';
 
@@ -33,6 +34,7 @@ const ICONS = {
   pages: svg('<rect x="8" y="3" width="12" height="15" rx="2"/><path d="M4.5 7v11.5A2.5 2.5 0 0 0 7 21h9"/>'),
   plus: svg('<path d="M12 5v14M5 12h14"/>'),
   chevronUp: svg('<path d="M6 15l6-6 6 6"/>'),
+  chevronDown: svg('<path d="M6 9l6 6 6-6"/>'),
   keyboard: svg('<rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M18 14h.01M9 14h6"/>'),
   image: svg('<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M21 15l-5-5L5 19"/>'),
   undo: svg('<path d="M4 10h9a5 5 0 0 1 0 10h-3"/><path d="M8 6l-4 4 4 4"/>'),
@@ -155,9 +157,10 @@ function restoreSettings(): void {
         snapToGrid: typeof v.snapToGrid === 'boolean' ? v.snapToGrid : false,
         wheelMode: v.wheelMode === 'zoom' ? 'zoom' : 'scroll',
         pageTransition: PAGE_TRANSITIONS.some(t => t.mode === v.pageTransition) ? v.pageTransition : 'slide',
-        pageKeyMod: v.pageKeyMod === 'alt' ? 'alt' : 'ctrl',
+        pageKeyMod: v.pageKeyMod === 'ctrl' ? 'ctrl' : 'alt',
         newPageKey: DEFAULT_NEW_PAGE_KEY,
         uiAnimations: typeof v.uiAnimations === 'boolean' ? v.uiAnimations : true,
+        hideUndoRedo: typeof v.hideUndoRedo === 'boolean' ? v.hideUndoRedo : false,
       };
       // null — пользователь снял сочетание; занятое или битое значение — снова по умолчанию
       const k = v.newPageKey;
@@ -182,6 +185,11 @@ function persistSettings(): void {
 /** Анимации появления панелей живут в CSS; выключенные — класс на body их гасит. */
 function applyUiAnimations(): void {
   document.body.classList.toggle('no-ui-anim', !state.settings.uiAnimations);
+}
+
+/** Кнопки отмены/повтора в шапке прячутся вместе с разделителями вокруг них (см. style.css). */
+function applyUndoRedoVisibility(): void {
+  document.body.classList.toggle('hide-undo-redo', state.settings.hideUndoRedo);
 }
 
 /** Выбор цвета: применяется к выделению (если есть) и становится текущим. */
@@ -1001,7 +1009,7 @@ function updateQuickMenu(): void {
   if (state.selection.size >= 2 && !allGrouped) {
     const g = document.createElement('button');
     g.className = 'qm-btn';
-    g.title = 'Сгруппировать (Ctrl+G)';
+    g.title = macKeys('Сгруппировать (Ctrl+G)');
     g.innerHTML = ICONS.group;
     g.addEventListener('click', () => { groupSelected(); });
     qm.appendChild(g);
@@ -1009,7 +1017,7 @@ function updateQuickMenu(): void {
   if (allGrouped) {
     const ug = document.createElement('button');
     ug.className = 'qm-btn';
-    ug.title = 'Разгруппировать (Ctrl+Shift+G)';
+    ug.title = macKeys('Разгруппировать (Ctrl+Shift+G)');
     ug.innerHTML = ICONS.ungroup;
     ug.addEventListener('click', () => { ungroupSelected(); });
     qm.appendChild(ug);
@@ -1017,7 +1025,7 @@ function updateQuickMenu(): void {
   // дублирование
   const dup = document.createElement('button');
   dup.className = 'qm-btn';
-  dup.title = 'Дублировать (Ctrl+D)';
+  dup.title = macKeys('Дублировать (Ctrl+D)');
   dup.innerHTML = ICONS.duplicate;
   dup.addEventListener('click', () => { duplicateSelection(); });
   qm.appendChild(dup);
@@ -1062,6 +1070,111 @@ function positionQuickMenu(): void {
   qm.style.top = `${top}px`;
 }
 
+// ----- Фон страницы (выпадающий список с иконками) -----
+
+const GRID_LABELS: Record<GridMode, string> = {
+  none: 'Без фона',
+  dots: 'Точки',
+  square: 'Клетка',
+  coord: 'Координатная плоскость',
+};
+
+function gridButton(): HTMLElement {
+  return document.getElementById('grid-mode')!;
+}
+
+function gridMenu(): HTMLElement {
+  return document.getElementById('grid-menu')!;
+}
+
+/** Кнопка показывает иконку и название текущего фона; перерисовывается только при смене. */
+function renderGridButton(): void {
+  const btn = gridButton();
+  const g = state.board.grid;
+  if (btn.dataset.value === g) return;
+  btn.dataset.value = g;
+  btn.innerHTML = GRID_ICONS[g];
+  const label = document.createElement('span');
+  label.textContent = GRID_LABELS[g];
+  btn.append(label);
+  btn.insertAdjacentHTML('beforeend', ICONS.chevronDown);
+}
+
+function closeGridMenu(): void {
+  gridMenu().hidden = true;
+  gridButton().setAttribute('aria-expanded', 'false');
+}
+
+function pickGrid(g: GridMode): void {
+  closeGridMenu();
+  gridButton().focus();
+  if (g === state.board.grid) return;
+  setGrid(g);
+  void saveNow();
+}
+
+function openGridMenu(): void {
+  const menu = gridMenu();
+  menu.textContent = '';
+  for (const g of Object.keys(GRID_LABELS) as GridMode[]) {
+    const item = document.createElement('button');
+    item.className = 'grid-option';
+    item.dataset.grid = g;
+    item.setAttribute('role', 'option');
+    item.setAttribute('aria-selected', String(g === state.board.grid));
+    item.innerHTML = GRID_ICONS[g];
+    const label = document.createElement('span');
+    label.textContent = GRID_LABELS[g];
+    item.append(label);
+    item.addEventListener('click', () => pickGrid(g));
+    menu.appendChild(item);
+  }
+  menu.hidden = false;
+  const btn = gridButton();
+  btn.setAttribute('aria-expanded', 'true');
+  const br = btn.getBoundingClientRect();
+  menu.style.left = `${br.left}px`;
+  menu.style.top = `${br.bottom + 6}px`;
+  menu.style.minWidth = `${br.width}px`;
+  menu.querySelector<HTMLElement>('[aria-selected="true"]')?.focus();
+}
+
+function wireGridPicker(): void {
+  const btn = gridButton();
+  const menu = gridMenu();
+  btn.addEventListener('click', () => {
+    if (menu.hidden) openGridMenu();
+    else closeGridMenu();
+  });
+  btn.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      e.stopPropagation();
+      openGridMenu();
+    }
+  });
+  // стрелки ходят по пунктам и не долетают до хоткеев холста; Tab закрывает меню
+  menu.addEventListener('keydown', e => {
+    const items = [...menu.querySelectorAll<HTMLElement>('.grid-option')];
+    const i = items.indexOf(document.activeElement as HTMLElement);
+    let next = -1;
+    if (e.key === 'ArrowDown') next = (i + 1) % items.length;
+    else if (e.key === 'ArrowUp') next = (i - 1 + items.length) % items.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = items.length - 1;
+    else if (e.key === 'Tab') { closeGridMenu(); return; }
+    else return;
+    e.preventDefault();
+    e.stopPropagation();
+    items[next].focus();
+  });
+  document.addEventListener('pointerdown', e => {
+    const t = e.target as Node;
+    if (!menu.hidden && !menu.contains(t) && !btn.contains(t)) closeGridMenu();
+  }, { capture: true });
+  window.addEventListener('resize', closeGridMenu);
+}
+
 // ----- Настройки доски (поповер) -----
 
 function settingsPopover(): HTMLElement {
@@ -1083,7 +1196,7 @@ function openSettings(): void {
   fillBoardSettings(pop, openSettings);
   const all = document.createElement('button');
   all.className = 'settings-all';
-  all.title = 'Все настройки (Ctrl+,)';
+  all.title = macKeys('Все настройки (Ctrl+,)');
   all.innerHTML = ICONS.settings;
   const allText = document.createElement('span');
   allText.textContent = 'Все настройки';
@@ -1235,6 +1348,21 @@ function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
   span6.textContent = 'Анимация меню и панелей';
   lbl6.append(cb6, span6);
   pop.appendChild(lbl6);
+  const lbl7 = document.createElement('label');
+  lbl7.className = 'ctx-check';
+  lbl7.title = macKeys('Отмена и повтор по-прежнему работают на Ctrl+Z и Ctrl+Y');
+  const cb7 = document.createElement('input');
+  cb7.type = 'checkbox';
+  cb7.checked = state.settings.hideUndoRedo;
+  cb7.addEventListener('change', () => {
+    setSettings({ hideUndoRedo: cb7.checked });
+    persistSettings();
+    applyUndoRedoVisibility();
+  });
+  const span7 = document.createElement('span');
+  span7.textContent = 'Скрыть кнопки отмены и повтора';
+  lbl7.append(cb7, span7);
+  pop.appendChild(lbl7);
 }
 
 function applyToolbarPos(): void {
@@ -1265,10 +1393,12 @@ export async function exportPng(): Promise<void> {
   if (!c) return;
   renderScene(c, els, { x: bb.x0 - pad, y: bb.y0 - pad, zoom: 1 }, bw, bh, scale, 'none');
   const dataUrl = cv.toDataURL('image/png');
-  const name = `${state.project.name.trim() || 'doska'} — ${state.board.name.trim() || 'стр'}.png`;
+  const name = `${state.project.name.trim() || 'abax'} — ${state.board.name.trim() || 'стр'}.png`;
   const api = (window as { doskaAPI?: { exportPng(d: string, n: string): Promise<boolean> } }).doskaAPI;
   if (api) {
     await api.exportPng(dataUrl, name);
+  } else if (isNativeApp()) {
+    await sharePng(dataUrl, name);
   } else {
     const a = document.createElement('a');
     a.href = dataUrl;
@@ -1507,6 +1637,12 @@ function scheduleSave(): void {
   clearTimeout(saveTimer);
   saveTimer = window.setTimeout(() => { void saveNow(); }, 600);
 }
+
+// уход в фон (свернули окно, на планшете — кнопка «Домой» или «Назад»): сохраняем сразу,
+// не дожидаясь таймера — система может выгрузить приложение раньше
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) void saveNow();
+});
 
 // ----- Страницы и проекты -----
 
@@ -2373,6 +2509,8 @@ function makeVsep(): HTMLElement {
 }
 
 function wireTopbar(): void {
+  // подсказки шапки из index.html: на macOS — Cmd вместо Ctrl
+  for (const b of document.querySelectorAll<HTMLElement>('#topbar [title]')) b.title = macKeys(b.title);
   document.getElementById('btn-home')!.innerHTML = ICONS.home;
   document.getElementById('btn-undo')!.innerHTML = ICONS.undo;
   document.getElementById('btn-redo')!.innerHTML = ICONS.redo;
@@ -2380,6 +2518,7 @@ function wireTopbar(): void {
   document.getElementById('btn-export')!.innerHTML = ICONS.export;
   document.getElementById('btn-present')!.innerHTML = ICONS.present;
   document.getElementById('btn-import')!.innerHTML = ICONS.pdf;
+  document.getElementById('btn-image')!.innerHTML = ICONS.image;
   document.getElementById('btn-settings')!.innerHTML = ICONS.settings;
   document.getElementById('btn-share')!.innerHTML = svg('<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/>');
   document.getElementById('btn-share')!.addEventListener('click', () => { void openShareDialog(); });
@@ -2389,6 +2528,10 @@ function wireTopbar(): void {
       document.getElementById(id)!.style.display = 'none';
     }
   }
+  // сервер совместной работы живёт в main-процессе Electron: в браузере и на Android раздавать нечем
+  if (!doskaApi) document.getElementById('btn-share')!.style.display = 'none';
+  // окно демонстрации — второе окно браузера, в приложении для Android его не открыть
+  if (isNativeApp()) document.getElementById('btn-present')!.style.display = 'none';
 
   document.getElementById('btn-home')!.addEventListener('click', () => {
     void (async () => {
@@ -2416,11 +2559,7 @@ function wireTopbar(): void {
     }
   });
 
-  const gridSelect = document.getElementById('grid-mode') as HTMLSelectElement;
-  gridSelect.addEventListener('change', () => {
-    setGrid(gridSelect.value as GridMode);
-    void saveNow();
-  });
+  wireGridPicker();
 
   // закрытие панелей по клику мимо / Esc
   canvas.addEventListener('pointerdown', () => {
@@ -2438,6 +2577,7 @@ function wireTopbar(): void {
     // Esc у открытого окна настроек закрывает только его
     if (settingsDialogOpen()) return;
     if (e.key === 'Escape') {
+      if (!gridMenu().hidden) { closeGridMenu(); gridButton().focus(); return; }
       if (!settingsPopover().hidden) { closeSettings(); return; }
       if (dockedPanel()) { closeCtxPanel(); return; }
     }
@@ -2623,8 +2763,7 @@ function refresh(): void {
   (document.getElementById('btn-undo') as HTMLButtonElement).disabled = !canUndo();
   (document.getElementById('btn-redo') as HTMLButtonElement).disabled = !canRedo();
   document.getElementById('zoom-label')!.textContent = `${Math.round(state.camera.zoom * 100)}%`;
-  const gridSelect = document.getElementById('grid-mode') as HTMLSelectElement;
-  if (gridSelect.value !== state.board.grid) gridSelect.value = state.board.grid;
+  renderGridButton();
   const nameInput = document.getElementById('page-name') as HTMLInputElement;
   if (document.activeElement !== nameInput && nameInput.value !== state.board.name) {
     nameInput.value = state.board.name;
@@ -2665,6 +2804,7 @@ export function initApp(c: HTMLCanvasElement): void {
   restoreStyle();
   restoreSettings();
   applyUiAnimations();
+  applyUndoRedoVisibility();
   restoreToolbar();
   buildToolbar();
   applyToolbarPos();

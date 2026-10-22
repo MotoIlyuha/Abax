@@ -1,0 +1,10 @@
+// плагины Capacitor собираются под JDK 21: если его нет, Gradle скачает сам (Temurin через foojay)
+plugins {
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '1.0.0'
+}
+
+include ':app'
+include ':capacitor-cordova-android-plugins'
+project(':capacitor-cordova-android-plugins').projectDir = new File('./capacitor-cordova-android-plugins/')
+
+apply from: 'capacitor.settings.gradle'

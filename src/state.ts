@@ -115,7 +115,7 @@ export const state: AppState = {
   noteColor: '#ffe066',
   settings: {
     toolbarPos: 'left', coordLabels: true, snapToGrid: false, wheelMode: 'scroll', pageTransition: 'slide',
-    pageKeyMod: 'ctrl', newPageKey: DEFAULT_NEW_PAGE_KEY, uiAnimations: true,
+    pageKeyMod: 'alt', newPageKey: DEFAULT_NEW_PAGE_KEY, uiAnimations: true, hideUndoRedo: false,
   },
   selection: new Set(),
   liveStroke: null,

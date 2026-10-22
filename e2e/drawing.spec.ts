@@ -2,7 +2,7 @@ import { expect, test } from './fixtures';
 
 test.describe('загрузка', () => {
   test('новый пользователь получает проект с одной страницей', async ({ board, page }) => {
-    await expect(page).toHaveTitle('Доска');
+    await expect(page).toHaveTitle('Abax');
     const s = await board.state();
     expect(s.project.name).toBe('Проект 1');
     expect(s.project.pages.map(p => p.name)).toEqual(['Страница 1']);

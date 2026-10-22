@@ -199,4 +199,6 @@ export interface BoardSettings {
   newPageKey: string | null;
   /** Плавное появление меню и панелей (кроме плавающего меню выделения). */
   uiAnimations: boolean;
+  /** Скрыть кнопки «Отменить» и «Повторить» в шапке (Ctrl+Z / Ctrl+Y работают). */
+  hideUndoRedo: boolean;
 }

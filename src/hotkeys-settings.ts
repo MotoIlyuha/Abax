@@ -7,7 +7,7 @@ import type { SectionView } from './settings-dialog';
 import { state } from './state';
 import { TOOL_DEFS, toolbarConfig } from './toolbar';
 import {
-  DEFAULT_NEW_PAGE_KEY, FIXED_SHORTCUTS, codeLabel, comboFromEvent, comboLabel, currentKeyEnv, modLabel,
+  DEFAULT_NEW_PAGE_KEY, FIXED_SHORTCUTS, codeLabel, comboFromEvent, comboLabel, currentKeyEnv, macKeys, modLabel,
   newPageKeyProblem, newPageKeyWarning, pageKeyWarning,
 } from './hotkeys';
 
@@ -27,12 +27,12 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, te
   return e;
 }
 
-/** Сочетание клавишами: [Ctrl] [Shift] [N]. */
+/** Сочетание клавишами: [Ctrl] [Shift] [N] (на macOS — [Cmd] [Shift] [N]). */
 function keycaps(combo: string): HTMLElement {
   const box = el('span', 'hk-keys');
   const parts = combo.split('+');
   const code = parts.pop()!;
-  for (const p of [...parts, codeLabel(code)]) box.appendChild(el('kbd', '', p));
+  for (const p of [...parts.map(m => macKeys(m)), codeLabel(code)]) box.appendChild(el('kbd', '', p));
   return box;
 }
 
@@ -127,7 +127,7 @@ export function renderHotkeysSettings(host: HTMLElement, opts: HotkeysOptions): 
     cap.title = capturing ? 'Esc — отмена' : 'Нажмите, чтобы сменить сочетание';
     cap.addEventListener('click', () => {
       capturing = !capturing;
-      setStatus(capturing ? 'Нажмите сочетание с Ctrl или Alt. Backspace — убрать сочетание, Esc — отмена' : HINT);
+      setStatus(capturing ? macKeys('Нажмите сочетание с Ctrl или Alt. Backspace — убрать сочетание, Esc — отмена') : HINT);
       draw();
       root.querySelector<HTMLElement>('.hk-capture')?.focus();
     });
@@ -184,7 +184,7 @@ export function renderHotkeysSettings(host: HTMLElement, opts: HotkeysOptions): 
     }
     if (list.childElementCount === 0) list.appendChild(el('div', 'hk-sub', 'Ни у одного инструмента нет клавиши'));
     tools.appendChild(list);
-    tools.appendChild(el('div', 'hk-sub hk-note', 'Клавиша без Ctrl и Alt; у остальных инструментов её можно назначить в «Панели инструментов».'));
+    tools.appendChild(el('div', 'hk-sub hk-note', macKeys('Клавиша без Ctrl и Alt; у остальных инструментов её можно назначить в «Панели инструментов».')));
     root.appendChild(tools);
 
     // ----- Постоянные сочетания -----
@@ -200,7 +200,6 @@ export function renderHotkeysSettings(host: HTMLElement, opts: HotkeysOptions): 
       block.appendChild(grid);
       root.appendChild(block);
     }
-    root.appendChild(el('div', 'hk-sub hk-note', 'На macOS вместо Ctrl можно нажимать Cmd.'));
   }
 
   function capture(e: KeyboardEvent): boolean {

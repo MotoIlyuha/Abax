@@ -48,7 +48,7 @@ function findTarget(start: EventTarget | null): HTMLElement | null {
 /** «Отменить (Ctrl+Z)» → текст + хоткей отдельным приглушённым фрагментом. */
 function render(el: HTMLDivElement, text: string): void {
   el.textContent = '';
-  const m = /^(.+?)\s+\(((?:Ctrl|Shift|Alt|Del|[A-Z0-9])[^()]*)\)$/.exec(text);
+  const m = /^(.+?)\s+\(((?:Ctrl|Cmd|Shift|Alt|Del|[A-Z0-9])[^()]*)\)$/.exec(text);
   const label = document.createElement('span');
   label.textContent = m ? m[1] : text;
   el.appendChild(label);
