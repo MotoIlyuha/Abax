@@ -12,6 +12,8 @@ async function openToolbarSettings(page: Page): Promise<void> {
   await page.locator('#settings-popover .settings-all').click();
   await page.locator('.sd-nav-item[data-section="toolbar"]').click();
   await expect(editor(page)).toBeVisible();
+  // окно выплывает: перетаскивания меряют строки после анимации появления
+  await page.waitForFunction(() => document.getAnimations().every(a => a.playState !== 'running'));
 }
 
 /**

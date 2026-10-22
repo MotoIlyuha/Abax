@@ -60,6 +60,8 @@ test.describe('панель цвета и толщины', () => {
 
   test('слайдер толщины', async ({ board, page }) => {
     await page.locator('#btn-style').click();
+    // панель выплывает: меряем после анимации появления
+    await board.settled();
     const track = page.locator('.ctx-panel[data-kind="style"] .qs-track');
     const box = (await track.boundingBox())!;
     await page.mouse.click(box.x + box.width - 1, box.y + box.height / 2);
@@ -78,6 +80,7 @@ test.describe('панель цвета и толщины', () => {
     await panel.locator('.ctx-swatches:not(.custom) .ctx-swatch[data-c="#2dc75c"]').click();
     expect((await board.elements())[0].color).toBe('#2dc75c');
     const track = panel.locator('.qs-track');
+    await board.settled();
     const box = (await track.boundingBox())!;
     await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
     expect((await board.elements())[0].width).toBeGreaterThan(5);
@@ -144,6 +147,7 @@ test.describe('панель цвета и толщины', () => {
     await page.locator('#btn-shapes').click();
     const panel = page.locator('.ctx-panel[data-kind="shapes"]');
     const grip = panel.locator('.ctx-grip');
+    await board.settled();
     const g = (await grip.boundingBox())!;
     await page.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
     await page.mouse.down();
@@ -170,6 +174,7 @@ test.describe('панель цвета и толщины', () => {
     await page.locator('#btn-shapes').click();
     const p2 = page.locator('.ctx-panel[data-kind="shapes"]');
     await p2.locator('.ctx-grip').hover();
+    await board.settled();
     const g2 = (await p2.locator('.ctx-grip').boundingBox())!;
     await page.mouse.down();
     await page.mouse.move(g2.x + 300, g2.y + 100, { steps: 5 });
@@ -196,7 +201,7 @@ test.describe('настройки доски', () => {
     await expect(page.locator('#toolbar')).toHaveAttribute('data-pos', 'bottom');
   });
 
-  test('панель группы встаёт у кнопки при любой позиции тулбара', async ({ page }) => {
+  test('панель группы встаёт у кнопки при любой позиции тулбара', async ({ board, page }) => {
     await page.locator('#btn-settings').click();
     for (const name of ['Сверху', 'Справа', 'Снизу', 'Слева']) {
       await page.locator('#settings-popover button', { hasText: name }).click();
@@ -204,6 +209,7 @@ test.describe('настройки доски', () => {
       await page.locator('#btn-solids').click();
       const panel = page.locator('.ctx-panel[data-kind="shapes"]');
       await expect(panel).toBeVisible();
+      await board.settled();
       const pb = (await panel.boundingBox())!;
       const wrap = (await page.locator('#canvas-wrap').boundingBox())!;
       expect(pb.x).toBeGreaterThanOrEqual(wrap.x);
@@ -224,6 +230,46 @@ test.describe('настройки доски', () => {
     await page.reload();
     await board.ready();
     expect((await board.state()).settings.coordLabels).toBe(false);
+  });
+
+  test('панели плавно появляются, анимацию можно выключить', async ({ board, page }) => {
+    const anim = (sel: string) => page.locator(sel).evaluate(e => getComputedStyle(e).animationName);
+    await page.locator('#btn-style').click();
+    expect(await anim('.ctx-panel[data-kind="style"]')).toBe('ui-pop');
+    await page.keyboard.press('Escape');
+    await page.locator('#btn-settings').click();
+    expect(await anim('#settings-popover')).toBe('ui-pop');
+    await page.keyboard.press('Control+Comma');
+    expect(await anim('#settings-dialog')).toBe('ui-fade');
+    expect(await anim('.sd-window')).toBe('ui-pop');
+    await page.keyboard.press('Escape');
+    // плавающее меню выделения не анимируется
+    await board.rect(300, 300, 400, 400);
+    await board.tool('v');
+    await board.click({ x: 300, y: 350 });
+    await expect(board.quickMenu).toBeVisible();
+    expect(await anim('#quick-menu')).toBe('none');
+
+    await page.locator('#btn-settings').click();
+    const cb = page.locator('#settings-popover label', { hasText: 'Анимация меню и панелей' }).locator('input');
+    await expect(cb).toBeChecked();
+    await cb.uncheck();
+    expect((await board.state()).settings.uiAnimations).toBe(false);
+    expect(await anim('#settings-popover')).toBe('none');
+    await page.keyboard.press('Escape');
+    await page.locator('#btn-style').click();
+    expect(await anim('.ctx-panel[data-kind="style"]')).toBe('none');
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Control+Comma');
+    expect(await anim('.sd-window')).toBe('none');
+    await expect(page.locator('.sd-general label', { hasText: 'Анимация меню и панелей' }).locator('input')).not.toBeChecked();
+    await page.keyboard.press('Escape');
+
+    await page.reload();
+    await board.ready();
+    expect((await board.state()).settings.uiAnimations).toBe(false);
+    await page.locator('#btn-shapes').click();
+    expect(await anim('.ctx-panel[data-kind="shapes"]')).toBe('none');
   });
 
   test('битые настройки в localStorage не ломают загрузку', async ({ board, page }) => {

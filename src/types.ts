@@ -197,4 +197,6 @@ export interface BoardSettings {
   pageKeyMod: PageKeyMod;
   /** Сочетание «новая страница» («Ctrl+KeyN», см. hotkeys.ts); null — без сочетания. */
   newPageKey: string | null;
+  /** Плавное появление меню и панелей (кроме плавающего меню выделения). */
+  uiAnimations: boolean;
 }
