@@ -78,6 +78,14 @@ describe('сочетания клавиш', () => {
       }
     }
   });
+
+  it('пропорции изображения в справке зависят от настройки «пропорциональный размер»', () => {
+    const resize = FIXED_SHORTCUTS.find(g => g.title === 'Изменение размера')!;
+    const image = resize.items.find(s => s.what === 'Сохранить пропорции изображения')!;
+    expect(image).toMatchObject({ keys: ['Shift', 'Ctrl'], hiddenBy: 'keepImageAspect' });
+    // фигуры такой настройки не имеют — их строка видна всегда
+    expect(resize.items.filter(s => !s.hiddenBy).map(s => s.what)).toContain('Сохранить пропорции фигуры или стикера');
+  });
 });
 
 describe('сочетания, занятые браузером', () => {

@@ -58,6 +58,29 @@ test.describe('панель цвета и толщины', () => {
     expect((await board.state()).style.color).toBe('#2dc75c');
   });
 
+  test('у инструментов без цвета выбора цвета на панели нет', async ({ board, page }) => {
+    const styleGroup = page.locator('#toolbar .style-group');
+    await expect(styleGroup).toBeVisible();
+    await page.locator('#btn-style').click();
+    await expect(page.locator('.ctx-panel[data-kind="style"]')).toBeVisible();
+    for (const key of ['v', 'h', 'e', 'x', 'n']) {
+      await board.tool(key);
+      await expect(styleGroup).toBeHidden();
+      await expect(page.locator('#toolbar .style-sep')).toBeHidden();
+    }
+    // открытая с панели палитра закрылась вместе с кнопками
+    await expect(page.locator('.ctx-panel[data-kind="style"]')).toHaveCount(0);
+    await board.groupTool('pointer', 'laser');
+    await expect(styleGroup).toBeHidden();
+    await board.groupTool('pointer', 'fadePen');
+    await expect(styleGroup).toBeVisible();
+    for (const key of ['t', 'r', 'p']) {
+      await board.tool(key);
+      await expect(styleGroup).toBeVisible();
+    }
+    await expect(page.locator('#toolbar .style-btn').locator('visible=true')).toHaveCount(3);
+  });
+
   test('слайдер толщины', async ({ board, page }) => {
     await page.locator('#btn-style').click();
     // панель выплывает: меряем после анимации появления
@@ -290,6 +313,7 @@ test.describe('настройки доски', () => {
     expect((await board.state()).settings.uiAnimations).toBe(false);
     expect(await anim('#settings-popover')).toBe('none');
     await page.keyboard.press('Escape');
+    await board.tool('p'); // у выделения выбора цвета на панели нет
     await page.locator('#btn-style').click();
     expect(await anim('.ctx-panel[data-kind="style"]')).toBe('none');
     await page.keyboard.press('Escape');
@@ -489,7 +513,24 @@ test.describe('изображения', () => {
     const [img] = await board.elements();
     expect(img).toMatchObject({ type: 'image', w: 400, h: 200 });
     expect(img.src).toMatch(/^data:image\/png;base64,/);
+    // вставленная картинка выделена, инструмент — «Выделение»: её сразу можно двигать
     expect((await board.state()).selection).toEqual([img.id]);
+    expect((await board.state()).tool).toBe('select');
+    await expect(page.locator('.tool[data-tool="select"]')).toHaveClass(/active/);
+  });
+
+  test('объектный ластик не стирает картинки и страницы PDF', async ({ board, page }) => {
+    const png = await makePng(page, 400, 200);
+    const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.locator('#btn-image').click()]);
+    await chooser.setFiles({ name: 'a.png', mimeType: 'image/png', buffer: png });
+    await expect.poll(() => board.count('image')).toBe(1);
+    const img = (await board.elements())[0];
+    const cy = img.y + img.h / 2;
+    await board.tool('p');
+    await board.drag([{ x: img.x + 50, y: cy }, { x: img.x + img.w - 50, y: cy }]);
+    await board.tool('e');
+    await board.drag([{ x: img.x + img.w / 2, y: img.y - 20 }, { x: img.x + img.w / 2, y: img.y + img.h + 20 }]);
+    expect((await board.elements()).map(e => e.type)).toEqual(['image']);
   });
 
   test('вставка из буфера обмена и перетаскиванием файла', async ({ board, page }) => {
@@ -524,6 +565,45 @@ test.describe('изображения', () => {
     const cx = img2.x + img2.w / 2, cy = img2.y + img2.h / 2;
     await board.drag([{ x: cx, y: img2.y - 30 }, { x: cx + 100, y: cy - 60 }, { x: cx + 200, y: cy }], { steps: 10 });
     expect((await board.elements())[0].rot).toBeCloseTo(Math.PI / 2, 2);
+  });
+
+  test('картинка масштабируется пропорционально без Ctrl; настройкой можно выключить', async ({ board, page }) => {
+    const png = await makePng(page, 200, 100);
+    const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.locator('#btn-image').click()]);
+    await chooser.setFiles({ name: 'a.png', mimeType: 'image/png', buffer: png });
+    await expect.poll(() => board.count('image')).toBe(1);
+    expect((await board.state()).settings.keepImageAspect).toBe(true);
+    const img = (await board.elements())[0];
+    // угол тянем только вправо — высота следует за шириной
+    await board.drag([{ x: img.x + img.w, y: img.y + img.h }, { x: img.x + img.w + 100, y: img.y + img.h }]);
+    const a = (await board.elements())[0];
+    expect(a.w).toBeCloseTo(300, 0);
+    expect(a.h).toBeCloseTo(150, 0);
+    // боковая ручка тоже не искажает: высота растёт от середины
+    await board.drag([{ x: a.x + a.w, y: a.y + a.h / 2 }, { x: a.x + a.w + 60, y: a.y + a.h / 2 }]);
+    const b = (await board.elements())[0];
+    expect(b.w).toBeCloseTo(360, 0);
+    expect(b.h).toBeCloseTo(180, 0);
+    expect(b.y + b.h / 2).toBeCloseTo(a.y + a.h / 2, 0);
+
+    await page.locator('#btn-settings').click();
+    const cb = page.locator('#settings-popover label', { hasText: 'Пропорциональный размер изображений' }).locator('input');
+    await expect(cb).toBeChecked();
+    await cb.uncheck();
+    await page.keyboard.press('Escape');
+    expect((await board.state()).settings.keepImageAspect).toBe(false);
+    await board.drag([{ x: b.x + b.w, y: b.y + b.h }, { x: b.x + b.w + 100, y: b.y + b.h }]);
+    const c = (await board.elements())[0];
+    expect(c.w).toBeCloseTo(460, 0);
+    expect(c.h).toBeCloseTo(180, 0);
+    // с Shift — снова пропорционально
+    await board.drag([{ x: c.x + c.w, y: c.y + c.h }, { x: c.x + c.w + 46, y: c.y + c.h }], { modifiers: ['Shift'] });
+    const d = (await board.elements())[0];
+    expect(d.w / d.h).toBeCloseTo(460 / 180, 1);
+
+    await page.reload();
+    await board.ready();
+    expect((await board.state()).settings.keepImageAspect).toBe(false);
   });
 
   test('битый файл — сообщение об ошибке', async ({ board, page }) => {

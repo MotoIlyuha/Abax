@@ -12,13 +12,18 @@ const hid = (d: string) => `<path d="${d}" stroke-dasharray="2.2 2" stroke-width
 
 export interface ToolDef { id: ToolId; title: string; icon: string }
 
+/** Контуры иконки ластика (24×24): из них же курсор объектного ластика на холсте. */
+export const ERASER_PATHS = ['M20 20H8.5L3.6 15.1a2 2 0 0 1 0-2.8l8.6-8.6a2 2 0 0 1 2.8 0l6 6a2 2 0 0 1 0 2.8L13.5 19', 'M7 10.5l6.5 6.5'];
+/** Середина стирающего края иконки — горячая точка курсора ластика. */
+export const ERASER_TIP = { x: 6, y: 18 };
+
 /** Все инструменты в порядке по умолчанию. */
 export const TOOL_DEFS: ToolDef[] = [
   { id: 'select', title: 'Выделение и перемещение', icon: svg('<path d="M5 3l15 8-6.4 1.7L11 20z"/>') },
   { id: 'pan', title: 'Панорама', icon: svg('<path d="M12 3v18M3 12h18"/><path d="M9.5 5.5L12 3l2.5 2.5M9.5 18.5L12 21l2.5-2.5M5.5 9.5L3 12l2.5 2.5M18.5 9.5L21 12l-2.5 2.5"/>') },
   { id: 'pen', title: 'Перо', icon: svg('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>') },
   { id: 'highlighter', title: 'Маркер', icon: svg('<path d="M9 11l-6 6v3h3l6-6"/><path d="M17.5 2.5l4 4L11 17l-4-4z"/>') },
-  { id: 'eraser', title: 'Ластик', icon: svg('<path d="M20 20H8.5L3.6 15.1a2 2 0 0 1 0-2.8l8.6-8.6a2 2 0 0 1 2.8 0l6 6a2 2 0 0 1 0 2.8L13.5 19"/><path d="M7 10.5l6.5 6.5"/>') },
+  { id: 'eraser', title: 'Ластик', icon: svg(ERASER_PATHS.map(d => `<path d="${d}"/>`).join('')) },
   // стирает часть линии: маленький ластик над разрывом волнистой линии
   { id: 'partEraser', title: 'Ластик для пера и маркера', icon: svg('<path d="M10 12.5l5.6-5.6a1.6 1.6 0 0 1 2.3 0l1.6 1.6a1.6 1.6 0 0 1 0 2.3L14.5 15.8H11.6l-1.6-1.6a1.2 1.2 0 0 1 0-1.7z"/><path d="M2.5 19.5c1.5-1.5 2.8-1.5 4.2 0"/><path d="M16.8 19.5c1.5 1.5 3 1.5 4.7 0"/>') },
   { id: 'text', title: 'Текст', icon: svg('<path d="M5 7V5h14v2"/><path d="M12 5v14"/><path d="M9 19h6"/>') },
@@ -47,6 +52,14 @@ export const TOOL_DEFS: ToolDef[] = [
 ];
 
 const DEF_BY_ID = new Map(TOOL_DEFS.map(t => [t.id, t]));
+
+/** Инструменты без цвета: у стикеров своя палитра, указка и подсветка — фиксированного цвета. */
+const COLORLESS_TOOLS = new Set<ToolId>(['select', 'pan', 'eraser', 'partEraser', 'note', 'laser', 'flash']);
+
+/** Нужен ли инструменту выбор цвета и толщины на панели инструментов. */
+export function toolUsesColor(id: ToolId): boolean {
+  return !COLORLESS_TOOLS.has(id);
+}
 
 export function toolDef(id: ToolId): ToolDef {
   return DEF_BY_ID.get(id)!;

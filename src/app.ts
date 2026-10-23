@@ -19,7 +19,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker&inline';
 import { collabActive, isHost, noteSelection, readOnly, startHostConnection, stopCollab } from './collab';
 import { closePresent, openPresent, presentOpen } from './present';
-import { type ToolbarGroup, onToolbarChange, restoreToolbar, svg, toolDef, toolTip, toolbarConfig } from './toolbar';
+import { type ToolbarGroup, onToolbarChange, restoreToolbar, svg, toolDef, toolTip, toolUsesColor, toolbarConfig } from './toolbar';
 import { openSettingsDialog, settingsDialogOpen } from './settings-dialog';
 import { renderToolbarEditor } from './toolbar-editor';
 import { renderHotkeysSettings } from './hotkeys-settings';
@@ -161,6 +161,7 @@ function restoreSettings(): void {
         newPageKey: DEFAULT_NEW_PAGE_KEY,
         uiAnimations: typeof v.uiAnimations === 'boolean' ? v.uiAnimations : true,
         hideUndoRedo: typeof v.hideUndoRedo === 'boolean' ? v.hideUndoRedo : false,
+        keepImageAspect: typeof v.keepImageAspect === 'boolean' ? v.keepImageAspect : true,
       };
       // null — пользователь снял сочетание; занятое или битое значение — снова по умолчанию
       const k = v.newPageKey;
@@ -1291,6 +1292,20 @@ function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
   span3.textContent = 'Привязка к сетке';
   lbl3.append(cb3, span3);
   pop.appendChild(lbl3);
+  const lbl8 = document.createElement('label');
+  lbl8.className = 'ctx-check';
+  lbl8.title = macKeys('Изображения и страницы PDF не искажаются при изменении размера — Ctrl или Shift зажимать не нужно');
+  const cb8 = document.createElement('input');
+  cb8.type = 'checkbox';
+  cb8.checked = state.settings.keepImageAspect;
+  cb8.addEventListener('change', () => {
+    setSettings({ keepImageAspect: cb8.checked });
+    persistSettings();
+  });
+  const span8 = document.createElement('span');
+  span8.textContent = 'Пропорциональный размер изображений';
+  lbl8.append(cb8, span8);
+  pop.appendChild(lbl8);
   const lbl4 = document.createElement('div');
   lbl4.className = 'ctx-label';
   lbl4.textContent = 'Колёсико мыши';
@@ -1519,6 +1534,8 @@ export function insertImageFromDataUrl(dataUrl: string, at?: { x: number; y: num
     const el: ImageEl = { id: uid(), type: 'image', src: dataUrl, x: cx - w / 2, y: cy - h / 2, w, h };
     pushHistory(state.board.elements);
     replaceElements([...state.board.elements, el]);
+    // картинку обычно сразу двигают и масштабируют — включаем выделение
+    setTool('select');
     setSelection([el.id]);
   };
   probe.onerror = () => alert('Не удалось прочитать изображение');
@@ -2451,12 +2468,14 @@ function buildToolbar(): void {
   }
   if (tools.childElementCount > 0) {
     tb.appendChild(tools);
-    tb.appendChild(makeVsep());
+    const sep = makeVsep();
+    sep.classList.add('style-sep');
+    tb.appendChild(sep);
   }
 
   // пресеты «цвет + толщина»: у пера и маркера три, у прочих инструментов один (лишние скрыты)
   const styleGroup = document.createElement('div');
-  styleGroup.className = 'tool-group';
+  styleGroup.className = 'tool-group style-group';
   for (let i = 0; i < PRESET_SLOTS; i++) {
     const sBtn = document.createElement('button');
     sBtn.className = 'tool style-btn';
@@ -2478,6 +2497,9 @@ let shownPresetKey = '';
 
 /** Кнопки пресетов: видимость, подсветка текущего, якорь панели стиля (data-ctx) — у текущего. */
 function syncPresetButtons(tb: HTMLElement): void {
+  // инструментам без цвета (выделение, ластики, стикер…) пресеты не нужны — прячем вместе с разделителем
+  const withStyle = toolUsesColor(state.tool);
+  for (const e of tb.querySelectorAll<HTMLElement>('.style-group, .style-sep')) e.hidden = !withStyle;
   const kind = presetKind(state.tool);
   const set = state.presets[kind];
   const multi = set.list.length > 1;
@@ -2496,14 +2518,16 @@ function syncPresetButtons(tb: HTMLElement): void {
     paintStyleIndicator(b.querySelector<HTMLElement>('.style-ind')!, true, current ? state.style : preset);
   }
   syncCtxButtons();
+  const sp = panelOf('style');
+  // кнопки пресетов спрятаны — пристыкованной к ним панели стоять не у чего
+  if (!withStyle && sp?.source === 'toolbar' && !sp.detached) closePanel(sp);
   const key = `${kind}:${set.active}`;
   if (key === shownPresetKey) return;
   shownPresetKey = key;
   // панель стиля с тулбара переезжает к новому пресету и показывает его цвет и толщину
-  const sp = panelOf('style');
   if (sp && sp.source === 'toolbar') {
     if (sp.detached) rebuildStylePanel(sp);
-    else openCtxPanel('style', 'toolbar');
+    else if (withStyle) openCtxPanel('style', 'toolbar');
   }
 }
 

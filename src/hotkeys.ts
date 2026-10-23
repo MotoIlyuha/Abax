@@ -4,7 +4,7 @@
 // Cmd на macOS считается за Ctrl, как и во всех горячих клавишах доски, и в подписях
 // на macOS вместо «Ctrl» пишем «Cmd» (см. macKeys).
 
-import type { PageKeyMod } from './types';
+import type { BoardSettings, PageKeyMod } from './types';
 
 export const DEFAULT_NEW_PAGE_KEY = 'Alt+KeyN';
 
@@ -68,9 +68,17 @@ export function pageNumberFromEvent(e: Pick<KeyboardEvent, 'code' | 'ctrlKey' | 
   return m ? Number(m[1]) : null;
 }
 
-/** Постоянные сочетания доски — для справки в настройках и проверки конфликтов. */
-export interface FixedShortcut { keys: string[]; what: string }
-export interface ShortcutGroup { title: string; items: FixedShortcut[] }
+/**
+ * Постоянные сочетания доски — для справки в настройках и проверки конфликтов.
+ * Одиночный модификатор («Shift», «Ctrl», «Alt») — клавиша, которую держат во время действия.
+ */
+export interface FixedShortcut {
+  keys: string[];
+  what: string;
+  /** Настройка доски, с которой сочетание не нужно: пока она включена, в справке его нет. */
+  hiddenBy?: keyof BoardSettings;
+}
+export interface ShortcutGroup { title: string; items: FixedShortcut[]; note?: string }
 
 export const FIXED_SHORTCUTS: ShortcutGroup[] = [
   {
@@ -100,6 +108,15 @@ export const FIXED_SHORTCUTS: ShortcutGroup[] = [
       { keys: ['Space'], what: 'Двигать доску, пока клавиша нажата' },
       { keys: ['Enter'], what: 'Закончить ломаную' },
       { keys: ['Escape'], what: 'Прервать ломаную, закрыть панель' },
+    ],
+  },
+  {
+    title: 'Изменение размера',
+    note: 'Клавишу держат, пока тянут ручку выделенного элемента.',
+    items: [
+      { keys: ['Shift', 'Ctrl'], what: 'Сохранить пропорции фигуры или стикера' },
+      { keys: ['Shift', 'Ctrl'], what: 'Сохранить пропорции изображения', hiddenBy: 'keepImageAspect' },
+      { keys: ['Alt'], what: 'Менять размер от центра' },
     ],
   },
   {
