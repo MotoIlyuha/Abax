@@ -909,8 +909,8 @@ body.no-ui-anim #pages-dock.open :is(.page-item, .page-add) { animation: none; }
   max-width: calc(100vw - 32px);
   padding: 10px 18px;
   border-radius: 10px;
-  background: #2e1f19;
-  color: #f3eeec;
+  background: #141917;
+  color: #f3f1e7;
   font-size: 14px;
   box-shadow: var(--shadow);
   transform: translateX(-50%);
@@ -921,8 +921,8 @@ body.no-ui-anim #pages-dock.open :is(.page-item, .page-add) { animation: none; }
 #toast.show { animation: toast-in 0.22s cubic-bezier(0.22, 0.8, 0.24, 1); }
 body.no-ui-anim #toast.show { animation: none; }
 @media (prefers-reduced-motion: reduce) { #toast.show { animation: none; } }
-.sd-about-name { display: flex; align-items: baseline; gap: 10px; font-size: 24px; font-weight: 700; line-height: 1.2; color: #2e1f19; }
-.sd-about-greek { font-size: 17px; font-weight: 400; color: #6a5e5a; }
+.sd-about-name { display: flex; align-items: baseline; gap: 10px; font-size: 24px; font-weight: 700; line-height: 1.2; color: #1f2a26; }
+.sd-about-greek { font-size: 17px; font-weight: 400; color: #626a67; }
 .sd-about-version { color: var(--muted); }
 .sd-about-desc { margin-bottom: 18px; line-height: 1.5; }
 .sd-about-features { margin: 0 0 20px; padding-left: 20px; line-height: 1.7; }
