@@ -201,4 +201,6 @@ export interface BoardSettings {
   uiAnimations: boolean;
   /** Скрыть кнопки «Отменить» и «Повторить» в шапке (Ctrl+Z / Ctrl+Y работают). */
   hideUndoRedo: boolean;
+  /** Изображения (и страницы PDF) меняют размер только пропорционально — без Shift и Ctrl. */
+  keepImageAspect: boolean;
 }

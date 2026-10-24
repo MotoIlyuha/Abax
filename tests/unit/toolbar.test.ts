@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ToolId } from '../../src/types';
 import {
   type ToolbarConfig, TOOL_DEFS, addGroup, combineTools, defaultToolbar, keyLabel, keyProblem, moveEntry,
-  nextGroupName, renameGroup, sanitizeToolbar, setEntryHidden, setToolKey, ungroup,
+  nextGroupName, renameGroup, sanitizeToolbar, setEntryHidden, setToolKey, toolUsesColor, ungroup,
 } from '../../src/toolbar';
 
 type ToolbarModule = typeof import('../../src/toolbar');
@@ -31,6 +31,17 @@ describe('настройка по умолчанию', () => {
     expect(cfg.hidden).toEqual([]);
     expect(cfg.keys.pen).toBe('KeyP');
     expect(cfg.keys.cube).toBeUndefined();
+  });
+});
+
+describe('toolUsesColor', () => {
+  it('цвет нужен рисующим инструментам, но не выделению, ластикам, стикеру и указке', () => {
+    for (const id of ['pen', 'highlighter', 'text', 'rect', 'line', 'poly', 'cube', 'fadePen'] as ToolId[]) {
+      expect(toolUsesColor(id), id).toBe(true);
+    }
+    for (const id of ['select', 'pan', 'eraser', 'partEraser', 'note', 'laser', 'flash'] as ToolId[]) {
+      expect(toolUsesColor(id), id).toBe(false);
+    }
   });
 });
 

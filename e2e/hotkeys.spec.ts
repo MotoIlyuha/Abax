@@ -163,6 +163,14 @@ test.describe('раздел «Горячие клавиши»: справка', 
     await expect(row('Копировать').locator('kbd')).toHaveText(['Ctrl', 'C']);
     await expect(row('Вырезать').locator('kbd')).toHaveText(['Ctrl', 'X']);
     await expect(row('Вставить').locator('kbd')).toHaveText(['Ctrl', 'V']);
+    await expect(row('Сохранить пропорции фигуры').locator('kbd')).toHaveText(['Shift', 'Ctrl']);
+    await expect(row('Менять размер от центра').locator('kbd')).toHaveText(['Alt']);
+    // картинки и так пропорциональны (настройка по умолчанию) — их сочетание не показываем
+    await expect(row('Сохранить пропорции изображения')).toHaveCount(0);
+    await page.locator('.sd-nav-item', { hasText: 'Доска' }).click();
+    await page.locator('.sd-general label', { hasText: 'Пропорциональный размер изображений' }).locator('input').uncheck();
+    await page.locator('.sd-nav-item', { hasText: 'Горячие клавиши' }).click();
+    await expect(row('Сохранить пропорции изображения').locator('kbd')).toHaveText(['Shift', 'Ctrl']);
 
     // «Изменить» ведёт к назначению клавиш инструментов
     await page.locator('.hk-edit').click();

@@ -32,7 +32,7 @@ function keycaps(combo: string): HTMLElement {
   const box = el('span', 'hk-keys');
   const parts = combo.split('+');
   const code = parts.pop()!;
-  for (const p of [...parts.map(m => macKeys(m)), codeLabel(code)]) box.appendChild(el('kbd', '', p));
+  for (const p of [...parts, codeLabel(code)]) box.appendChild(el('kbd', '', macKeys(p)));
   return box;
 }
 
@@ -189,15 +189,19 @@ export function renderHotkeysSettings(host: HTMLElement, opts: HotkeysOptions): 
 
     // ----- Постоянные сочетания -----
     for (const g of FIXED_SHORTCUTS) {
+      // ставшие ненужными из-за настройки доски (картинки и так пропорциональны) не показываем
+      const items = g.items.filter(item => !(item.hiddenBy && s[item.hiddenBy]));
+      if (items.length === 0) continue;
       const block = el('section', 'hk-block');
       block.appendChild(el('h3', 'hk-title', g.title));
       const grid = el('div', 'hk-grid');
-      for (const item of g.items) {
+      for (const item of items) {
         const row = el('div', 'hk-row');
         row.append(el('div', 'hk-what', item.what), keycapsAny(item.keys));
         grid.appendChild(row);
       }
       block.appendChild(grid);
+      if (g.note) block.appendChild(el('div', 'hk-sub hk-note', macKeys(g.note)));
       root.appendChild(block);
     }
   }

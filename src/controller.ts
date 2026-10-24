@@ -9,17 +9,25 @@ import {
   insertPolyNode, removePolyNode, gridStepFor, snapValue, translateElement,
 } from './geom';
 import { collabActive, noteCursor, readOnly } from './collab';
-import { eraseRadius, presenting, requestRender } from './renderer';
+import { partEraseRadius, presenting, requestRender } from './renderer';
 import { fitSolid, SOLID_CLICK_SIZE, solidKeepsAspect } from './solid';
 import { addPageFromKey, beginTextEdit, duplicateSelection, exportPng, fitContent, openAllSettings, saveNow, switchToPage, togglePages } from './app';
 import { comboFromEvent, pageNumberFromEvent } from './hotkeys';
-import { toolByKey } from './toolbar';
+import { ERASER_PATHS, ERASER_TIP, toolByKey } from './toolbar';
 
 const SELECT_TOL = 6; // px экрана
 const HANDLE_HIT_PX = 8;
 const POLY_SNAP_PX = 14; // радиус примагничивания к первой точке
+const OBJECT_ERASE_PX = 2; // радиус объектного ластика, px экрана
+/** Курсор объектного ластика — его иконка; белая подложка видна и на тёмном, стирает кончик. */
+const ERASER_CURSOR = (() => {
+  const paths = ERASER_PATHS.map(d => `<path d="${d}"/>`).join('');
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">'
+    + `<g fill="#fff" stroke="#fff" stroke-width="4">${paths}</g><g stroke="#1f2329" stroke-width="1.8">${paths}</g></svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}") ${ERASER_TIP.x} ${ERASER_TIP.y}, crosshair`;
+})();
 const CURSORS: Record<ToolId, string> = {
-  select: 'default', pen: 'crosshair', highlighter: 'crosshair', eraser: 'none', partEraser: 'none',
+  select: 'default', pen: 'crosshair', highlighter: 'crosshair', eraser: ERASER_CURSOR, partEraser: 'none',
   pan: 'grab', text: 'text', note: 'crosshair', rect: 'crosshair',
   ellipse: 'crosshair', triangle: 'crosshair', line: 'crosshair', arrow: 'crosshair', poly: 'crosshair',
   laser: 'none', fadePen: 'crosshair', flash: 'default',
@@ -96,31 +104,38 @@ export function initController(canvas: HTMLCanvasElement): void {
     zoomAtScreen(r.width / 2, r.height / 2, factor);
   }
 
+  /** Объектный ластик: стирает элементы целиком; картинки и страницы PDF не трогает. */
   function eraseAt(x: number, y: number, a: Extract<Action, { kind: 'erase' }>): void {
-    const r = eraseRadius / state.camera.zoom;
+    const r = OBJECT_ERASE_PX / state.camera.zoom;
     // быстрое движение даёт редкие события: проходим путь от прошлой точки с шагом в радиус,
     // иначе тонкая линия между двумя событиями не стирается
     const from = a.last ?? { x, y };
     const steps = Math.max(1, Math.ceil(Math.hypot(x - from.x, y - from.y) / r));
     a.last = { x, y };
-    let next = state.board.elements;
-    let removedNow = 0;
-    for (let i = 1; i <= steps; i++) {
+    // радиус маленький, шагов много: проверяем только элементы, чья рамка задевает путь
+    const path = { x0: Math.min(from.x, x), y0: Math.min(from.y, y), x1: Math.max(from.x, x), y1: Math.max(from.y, y) };
+    const near = state.board.elements.filter(el => {
+      if (el.type === 'image') return false;
+      const pad = r + ('width' in el ? el.width : 0); // у линии рамка без толщины
+      const b = elementAABB(el);
+      return aabbIntersects({ x0: b.x0 - pad, y0: b.y0 - pad, x1: b.x1 + pad, y1: b.y1 + pad }, path);
+    });
+    const removed = new Set<Element>();
+    for (let i = 1; i <= steps && removed.size < near.length; i++) {
       const px = from.x + ((x - from.x) * i) / steps;
       const py = from.y + ((y - from.y) * i) / steps;
-      const kept: Element[] = [];
-      for (const el of next) {
-        if (hitTest(el, px, py, r)) { a.removed.push(el); removedNow++; }
-        else kept.push(el);
+      for (const el of near) {
+        if (!removed.has(el) && hitTest(el, px, py, r)) removed.add(el);
       }
-      next = kept;
     }
-    if (removedNow) replaceElements(next);
+    if (removed.size === 0) return;
+    a.removed.push(...removed);
+    replaceElements(state.board.elements.filter(el => !removed.has(el)));
   }
 
   /** Ластик для пера и маркера: вырезает из линий часть под ластиком, остальное не трогает. */
   function erasePartAt(x: number, y: number, a: Extract<Action, { kind: 'erasePart' }>): void {
-    const r = eraseRadius / state.camera.zoom;
+    const r = partEraseRadius / state.camera.zoom;
     const from = a.last ?? { x, y };
     const steps = Math.max(1, Math.ceil(Math.hypot(x - from.x, y - from.y) / r));
     a.last = { x, y };
@@ -485,7 +500,7 @@ export function initController(canvas: HTMLCanvasElement): void {
     if (ptr) { ptr.x = lp.x; ptr.y = lp.y; }
     state.hover = { x: lp.x, y: lp.y };
     if (collabActive()) noteCursor(lp.x / state.camera.zoom + state.camera.x, lp.y / state.camera.zoom + state.camera.y);
-    if (state.tool === 'eraser' || state.tool === 'partEraser') update();
+    if (state.tool === 'partEraser') update(); // кружок ластика под курсором
     else if (presenting()) requestRender(); // курсор в окне демонстрации
 
     if (gesture) { applyGesture(); return; }
@@ -554,7 +569,7 @@ export function initController(canvas: HTMLCanvasElement): void {
           // модификаторы как при resize: Alt — от центра, Shift/Ctrl — пропорции/45°;
           // куб и шар всегда вписываются в квадрат
           let dx = s.x - ls.ax0, dy = s.y - ls.ay0;
-          const square = e.shiftKey || e.ctrlKey || ('solid' in ls && solidKeepsAspect(ls.solid));
+          const square = e.shiftKey || e.ctrlKey || e.metaKey || ('solid' in ls && solidKeepsAspect(ls.solid));
           if (square) {
             if (!isLine) {
               const m = Math.max(Math.abs(dx), Math.abs(dy));
@@ -595,7 +610,9 @@ export function initController(canvas: HTMLCanvasElement): void {
           const a1 = Math.atan2(snapped.y - cy, snapped.x - cx);
           rotateAngle = a.rotBase.rot0 + (a1 - a.rotBase.a0);
         }
-        const next = applyHandle(a.el, a.h, snapped, { proportional: e.shiftKey || e.ctrlKey, fromCenter: e.altKey }, rotateAngle);
+        // картинки по настройке всегда пропорциональны: Shift и Ctrl не нужны
+        const proportional = e.shiftKey || e.ctrlKey || e.metaKey || (a.el.type === 'image' && state.settings.keepImageAspect);
+        const next = applyHandle(a.el, a.h, snapped, { proportional, fromCenter: e.altKey }, rotateAngle);
         replaceElements(state.board.elements.map(x => (x.id === a.el.id ? next : x)));
         a.changed = true;
         break;
@@ -643,7 +660,7 @@ export function initController(canvas: HTMLCanvasElement): void {
 
   function onPointerLeave(): void {
     state.hover = null;
-    if (state.tool === 'eraser' || state.tool === 'partEraser' || state.tool === 'laser') update();
+    if (state.tool === 'partEraser' || state.tool === 'laser') update();
     else if (presenting()) requestRender();
   }
 

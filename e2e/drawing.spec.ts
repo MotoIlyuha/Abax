@@ -214,6 +214,22 @@ test.describe('ластик', () => {
     expect(await board.count()).toBe(0);
   });
 
+  test('объектный ластик маленький, курсор — его иконка', async ({ board, page }) => {
+    await board.drag([{ x: 400, y: 300 }, { x: 600, y: 300 }]);
+    await board.tool('e');
+    await expect(board.canvas).toHaveCSS('cursor', /^url\("data:image\/svg\+xml.*\) 6 18, crosshair$/);
+    // в 10 px от линии — мимо: радиус ластика 2 px
+    await board.drag([{ x: 400, y: 310 }, { x: 600, y: 310 }]);
+    expect(await board.count()).toBe(1);
+    await board.drag([{ x: 500, y: 290 }, { x: 500, y: 310 }]);
+    expect(await board.count()).toBe(0);
+    // у ластика для пера и маркера курсор по-прежнему — кружок на холсте
+    await board.tool('x');
+    await expect(board.canvas).toHaveCSS('cursor', 'none');
+    await page.keyboard.press('Control+z');
+    expect(await board.count()).toBe(1);
+  });
+
   test('ластик для пера и маркера разрезает линию и не трогает фигуры', async ({ board, page }) => {
     await board.drag([{ x: 300, y: 300 }, { x: 700, y: 300 }]); // перо
     await board.tool('m');

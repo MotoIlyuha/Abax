@@ -359,7 +359,7 @@ export function elementHandles(el: Element, zoom: number): HandlePos[] {
 }
 
 export interface ResizeMods {
-  /** Shift/Ctrl: сохранять пропорции (для угловых ручек). */
+  /** Shift/Ctrl: сохранять пропорции (у боковой ручки вторая сторона меняется от середины). */
   proportional?: boolean;
   /** Alt: изменение размера от центра. */
   fromCenter?: boolean;
@@ -391,21 +391,19 @@ function applyResizeMods(
       box.bottom = half;
     }
   }
-  if (mods.proportional && h.dx !== 0 && h.dy !== 0) {
+  if (mods.proportional && (h.dx !== 0 || h.dy !== 0)) {
+    // угловая ручка — по большему растяжению, боковая — по своей стороне
     const fX = (box.right - box.left) / origW;
     const fY = (box.bottom - box.top) / origH;
-    let f = Math.max(fX, fY);
-    f = Math.max(f, Math.max(minSize / origW, minSize / origH));
+    const f = Math.max(h.dx === 0 ? fY : h.dy === 0 ? fX : Math.max(fX, fY), minSize / origW, minSize / origH);
     const nw = origW * f, nh = origH * f;
-    if (mods.fromCenter) {
-      box.left = -nw / 2; box.right = nw / 2;
-      box.top = -nh / 2; box.bottom = nh / 2;
-    } else {
-      if (h.dx > 0) box.right = box.left + nw;
-      else if (h.dx < 0) box.left = box.right - nw;
-      if (h.dy > 0) box.bottom = box.top + nh;
-      else if (h.dy < 0) box.top = box.bottom - nh;
-    }
+    // сторона без ручки (у боковой) растёт от середины
+    if (mods.fromCenter || h.dx === 0) { box.left = -nw / 2; box.right = nw / 2; }
+    else if (h.dx > 0) box.right = box.left + nw;
+    else box.left = box.right - nw;
+    if (mods.fromCenter || h.dy === 0) { box.top = -nh / 2; box.bottom = nh / 2; }
+    else if (h.dy > 0) box.bottom = box.top + nh;
+    else box.top = box.bottom - nh;
   }
 }
 

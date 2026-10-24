@@ -7,6 +7,7 @@ import {
 import { ribbonPath } from './stroke';
 import { fitSolid, solidGeometry, type SolidPrim } from './solid';
 import { state } from './state';
+import { ERASER_PATHS, ERASER_TIP } from './toolbar';
 
 /** Сколько картинок догрузилось: кэш сцены, собранный с заглушкой, устаревает. */
 let imgEpoch = 0;
@@ -427,7 +428,7 @@ export function renderScene(
 
 const REBUILD_DELAY = 120; // мс покоя камеры до резкой перерисовки
 const HEAVY_BOARD = 1500; // элементов: выше — переносим выделенное поверх ради плавности
-const ERASE_R = 12;
+const PART_ERASE_R = 12; // радиус ластика для пера и маркера, px экрана
 
 let canvas: HTMLCanvasElement | null = null;
 let ctx: CanvasRenderingContext2D | null = null;
@@ -836,11 +837,12 @@ function draw(): void {
     }
     ctx.setLineDash([]);
   }
-  if ((state.tool === 'eraser' || state.tool === 'partEraser') && state.hover) {
+  // у объектного ластика курсор — его иконка (CSS), кружок — только у ластика для пера и маркера
+  if (state.tool === 'partEraser' && state.hover) {
     ctx.strokeStyle = '#7a828e';
     ctx.lineWidth = 1.25;
     ctx.beginPath();
-    ctx.arc(state.hover.x, state.hover.y, ERASE_R, 0, Math.PI * 2);
+    ctx.arc(state.hover.x, state.hover.y, PART_ERASE_R, 0, Math.PI * 2);
     ctx.stroke();
   }
   drawLaser(ctx);
@@ -924,18 +926,40 @@ function drawPresent(camSettled: boolean): void {
   if (hover && state.tool !== 'laser') {
     const x = hover.x * k + ox;
     const y = hover.y * k + oy;
-    if (state.tool === 'eraser' || state.tool === 'partEraser') {
+    if (state.tool === 'partEraser') {
       c.strokeStyle = '#7a828e';
       c.lineWidth = 1.25;
       c.beginPath();
-      c.arc(x, y, ERASE_R * k, 0, Math.PI * 2);
+      c.arc(x, y, PART_ERASE_R * k, 0, Math.PI * 2);
       c.stroke();
+    } else if (state.tool === 'eraser') {
+      drawEraser(c, x, y);
     } else {
       drawPointer(c, x, y);
     }
   }
   c.setTransform(pdpr * k, 0, 0, pdpr * k, pdpr * ox, pdpr * oy);
   drawLaser(c);
+}
+
+let eraserPaths: Path2D[] | null = null;
+
+/** Курсор объектного ластика в окне демонстрации — как в основном окне (см. ERASER_CURSOR). */
+function drawEraser(ctx: CanvasRenderingContext2D, x: number, y: number): void {
+  eraserPaths ??= ERASER_PATHS.map(d => new Path2D(d));
+  ctx.save();
+  ctx.translate(x - ERASER_TIP.x, y - ERASER_TIP.y);
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.fillStyle = '#ffffff';
+  ctx.fill(eraserPaths[0]);
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 4;
+  for (const p of eraserPaths) ctx.stroke(p);
+  ctx.strokeStyle = '#1f2329';
+  ctx.lineWidth = 1.8;
+  for (const p of eraserPaths) ctx.stroke(p);
+  ctx.restore();
 }
 
 /** Курсор учителя: в окне демонстрации системного курсора нет, ученик видит этот. */
@@ -1121,7 +1145,7 @@ function drawLaser(ctx: CanvasRenderingContext2D): void {
   if (alive.length > 0) requestRender(); // гоним кадры, пока след гаснет
 }
 
-export const eraseRadius = ERASE_R;
+export const partEraseRadius = PART_ERASE_R;
 export function contentBBox(elements: Element[]) {
   let x0 = Infinity;
   let y0 = Infinity;

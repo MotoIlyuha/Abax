@@ -274,6 +274,17 @@ describe('applyHandle', () => {
     expect(c.y).toBe(-25);
   });
 
+  it('пропорции у боковой ручки: вторая сторона растёт от середины', () => {
+    const p = applyHandle(rect(), resize(1, 0), pt(200, 25), { proportional: true }) as ShapeEl;
+    expect(p).toMatchObject({ x: 0, w: 200, h: 100, y: -25 });
+    const v = applyHandle(rect(), resize(0, -1), pt(50, -50), { proportional: true }) as ShapeEl;
+    expect(v).toMatchObject({ y: -50, h: 100, w: 200, x: -50 });
+    // и у повёрнутой картинки
+    const img = applyHandle(image({ rot: Math.PI / 2 }), resize(1, 0), pt(50, 175), { proportional: true }) as ImageEl;
+    expect(img.w / img.h).toBeCloseTo(2);
+    expect(img.w).toBeCloseTo(200);
+  });
+
   it('пропорции от левого верхнего угла', () => {
     const p = applyHandle(rect(), resize(-1, -1), pt(-100, -10), { proportional: true }) as ShapeEl;
     expect(p.w / p.h).toBeCloseTo(2);
