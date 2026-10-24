@@ -20,9 +20,10 @@ const SPLASHES = {
 
 const logo = await readFile(new URL('../public/logo.svg', import.meta.url), 'utf8');
 const tile = /<rect[^>]*\/>/.exec(logo)[0];
-const tileColor = /fill="([^"]+)"/.exec(tile)[1];
-/** Круглая иконка: та же картинка на круге вместо скруглённой плитки. */
-const roundLogo = logo.replace(tile, `<circle cx="32" cy="32" r="32" fill="${tileColor}"/>`);
+/** Круглая иконка: та же картинка на круге вместо скруглённой плитки, с той же заливкой и обводкой. */
+const tileInset = Number(/ x="([^"]+)"/.exec(tile)[1]);
+const tilePaint = tile.match(/(fill|stroke|stroke-width)="[^"]+"/g).join(' ');
+const roundLogo = logo.replace(tile, `<circle cx="32" cy="32" r="${32 - tileInset}" ${tilePaint}/>`);
 /**
  * Передний слой адаптивной иконки (108dp): только рисунок, плитку рисует система цветом фона.
  * Видимая часть иконки — около 72dp, она соответствует плитке 64×64, отсюда окно 96×96 вокруг центра.
