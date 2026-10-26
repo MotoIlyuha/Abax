@@ -13,6 +13,8 @@ export interface SettingsSection {
   id: string;
   title: string;
   icon: string;
+  /** Картинка (HTML) перед заголовком раздела в шапке окна. */
+  headIcon?: () => string;
   /** rerender — перерисовать раздел целиком (после изменения настроек). */
   render(host: HTMLElement, rerender: () => void): SectionView | void;
 }
@@ -55,17 +57,7 @@ export function openSettingsDialog(sections: SettingsSection[], section?: string
   navTitle.className = 'sd-nav-title';
   navTitle.textContent = 'Настройки';
   nav.appendChild(navTitle);
-  for (const s of sections) {
-    const b = document.createElement('button');
-    b.className = 'sd-nav-item';
-    b.dataset.section = s.id;
-    b.innerHTML = s.icon;
-    const label = document.createElement('span');
-    label.textContent = s.title;
-    b.appendChild(label);
-    b.addEventListener('click', () => showSection(s.id));
-    nav.appendChild(b);
-  }
+  for (const s of sections) nav.appendChild(navItem(s));
 
   const main = document.createElement('div');
   main.className = 'sd-main';
@@ -96,6 +88,38 @@ export function openSettingsDialog(sections: SettingsSection[], section?: string
   nav.querySelector<HTMLElement>('.sd-nav-item.active')?.focus();
 }
 
+function navItem(s: SettingsSection): HTMLButtonElement {
+  const b = document.createElement('button');
+  b.className = 'sd-nav-item';
+  b.dataset.section = s.id;
+  b.innerHTML = s.icon;
+  const label = document.createElement('span');
+  label.textContent = s.title;
+  b.appendChild(label);
+  b.addEventListener('click', () => showSection(s.id));
+  return b;
+}
+
+/** Раздел появляется в открытом окне (в конце списка) и подсвечивается. */
+export function addSettingsSection(s: SettingsSection): void {
+  const d = dialog;
+  if (!d || d.sections.some(x => x.id === s.id)) return;
+  d.sections.push(s);
+  const b = navItem(s);
+  b.classList.add('sd-nav-new');
+  b.addEventListener('animationend', () => b.classList.remove('sd-nav-new'), { once: true });
+  d.nav.appendChild(b);
+}
+
+/** Раздел пропадает из открытого окна; был открыт — открывается первый. */
+export function removeSettingsSection(id: string): void {
+  const d = dialog;
+  if (!d) return;
+  d.sections = d.sections.filter(x => x.id !== id);
+  d.nav.querySelector(`.sd-nav-item[data-section="${id}"]`)?.remove();
+  if (lastSection === id) showSection(d.sections[0].id);
+}
+
 function showSection(id: string): void {
   const d = dialog;
   if (!d) return;
@@ -109,7 +133,14 @@ function showSection(id: string): void {
     if (on) b.setAttribute('aria-current', 'page');
     else b.removeAttribute('aria-current');
   }
-  d.heading.textContent = s.title;
+  d.heading.textContent = '';
+  if (s.headIcon) {
+    const icon = document.createElement('span');
+    icon.className = 'sd-head-icon';
+    icon.innerHTML = s.headIcon();
+    d.heading.appendChild(icon);
+  }
+  d.heading.append(s.title);
   d.content.textContent = '';
   d.content.dataset.section = s.id;
   d.view = s.render(d.content, () => showSection(s.id)) || null;

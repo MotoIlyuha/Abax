@@ -109,8 +109,14 @@ test.describe('список страниц', () => {
     for (let i = 0; i < 8; i++) await page.keyboard.press('Equal');
     await expect.poll(async () => (await active.boundingBox())!.width).toBeLessThan(before.width * 0.8);
 
+    // настройка — в скрытом разделе «Экспериментальные» (см. e2e/experimental.spec.ts)
     expect((await board.state()).settings.thumbViewport).toBe(true);
-    await toggleSetting(board, 'Показывать на превью видимую область');
+    await page.evaluate(() => localStorage.setItem('doska.experiments', '1'));
+    await page.keyboard.press('Control+Comma');
+    await page.locator('.sd-nav-item[data-section="experimental"]').click();
+    await page.locator('#settings-dialog label', { hasText: 'Показывать на превью видимую область' }).locator('input').uncheck();
+    await page.keyboard.press('Escape');
+    expect((await board.state()).settings.thumbViewport).toBe(false);
     await board.openPages();
     await expect(active).toBeHidden();
   });

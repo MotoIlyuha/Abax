@@ -13,7 +13,8 @@ import {
 import type { PresetKind, StylePatch, StyleValue } from './state';
 import { doskaApi, storage } from './storage';
 import { isNativeApp, sharePng } from './native';
-import { renderScene, contentBBox, imageEpoch, imagesLoaded, presentCanvas, renderNow } from './renderer';
+import { renderScene, contentBBox, imageEpoch, imagesLoaded, linkView, presentCanvas, renderNow } from './renderer';
+import { easeInOut, linkCameras, lockInput, newPageLink, zoomDuration, zoomPath } from './page-links';
 import { makeSortable, reordering } from './reorder';
 import { capturePageTransition } from './page-transition';
 import { hasBaseSides, SIDES_MAX, SIDES_MIN, solidSides } from './solid';
@@ -27,13 +28,17 @@ import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker&inline';
 import { collabActive, isHost, myColor, noteSelection, readOnly, startHostConnection, stopCollab } from './collab';
 import { closePresent, openPresent, presentOpen } from './present';
 import { type ToolbarGroup, onToolbarChange, restoreToolbar, svg, toolDef, toolTip, toolUsesColor, toolbarConfig } from './toolbar';
-import { openSettingsDialog, settingsDialogOpen } from './settings-dialog';
+import {
+  addSettingsSection, openSettingsDialog, removeSettingsSection, settingsDialogOpen, type SettingsSection,
+} from './settings-dialog';
+import { experimentalHeadIcon, experimentsShown, renderExperimental, setExperimentsShown } from './experimental';
 import { renderToolbarEditor } from './toolbar-editor';
 import { renderHotkeysSettings } from './hotkeys-settings';
 import { DEFAULT_NEW_PAGE_KEY, comboLabel, macKeys, newPageKeyProblem } from './hotkeys';
-import { renderAbout } from './about';
+import { renderAbout, showToast } from './about';
 import { closeIconPicker, openIconPicker } from './icon-picker';
 import { capitalize, dayLabel, pagesLabel } from './format';
+import { buildCustomColorPicker } from './color-picker';
 import { copySelection, COPY_STEP_PX, pasteFromMemory, pasteFromSystem } from './clipboard';
 
 pdfjsLib.GlobalWorkerOptions.workerPort = new PdfWorker();
@@ -64,6 +69,7 @@ const ICONS = {
   chevron: svg('<path d="M9 6l6 6-6 6"/>'),
   star: svg('<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/>'),
   info: svg('<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.5v.01"/>'),
+  flask: svg('<path d="M9 3h6"/><path d="M10 3v6.2L4.6 18.4A1.7 1.7 0 0 0 6.1 21h11.8a1.7 1.7 0 0 0 1.5-2.6L14 9.2V3"/><path d="M7.3 15h9.4"/>'),
   chevronLeft: svg('<path d="M15 6l-6 6 6 6"/>'),
   grid: svg('<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>'),
   list: svg('<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4.5 6h.01M4.5 12h.01M4.5 18h.01"/>'),
@@ -179,6 +185,7 @@ function restoreSettings(): void {
         alignGuides: typeof v.alignGuides === 'boolean' ? v.alignGuides : true,
         closePagesOnPick: typeof v.closePagesOnPick === 'boolean' ? v.closePagesOnPick : false,
         thumbViewport: typeof v.thumbViewport === 'boolean' ? v.thumbViewport : true,
+        pageLinks: typeof v.pageLinks === 'boolean' ? v.pageLinks : false,
       };
       // null — пользователь снял сочетание; занятое или битое значение — снова по умолчанию
       const k = v.newPageKey;
@@ -1059,94 +1066,6 @@ function buildStylePanel(cp: CtxPanel): void {
   renderCustomSwatches();
 }
 
-// ----- Кастомный HSV-пикер -----
-
-function hsvToHex(h: number, s: number, v: number): string {
-  const f = (n: number) => {
-    const k = (n + h / 60) % 6;
-    const val = v - v * s * Math.max(0, Math.min(k, 4 - k, 1));
-    return Math.round(val * 255).toString(16).padStart(2, '0');
-  };
-  return `#${f(5)}${f(3)}${f(1)}`;
-}
-
-function hexToHsv(hex: string): { h: number; s: number; v: number } {
-  const n = parseInt(hex.slice(1), 16);
-  const r = ((n >> 16) & 255) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
-  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
-  let h = 0;
-  if (d !== 0) {
-    if (max === r) h = 60 * (((g - b) / d) % 6);
-    else if (max === g) h = 60 * ((b - r) / d + 2);
-    else h = 60 * ((r - g) / d + 4);
-  }
-  if (h < 0) h += 360;
-  return { h, s: max === 0 ? 0 : d / max, v: max };
-}
-
-/** Собственный пикер: SV-квадрат + радужная полоса + hex. */
-function buildCustomColorPicker(host: HTMLElement, initial: string, onChange: (hex: string) => void): void {
-  host.textContent = '';
-  let { h, s, v } = hexToHsv(initial);
-  const sv = document.createElement('div');
-  sv.className = 'picker-sv';
-  const cursor = document.createElement('div');
-  cursor.className = 'picker-cursor';
-  sv.appendChild(cursor);
-  const hue = document.createElement('input');
-  hue.type = 'range';
-  hue.min = '0';
-  hue.max = '360';
-  hue.value = String(Math.round(h));
-  hue.className = 'picker-hue';
-  const hexRow = document.createElement('div');
-  hexRow.className = 'picker-hex';
-  const hexInput = document.createElement('input');
-  hexInput.value = initial;
-  hexInput.maxLength = 7;
-  const swatch = document.createElement('span');
-  swatch.className = 'picker-swatch';
-  hexRow.append(hexInput, swatch);
-  host.append(sv, hue, hexRow);
-
-  const apply = (emit: boolean) => {
-    const base = hsvToHex(h, 1, 1);
-    sv.style.background = `linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, ${base})`;
-    cursor.style.left = `${Math.round(s * 100)}%`;
-    cursor.style.top = `${Math.round((1 - v) * 100)}%`;
-    cursor.style.background = hsvToHex(h, s, v);
-    hue.value = String(Math.round(h));
-    const hex = hsvToHex(h, s, v);
-    if (hexInput.value.toLowerCase() !== hex) hexInput.value = hex;
-    swatch.style.background = hex;
-    if (emit) onChange(hex);
-  };
-  const pointToSv = (e: PointerEvent) => {
-    const r = sv.getBoundingClientRect();
-    s = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
-    v = Math.max(0, Math.min(1, 1 - (e.clientY - r.top) / r.height));
-    apply(true);
-  };
-  sv.addEventListener('pointerdown', e => {
-    pointToSv(e);
-    try { sv.setPointerCapture(e.pointerId); } catch { /* синтетика/потерянный pointer — цвет уже применён */ }
-  });
-  sv.addEventListener('pointermove', e => {
-    if (e.buttons > 0) pointToSv(e);
-  });
-  hue.addEventListener('input', () => {
-    h = Number(hue.value);
-    apply(true);
-  });
-  hexInput.addEventListener('change', () => {
-    if (/^#[0-9a-fA-F]{6}$/.test(hexInput.value)) {
-      ({ h, s, v } = hexToHsv(hexInput.value.toLowerCase()));
-      apply(true);
-    }
-  });
-  apply(false);
-}
-
 // ----- Кастомный слайдер толщины «капля» -----
 
 const WIDTH_MIN = 0.5;
@@ -1894,8 +1813,30 @@ export function openAllSettings(section?: string): void {
         editToolKeys: () => openAllSettings('toolbar'),
       }),
     },
-    { id: 'about', title: 'О проекте', icon: ICONS.info, render: host => renderAbout(host) },
+    { id: 'about', title: 'О проекте', icon: ICONS.info, render: host => renderAbout(host, showExperiments) },
+    ...(experimentsShown() ? [EXPERIMENTAL] : []),
   ], section);
+}
+
+/** Скрытый раздел (см. experimental.ts): открывается, если задержать логотип в «О проекте». */
+const EXPERIMENTAL: SettingsSection = {
+  id: 'experimental',
+  title: 'Экспериментальные',
+  icon: ICONS.flask,
+  headIcon: experimentalHeadIcon,
+  render: host => renderExperimental(host, {
+    check: (key, text, hint) => settingCheck(key, text, hint, key === 'thumbViewport' ? () => syncThumbViewport() : undefined),
+    hide: () => {
+      setExperimentsShown(false);
+      removeSettingsSection('experimental');
+    },
+  }),
+};
+
+function showExperiments(): void {
+  if (experimentsShown()) return;
+  setExperimentsShown(true);
+  addSettingsSection(EXPERIMENTAL);
 }
 
 /** Основные настройки доски — в поповере и в разделе «Доска» окна всех настроек. */
@@ -2009,8 +1950,6 @@ function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
   lblPages.textContent = 'Список страниц';
   pop.appendChild(lblPages);
   pop.appendChild(settingCheck('closePagesOnPick', 'Закрывать после выбора страницы'));
-  pop.appendChild(settingCheck('thumbViewport', 'Показывать на превью видимую область',
-    'Пунктирная рамка цветом вашего курсора показывает, какую часть страницы вы сейчас видите', () => syncThumbViewport()));
   const lbl6 = document.createElement('label');
   lbl6.className = 'ctx-check';
   lbl6.title = 'Меню и панели плавно выплывают при открытии';
@@ -2043,7 +1982,7 @@ function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
   pop.appendChild(lbl7);
 }
 
-type BoolSetting = 'alignGuides' | 'closePagesOnPick' | 'thumbViewport';
+type BoolSetting = 'alignGuides' | 'closePagesOnPick' | 'thumbViewport' | 'pageLinks';
 
 /** Флажок настройки доски: меняет и сразу сохраняет. */
 function settingCheck(key: BoolSetting, text: string, hint?: string, after?: () => void): HTMLElement {
@@ -2374,6 +2313,86 @@ function changePage(change: () => void): void {
   // кадр новой страницы — сразу и начисто, не дожидаясь покоя камеры
   renderNow();
   if (play && state.pageId !== fromId) play(pageIndex(state.pageId) >= from ? 1 : -1);
+}
+
+// ----- Страницы на холсте (раздел «Экспериментальные», см. page-links.ts) -----
+
+/** Сколько растворяется кадр «до» после перехода по странице на холсте (мс; как у перехода «Затухание»). */
+const LINK_FADE_MS = 280;
+/** Идёт переход по странице на холсте: новый не начинается. */
+let linkTransit = false;
+
+/**
+ * Клик по странице на холсте: превью плавно приближается на весь экран, и открывается сама страница —
+ * в том же положении, поэтому переход бесшовный. Пока он идёт, ввод заблокирован.
+ */
+export function openPageLink(el: ImageEl): void {
+  if (linkTransit || !el.page || state.view !== 'board') return;
+  const page = state.project.pages.find(p => p.id === el.page);
+  if (!page || page.id === state.pageId) return;
+  linkTransit = true;
+  const unlock = lockInput();
+  setSelection([]);
+  const r = canvas.getBoundingClientRect();
+  const { fill, target } = linkCameras(el, page, r.width, r.height, linkView(page, el.w / el.h));
+  const from = { ...state.camera };
+  const ms = zoomDuration(from, fill);
+  const t0 = performance.now();
+  const step = (now: number) => {
+    const t = Math.min(1, (now - t0) / ms);
+    state.camera = zoomPath(from, fill, easeInOut(t));
+    update();
+    // каждый кадр начисто: растянутый кэш сцены размылся бы
+    renderNow();
+    if (t < 1) { requestAnimationFrame(step); return; }
+    void (async () => {
+      try {
+        await saveNow();
+        // кадр «до» растворяется поверх страницы: отличаются только поля вокруг превью и его рамка
+        const play = capturePageTransition('fade', transitionCanvases());
+        switchPage(page.id);
+        state.camera = target;
+        refresh();
+        renderNow();
+        play?.(1);
+        if (play) await new Promise(res => setTimeout(res, LINK_FADE_MS));
+      } finally {
+        unlock();
+        linkTransit = false;
+      }
+    })();
+  };
+  requestAnimationFrame(step);
+}
+
+/** Карточка страницы, вынесенная из списка: её превью едет за указателем. */
+function pageCardGhost(item: HTMLElement): HTMLElement {
+  const ghost = document.createElement('div');
+  ghost.className = 'page-ghost';
+  const src = item.querySelector<HTMLCanvasElement>('.page-thumb canvas');
+  const cv = document.createElement('canvas');
+  if (src && src.width > 0) {
+    cv.width = src.width;
+    cv.height = src.height;
+    cv.getContext('2d')?.drawImage(src, 0, 0);
+  }
+  ghost.appendChild(cv);
+  return ghost;
+}
+
+/** Страницу из списка бросили на холст — там появляется её превью (а мимо холста — ничего). */
+function dropPageOnCanvas(index: number, x: number, y: number): void {
+  const page = state.project.pages[index];
+  if (!page || state.view !== 'board' || !canEditBoard() || document.elementFromPoint(x, y) !== canvas) return;
+  if (page.id === state.pageId) {
+    showToast('Это открытая страница — на холст можно положить другую');
+    return;
+  }
+  const r = canvas.getBoundingClientRect();
+  const cam = state.camera;
+  const el = newPageLink(uid(), page, { x: (x - r.left) / cam.zoom + cam.x, y: (y - r.top) / cam.zoom + cam.y }, cam, r.width, r.height);
+  addElement(el);
+  selectInserted(el.id);
 }
 
 async function switchPageHandler(pageId: string): Promise<void> {
@@ -2720,6 +2739,8 @@ function wirePagesDock(): void {
     items: () => [...list.querySelectorAll<HTMLElement>(':scope > .page-item')],
     enabled: canEditPages,
     scroller: list,
+    // «Страницы на холсте»: карточку можно вынести на холст
+    dropOutside: { enabled: () => state.settings.pageLinks && canEditBoard(), ghost: pageCardGhost, drop: dropPageOnCanvas },
     onEnd: (from, to) => {
       if (from !== to) void movePageHandler(from, to);
       else renderPages();

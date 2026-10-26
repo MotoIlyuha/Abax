@@ -438,6 +438,21 @@ select {
 }
 .page-item.dragging .page-del { visibility: hidden; }
 body.reordering, body.reordering * { cursor: grabbing !important; user-select: none; }
+/* «Страницы на холсте»: карточку вынесли из списка — она ждёт на месте, за указателем едет её превью */
+.page-item.dragging.drag-out { opacity: 0.45; box-shadow: none; }
+.drag-ghost { position: fixed; left: 0; top: 0; z-index: 3000; pointer-events: none; }
+.page-ghost canvas {
+  display: block;
+  width: 164px;
+  height: 100px;
+  border: 2px solid var(--accent);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 12px 30px rgba(16, 24, 40, 0.25);
+  opacity: 0.92;
+}
+/* переход по странице на холсте: ввод не доходит до приложения */
+#input-lock { position: fixed; inset: 0; z-index: 5000; touch-action: none; }
 /* последний элемент: такая же карточка, но пунктиром и с «+» — новая страница */
 .page-add {
   flex: none;
@@ -1036,7 +1051,46 @@ body.no-ui-anim #pages-dock.open :is(.page-item, .page-add) { animation: none; }
 .sd-nav-item svg { flex: none; width: 18px; height: 18px; }
 .sd-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .sd-head { display: flex; align-items: center; gap: 12px; padding: 16px 14px 10px 24px; }
-.sd-head h2 { flex: 1; font-size: 17px; font-weight: 700; }
+.sd-head h2 { flex: 1; font-size: 17px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+.sd-head-icon { display: flex; flex: none; }
+.sd-head-icon img { width: 30px; height: 30px; display: block; user-select: none; }
+/* раздел, который только что появился (задержали логотип), подсвечивается */
+.sd-nav-new { animation: sd-nav-new 1.6s ease-out; }
+@keyframes sd-nav-new {
+  0%, 30% { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
+}
+@media (prefers-reduced-motion: reduce) { .sd-nav-new { animation: none; } }
+
+/* ----- Экспериментальные ----- */
+.sd-experimental { max-width: 460px; }
+.sd-exp-intro { margin-bottom: 16px; color: #5d6572; line-height: 1.5; }
+.sd-exp-colors { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.sd-exp-color { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.sd-exp-swatch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 128px;
+  padding: 5px 10px 5px 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+  cursor: pointer;
+}
+.sd-exp-swatch::before { content: ''; width: 20px; height: 20px; border-radius: 5px; background: var(--swatch); box-shadow: inset 0 0 0 1px rgba(16, 24, 40, 0.12); }
+.sd-exp-swatch:hover, .sd-exp-swatch.active { border-color: var(--accent); }
+.sd-exp-picker { width: 240px; margin: 2px 0 6px auto; }
+.sd-exp-picker[hidden] { display: none; }
+.sd-exp-actions { display: flex; gap: 8px; margin-bottom: 8px; }
+.sd-exp-save:not(:disabled) { border-color: var(--accent); background: var(--accent); color: #fff; }
+.sd-exp-save:not(:disabled):hover { background: #2160dd; color: #fff; }
+.sd-btn:disabled { opacity: 0.5; cursor: default; border-color: var(--border); color: var(--fg); }
+.sd-exp-note { margin-bottom: 20px; font-size: 12px; color: var(--muted); line-height: 1.45; }
+.sd-experimental .ctx-check { margin-bottom: 10px; }
+.sd-exp-hide { margin-top: 14px; }
 .sd-close {
   width: 32px;
   height: 32px;

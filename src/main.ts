@@ -7,9 +7,11 @@ import { storage, setStorage } from './storage';
 import { startCollab, netStorage } from './collab';
 import { initTooltips } from './tooltip';
 import { startUpdateChecks } from './update-notice';
+import { initAppIcon } from './app-icon';
 
 async function boot(): Promise<void> {
   initTooltips();
+  initAppIcon();
   const canvas = document.getElementById('board') as HTMLCanvasElement;
 
   // guest-режим: открыта ссылка совместной работы (?room=CODE)

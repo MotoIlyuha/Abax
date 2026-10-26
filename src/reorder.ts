@@ -14,6 +14,15 @@ export interface SortableOptions {
   enabled?: () => boolean;
   /** Прокручиваемый предок: у краёв он листается сам. */
   scroller?: HTMLElement;
+  /**
+   * Карточку можно вынести за пределы списка (страницу — на холст): снаружи за указателем
+   * едет призрак, карточка остаётся на месте; отпустили снаружи — drop с точкой окна.
+   */
+  dropOutside?: {
+    enabled(): boolean;
+    ghost(item: HTMLElement): HTMLElement;
+    drop(index: number, x: number, y: number): void;
+  };
 }
 
 /** Сдвиг, после которого нажатие мышью или пером становится перетаскиванием. */
@@ -39,6 +48,8 @@ interface Drag {
   active: boolean;
   holdTimer: number;
   raf: number;
+  /** Призрак карточки, пока указатель за пределами списка (см. dropOutside). */
+  ghost: HTMLElement | null;
 }
 
 let current: Drag | null = null;
@@ -57,6 +68,10 @@ export function makeSortable(container: HTMLElement, opts: SortableOptions): voi
     cancelAnimationFrame(d.raf);
     if (container.hasPointerCapture(d.pointerId)) container.releasePointerCapture(d.pointerId);
     if (!d.active) return;
+    // отпустили за пределами списка: порядок прежний, карточку «бросили» туда
+    const dropped = commit && !!d.ghost;
+    setGhost(d, false);
+    if (dropped) commit = false;
     d.item.classList.remove('dragging');
     d.item.style.transform = '';
     document.body.classList.remove('reordering');
@@ -66,6 +81,29 @@ export function makeSortable(container: HTMLElement, opts: SortableOptions): voi
     window.addEventListener('click', swallow, { capture: true, once: true });
     setTimeout(() => window.removeEventListener('click', swallow, { capture: true }), 0);
     opts.onEnd(d.from, commit ? opts.items().indexOf(d.item) : d.from);
+    if (dropped) opts.dropOutside!.drop(d.from, d.x, d.y);
+  };
+
+  /** Указатель за пределами списка — призрак вместо карточки (если вынос разрешён). */
+  const outside = (d: Drag) => {
+    if (!opts.dropOutside?.enabled()) return false;
+    const r = container.getBoundingClientRect();
+    return d.x < r.left || d.x > r.right || d.y < r.top || d.y > r.bottom;
+  };
+  const setGhost = (d: Drag, on: boolean) => {
+    if (on && !d.ghost) {
+      d.ghost = opts.dropOutside!.ghost(d.item);
+      d.ghost.classList.add('drag-ghost');
+      document.body.appendChild(d.ghost);
+      d.item.classList.add('drag-out');
+      // снаружи карточка ждёт на исходном месте
+      container.insertBefore(d.item, d.origNext);
+    } else if (!on && d.ghost) {
+      d.ghost.remove();
+      d.ghost = null;
+      d.item.classList.remove('drag-out');
+    }
+    if (d.ghost) d.ghost.style.transform = `translate(${d.x}px, ${d.y}px) translate(-50%, -50%)`;
   };
 
   /** Карточка следует за указателем от своего текущего места в раскладке. */
@@ -92,6 +130,7 @@ export function makeSortable(container: HTMLElement, opts: SortableOptions): voi
     const d = current;
     const sc = opts.scroller;
     if (!d || !d.active || !sc) return;
+    if (d.ghost) { d.raf = requestAnimationFrame(autoScroll); return; }
     const r = sc.getBoundingClientRect();
     let dx = 0;
     let dy = 0;
@@ -135,7 +174,7 @@ export function makeSortable(container: HTMLElement, opts: SortableOptions): voi
       from: opts.items().indexOf(item), origNext: item.nextSibling,
       startX: e.clientX, startY: e.clientY, x: e.clientX, y: e.clientY,
       grabX: e.clientX - r.left, grabY: e.clientY - r.top,
-      active: false, holdTimer: 0, raf: 0,
+      active: false, holdTimer: 0, raf: 0, ghost: null,
     };
     current = d;
     if (e.pointerType === 'touch') d.holdTimer = window.setTimeout(() => { if (current === d) begin(d); }, TOUCH_HOLD_MS);
@@ -152,6 +191,9 @@ export function makeSortable(container: HTMLElement, opts: SortableOptions): voi
       if (e.pointerType === 'touch') { finish(false); return; }
       begin(d);
     }
+    const out = outside(d);
+    setGhost(d, out);
+    if (out) { d.item.style.transform = ''; return; }
     place(d);
     follow(d);
   });
