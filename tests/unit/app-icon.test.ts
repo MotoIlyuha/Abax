@@ -14,10 +14,11 @@ const favicon = () => document.querySelector<HTMLLinkElement>('link[rel="icon"]'
 const logo = () => document.querySelector<HTMLImageElement>('img.app-logo')!.getAttribute('src');
 
 describe('цвета иконки приложения', () => {
-  it('логотип: круг и треугольник — основным цветом, точка — акцентом, рамка — светлый оттенок основного', () => {
-    const svg = logoSvg({ main: '#7a2bd6', accent: '#00aa55' });
+  it('логотип: круг и треугольник — основным цветом, точка — акцентом, фон — своим, рамка — светлый оттенок основного', () => {
+    const svg = logoSvg({ main: '#7a2bd6', accent: '#00aa55', bg: '#112233' });
     expect(svg.match(/stroke="#7a2bd6"/g)).toHaveLength(2);
     expect(svg).toContain('fill="#00aa55"');
+    expect(svg).toMatch(/<rect[^>]* fill="#112233"/);
     // рамка по умолчанию — почти как в public/logo.svg (#c2ccc1)
     const frame = /<rect[^>]* stroke="(#[0-9a-f]{6})"/.exec(logoSvg(DEFAULT_ICON_COLORS))![1];
     const [r, g, b] = [1, 3, 5].map(i => parseInt(frame.slice(i, i + 2), 16));
@@ -30,14 +31,19 @@ describe('цвета иконки приложения', () => {
     expect(logoSrc()).toBe('logo.svg');
     localStorage.setItem('doska.iconColors', JSON.stringify({ main: 'red', accent: '#000000' }));
     expect(iconColors()).toEqual(DEFAULT_ICON_COLORS);
+    // сохранённые до появления фона — на фоне по умолчанию; битый фон — тоже
+    localStorage.setItem('doska.iconColors', JSON.stringify({ main: '#123456', accent: '#654321' }));
+    expect(iconColors()).toEqual({ main: '#123456', accent: '#654321', bg: DEFAULT_ICON_COLORS.bg });
+    localStorage.setItem('doska.iconColors', JSON.stringify({ main: '#123456', accent: '#654321', bg: 'blue' }));
+    expect(iconColors().bg).toBe(DEFAULT_ICON_COLORS.bg);
     localStorage.setItem('doska.iconColors', '{oops');
     expect(iconColors()).toEqual(DEFAULT_ICON_COLORS);
   });
 
   it('сохранение меняет значок вкладки и логотипы; исходные цвета не хранятся; сброс — обратно', () => {
-    saveIconColors({ main: '#7A2BD6', accent: '#00AA55' });
-    expect(iconColors()).toEqual({ main: '#7a2bd6', accent: '#00aa55' });
-    expect(favicon()).toBe(logoDataUrl({ main: '#7a2bd6', accent: '#00aa55' }));
+    saveIconColors({ main: '#7A2BD6', accent: '#00AA55', bg: '#FFEEDD' });
+    expect(iconColors()).toEqual({ main: '#7a2bd6', accent: '#00aa55', bg: '#ffeedd' });
+    expect(favicon()).toBe(logoDataUrl({ main: '#7a2bd6', accent: '#00aa55', bg: '#ffeedd' }));
     expect(logo()).toBe(favicon());
     expect(document.querySelector('img.other')!.getAttribute('src')).toBe('x.png');
 
@@ -45,7 +51,7 @@ describe('цвета иконки приложения', () => {
     expect(localStorage.getItem('doska.iconColors')).toBeNull();
     expect(favicon()).toBe('logo.svg');
 
-    saveIconColors({ main: '#111111', accent: '#222222' });
+    saveIconColors({ main: '#111111', accent: '#222222', bg: '#333333' });
     saveIconColors(null);
     expect(localStorage.getItem('doska.iconColors')).toBeNull();
     expect(logo()).toBe('logo.svg');
@@ -55,16 +61,17 @@ describe('цвета иконки приложения', () => {
     document.querySelector('link[rel="icon"]')!.setAttribute('href', 'keep.svg');
     initAppIcon();
     expect(favicon()).toBe('keep.svg'); // своих нет — ничего не трогаем
-    localStorage.setItem('doska.iconColors', JSON.stringify({ main: '#123456', accent: '#654321' }));
+    localStorage.setItem('doska.iconColors', JSON.stringify({ main: '#123456', accent: '#654321', bg: '#abcdef' }));
     initAppIcon();
-    expect(favicon()).toBe(logoDataUrl({ main: '#123456', accent: '#654321' }));
+    expect(favicon()).toBe(logoDataUrl({ main: '#123456', accent: '#654321', bg: '#abcdef' }));
     applyAppIcon(DEFAULT_ICON_COLORS);
     expect(favicon()).toBe('logo.svg');
   });
 
   it('sameColors не смотрит на регистр', () => {
-    expect(sameColors({ main: '#ABCDEF', accent: '#000000' }, { main: '#abcdef', accent: '#000000' })).toBe(true);
-    expect(sameColors({ main: '#abcdef', accent: '#000001' }, { main: '#abcdef', accent: '#000000' })).toBe(false);
+    expect(sameColors({ main: '#ABCDEF', accent: '#000000', bg: '#FFFFFF' }, { main: '#abcdef', accent: '#000000', bg: '#ffffff' })).toBe(true);
+    expect(sameColors({ main: '#abcdef', accent: '#000001', bg: '#ffffff' }, { main: '#abcdef', accent: '#000000', bg: '#ffffff' })).toBe(false);
+    expect(sameColors({ main: '#abcdef', accent: '#000000', bg: '#fffffe' }, { main: '#abcdef', accent: '#000000', bg: '#ffffff' })).toBe(false);
   });
 });
 

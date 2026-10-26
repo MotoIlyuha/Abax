@@ -92,6 +92,7 @@ export const FIXED_SHORTCUTS: ShortcutGroup[] = [
       { keys: ['Ctrl+KeyV'], what: 'Вставить' },
       { keys: ['Ctrl+KeyD'], what: 'Дублировать' },
       { keys: ['Delete', 'Backspace'], what: 'Удалить выделенное' },
+      { keys: ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'], what: 'Сдвинуть выделенное (удерживайте — плавно, Shift — крупнее)' },
       { keys: ['Ctrl+KeyG'], what: 'Сгруппировать' },
       { keys: ['Ctrl+Shift+KeyG'], what: 'Разгруппировать' },
       { keys: ['Ctrl+KeyB'], what: 'Полужирный текст' },

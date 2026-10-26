@@ -48,11 +48,16 @@ export function renderExperimental(host: HTMLElement, deps: ExperimentalDeps): v
   let draft: IconColors = { ...saved };
   /** Открытый пикер: какой цвет правят. */
   let editing: keyof IconColors | null = null;
+  // крупный образец: показывает, как будет выглядеть иконка
+  const preview = el('img', 'app-logo sd-exp-preview');
+  preview.alt = '';
+  preview.draggable = false;
+  box.appendChild(preview);
   const rows = el('div', 'sd-exp-colors');
   const picker = el('div', 'sd-exp-picker');
   picker.hidden = true;
   const swatches = new Map<keyof IconColors, HTMLButtonElement>();
-  const FIELDS: [keyof IconColors, string][] = [['main', 'Круг и треугольник'], ['accent', 'Точка в центре']];
+  const FIELDS: [keyof IconColors, string][] = [['main', 'Круг и треугольник'], ['accent', 'Точка в центре'], ['bg', 'Фон']];
   for (const [key, title] of FIELDS) {
     const row = el('div', 'sd-exp-color');
     row.dataset.color = key;
@@ -103,8 +108,10 @@ export function renderExperimental(host: HTMLElement, deps: ExperimentalDeps): v
       sw.classList.toggle('active', editing === key);
     }
     // заголовок раздела показывает, как будет выглядеть иконка
+    const shown = sameColors(draft, saved) ? logoSrc(saved) : logoDataUrl(draft);
     const head = document.querySelector<HTMLImageElement>('.sd-head-icon img');
-    if (head) head.src = sameColors(draft, saved) ? logoSrc(saved) : logoDataUrl(draft);
+    if (head) head.src = shown;
+    preview.src = shown;
     save.disabled = sameColors(draft, saved);
     reset.disabled = sameColors(draft, DEFAULT_ICON_COLORS) && sameColors(saved, DEFAULT_ICON_COLORS);
   };

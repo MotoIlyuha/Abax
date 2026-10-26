@@ -18,6 +18,9 @@ import {
 } from './app';
 import { comboFromEvent, pageNumberFromEvent } from './hotkeys';
 import { ERASER_PATHS, ERASER_TIP, toolByKey } from './toolbar';
+import {
+  arrowDirection, arrowStep, isArrowKey, NUDGE_FAST, NUDGE_HOLD_MS, NUDGE_SPEED, NUDGE_STEP, NUDGE_STEP_FAST,
+} from './nudge';
 
 const SELECT_TOL = 6; // px экрана
 const HANDLE_HIT_PX = 8;
@@ -841,8 +844,68 @@ export function initController(canvas: HTMLCanvasElement): void {
     );
   }
 
+  // ----- Перенос выделенного стрелками -----
+
+  /** Удержанные стрелки и идущий перенос: одно нажатие или удержание (с отпусканием всех стрелок) — один шаг истории. */
+  const heldArrows = new Set<string>();
+  let nudge: { pre: Element[]; moved: boolean; holdAt: number; last: number; raf: number; fast: boolean } | null = null;
+
+  function nudgeBy(dx: number, dy: number): void {
+    if (!nudge || (dx === 0 && dy === 0)) return;
+    nudge.moved = true;
+    replaceElements(state.board.elements.map(el => (state.selection.has(el.id) ? translateElement(el, dx, dy) : el)));
+  }
+
+  function nudgeTick(t: number): void {
+    if (!nudge) return;
+    if (state.selection.size === 0 || action) { endNudge(); return; }
+    const dt = Math.min(t - nudge.last, 50) / 1000;
+    nudge.last = t;
+    if (t >= nudge.holdAt) {
+      const dir = arrowDirection(heldArrows);
+      const v = NUDGE_SPEED * (nudge.fast ? NUDGE_FAST : 1) / state.camera.zoom * dt;
+      nudgeBy(dir.x * v, dir.y * v);
+    }
+    nudge.raf = requestAnimationFrame(nudgeTick);
+  }
+
+  function endNudge(): void {
+    const n = nudge;
+    nudge = null;
+    heldArrows.clear();
+    if (!n) return;
+    cancelAnimationFrame(n.raf);
+    if (n.moved) pushHistory(n.pre);
+    update();
+  }
+
+  function onArrowDown(e: KeyboardEvent): void {
+    if (state.selection.size === 0 || action || !canEditBoard()) return;
+    e.preventDefault();
+    if (e.repeat && heldArrows.has(e.code)) return; // удержание ведёт своя анимация, а не автоповтор системы
+    const now = performance.now();
+    if (!nudge) {
+      nudge = { pre: state.board.elements, moved: false, holdAt: now + NUDGE_HOLD_MS, last: now, raf: 0, fast: e.shiftKey };
+      nudge.raf = requestAnimationFrame(nudgeTick);
+    }
+    nudge.fast = e.shiftKey;
+    heldArrows.add(e.code);
+    // нажатие — один шаг (по сетке, если включена привязка); дальше, если не отпускать, поедет плавно
+    if (now < nudge.holdAt) {
+      const grid = state.settings.snapToGrid ? gridStepFor(state.camera.zoom) : 0;
+      const step = grid > 0 ? grid * (e.shiftKey ? 5 : 1) : e.shiftKey ? NUDGE_STEP_FAST : NUDGE_STEP;
+      const d = arrowStep(e.code, step);
+      nudgeBy(d.x, d.y);
+    }
+  }
+
   function onKeyDown(e: KeyboardEvent): void {
     if (isTypingTarget(e.target)) return;
+    if (nudge) {
+      if (e.ctrlKey || e.metaKey || e.altKey) endNudge(); // Ctrl+Z и другие сочетания не должны застать перенос на полпути
+      else if (e.key === 'Shift') nudge.fast = true;
+    }
+    if (isArrowKey(e.code) && !e.ctrlKey && !e.metaKey && !e.altKey) { onArrowDown(e); return; }
     // выделена фигура с текстовым курсором: печатные символы — её надпись (как в Miro), а не горячие клавиши
     const captioned = selectedTextShape();
     if (captioned && !e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -923,6 +986,12 @@ export function initController(canvas: HTMLCanvasElement): void {
   }
 
   function onKeyUp(e: KeyboardEvent): void {
+    if (nudge) {
+      if (isArrowKey(e.code)) {
+        heldArrows.delete(e.code);
+        if (heldArrows.size === 0) endNudge();
+      } else if (e.key === 'Shift') nudge.fast = false;
+    }
     if (e.code === 'Space') {
       spacePan = false;
       canvas.style.cursor = CURSORS[state.tool];
@@ -942,6 +1011,7 @@ export function initController(canvas: HTMLCanvasElement): void {
   });
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
+  window.addEventListener('blur', endNudge); // стрелку отпустили в другом окне — keyup не придёт
 }
 
 function pressureOf(e: PointerEvent): number {

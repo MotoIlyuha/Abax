@@ -349,3 +349,61 @@ test.describe('буфер обмена и дублирование', () => {
     expect(await board.count()).toBe(2);
   });
 });
+
+test.describe('перенос выделенного стрелками', () => {
+  test('нажатие — шаг, Shift — крупный шаг; без выделения ничего не двигается; отмена — одним шагом', async ({ board, page }) => {
+    await board.rect(400, 300, 550, 400);
+    await board.tool('v');
+    await page.keyboard.press('ArrowRight');
+    expect((await board.elements())[0]).toMatchObject({ x: 400, y: 300 }); // не выделено
+    await board.click({ x: 470, y: 350 });
+    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('ArrowDown');
+    expect((await board.elements())[0]).toMatchObject({ x: 401, y: 301 });
+    await page.keyboard.press('Shift+ArrowLeft');
+    expect((await board.elements())[0]).toMatchObject({ x: 391, y: 301 });
+    await page.keyboard.press('Control+z');
+    expect((await board.elements())[0]).toMatchObject({ x: 401, y: 301 });
+  });
+
+  test('удержание: после паузы едет плавно, отпускание — один шаг истории', async ({ board, page }) => {
+    await board.rect(400, 300, 550, 400);
+    await board.tool('v');
+    await board.click({ x: 470, y: 350 });
+    await page.keyboard.down('ArrowRight');
+    await page.waitForTimeout(1000);
+    await page.keyboard.up('ArrowRight');
+    const x = (await board.elements())[0].x;
+    expect(x).toBeGreaterThan(400 + 100);
+    expect((await board.elements())[0].y).toBe(300);
+    await page.waitForTimeout(150);
+    expect((await board.elements())[0].x).toBe(x); // отпустили — остановилось
+    await page.keyboard.press('Control+z');
+    expect((await board.elements())[0]).toMatchObject({ x: 400, y: 300 });
+  });
+
+  test('две соседние стрелки — по диагонали, противоположные — стоят на месте', async ({ board, page }) => {
+    await board.rect(400, 300, 550, 400);
+    await board.tool('v');
+    await board.click({ x: 470, y: 350 });
+    await page.keyboard.down('ArrowRight');
+    await page.keyboard.down('ArrowDown');
+    await page.waitForTimeout(1000);
+    await page.keyboard.up('ArrowRight');
+    await page.keyboard.up('ArrowDown');
+    const d = (await board.elements())[0];
+    expect(d.x - 400).toBeGreaterThan(50);
+    expect(d.y - 300).toBeGreaterThan(50);
+    expect(Math.abs((d.x - 400) - (d.y - 300))).toBeLessThan(3); // шаги нажатий равны, дальше поровну
+    await page.keyboard.press('Control+z');
+
+    await page.keyboard.down('ArrowLeft');
+    await page.keyboard.down('ArrowRight');
+    await page.waitForTimeout(800);
+    await page.keyboard.up('ArrowLeft');
+    await page.keyboard.up('ArrowRight');
+    const e = (await board.elements())[0];
+    expect(Math.abs(e.x - 400)).toBeLessThanOrEqual(1); // только по одному шагу нажатий, взаимно сократившись
+    expect(e.y).toBe(300);
+  });
+});

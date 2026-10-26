@@ -66,6 +66,10 @@ test.describe('раздел «Экспериментальные»', () => {
     const main = page.locator('.sd-exp-color[data-color="main"] .sd-exp-swatch');
     await expect(main).toHaveText('#315b3c');
     await expect(page.locator('.sd-exp-color[data-color="accent"] .sd-exp-swatch')).toHaveText('#a8600a');
+    await expect(page.locator('.sd-exp-color[data-color="bg"] .sd-exp-swatch')).toHaveText('#f3f1e7');
+    // иконка крупная: и в заголовке, и образцом в разделе
+    expect((await head.boundingBox())!.width).toBeGreaterThanOrEqual(40);
+    expect((await page.locator('.sd-exp-preview').boundingBox())!.width).toBeGreaterThanOrEqual(96);
     await expect(save).toBeDisabled();
     await expect(reset).toBeDisabled();
 
@@ -79,10 +83,16 @@ test.describe('раздел «Экспериментальные»', () => {
     await expect(head).toHaveAttribute('src', /%237a2bd6/);
     await expect(page.locator('link[rel="icon"]')).toHaveAttribute('href', 'logo.svg');
     await expect(save).toBeEnabled();
+    // третий цвет — фон
+    await page.locator('.sd-exp-color[data-color="bg"] .sd-exp-swatch').click();
+    await hex.fill('#102030');
+    await hex.dispatchEvent('change');
+    await expect(page.locator('.sd-exp-color[data-color="bg"] .sd-exp-swatch')).toHaveText('#102030');
+    await expect(page.locator('.sd-exp-preview')).toHaveAttribute('src', /%23102030/);
     await save.click();
     await expect(save).toBeDisabled();
     await expect(reset).toBeEnabled();
-    await expect(page.locator('link[rel="icon"]')).toHaveAttribute('href', /^data:image\/svg\+xml.*%237a2bd6/);
+    await expect(page.locator('link[rel="icon"]')).toHaveAttribute('href', /^data:image\/svg\+xml(?=.*%237a2bd6)(?=.*%23102030)/);
     await openSection(page, 'about');
     await expect(page.locator('.sd-about-logo')).toHaveAttribute('src', /%237a2bd6/);
 

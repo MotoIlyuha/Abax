@@ -1053,7 +1053,7 @@ body.no-ui-anim #pages-dock.open :is(.page-item, .page-add) { animation: none; }
 .sd-head { display: flex; align-items: center; gap: 12px; padding: 16px 14px 10px 24px; }
 .sd-head h2 { flex: 1; font-size: 17px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
 .sd-head-icon { display: flex; flex: none; }
-.sd-head-icon img { width: 30px; height: 30px; display: block; user-select: none; }
+.sd-head-icon img { width: 44px; height: 44px; display: block; user-select: none; }
 /* раздел, который только что появился (задержали логотип), подсвечивается */
 .sd-nav-new { animation: sd-nav-new 1.6s ease-out; }
 @keyframes sd-nav-new {
@@ -1064,6 +1064,7 @@ body.no-ui-anim #pages-dock.open :is(.page-item, .page-add) { animation: none; }
 /* ----- Экспериментальные ----- */
 .sd-experimental { max-width: 460px; }
 .sd-exp-intro { margin-bottom: 16px; color: #5d6572; line-height: 1.5; }
+.sd-exp-preview { display: block; width: 112px; height: 112px; margin: 0 auto 16px; user-select: none; }
 .sd-exp-colors { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
 .sd-exp-color { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .sd-exp-swatch {
