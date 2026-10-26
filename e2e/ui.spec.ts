@@ -117,8 +117,7 @@ test.describe('панель цвета и толщины', () => {
     await board.click({ x: 400, y: 300 });
     await page.keyboard.type('x');
     await page.keyboard.press('Enter');
-    await board.tool('v');
-    await board.click({ x: 405, y: 312 });
+    // вставленный текст выделен — меню выделения уже над ним
     await expect(byTip(board.quickMenu, 'Цвет')).toBeVisible();
     await board.quickMenu.locator('[data-ctx="style"]').click();
     await expect(page.locator('.ctx-panel[data-kind="style"] .qs-track')).toHaveCount(0);

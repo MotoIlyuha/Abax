@@ -113,7 +113,7 @@ export type EntryRef = { tool: ToolId } | { group: string };
 export const GROUP_NAME_MAX = 40;
 /** id группы попадает в id кнопки и data-ctx тулбара: только безопасные символы. */
 const GROUP_ID_RE = /^[a-z][\w-]{0,39}$/i;
-const CTX_KINDS = new Set(['style', 'note']);
+const CTX_KINDS = new Set(['style', 'note', 'font', 'align']);
 
 export function defaultToolbar(): ToolbarConfig {
   const tool = (id: ToolId): ToolbarItem => ({ type: 'tool', id });

@@ -14,7 +14,7 @@ import { partEraseRadius, presenting, requestRender } from './renderer';
 import { fitSolid, SOLID_CLICK_SIZE, solidKeepsAspect } from './solid';
 import {
   addPageFromKey, beginTextEdit, canEditBoard, closeEditor, duplicateSelection, exportPng, fitContent, openAllSettings, saveNow,
-  selectedTextShape, switchToPage, togglePages,
+  selectedTextShape, switchToPage, toggleTextFlag, togglePages,
 } from './app';
 import { comboFromEvent, pageNumberFromEvent } from './hotkeys';
 import { ERASER_PATHS, ERASER_TIP, toolByKey } from './toolbar';
@@ -870,6 +870,13 @@ export function initController(canvas: HTMLCanvasElement): void {
           if (e.shiftKey) ungroupSelected(); else groupSelected();
           return;
         case 'KeyE': e.preventDefault(); void exportPng(); return;
+        // начертание выделенного текста и надписей фигур (в редакторе текста — там же, см. app.ts)
+        case 'KeyB':
+        case 'KeyI':
+          if (e.shiftKey || !canEditBoard()) return;
+          e.preventDefault();
+          toggleTextFlag(e.code === 'KeyB' ? 'bold' : 'italic');
+          return;
         // Ctrl+C / Ctrl+X / Ctrl+V — события copy/cut/paste (см. app.ts): так работает и системный буфер
         case 'KeyD': e.preventDefault(); duplicateSelection(); return;
         case 'KeyA':

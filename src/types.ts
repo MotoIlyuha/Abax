@@ -29,6 +29,10 @@ export interface StrokeEl {
   groupId?: string;
 }
 
+/** Выравнивание надписи в фигуре по горизонтали и по вертикали. */
+export type TextAlign = 'left' | 'center' | 'right';
+export type TextVAlign = 'top' | 'middle' | 'bottom';
+
 export interface ShapeEl {
   id: string;
   type: 'shape';
@@ -44,6 +48,13 @@ export interface ShapeEl {
   radius?: number;
   /** Надпись внутри фигуры (только rect/ellipse/triangle). */
   text?: string;
+  /** Кегль надписи; нет поля — подбирается под размер фигуры. */
+  textSize?: number;
+  bold?: boolean;
+  italic?: boolean;
+  /** Выравнивание надписи; нет поля — по центру. */
+  align?: TextAlign;
+  valign?: TextVAlign;
   groupId?: string;
 }
 

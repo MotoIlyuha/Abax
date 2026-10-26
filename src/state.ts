@@ -1,7 +1,10 @@
-import type { BoardSettings, Element, FadeStroke, Flash, GridMode, Guide, LaserPt, NoteEl, Page, Project, ProjectMeta, Pt, ShapeEl, SolidKind, TextEl, ToolId } from './types';
+import type {
+  BoardSettings, Element, FadeStroke, Flash, GridMode, Guide, LaserPt, NoteEl, Page, Project, ProjectMeta, Pt, ShapeEl, SolidKind,
+  TextAlign, TextEl, TextVAlign, ToolId,
+} from './types';
 import { hasBaseSides, SIDES_MAX, SIDES_MIN, solidSides } from './solid';
 import { DEFAULT_NEW_PAGE_KEY } from './hotkeys';
-import { imageFrame, translateElement } from './geom';
+import { imageFrame, shapeHoldsText, translateElement } from './geom';
 
 export interface LiveStroke {
   tool: 'pen' | 'highlighter';
@@ -346,8 +349,14 @@ export interface StylePatch {
   opacity?: number;
   /** Скругление углов: у прямоугольников и картинок. */
   radius?: number;
+  /** Начертание — у текста и надписей фигур. */
   bold?: boolean;
   italic?: boolean;
+  /** Кегль текста и надписей фигур; 0 — у надписи фигуры снова подбирается под её размер. */
+  size?: number;
+  /** Выравнивание надписи внутри фигуры. */
+  align?: TextAlign;
+  valign?: TextVAlign;
 }
 
 /** Элемент с применённым стилем; тот же объект — если к нему ничего не относится. */
@@ -362,12 +371,18 @@ function styledElement(el: Element, p: StylePatch): Element {
     }
   } else {
     if (p.color !== undefined) set.color = p.color;
-    // у текста толщины нет, зато есть начертание
-    if (el.type === 'text') {
+    // у текста толщины нет
+    if (p.width !== undefined && el.type !== 'text') set.width = p.width;
+    const caption = shapeHoldsText(el);
+    if (el.type === 'text' || caption) {
       if (p.bold !== undefined) set.bold = p.bold;
       if (p.italic !== undefined) set.italic = p.italic;
-    } else if (p.width !== undefined) {
-      set.width = p.width;
+    }
+    if (el.type === 'text' && p.size) set.size = p.size;
+    if (caption) {
+      if (p.size !== undefined) set.textSize = p.size;
+      if (p.align !== undefined) set.align = p.align;
+      if (p.valign !== undefined) set.valign = p.valign;
     }
   }
   if (p.opacity !== undefined) set.opacity = p.opacity;
@@ -377,6 +392,13 @@ function styledElement(el: Element, p: StylePatch): Element {
   // значения по умолчанию не храним
   if (typeof out.opacity === 'number' && out.opacity >= 1) delete out.opacity;
   if (out.radius === 0) delete out.radius;
+  if (el.type === 'shape') {
+    if (out.textSize === 0) delete out.textSize;
+    if (out.align === 'center') delete out.align;
+    if (out.valign === 'middle') delete out.valign;
+    if (out.bold === false) delete out.bold;
+    if (out.italic === false) delete out.italic;
+  }
   return out as unknown as Element;
 }
 
