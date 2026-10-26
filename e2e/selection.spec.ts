@@ -147,8 +147,9 @@ test.describe('ручки редактирования', () => {
   test('концы линии', async ({ board }) => {
     await board.tool('l');
     await board.drag([{ x: 400, y: 300 }, { x: 600, y: 300 }]);
-    await board.tool('v');
-    await board.click({ x: 500, y: 300 });
+    // нарисованная линия сразу выделена — её ручки доступны
+    expect((await board.state()).tool).toBe('select');
+    expect((await board.state()).selection).toHaveLength(1);
     await board.drag([{ x: 600, y: 300 }, { x: 600, y: 450 }]);
     expect((await board.elements())[0]).toMatchObject({ x: 400, y: 300, w: 200, h: 150 });
   });
@@ -157,8 +158,7 @@ test.describe('ручки редактирования', () => {
     await board.tool('k');
     for (const p of [{ x: 400, y: 300 }, { x: 600, y: 300 }, { x: 600, y: 500 }]) await board.click(p);
     await page.keyboard.press('Enter');
-    await board.tool('v');
-    await board.click({ x: 500, y: 300 });
+    expect((await board.state()).selection).toHaveLength(1);
     // узел
     await board.drag([{ x: 600, y: 500 }, { x: 650, y: 520 }]);
     expect((await board.elements())[0].pts[2]).toMatchObject({ x: 650, y: 520 });

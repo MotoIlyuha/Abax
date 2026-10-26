@@ -1,10 +1,11 @@
-import type { Element, GridMode, ImageEl, NoteEl, Page, PageTransition, Project, ProjectMeta, TextEl, ToolId, ToolbarPos, WheelMode } from './types';
+import type { Camera, Element, GridMode, ImageEl, NoteEl, Page, PageTransition, Project, ProjectMeta, ShapeEl, TextEl, ToolId, ToolbarPos, WheelMode } from './types';
 import {
   state, update, onChange, undo, redo, canUndo, canRedo, setTool, setGrid, setStyleColor,
-  setStyleWidth, setNoteColor, selectPreset, presetKind, addElement, replaceElements, pushHistory, uid,
-  applyStyleToSelection, setSettings, setView, switchPage, addPage, deletePage, renamePage, setSelection,
+  setStyleWidth, setStyleOpacity, setNoteColor, selectPreset, presetKind, addElement, replaceElements, pushHistory, uid,
+  applyStyleToSelection, setSettings, setView, switchPage, addPage, deletePage, renamePage,
   openProject, blankProject, blankPage, projectMeta, groupSelected, ungroupSelected, movePage, moveItem,
-  bringForward, sendBackward, deleteSelected, setSolidSides, duplicateSelected,
+  bringForward, sendBackward, deleteSelected, setSolidSides, duplicateSelected, removeImageFrames, selectInserted,
+  clampOpacity, opacityField, OPACITY_MIN, parseZoomPercent, zoomAtPoint,
 } from './state';
 import type { PresetKind, StyleValue } from './state';
 import { doskaApi, storage } from './storage';
@@ -13,11 +14,14 @@ import { renderScene, contentBBox, imageEpoch, imagesLoaded, presentCanvas, rend
 import { makeSortable, reordering } from './reorder';
 import { capturePageTransition } from './page-transition';
 import { hasBaseSides, SIDES_MAX, SIDES_MIN, solidSides } from './solid';
-import { type AABB, elementAABB, NOTE_W, NOTE_H, NOTE_PAD, NOTE_FONT, NOTE_TEXT_COLOR, TEXT_SIZE } from './geom';
+import {
+  type AABB, aabbUnion, elementAABB, fitShapeText, imageFrame, lineWidth, shapeHoldsText, shapeTextBox,
+  NOTE_W, NOTE_H, NOTE_PAD, NOTE_FONT, NOTE_TEXT_COLOR, SHAPE_TEXT_LH, TEXT_SIZE,
+} from './geom';
 import * as pdfjsLib from 'pdfjs-dist';
 // ?worker&inline: воркер инлайнится в бандл и работает из file:// (Electron)
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker&inline';
-import { collabActive, isHost, noteSelection, readOnly, startHostConnection, stopCollab } from './collab';
+import { collabActive, isHost, myColor, noteSelection, readOnly, startHostConnection, stopCollab } from './collab';
 import { closePresent, openPresent, presentOpen } from './present';
 import { type ToolbarGroup, onToolbarChange, restoreToolbar, svg, toolDef, toolTip, toolUsesColor, toolbarConfig } from './toolbar';
 import { openSettingsDialog, settingsDialogOpen } from './settings-dialog';
@@ -123,9 +127,9 @@ function restoreStyle(): void {
   try {
     const v = JSON.parse(localStorage.getItem(STYLE_KEY) || 'null');
     const styleOf = (x: unknown): StyleValue | null => {
-      const o = x as { color?: unknown; width?: unknown } | null;
+      const o = x as { color?: unknown; width?: unknown; opacity?: unknown } | null;
       return o && typeof o.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(o.color) && typeof o.width === 'number'
-        ? { color: o.color, width: Math.min(14, Math.max(0.5, o.width)) }
+        ? { color: o.color, width: Math.min(14, Math.max(0.5, o.width)), ...opacityField(clampOpacity(o.opacity)) }
         : null;
     };
     for (const kind of Object.keys(state.presets) as PresetKind[]) {
@@ -162,6 +166,9 @@ function restoreSettings(): void {
         uiAnimations: typeof v.uiAnimations === 'boolean' ? v.uiAnimations : true,
         hideUndoRedo: typeof v.hideUndoRedo === 'boolean' ? v.hideUndoRedo : false,
         keepImageAspect: typeof v.keepImageAspect === 'boolean' ? v.keepImageAspect : true,
+        alignGuides: typeof v.alignGuides === 'boolean' ? v.alignGuides : true,
+        closePagesOnPick: typeof v.closePagesOnPick === 'boolean' ? v.closePagesOnPick : false,
+        thumbViewport: typeof v.thumbViewport === 'boolean' ? v.thumbViewport : true,
       };
       // null — пользователь снял сочетание; занятое или битое значение — снова по умолчанию
       const k = v.newPageKey;
@@ -201,7 +208,10 @@ function chooseColor(c: string): void {
   // панель не пересобираем: живой HSV-пикер должен остаться на месте;
   // обновляем только активность свотчей
   const sp = panelOf('style');
-  if (sp) updateSwatchActive(sp.el, c);
+  if (sp) {
+    updateSwatchActive(sp.el, c);
+    sp.el.style.setProperty('--ink', c); // дорожка прозрачности — к новому цвету
+  }
   refresh();
 }
 
@@ -224,34 +234,55 @@ function updateSwatchActive(panel: HTMLElement, current: string): void {
   }
 }
 
-/** Выбор толщины: применяется к выделению (если есть) и становится текущей. */
-function chooseWidth(w: number): void {
+/**
+ * Выбор толщины: применяется к выделению (если есть) и становится текущей.
+ * first — первое изменение за жест ползунка: в историю пишется один шаг на всё протягивание.
+ */
+function chooseWidth(w: number, first = true): void {
   const clamped = Math.min(14, Math.max(0.5, Math.round(w * 2) / 2));
-  if (state.selection.size > 0) applyStyleToSelection({ width: clamped });
+  if (state.selection.size > 0) applyStyleToSelection({ width: clamped }, first);
   setStyleWidth(clamped);
   persistStyle();
   refresh();
 }
 
+/** Выбор непрозрачности: к выделению (у картинок — к рамке) и как текущая. */
+function chooseOpacity(v: number, first: boolean): void {
+  if (state.selection.size > 0) applyStyleToSelection({ opacity: v }, first);
+  setStyleOpacity(v);
+  persistStyle();
+  refresh();
+}
+
+/** Скругление углов выделенных прямоугольников и картинок. */
+function chooseRadius(v: number, first: boolean): void {
+  applyStyleToSelection({ radius: v }, first);
+}
+
 // ----- Редактор текста/стикеров (in-place) -----
 
 interface Editing {
-  el: TextEl | NoteEl | null;
+  el: TextEl | NoteEl | ShapeEl | null;
   at: { x: number; y: number } | null;
-  target: 'text' | 'note';
+  /** shape — надпись внутри прямоугольника, эллипса или треугольника. */
+  target: 'text' | 'note' | 'shape';
   ta: HTMLTextAreaElement;
 }
 let editing: Editing | null = null;
 
-export function beginTextEdit(opts: { el?: TextEl | NoteEl; at?: { x: number; y: number }; target?: 'text' | 'note' }): void {
+/** append — набранный символ, с которого начали ввод надписи выделенной фигуры. */
+export function beginTextEdit(opts: { el?: TextEl | NoteEl | ShapeEl; at?: { x: number; y: number }; target?: 'text' | 'note'; append?: string }): void {
   closeEditor(true);
   const el = opts.el ?? null;
-  const target: 'text' | 'note' = el ? (el.type === 'note' ? 'note' : 'text') : (opts.target ?? 'text');
+  const target: Editing['target'] = el ? (el.type === 'note' ? 'note' : el.type === 'shape' ? 'shape' : 'text') : (opts.target ?? 'text');
   const ta = document.createElement('textarea');
   ta.rows = 1;
   ta.spellcheck = false;
-  ta.className = target === 'note' ? 'inplace-edit note' : 'inplace-edit';
-  if (el) {
+  ta.className = target === 'text' ? 'inplace-edit' : `inplace-edit ${target}`;
+  if (el?.type === 'shape') {
+    ta.value = (el.text ?? '') + (opts.append ?? '');
+    state.hideTextId = el.id; // контур остаётся на холсте, надпись живёт в редакторе
+  } else if (el) {
     ta.value = el.text;
     state.hideElId = el.id; // прячем канвасную версию, текст живёт в редакторе
   }
@@ -269,7 +300,8 @@ export function beginTextEdit(opts: { el?: TextEl | NoteEl; at?: { x: number; y:
   ta.setSelectionRange(ta.value.length, ta.value.length);
   ta.addEventListener('keydown', e => {
     e.stopPropagation();
-    if (e.key === 'Escape') { e.preventDefault(); closeEditor(false); }
+    // Esc у надписи фигуры — «готово», как в Miro (фигура остаётся выделенной); у текста и стикера — отмена
+    if (e.key === 'Escape') { e.preventDefault(); closeEditor(target === 'shape'); }
     else if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); closeEditor(true); }
     // Shift+Enter — перевод строки (стандартное поведение textarea)
   });
@@ -280,15 +312,24 @@ export function beginTextEdit(opts: { el?: TextEl | NoteEl; at?: { x: number; y:
   ta.addEventListener('blur', () => closeEditor(true));
 }
 
+/** Фигура, надпись которой правится: актуальная версия с доски (её могли передвинуть или перекрасить). */
+function editedShape(e: Editing): ShapeEl {
+  const cur = state.board.elements.find(x => x.id === e.el!.id);
+  return cur?.type === 'shape' ? cur : e.el as ShapeEl;
+}
+
 /** Вводимый текст — в state.liveText: окно демонстрации рисует его вместо редактора. */
 function syncLiveText(): void {
   const e = editing;
   if (!e) { state.liveText = null; return; }
   const text = e.ta.value;
-  if (e.el) {
+  if (e.target === 'shape') {
+    // без id: надпись фигуры с этим id не рисуется (её показывает редактор)
+    state.liveText = { ...editedShape(e), id: '', text };
+  } else if (e.el) {
     state.liveText = { ...e.el, text };
   } else if (e.target === 'text') {
-    state.liveText = { id: '', type: 'text', x: e.at!.x, y: e.at!.y, text, size: TEXT_SIZE, color: state.style.color };
+    state.liveText = { id: '', type: 'text', x: e.at!.x, y: e.at!.y, text, size: TEXT_SIZE, color: state.style.color, ...opacityField(state.style.opacity) };
   } else {
     const n = state.liveNote;
     state.liveText = n ? { id: '', type: 'note', x: n.x, y: n.y, w: n.w, h: n.h, text, color: n.color } : null;
@@ -301,6 +342,10 @@ function positionEditor(): void {
   const cam = state.camera;
   const z = cam.zoom;
   const ta = e.ta;
+  if (e.target === 'shape') {
+    positionShapeEditor(ta, editedShape(e));
+    return;
+  }
   if (e.target === 'note') {
     const n = (e.el as NoteEl | null) ?? state.liveNote;
     if (!n) return;
@@ -321,11 +366,35 @@ function positionEditor(): void {
     ta.style.lineHeight = '1.25';
     ta.style.width = 'auto';
     ta.style.color = e.el && e.el.type === 'text' ? (e.el as TextEl).color : state.style.color;
+    ta.style.opacity = String((e.el ? (e.el as TextEl).opacity : state.style.opacity) ?? 1);
     ta.style.width = '10px';
     ta.style.width = `${Math.max(60, ta.scrollWidth + 12)}px`;
   }
   ta.style.height = 'auto';
   ta.style.height = `${ta.scrollHeight + 2}px`;
+}
+
+/** Редактор надписи — по центру области текста фигуры, тем же кеглем и с тем же поворотом. */
+function positionShapeEditor(ta: HTMLTextAreaElement, s: ShapeEl): void {
+  const cam = state.camera;
+  const z = cam.zoom;
+  const box = shapeTextBox(s);
+  const fit = fitShapeText(ta.value, box.w, box.h);
+  ta.style.width = `${box.w * z}px`;
+  ta.style.fontSize = `${fit.size * z}px`;
+  ta.style.lineHeight = String(SHAPE_TEXT_LH);
+  ta.style.color = s.color;
+  ta.style.opacity = String(s.opacity ?? 1);
+  ta.style.height = 'auto';
+  const h = ta.scrollHeight;
+  ta.style.height = `${h}px`;
+  const left = (box.x - cam.x) * z;
+  const top = (box.y + box.h / 2 - cam.y) * z - h / 2;
+  ta.style.left = `${left}px`;
+  ta.style.top = `${top}px`;
+  const rot = s.rot ?? 0;
+  ta.style.transformOrigin = `${(s.x + s.w / 2 - cam.x) * z - left}px ${(s.y + s.h / 2 - cam.y) * z - top}px`;
+  ta.style.transform = rot ? `rotate(${rot}rad)` : '';
 }
 
 export function closeEditor(commit: boolean): void {
@@ -335,7 +404,12 @@ export function closeEditor(commit: boolean): void {
   const text = e.ta.value.replace(/[ \t]+$/gm, '').replace(/\s+$/, '');
   e.ta.remove();
   state.hideElId = null;
+  state.hideTextId = null;
   state.liveText = null;
+  if (e.target === 'shape') {
+    commitShapeText(editedShape(e), commit ? text : null);
+    return;
+  }
   const liveNote = state.liveNote;
   state.liveNote = null;
   if (!commit || text === '') {
@@ -353,10 +427,72 @@ export function closeEditor(commit: boolean): void {
     const el = e.el;
     replaceElements(state.board.elements.map(x => (x.id === el.id ? ({ ...el, text } as Element) : x)));
   } else if (e.target === 'text') {
-    addElement({ id: uid(), type: 'text', x: e.at!.x, y: e.at!.y, text, size: TEXT_SIZE, color: state.style.color });
+    addElement({ id: uid(), type: 'text', x: e.at!.x, y: e.at!.y, text, size: TEXT_SIZE, color: state.style.color, ...opacityField(state.style.opacity) });
   } else if (liveNote) {
     addElement({ id: uid(), type: 'note', x: liveNote.x, y: liveNote.y, w: liveNote.w, h: liveNote.h, text, color: liveNote.color });
   }
+}
+
+/** Надпись фигуры (null — отмена): пустая убирается, фигура остаётся; без изменений — без записи в историю. */
+function commitShapeText(s: ShapeEl, text: string | null): void {
+  const cur = state.board.elements.find(x => x.id === s.id);
+  if (text === null || cur?.type !== 'shape' || (cur.text ?? '') === text) { update(); return; }
+  const next: ShapeEl = { ...cur, text };
+  if (!text) delete next.text;
+  pushHistory(state.board.elements);
+  replaceElements(state.board.elements.map(x => (x.id === cur.id ? next : x)));
+}
+
+/**
+ * Фигура, в которую пойдёт набранный текст (как в Miro: у выделенной фигуры сразу стоит курсор):
+ * единственная выделенная — прямоугольник, эллипс или треугольник; редактор ещё не открыт.
+ */
+export function selectedTextShape(): ShapeEl | null {
+  if (editing || state.view !== 'board' || state.tool !== 'select' || state.selection.size !== 1) return null;
+  if (!canEditBoard() || settingsDialogOpen()) return null;
+  const el = state.board.elements.find(e => state.selection.has(e.id));
+  return shapeHoldsText(el) ? el : null;
+}
+
+/** Фокус в поле ввода: набранное уходит туда, а не на доску. */
+function isTypingField(t: EventTarget | null): boolean {
+  return t instanceof HTMLElement && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+}
+
+let shapeCaret: HTMLElement | null = null;
+
+/**
+ * Мигающий курсор в выделенной фигуре — за последним символом надписи (в пустой — по центру).
+ * Это только метка: настоящий редактор открывается с первым набранным символом (см. controller.ts).
+ */
+function syncShapeCaret(): void {
+  const el = selectedTextShape();
+  if (!el || state.liveEdit || isTypingField(document.activeElement)) {
+    shapeCaret?.remove();
+    shapeCaret = null;
+    return;
+  }
+  if (!shapeCaret) {
+    shapeCaret = document.createElement('div');
+    shapeCaret.className = 'shape-caret';
+    document.getElementById('overlay')!.appendChild(shapeCaret);
+  }
+  const box = shapeTextBox(el);
+  const fit = fitShapeText(el.text ?? '', box.w, box.h);
+  const lh = fit.size * SHAPE_TEXT_LH;
+  const n = fit.lines.length;
+  // верхний конец курсора в системе фигуры, затем — поворот вокруг её центра
+  const lx = box.x + box.w / 2 + lineWidth(fit.lines[n - 1] ?? '', fit.size) / 2 + 1;
+  const ly = box.y + (box.h - n * lh) / 2 + (n - 1) * lh;
+  const cx = el.x + el.w / 2, cy = el.y + el.h / 2;
+  const rot = el.rot ?? 0;
+  const cos = Math.cos(rot), sin = Math.sin(rot);
+  const cam = state.camera;
+  shapeCaret.style.left = `${(cx + (lx - cx) * cos - (ly - cy) * sin - cam.x) * cam.zoom}px`;
+  shapeCaret.style.top = `${(cy + (lx - cx) * sin + (ly - cy) * cos - cam.y) * cam.zoom}px`;
+  shapeCaret.style.height = `${lh * cam.zoom}px`;
+  shapeCaret.style.background = el.color;
+  shapeCaret.style.transform = rot ? `rotate(${rot}rad)` : '';
 }
 
 // ----- Контекстная панель (цвет и толщина / стикеры) -----
@@ -676,25 +812,106 @@ function renderCustomSwatches(): void {
   grid.hidden = list.length === 0;
 }
 
-/** Толщина нужна с тулбара и для выделенных линий/фигур (у текста и стикеров её нет). */
-function styleNeedsWidth(source: CtxSource): boolean {
-  if (source === 'toolbar') return true;
-  return state.board.elements.some(e =>
-    state.selection.has(e.id) && (e.type === 'stroke' || e.type === 'shape' || e.type === 'poly' || e.type === 'solid'));
+/** Выделенные элементы, к которым относится панель из меню выделения. */
+function selectedForStyle(): Element[] {
+  return state.board.elements.filter(e => state.selection.has(e.id));
 }
 
-/** Единая панель в духе Miro: слайдер толщины сверху, ниже свои и все цвета. */
+/** Толщина нужна с тулбара и для выделенных линий/фигур и рамок картинок (у текста и стикеров её нет). */
+function styleNeedsWidth(source: CtxSource): boolean {
+  if (source === 'toolbar') return true;
+  return selectedForStyle().some(e =>
+    e.type === 'stroke' || e.type === 'shape' || e.type === 'poly' || e.type === 'solid' || e.type === 'image');
+}
+
+/** Прозрачность — у всего, кроме стикеров. */
+function styleNeedsOpacity(source: CtxSource): boolean {
+  return source === 'toolbar' || selectedForStyle().some(e => e.type !== 'note');
+}
+
+/** Скругляются прямоугольники и картинки, выделенные на доске. */
+function roundable(e: Element): e is ShapeEl | ImageEl {
+  return e.type === 'image' || (e.type === 'shape' && e.shape === 'rect');
+}
+
+const RADIUS_MAX = 50;
+
+/** Уголок с тем же скруглением, что выбрано на ползунке. */
+function cornerIcon(v: number): string {
+  const r = (Math.min(v, RADIUS_MAX) / RADIUS_MAX) * 13;
+  const arc = r > 0.2 ? `A${r.toFixed(2)} ${r.toFixed(2)} 0 0 1 ${(5 + r).toFixed(2)} 5` : '';
+  return svg(`<path d="M5 19V${(5 + r).toFixed(2)}${arc}H19"/>`);
+}
+
+function hasFramedImage(): boolean {
+  return selectedForStyle().some(e => e.type === 'image' && !!imageFrame(e));
+}
+
+/** Рамку добавили цветом или толщиной, убрали кнопкой или отменой — кнопка «Убрать рамку» следом. */
+function syncFrameOff(): void {
+  const off = panelOf('style')?.el.querySelector<HTMLElement>('.ctx-frame-off');
+  if (off) off.hidden = !hasFramedImage();
+}
+
+const WIDTH_ICON = svg('<path d="M4 6h16" stroke-width="1.2"/><path d="M4 12h16" stroke-width="2.4"/><path d="M4 18.5h16" stroke-width="4"/>');
+
+/** Толщина подписью: до десятых, с запятой. */
+function formatWidth(v: number): string {
+  return String(Math.round(v * 10) / 10).replace('.', ',');
+}
+
+const OPACITY_ICON = svg('<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor"/>');
+
+/** Единая панель в духе Miro: толщина, прозрачность и скругление сверху, ниже свои и все цвета. */
 function buildStylePanel(cp: CtxPanel): void {
   const p = cp.el;
   p.dataset.kind = 'style';
+  p.style.setProperty('--ink', state.style.color);
   // текущий цвет не из палитры (старая палитра, чужой элемент) — сразу в «Мои цвета»
   addCustomColor(state.style.color);
   if (styleNeedsWidth(cp.source)) {
+    // как у прозрачности и скругления: иконка — «капля» — значение
+    const row = document.createElement('div');
+    row.className = 'ctx-range ctx-width';
+    row.title = 'Толщина';
+    const icon = document.createElement('span');
+    icon.className = 'ctx-range-icon';
+    icon.innerHTML = WIDTH_ICON;
     const sliderHost = document.createElement('div');
     sliderHost.className = 'ctx-drop-slider';
-    sliderHost.title = 'Толщина';
-    buildDropSlider(sliderHost, state.style.width, v => chooseWidth(v));
-    p.appendChild(sliderHost);
+    const val = document.createElement('span');
+    val.className = 'ctx-range-val';
+    const show = (v: number) => { val.textContent = formatWidth(v); };
+    show(state.style.width);
+    buildDropSlider(sliderHost, state.style.width, (v, first) => {
+      show(v);
+      chooseWidth(v, first);
+    });
+    row.append(icon, sliderHost, val);
+    p.appendChild(row);
+  }
+  if (styleNeedsOpacity(cp.source)) {
+    p.appendChild(buildRange({
+      kind: 'opacity', title: 'Прозрачность', min: OPACITY_MIN, max: 1, step: 0.01, value: state.style.opacity ?? 1,
+      format: v => `${Math.round(v * 100)}%`, icon: () => OPACITY_ICON, onChange: chooseOpacity,
+    }));
+  }
+  const sel = cp.source === 'quick' ? selectedForStyle() : [];
+  const round = sel.filter(roundable);
+  if (round.length > 0) {
+    p.appendChild(buildRange({
+      kind: 'radius', title: 'Скругление углов', min: 0, max: RADIUS_MAX, step: 1, value: round[0].radius ?? 0,
+      format: v => String(v), icon: cornerIcon, onChange: chooseRadius,
+    }));
+  }
+  if (sel.some(e => e.type === 'image')) {
+    // кнопка видна, пока у выделенных картинок есть рамка (см. syncFrameOff)
+    const off = document.createElement('button');
+    off.className = 'ctx-frame-off';
+    off.textContent = 'Убрать рамку';
+    off.hidden = !hasFramedImage();
+    off.addEventListener('click', () => removeImageFrames());
+    p.appendChild(off);
   }
   const scroll = document.createElement('div');
   scroll.className = 'ctx-scroll';
@@ -817,10 +1034,11 @@ function buildCustomColorPicker(host: HTMLElement, initial: string, onChange: (h
 const WIDTH_MIN = 0.5;
 const WIDTH_MAX = 14;
 
-/** Слайдер формы капли: слева узко, справа широко; ручка растёт с толщиной. */
-function buildDropSlider(host: HTMLElement, initial: number, onChange: (v: number) => void): void {
+/** Слайдер формы капли: слева узко, справа широко; ручка растёт с толщиной. first — начало протягивания. */
+function buildDropSlider(host: HTMLElement, initial: number, onChange: (v: number, first: boolean) => void): void {
   host.textContent = '';
   let value = Math.min(WIDTH_MAX, Math.max(WIDTH_MIN, initial));
+  let first = true;
   const track = document.createElement('div');
   track.className = 'qs-track';
   track.innerHTML = `<svg viewBox="0 0 120 24" preserveAspectRatio="none"><path d="M3 12a2.4 2.4 0 0 1 2.4-2.4C40 7.5 70 3.5 103 3.5a8.5 8.5 0 0 1 0 17C70 20.5 40 16.5 5.4 14.4A2.4 2.4 0 0 1 3 12Z"/></svg>`;
@@ -834,7 +1052,10 @@ function buildDropSlider(host: HTMLElement, initial: number, onChange: (v: numbe
     thumb.style.height = `${d}px`;
     // центр ручки ходит по треку (отступ 12px = макс. радиус), поэтому ручка не вылезает за края
     thumb.style.left = `calc(12px + (100% - 24px) * ${frac.toFixed(4)} - ${d / 2}px)`;
-    if (emit) onChange(Math.round(value * 2) / 2);
+    if (emit) {
+      onChange(Math.round(value * 2) / 2, first);
+      first = false;
+    }
   };
   const pointToValue = (e: PointerEvent) => {
     const r = track.getBoundingClientRect();
@@ -844,12 +1065,96 @@ function buildDropSlider(host: HTMLElement, initial: number, onChange: (v: numbe
   };
   track.addEventListener('pointerdown', e => {
     track.setPointerCapture(e.pointerId);
+    first = true;
     pointToValue(e);
   });
   track.addEventListener('pointermove', e => {
     if (e.buttons > 0) pointToValue(e);
   });
   apply(false);
+}
+
+// ----- Ползунки прозрачности и скругления -----
+
+interface RangeOpts {
+  kind: string;
+  title: string;
+  min: number;
+  max: number;
+  step: number;
+  value: number;
+  format: (v: number) => string;
+  /** Иконка слева: перерисовывается вместе со значением. */
+  icon: (v: number) => string;
+  /** first — первое изменение за жест (протягивание или нажатие клавиши): шаг истории. */
+  onChange: (v: number, first: boolean) => void;
+}
+
+/** Строка «иконка — дорожка — значение»; тянется мышью и пальцем, стрелки меняют по шагу. */
+function buildRange(o: RangeOpts): HTMLElement {
+  const row = document.createElement('div');
+  row.className = `ctx-range ctx-${o.kind}`;
+  row.title = o.title;
+  const icon = document.createElement('span');
+  icon.className = 'ctx-range-icon';
+  const track = document.createElement('div');
+  track.className = 'ctx-range-track';
+  track.tabIndex = 0;
+  track.setAttribute('role', 'slider');
+  track.setAttribute('aria-label', o.title);
+  track.setAttribute('aria-valuemin', String(o.min));
+  track.setAttribute('aria-valuemax', String(o.max));
+  const thumb = document.createElement('div');
+  thumb.className = 'ctx-range-thumb';
+  track.appendChild(thumb);
+  const val = document.createElement('span');
+  val.className = 'ctx-range-val';
+  row.append(icon, track, val);
+  const snap = (v: number) => Number(Math.min(o.max, Math.max(o.min, Math.round(v / o.step) * o.step)).toFixed(4));
+  let value = snap(o.value);
+  let fresh = true;
+  const paint = () => {
+    const frac = (value - o.min) / (o.max - o.min);
+    thumb.style.left = `${(frac * 100).toFixed(2)}%`;
+    track.setAttribute('aria-valuenow', String(value));
+    track.setAttribute('aria-valuetext', o.format(value));
+    val.textContent = o.format(value);
+    icon.innerHTML = o.icon(value);
+  };
+  const emit = (v: number) => {
+    const next = snap(v);
+    if (next === value) return;
+    value = next;
+    paint();
+    o.onChange(value, fresh);
+    fresh = false;
+  };
+  const pointTo = (e: PointerEvent) => {
+    const r = track.getBoundingClientRect();
+    emit(o.min + Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * (o.max - o.min));
+  };
+  track.addEventListener('pointerdown', e => {
+    try { track.setPointerCapture(e.pointerId); } catch { /* синтетический pointer */ }
+    fresh = true;
+    pointTo(e);
+  });
+  track.addEventListener('pointermove', e => {
+    if (e.buttons > 0) pointTo(e);
+  });
+  track.addEventListener('keydown', e => {
+    const page = (o.max - o.min) / 10;
+    const to: Record<string, number> = {
+      ArrowRight: value + o.step, ArrowUp: value + o.step, ArrowLeft: value - o.step, ArrowDown: value - o.step,
+      PageUp: value + page, PageDown: value - page, Home: o.min, End: o.max,
+    };
+    if (!(e.key in to)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    fresh = true;
+    emit(to[e.key]);
+  });
+  paint();
+  return row;
 }
 
 /** Индикатор «цвет + толщина» как в Miro: кружок, внутри точка текущего цвета, её размер — толщина. */
@@ -869,6 +1174,7 @@ function paintStyleIndicator(ring: HTMLElement, withWidth: boolean, style: Style
   dot.style.width = `${d}px`;
   dot.style.height = `${d}px`;
   dot.style.background = style.color;
+  dot.style.opacity = String(style.opacity ?? 1);
 }
 
 function buildNotePanel(cp: CtxPanel): void {
@@ -933,12 +1239,12 @@ function updateQuickMenu(): void {
   }
   qm.hidden = false;
   qm.textContent = '';
-  // цвет и толщина — одна кнопка и одна панель; толщина — только для «линейных» элементов
-  const hasInk = selEls.some(e => e.type === 'stroke' || e.type === 'shape' || e.type === 'poly' || e.type === 'solid');
+  // цвет и толщина — одна кнопка и одна панель; толщина — только для «линейных» элементов и рамок картинок
+  const hasInk = selEls.some(e => e.type === 'stroke' || e.type === 'shape' || e.type === 'poly' || e.type === 'solid' || e.type === 'image');
   const sBtn = document.createElement('button');
   sBtn.className = 'qm-btn qm-style' + (ctxOpenFrom('style', 'quick') ? ' active' : '');
   sBtn.dataset.ctx = 'style';
-  sBtn.title = hasInk ? 'Цвет и толщина' : 'Цвет';
+  sBtn.title = selEls.every(e => e.type === 'image') ? 'Рамка и скругление' : hasInk ? 'Цвет и толщина' : 'Цвет';
   sBtn.appendChild(styleIndicator(hasInk));
   sBtn.addEventListener('mousedown', e => e.preventDefault());
   sBtn.addEventListener('click', () => toggleStylePanel('quick'));
@@ -1306,6 +1612,8 @@ function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
   span8.textContent = 'Пропорциональный размер изображений';
   lbl8.append(cb8, span8);
   pop.appendChild(lbl8);
+  pop.appendChild(settingCheck('alignGuides', 'Направляющие выравнивания',
+    'При переносе и изменении размера — пунктир от соседних объектов, к их краям и центрам объект примагничивается'));
   const lbl4 = document.createElement('div');
   lbl4.className = 'ctx-label';
   lbl4.textContent = 'Колёсико мыши';
@@ -1348,6 +1656,13 @@ function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
     transRow.appendChild(b);
   }
   pop.appendChild(transRow);
+  const lblPages = document.createElement('div');
+  lblPages.className = 'ctx-label';
+  lblPages.textContent = 'Список страниц';
+  pop.appendChild(lblPages);
+  pop.appendChild(settingCheck('closePagesOnPick', 'Закрывать после выбора страницы'));
+  pop.appendChild(settingCheck('thumbViewport', 'Показывать на превью видимую область',
+    'Пунктирная рамка цветом вашего курсора показывает, какую часть страницы вы сейчас видите', () => syncThumbViewport()));
   const lbl6 = document.createElement('label');
   lbl6.className = 'ctx-check';
   lbl6.title = 'Меню и панели плавно выплывают при открытии';
@@ -1378,6 +1693,27 @@ function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
   span7.textContent = 'Скрыть кнопки отмены и повтора';
   lbl7.append(cb7, span7);
   pop.appendChild(lbl7);
+}
+
+type BoolSetting = 'alignGuides' | 'closePagesOnPick' | 'thumbViewport';
+
+/** Флажок настройки доски: меняет и сразу сохраняет. */
+function settingCheck(key: BoolSetting, text: string, hint?: string, after?: () => void): HTMLElement {
+  const lbl = document.createElement('label');
+  lbl.className = 'ctx-check';
+  if (hint) lbl.title = hint;
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.checked = state.settings[key];
+  cb.addEventListener('change', () => {
+    setSettings({ [key]: cb.checked });
+    persistSettings();
+    after?.();
+  });
+  const span = document.createElement('span');
+  span.textContent = text;
+  lbl.append(cb, span);
+  return lbl;
 }
 
 function applyToolbarPos(): void {
@@ -1493,6 +1829,7 @@ export async function importPdfFromDataUrl(dataUrl: string): Promise<void> {
     }
     pushHistory(state.board.elements);
     replaceElements([...state.board.elements, ...imgs]);
+    selectInserted(...imgs.map(i => i.id));
     fitContent();
   } catch (err) {
     alert('Не удалось открыть PDF: ' + (err instanceof Error ? err.message : String(err)));
@@ -1535,8 +1872,7 @@ export function insertImageFromDataUrl(dataUrl: string, at?: { x: number; y: num
     pushHistory(state.board.elements);
     replaceElements([...state.board.elements, el]);
     // картинку обычно сразу двигают и масштабируют — включаем выделение
-    setTool('select');
-    setSelection([el.id]);
+    selectInserted(el.id);
   };
   probe.onerror = () => alert('Не удалось прочитать изображение');
   probe.src = dataUrl;
@@ -1559,11 +1895,7 @@ function fileToDataUrl(f: File): Promise<string | null> {
 
 /** Событие буфера обмена относится к доске, а не к полю ввода или окну настроек. */
 function boardClipboardEvent(e: ClipboardEvent): boolean {
-  if (state.view !== 'board' || settingsDialogOpen()) return false;
-  const t = e.target;
-  return !(t instanceof HTMLElement && (
-    t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable
-  ));
+  return state.view === 'board' && !settingsDialogOpen() && !isTypingField(e.target);
 }
 
 /** Можно менять содержимое активной страницы (в совместной работе — нужно право edit). */
@@ -1745,26 +2077,30 @@ async function movePageHandler(from: number, to: number): Promise<void> {
 const THUMB_W = 164;
 const THUMB_H = 100;
 
-/** Мини-превью страницы: вписывает содержимое в карточку. */
-function renderPageThumb(page: Page, cv: HTMLCanvasElement): void {
+/** Камера превью, вписывающая рамку frame; null — пустая страница: начало координат в центре. */
+function thumbCamera(frame: AABB | null): Camera {
   const W = THUMB_W;
   const H = THUMB_H;
-  cv.width = W * 2;
-  cv.height = H * 2;
+  if (!frame) return { x: -W / 2, y: -H / 2, zoom: 1 };
+  const w = frame.x1 - frame.x0, h = frame.y1 - frame.y0;
+  const zoom = Math.max(0.02, Math.min(1, Math.min(W / (w + 40), H / (h + 40))));
+  return { zoom, x: frame.x0 + w / 2 - W / (2 * zoom), y: frame.y0 + h / 2 - H / (2 * zoom) };
+}
+
+/** Что вписать в превью: содержимое и, если задана, видимую область (у текущей страницы — как на мини-карте). */
+function thumbFrame(content: AABB | null, view: AABB | null): AABB | null {
+  return content && view ? aabbUnion(content, view) : content ?? view;
+}
+
+/** Мини-превью страницы: вписывает содержимое (и область view) в карточку; возвращает камеру превью и рамку содержимого. */
+function renderPageThumb(page: Page, cv: HTMLCanvasElement, view: AABB | null = null): { cam: Camera; content: AABB | null } {
+  cv.width = THUMB_W * 2;
+  cv.height = THUMB_H * 2;
+  const content = page.elements.length > 0 ? contentBBox(page.elements) : null;
+  const cam = thumbCamera(thumbFrame(content, view));
   const c = cv.getContext('2d');
-  if (!c) return;
-  if (page.elements.length === 0) {
-    renderScene(c, [], { x: -W / 2, y: -H / 2, zoom: 1 }, W, H, 2, page.grid === 'coord' ? 'none' : page.grid);
-    return;
-  }
-  const bb = contentBBox(page.elements);
-  const zoom = Math.max(0.02, Math.min(1, Math.min(W / (bb.w + 40), H / (bb.h + 40))));
-  const cam = {
-    zoom,
-    x: bb.x0 + bb.w / 2 - W / (2 * zoom),
-    y: bb.y0 + bb.h / 2 - H / (2 * zoom),
-  };
-  renderScene(c, page.elements, cam, W, H, 2, page.grid === 'coord' ? 'none' : page.grid);
+  if (c) renderScene(c, page.elements, cam, THUMB_W, THUMB_H, 2, page.grid === 'coord' ? 'none' : page.grid);
+  return { cam, content };
 }
 
 function pagesKey(): string {
@@ -1786,6 +2122,12 @@ let pagesOpen = false;
 interface PageCard {
   el: HTMLElement;
   thumb: HTMLCanvasElement;
+  /** Рамка видимой области (только у текущей страницы). */
+  view: HTMLElement;
+  /** Камера превью: где на нём сцена (при каждой перерисовке превью — своя). */
+  cam: Camera | null;
+  /** Рамка содержимого на момент перерисовки превью. */
+  content: AABB | null;
   num: HTMLElement;
   grid: HTMLElement;
   name: HTMLElement;
@@ -1813,7 +2155,10 @@ function makePageCard(pageId: string): PageCard {
   thumb.style.height = `${THUMB_H}px`;
   const num = document.createElement('span');
   num.className = 'page-num';
-  thumbBox.append(thumb, num);
+  const view = document.createElement('div');
+  view.className = 'page-view';
+  view.hidden = true;
+  thumbBox.append(thumb, view, num);
   const row = document.createElement('div');
   row.className = 'page-row';
   const grid = document.createElement('span');
@@ -1828,10 +2173,11 @@ function makePageCard(pageId: string): PageCard {
   del.title = 'Удалить страницу';
   del.innerHTML = ICONS.del;
   el.append(thumbBox, row, del);
-  const card: PageCard = { el, thumb, num, grid, name, gridMode: null, shot: null };
+  const card: PageCard = { el, thumb, view, cam: null, content: null, num, grid, name, gridMode: null, shot: null };
   el.addEventListener('click', e => {
     if ((e.target as HTMLElement).closest('.page-del, input')) return;
     void switchPageHandler(pageId);
+    if (state.settings.closePagesOnPick) setPagesOpen(false);
   });
   name.addEventListener('dblclick', () => startPageRename(card, pageId));
   del.addEventListener('click', e => {
@@ -1852,13 +2198,60 @@ function makeAddPageTile(): HTMLButtonElement {
   return b;
 }
 
-/** Превью перерисовывается, только если содержимое или фон страницы изменились. */
+/** Видимая область, которую вписывает превью страницы: только у текущей и при включённой настройке. */
+function thumbView(pageId: string): AABB | null {
+  return pageId === state.pageId && state.settings.thumbViewport && state.view === 'board' ? viewRect() : null;
+}
+
+/** Превью уже вписано иначе, чем нужно сейчас: заметно другой масштаб или сдвиг. */
+function thumbOffFrame(card: PageCard, view: AABB | null): boolean {
+  const cam = card.cam;
+  if (!cam) return true;
+  const want = thumbCamera(thumbFrame(card.content, view));
+  return Math.abs(want.zoom / cam.zoom - 1) > 0.1
+    || Math.abs((want.x - cam.x) * want.zoom) > 4 || Math.abs((want.y - cam.y) * want.zoom) > 4;
+}
+
+/** Превью перерисовывается, только если изменились содержимое, фон или (у текущей страницы) видимая область вышла за него. */
 function syncPageThumb(card: PageCard, page: Page): void {
   const epoch = imageEpoch();
   const shot = card.shot;
-  if (shot && shot.elements === page.elements && shot.grid === page.grid && shot.epoch === epoch) return;
+  const view = thumbView(page.id);
+  if (shot && shot.elements === page.elements && shot.grid === page.grid && shot.epoch === epoch && !thumbOffFrame(card, view)) return;
   card.shot = { elements: page.elements, grid: page.grid, epoch };
-  renderPageThumb(page, card.thumb);
+  ({ cam: card.cam, content: card.content } = renderPageThumb(page, card.thumb, view));
+}
+
+let reframeTimer = 0;
+
+/**
+ * Рамка видимой сейчас области — на превью текущей страницы, цветом курсора
+ * (в совместной работе — своим цветом участника). Двигается вместе с камерой; когда камера
+ * успокоится, превью перевписывается, чтобы рамка была видна целиком.
+ */
+function syncThumbViewport(): void {
+  if (!pagesOpen) return;
+  const card = pageCards.get(state.pageId);
+  for (const c of pageCards.values()) if (c !== card) c.view.hidden = true;
+  if (!card?.cam) return;
+  const view = thumbView(state.pageId);
+  card.view.hidden = !view;
+  if (thumbOffFrame(card, view)) {
+    clearTimeout(reframeTimer);
+    reframeTimer = window.setTimeout(() => {
+      if (!pagesOpen || card !== pageCards.get(state.pageId)) return;
+      syncPageThumb(card, state.board);
+      syncThumbViewport();
+    }, 150);
+  }
+  if (!view) return;
+  const t = card.cam;
+  const v = card.view;
+  v.style.left = `${(view.x0 - t.x) * t.zoom}px`;
+  v.style.top = `${(view.y0 - t.y) * t.zoom}px`;
+  v.style.width = `${(view.x1 - view.x0) * t.zoom}px`;
+  v.style.height = `${(view.y1 - view.y0) * t.zoom}px`;
+  v.style.setProperty('--view', collabActive() ? myColor() : '#3273f5');
 }
 
 /** Список страниц сверяется с проектом: карточки переиспользуются, а не пересоздаются. */
@@ -1949,6 +2342,7 @@ function setPagesOpen(open: boolean): void {
   if (pagesOpen === open) return;
   pagesOpen = open;
   renderPages();
+  syncThumbViewport();
   document.getElementById('pages-dock')!.classList.toggle('open', open);
   if (open) {
     revealedPageId = state.pageId;
@@ -2614,11 +3008,79 @@ function wireTopbar(): void {
     // Esc у открытого окна настроек закрывает только его
     if (settingsDialogOpen()) return;
     if (e.key === 'Escape') {
-      if (!gridMenu().hidden) { closeGridMenu(); gridButton().focus(); return; }
-      if (!settingsPopover().hidden) { closeSettings(); return; }
-      if (dockedPanel()) { closeCtxPanel(); return; }
+      // Esc закрывает только верхнее: выделение на доске (см. controller.ts) остаётся до следующего нажатия
+      if (!gridMenu().hidden) { e.stopPropagation(); closeGridMenu(); gridButton().focus(); return; }
+      if (!settingsPopover().hidden) { e.stopPropagation(); closeSettings(); return; }
+      if (dockedPanel()) { e.stopPropagation(); closeCtxPanel(); return; }
     }
   }, { capture: true });
+}
+
+// ----- Масштаб в шапке: клик — ввод точного значения -----
+
+function wireZoomInput(): void {
+  const label = document.getElementById('zoom-label')!;
+  label.addEventListener('click', () => openZoomInput(label));
+}
+
+/** Поле вместо подписи масштаба: Enter применяет (ошибку объясняет подсказка), Esc и уход из поля с ошибкой — отмена. */
+function openZoomInput(label: HTMLElement): void {
+  const box = document.createElement('span');
+  box.className = 'zoom-edit';
+  const input = document.createElement('input');
+  input.id = 'zoom-input';
+  input.inputMode = 'decimal';
+  input.autocomplete = 'off';
+  input.spellcheck = false;
+  input.maxLength = 8;
+  input.setAttribute('aria-label', 'Масштаб, %');
+  input.value = String(Math.round(state.camera.zoom * 100));
+  const unit = document.createElement('span');
+  unit.className = 'zoom-unit';
+  unit.textContent = '%';
+  const hint = document.createElement('div');
+  hint.className = 'zoom-hint';
+  hint.setAttribute('role', 'alert');
+  hint.hidden = true;
+  box.append(input, unit, hint);
+  label.hidden = true;
+  label.after(box);
+  input.focus();
+  input.select();
+  /** Проверка введённого; пустое поле при наборе не ругаем — только при подтверждении. */
+  const check = (strict: boolean): number | null => {
+    const r = parseZoomPercent(input.value);
+    const error = 'error' in r && (strict || input.value.trim() !== '') ? r.error : '';
+    input.classList.toggle('invalid', !!error);
+    input.setAttribute('aria-invalid', String(!!error));
+    hint.textContent = error;
+    hint.hidden = !error;
+    return 'zoom' in r ? r.zoom : null;
+  };
+  let done = false;
+  const close = (zoom: number | null) => {
+    if (done) return;
+    done = true;
+    box.remove();
+    label.hidden = false;
+    if (zoom === null) return;
+    // относительно центра холста, как кнопки + и −
+    const r = canvas.getBoundingClientRect();
+    zoomAtPoint(zoom, r.width / 2, r.height / 2);
+  };
+  input.addEventListener('input', () => check(false));
+  input.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const zoom = check(true);
+      if (zoom !== null) close(zoom);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      close(null);
+    }
+  });
+  input.addEventListener('blur', () => close(check(true)));
 }
 
 /** Окно демонстрации: открыть или закрыть. */
@@ -2824,6 +3286,9 @@ function refresh(): void {
     renderPages();
   }
   updateQuickMenu();
+  syncShapeCaret();
+  syncFrameOff();
+  syncThumbViewport();
 }
 
 /** Совместный режим: остальные участники видят рамку вокруг выделенного нами. */
@@ -2846,8 +3311,12 @@ export function initApp(c: HTMLCanvasElement): void {
   buildToolbar();
   applyToolbarPos();
   wireTopbar();
+  wireZoomInput();
   wirePagesDock();
   wireImageInput();
+  // курсор в выделенной фигуре прячется, пока набор идёт в поле ввода
+  document.addEventListener('focusin', syncShapeCaret);
+  document.addEventListener('focusout', () => queueMicrotask(syncShapeCaret));
   try { refresh(); } catch (err) { console.error('[doska] refresh failed:', err); }
   onToolbarChange(() => {
     buildToolbar();

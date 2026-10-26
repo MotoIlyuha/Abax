@@ -178,12 +178,17 @@ test.describe('ломаная', () => {
     await board.click(pts[0]);
     await board.dblclick(pts[1]);
     expect(await board.count('poly')).toBe(1);
+    // готовая ломаная выделена, включено выделение
+    expect((await board.state()).tool).toBe('select');
+    expect((await board.state()).selection).toHaveLength(1);
 
+    await board.tool('k');
     await board.click(pts[0]);
     await board.click(pts[1]);
     await board.click(pts[2], { button: 'right' });
     expect(await board.count('poly')).toBe(2);
 
+    await board.tool('k');
     await board.click(pts[0]);
     await board.click(pts[1]);
     await page.keyboard.press('Escape');
@@ -390,7 +395,7 @@ test.describe('стереометрия', () => {
 
 test.describe('указка', () => {
   test('лазер, исчезающий маркер и подсветка не меняют доску', async ({ board }) => {
-    await board.rect(400, 300, 500, 400);
+    const r = await board.rect(400, 300, 500, 400);
     await board.groupTool('pointer', 'laser');
     await board.move({ x: 300, y: 300 });
     await board.move({ x: 700, y: 500 }, 10);
@@ -407,7 +412,8 @@ test.describe('указка', () => {
     expect((await board.state()).flashes).toBeGreaterThanOrEqual(1);
 
     expect(await board.count()).toBe(1);
-    expect((await board.state()).selection).toEqual([]);
+    // выделение — то же: прямоугольник выделился, когда его нарисовали
+    expect((await board.state()).selection).toEqual([r.id]);
     // след гаснет сам
     await expect.poll(async () => (await board.state()).fadeStrokes, { timeout: 3000 }).toBe(0);
   });

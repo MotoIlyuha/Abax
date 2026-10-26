@@ -1,12 +1,13 @@
-import type { BoardSettings, Element, FadeStroke, Flash, GridMode, LaserPt, NoteEl, Page, Project, ProjectMeta, Pt, SolidKind, TextEl, ToolId } from './types';
+import type { BoardSettings, Element, FadeStroke, Flash, GridMode, Guide, LaserPt, NoteEl, Page, Project, ProjectMeta, Pt, ShapeEl, SolidKind, TextEl, ToolId } from './types';
 import { hasBaseSides, SIDES_MAX, SIDES_MIN, solidSides } from './solid';
 import { DEFAULT_NEW_PAGE_KEY } from './hotkeys';
-import { translateElement } from './geom';
+import { imageFrame, translateElement } from './geom';
 
 export interface LiveStroke {
   tool: 'pen' | 'highlighter';
   color: string;
   width: number;
+  opacity?: number;
   pts: Pt[];
 }
 
@@ -18,6 +19,7 @@ export interface LiveShape {
   x0: number; y0: number; x1: number; y1: number;
   color: string;
   width: number;
+  opacity?: number;
 }
 
 /** Тело в процессе протягивания: прямоугольник, в который оно вписывается. */
@@ -27,6 +29,7 @@ export interface LiveSolid {
   x0: number; y0: number; x1: number; y1: number;
   color: string;
   width: number;
+  opacity?: number;
 }
 
 /** Стикер в процессе ввода текста — рисуется на холсте, элемент создаётся при подтверждении. */
@@ -35,7 +38,26 @@ export interface LiveNote {
   color: string;
 }
 
-export interface StyleValue { color: string; width: number }
+/** opacity — непрозрачность 0..1; нет поля — 1 (так же у элементов). */
+export interface StyleValue { color: string; width: number; opacity?: number }
+
+/** Самая прозрачная ступень ползунка: совсем невидимый элемент не найти на доске. */
+export const OPACITY_MIN = 0.1;
+
+/** Непрозрачность в допустимых пределах; 1 и всё, что не число, — непрозрачный. */
+export function clampOpacity(v: unknown): number {
+  return typeof v === 'number' && Number.isFinite(v) ? Math.min(1, Math.max(OPACITY_MIN, v)) : 1;
+}
+
+/** Поле opacity у элемента или стиля: непрозрачность 1 не храним. */
+export function opacityField(v: number | undefined): { opacity?: number } {
+  return v !== undefined && v < 1 ? { opacity: v } : {};
+}
+
+function setOpacityOf(s: StyleValue, v: number): void {
+  if (v >= 1) delete s.opacity;
+  else s.opacity = v;
+}
 export type PresetKind = 'pen' | 'highlighter' | 'other';
 export interface PresetSet { list: StyleValue[]; active: number }
 
@@ -65,14 +87,18 @@ export interface AppState {
   liveSolid: LiveSolid | null;
   livePoly: { pts: Pt[]; cursor: Pt | null } | null;
   liveNote: LiveNote | null;
-  /** Текст или стикер в процессе ввода (для окна демонстрации: в основном окне его показывает редактор). */
-  liveText: TextEl | NoteEl | null;
+  /** Текст, стикер или надпись фигуры в процессе ввода (для окна демонстрации: в основном окне его показывает редактор). */
+  liveText: TextEl | NoteEl | ShapeEl | null;
   /** id элемента, скрытого на время редактирования текста. */
   hideElId: string | null;
+  /** id фигуры, надпись которой правится на месте: контур рисуется, надпись — нет. */
+  hideTextId: string | null;
   /** Идёт активное перетаскивание/правка выделенного — рисуем его поверх. */
   liveEdit: boolean;
   /** Рамка выделения в экранных координатах. */
   marquee: { x0: number; y0: number; x1: number; y1: number } | null;
+  /** Направляющие выравнивания, пока объект тянут (координаты сцены). */
+  guides: Guide[];
   /** Позиция курсора в экранных координатах (для ластика). */
   hover: { x: number; y: number } | null;
   /** След лазерной указки (экранные координаты + метка времени). */
@@ -116,7 +142,7 @@ export const state: AppState = {
   settings: {
     toolbarPos: 'left', coordLabels: true, snapToGrid: false, wheelMode: 'scroll', pageTransition: 'slide',
     pageKeyMod: 'alt', newPageKey: DEFAULT_NEW_PAGE_KEY, uiAnimations: true, hideUndoRedo: false,
-    keepImageAspect: true,
+    keepImageAspect: true, alignGuides: true, closePagesOnPick: false, thumbViewport: true,
   },
   selection: new Set(),
   liveStroke: null,
@@ -126,8 +152,10 @@ export const state: AppState = {
   liveNote: null,
   liveText: null,
   hideElId: null,
+  hideTextId: null,
   liveEdit: false,
   marquee: null,
+  guides: [],
   hover: null,
   laserPts: [],
   fadeStrokes: [],
@@ -152,6 +180,30 @@ export function update(markDirty = false): void {
     state.project.updatedAt = Date.now();
   }
   notify();
+}
+
+// ----- Масштаб -----
+
+export const ZOOM_MIN = 0.05;
+export const ZOOM_MAX = 32;
+
+/** Масштаб zoom (в пределах ZOOM_MIN…ZOOM_MAX); точка экрана (sx, sy) остаётся на месте. */
+export function zoomAtPoint(zoom: number, sx: number, sy: number): void {
+  const cam = state.camera;
+  const z = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom));
+  const sceneX = sx / cam.zoom + cam.x;
+  const sceneY = sy / cam.zoom + cam.y;
+  state.camera = { zoom: z, x: sceneX - sx / z, y: sceneY - sy / z };
+  update();
+}
+
+/** Масштаб, введённый в шапке: «150», «150%», «87,5 %» → 1.5 / 0.875; иначе — что не так. */
+export function parseZoomPercent(text: string): { zoom: number } | { error: string } {
+  const m = /^\s*(\d+(?:[.,]\d+)?)\s*%?\s*$/.exec(text);
+  if (!m) return { error: 'Введите число, например 150' };
+  const pct = Number(m[1].replace(',', '.'));
+  if (pct < ZOOM_MIN * 100 || pct > ZOOM_MAX * 100) return { error: `Масштаб — от ${ZOOM_MIN * 100} до ${ZOOM_MAX * 100}%` };
+  return { zoom: pct / 100 };
 }
 
 // ----- История: массивы элементов иммутабельны, снапшот = ссылка на массив -----
@@ -252,18 +304,27 @@ export function setSelection(ids: string[]): void {
   update();
 }
 
-/** Тулбар отражает стиль выделенного: единый цвет/толщина подхватываются как текущие. */
+/** Элементы с цветом: всё, кроме стикеров и картинок без рамки. */
+function inkOf(e: Element): { color: string; width?: number; opacity?: number } | null {
+  if (e.type === 'note') return null;
+  if (e.type === 'image') return imageFrame(e) ? { color: e.color!, width: e.width, opacity: e.opacity } : null;
+  return e;
+}
+
+/** Тулбар отражает стиль выделенного: единые цвет, толщина и непрозрачность подхватываются как текущие. */
 function syncStyleFromSelection(): void {
-  const sel = state.board.elements.filter(e => state.selection.has(e.id));
-  const inked = sel.filter(e => e.type === 'stroke' || e.type === 'shape' || e.type === 'poly' || e.type === 'solid' || e.type === 'text');
+  const inked = state.board.elements.filter(e => state.selection.has(e.id)).map(inkOf).filter(x => x !== null);
   if (inked.length === 0) return;
   const colors = new Set(inked.map(e => e.color));
   if (colors.size === 1) state.style.color = inked[0].color;
-  const sized = sel.filter(e => e.type === 'stroke' || e.type === 'shape' || e.type === 'poly' || e.type === 'solid');
+  // у текста толщины нет
+  const sized = inked.filter(e => e.width !== undefined);
   if (sized.length > 0) {
     const widths = new Set(sized.map(e => e.width));
-    if (widths.size === 1) state.style.width = sized[0].width;
+    if (widths.size === 1) state.style.width = sized[0].width!;
   }
+  const opacities = new Set(inked.map(e => e.opacity ?? 1));
+  if (opacities.size === 1) setOpacityOf(state.style, inked[0].opacity ?? 1);
 }
 
 export function setTool(tool: ToolId): void {
@@ -279,29 +340,71 @@ export function setTool(tool: ToolId): void {
   update();
 }
 
-/** Применяет цвет/толщину/начертание к выделенным элементам (запись в историю). */
-export function applyStyleToSelection(patch: { color?: string; width?: number; bold?: boolean; italic?: boolean }): void {
+export interface StylePatch {
+  color?: string;
+  width?: number;
+  opacity?: number;
+  /** Скругление углов: у прямоугольников и картинок. */
+  radius?: number;
+  bold?: boolean;
+  italic?: boolean;
+}
+
+/** Элемент с применённым стилем; тот же объект — если к нему ничего не относится. */
+function styledElement(el: Element, p: StylePatch): Element {
+  if (el.type === 'note') return el;
+  const set: Record<string, unknown> = {};
+  if (el.type === 'image') {
+    // цвет, толщина и прозрачность у картинки — это её рамка: недостающее берём из текущего стиля
+    if (p.color !== undefined || p.width !== undefined || p.opacity !== undefined) {
+      set.color = p.color ?? el.color ?? state.style.color;
+      set.width = p.width ?? el.width ?? state.style.width;
+    }
+  } else {
+    if (p.color !== undefined) set.color = p.color;
+    // у текста толщины нет, зато есть начертание
+    if (el.type === 'text') {
+      if (p.bold !== undefined) set.bold = p.bold;
+      if (p.italic !== undefined) set.italic = p.italic;
+    } else if (p.width !== undefined) {
+      set.width = p.width;
+    }
+  }
+  if (p.opacity !== undefined) set.opacity = p.opacity;
+  if (p.radius !== undefined && (el.type === 'image' || (el.type === 'shape' && el.shape === 'rect'))) set.radius = p.radius;
+  if (Object.keys(set).length === 0) return el;
+  const out: Record<string, unknown> = { ...el, ...set };
+  // значения по умолчанию не храним
+  if (typeof out.opacity === 'number' && out.opacity >= 1) delete out.opacity;
+  if (out.radius === 0) delete out.radius;
+  return out as unknown as Element;
+}
+
+/**
+ * Применяет цвет/толщину/прозрачность/скругление/начертание к выделенным элементам.
+ * history = false — продолжение того же жеста (ползунок тянут): шаг истории уже записан.
+ */
+export function applyStyleToSelection(patch: StylePatch, history = true): void {
   if (state.selection.size === 0) return;
-  const applicable = state.board.elements.some(e =>
-    state.selection.has(e.id) && e.type !== 'note' && e.type !== 'image');
-  if (!applicable) return;
+  const prev = state.board.elements;
+  const next = prev.map(el => (state.selection.has(el.id) ? styledElement(el, patch) : el));
+  if (next.every((el, i) => el === prev[i])) return;
+  if (history) pushHistory(prev);
+  replaceElements(next);
+}
+
+/** Убирает рамку у выделенных картинок (запись в историю). */
+export function removeImageFrames(): void {
+  const framed = (e: Element) => state.selection.has(e.id) && e.type === 'image' && e.color !== undefined;
+  if (!state.board.elements.some(framed)) return;
   pushHistory(state.board.elements);
   replaceElements(state.board.elements.map(el => {
-    if (!state.selection.has(el.id)) return el;
-    if (el.type === 'note' || el.type === 'image') return el;
-    if (el.type === 'text') {
-      return {
-        ...el,
-        ...(patch.color !== undefined ? { color: patch.color } : {}),
-        ...(patch.bold !== undefined ? { bold: patch.bold } : {}),
-        ...(patch.italic !== undefined ? { italic: patch.italic } : {}),
-      };
-    }
-    return {
-      ...el,
-      ...(patch.color !== undefined ? { color: patch.color } : {}),
-      ...(patch.width !== undefined ? { width: patch.width } : {}),
-    };
+    if (!framed(el) || el.type !== 'image') return el;
+    const copy = { ...el };
+    delete copy.color;
+    delete copy.width;
+    delete copy.opacity;
+    return copy;
   }));
 }
 
@@ -332,6 +435,7 @@ export function selectPreset(i: number): void {
 
 export function setStyleColor(color: string): void { state.style.color = color; activePreset().color = color; update(); }
 export function setStyleWidth(width: number): void { state.style.width = width; activePreset().width = width; update(); }
+export function setStyleOpacity(v: number): void { setOpacityOf(state.style, v); setOpacityOf(activePreset(), v); update(); }
 export function setNoteColor(color: string): void { state.noteColor = color; update(); }
 
 export function setGrid(grid: GridMode): void {
@@ -347,7 +451,7 @@ export function setSettings(patch: Partial<BoardSettings>): void {
 // ----- Живой штрих -----
 
 export function beginStroke(tool: 'pen' | 'highlighter', pt: Pt): void {
-  state.liveStroke = { tool, color: state.style.color, width: state.style.width, pts: [pt] };
+  state.liveStroke = { tool, color: state.style.color, width: state.style.width, ...opacityField(state.style.opacity), pts: [pt] };
   update();
 }
 
@@ -370,10 +474,10 @@ export function endStroke(): void {
   state.liveStroke = null;
   if (!ls || ls.pts.length === 0) { update(); return; }
   const base = ls.tool === 'highlighter' ? ls.width * 3.2 : ls.width;
-  addElement({ id: uid(), type: 'stroke', tool: ls.tool, color: ls.color, width: base, pts: ls.pts });
+  addElement({ id: uid(), type: 'stroke', tool: ls.tool, color: ls.color, width: base, ...opacityField(ls.opacity), pts: ls.pts });
 }
 
-/** Завершает построение ломаной: closed=true замыкает контур. */
+/** Завершает построение ломаной (closed=true замыкает контур); готовая ломаная сразу выделена. */
 export function commitPoly(closed: boolean): void {
   const lp = state.livePoly;
   state.livePoly = null;
@@ -383,7 +487,15 @@ export function commitPoly(closed: boolean): void {
   while (pts.length > 1 && Math.hypot(pts[pts.length - 1].x - pts[pts.length - 2].x, pts[pts.length - 1].y - pts[pts.length - 2].y) < 1) pts.pop();
   const min = closed ? 3 : 2;
   if (pts.length < min) { update(); return; }
-  addElement({ id: uid(), type: 'poly', closed, color: state.style.color, width: state.style.width * 1.1, pts });
+  const el: Element = { id: uid(), type: 'poly', closed, color: state.style.color, width: state.style.width * 1.1, ...opacityField(state.style.opacity), pts };
+  addElement(el);
+  selectInserted(el.id);
+}
+
+/** Вставленный элемент сразу выделен — и включено выделение, чтобы его можно было двигать и править. */
+export function selectInserted(...ids: string[]): void {
+  setTool('select');
+  setSelection(ids);
 }
 
 // ----- Проекты и страницы -----

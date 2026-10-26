@@ -2,16 +2,20 @@ import type { Camera, Element, FadeStroke, Handle, Pt, ShapeEl, ToolId } from '.
 import {
   state, update, onChange, beginStroke, extendStroke, endStroke, pushHistory, replaceElements,
   addElement, setSelection, deleteSelected, undo, redo, setTool, uid, commitPoly,
-  expandSelectionWithGroups, groupSelected, ungroupSelected, selectAll,
+  expandSelectionWithGroups, groupSelected, ungroupSelected, selectAll, selectInserted, opacityField,
+  zoomAtPoint, ZOOM_MAX, ZOOM_MIN,
 } from './state';
 import {
-  hitTest, erasePart, aabbIntersects, elementAABB, elementHandles, applyHandle,
-  insertPolyNode, removePolyNode, gridStepFor, snapValue, translateElement,
+  type AABB, hitTest, erasePart, aabbIntersects, aabbUnion, alignGuides, alignShift, boxAnchors, elementAABB, elementHandles,
+  applyHandle, insertPolyNode, removePolyNode, gridStepFor, shapeHoldsText, snapValue, translateElement,
 } from './geom';
 import { collabActive, noteCursor, readOnly } from './collab';
 import { partEraseRadius, presenting, requestRender } from './renderer';
 import { fitSolid, SOLID_CLICK_SIZE, solidKeepsAspect } from './solid';
-import { addPageFromKey, beginTextEdit, duplicateSelection, exportPng, fitContent, openAllSettings, saveNow, switchToPage, togglePages } from './app';
+import {
+  addPageFromKey, beginTextEdit, canEditBoard, closeEditor, duplicateSelection, exportPng, fitContent, openAllSettings, saveNow,
+  selectedTextShape, switchToPage, togglePages,
+} from './app';
 import { comboFromEvent, pageNumberFromEvent } from './hotkeys';
 import { ERASER_PATHS, ERASER_TIP, toolByKey } from './toolbar';
 
@@ -35,20 +39,29 @@ const CURSORS: Record<ToolId, string> = {
   cylinder: 'crosshair', cone: 'crosshair', truncCone: 'crosshair', sphere: 'crosshair',
 };
 const MOVE_THRESHOLD_PX = 3;
+/** Радиус примагничивания к направляющим соседей, px экрана. */
+const GUIDE_SNAP_PX = 6;
 const LASER_MAX_PTS = 400;
 /** Инструменты указки ничего не меняют на доске — доступны и без права правки. */
 const POINTER_TOOLS = new Set<ToolId>(['laser', 'fadePen', 'flash']);
-const ZOOM_MIN = 0.05;
-const ZOOM_MAX = 32;
+/** Клавиши масштаба: работают и при выделенной фигуре с текстовым курсором. */
+const ZOOM_KEYS = new Set(['Equal', 'Minus']);
 
 type Action = { pid: number } & (
   | { kind: 'draw' }
   | { kind: 'erase'; pre: Element[]; removed: Element[]; last: { x: number; y: number } | null }
   | { kind: 'erasePart'; pre: Element[]; changed: boolean; last: { x: number; y: number } | null }
-  | { kind: 'move'; pre: Element[]; start: Pt; orig: Map<string, Element>; moved: boolean; deselectOnUp: boolean }
+  | {
+    kind: 'move'; pre: Element[]; start: Pt; orig: Map<string, Element>; moved: boolean; deselectOnUp: boolean;
+    /** Общая рамка переносимого до начала переноса и рамки соседей для направляющих (null — выключены). */
+    box: AABB | null; others: AABB[] | null;
+  }
   | { kind: 'shape' }
   | { kind: 'solid' }
-  | { kind: 'handle'; el: Element; h: Handle; pre: Element[]; changed: boolean; rotBase?: { a0: number; rot0: number } }
+  | {
+    kind: 'handle'; el: Element; h: Handle; pre: Element[]; changed: boolean; rotBase?: { a0: number; rot0: number };
+    others: AABB[] | null;
+  }
   | { kind: 'marquee'; flash?: boolean }
   | { kind: 'fade'; stroke: FadeStroke }
   | { kind: 'pan'; sx: number; sy: number; cam: Camera }
@@ -91,12 +104,7 @@ export function initController(canvas: HTMLCanvasElement): void {
   };
 
   function zoomAtScreen(sx: number, sy: number, factor: number): void {
-    const cam = state.camera;
-    const zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, cam.zoom * factor));
-    const sceneX = sx / cam.zoom + cam.x;
-    const sceneY = sy / cam.zoom + cam.y;
-    state.camera = { zoom, x: sceneX - sx / zoom, y: sceneY - sy / zoom };
-    update();
+    zoomAtPoint(state.camera.zoom * factor, sx, sy);
   }
 
   function zoomAtCenter(factor: number): void {
@@ -166,11 +174,13 @@ export function initController(canvas: HTMLCanvasElement): void {
     const w = ls.x1 - ls.x0;
     const h = ls.y1 - ls.y0;
     if (Math.hypot(w, h) * state.camera.zoom < 3) { update(); return; } // случайный клик
-    let el: ShapeEl = { id: uid(), type: 'shape', shape: ls.shape, x: ls.x0, y: ls.y0, w, h, color: ls.color, width: ls.width };
+    let el: ShapeEl = { id: uid(), type: 'shape', shape: ls.shape, x: ls.x0, y: ls.y0, w, h, color: ls.color, width: ls.width, ...opacityField(ls.opacity) };
     if (ls.shape !== 'line' && ls.shape !== 'arrow') {
       el = { ...el, x: Math.min(ls.x0, ls.x1), y: Math.min(ls.y0, ls.y1), w: Math.abs(w), h: Math.abs(h) };
     }
     addElement(el);
+    // фигура сразу выделена: её двигают, а в прямоугольник, эллипс и треугольник сразу пишут текст
+    selectInserted(el.id);
   }
 
   function finishSolid(): void {
@@ -185,11 +195,31 @@ export function initController(canvas: HTMLCanvasElement): void {
       x0 = ls.ax0 - w / (2 * z); x1 = ls.ax0 + w / (2 * z);
       y0 = ls.ay0 - h / (2 * z); y1 = ls.ay0 + h / (2 * z);
     }
-    const el = fitSolid(ls.solid, x0, y0, x1, y1, { id: uid(), color: ls.color, width: ls.width });
+    const el = { ...fitSolid(ls.solid, x0, y0, x1, y1, { id: uid(), color: ls.color, width: ls.width }), ...opacityField(ls.opacity) };
     addElement(el);
     // тело сразу выделено: его параметры правятся ручками
-    setTool('select');
-    setSelection([el.id]);
+    selectInserted(el.id);
+  }
+
+  /** Рамки видимых соседей — опоры направляющих выравнивания; null — направляющие выключены в настройках. */
+  function guideTargets(exclude: Set<string>): AABB[] | null {
+    if (!state.settings.alignGuides) return null;
+    const r = canvas.getBoundingClientRect();
+    const cam = state.camera;
+    const view = { x0: cam.x, y0: cam.y, x1: cam.x + r.width / cam.zoom, y1: cam.y + r.height / cam.zoom };
+    const out: AABB[] = [];
+    for (const el of state.board.elements) {
+      if (exclude.has(el.id)) continue;
+      const b = elementAABB(el);
+      if (aabbIntersects(b, view)) out.push(b);
+    }
+    return out;
+  }
+
+  /** Направляющие по осям для рамки box: xs и ys — её опорные линии, которые сейчас тянут. */
+  function showGuides(box: AABB, xs: number[], ys: number[], others: AABB[]): void {
+    const eps = (GUIDE_SNAP_PX / state.camera.zoom) * 0.05;
+    state.guides = [...alignGuides(box, xs, others, 'x', eps), ...alignGuides(box, ys, others, 'y', eps)];
   }
 
   /** Элементы, задетые рамкой (с достройкой до целых групп). */
@@ -243,6 +273,7 @@ export function initController(canvas: HTMLCanvasElement): void {
     const a = action;
     action = null;
     if (!a) return;
+    state.guides = [];
     switch (a.kind) {
       case 'draw': endStroke(); break;
       case 'erase':
@@ -291,6 +322,8 @@ export function initController(canvas: HTMLCanvasElement): void {
     }
     const lp = localPos(e);
     pointers.set(e.pointerId, { x: lp.x, y: lp.y, type: e.pointerType });
+    // открытый редактор текста фиксируем до разбора нажатия: перенос и ручки должны видеть новый текст
+    closeEditor(true);
 
     // совместный режим: на странице без права edit правки запрещены
     if (collabActive() && readOnly() && activeTool() !== 'pan' && !POINTER_TOOLS.has(activeTool()) && e.button !== 1) return;
@@ -347,7 +380,10 @@ export function initController(canvas: HTMLCanvasElement): void {
       case 'triangle':
       case 'line':
       case 'arrow':
-        state.liveShape = { shape: tool, ax0: s.x, ay0: s.y, x0: s.x, y0: s.y, x1: s.x, y1: s.y, color: state.style.color, width: state.style.width * 1.3 };
+        state.liveShape = {
+          shape: tool, ax0: s.x, ay0: s.y, x0: s.x, y0: s.y, x1: s.x, y1: s.y,
+          color: state.style.color, width: state.style.width * 1.3, ...opacityField(state.style.opacity),
+        };
         action = { pid: e.pointerId, kind: 'shape' };
         update();
         break;
@@ -361,7 +397,10 @@ export function initController(canvas: HTMLCanvasElement): void {
       case 'truncCone':
       case 'sphere':
         // толщина без множителя: тело сразу выделяется и его толщина становится текущей
-        state.liveSolid = { solid: tool, ax0: s.x, ay0: s.y, x0: s.x, y0: s.y, x1: s.x, y1: s.y, color: state.style.color, width: state.style.width };
+        state.liveSolid = {
+          solid: tool, ax0: s.x, ay0: s.y, x0: s.x, y0: s.y, x1: s.x, y1: s.y,
+          color: state.style.color, width: state.style.width, ...opacityField(state.style.opacity),
+        };
         action = { pid: e.pointerId, kind: 'solid' };
         update();
         break;
@@ -381,10 +420,16 @@ export function initController(canvas: HTMLCanvasElement): void {
                   const pre = state.board.elements;
                   pushHistory(pre);
                   replaceElements(state.board.elements.map(x => (x.id === sel.id ? withNode : x)));
-                  action = { pid: e.pointerId, kind: 'handle', el: withNode, h: { kind: 'node', i: hp.h.i + 1 }, pre, changed: false };
+                  action = {
+                    pid: e.pointerId, kind: 'handle', el: withNode, h: { kind: 'node', i: hp.h.i + 1 }, pre, changed: false,
+                    others: guideTargets(new Set([sel.id])),
+                  };
                   return;
                 }
-                action = { pid: e.pointerId, kind: 'handle', el: sel, h: hp.h, pre: state.board.elements, changed: false };
+                action = {
+                  pid: e.pointerId, kind: 'handle', el: sel, h: hp.h, pre: state.board.elements, changed: false,
+                  others: guideTargets(new Set([sel.id])),
+                };
                 if (hp.h.kind === 'rotate' && (sel.type === 'shape' || sel.type === 'image')) {
                   // базовый угол: поворот относительно позиции захвата, без скачка при старте
                   const cx = sel.x + sel.w / 2, cy = sel.y + sel.h / 2;
@@ -415,7 +460,12 @@ export function initController(canvas: HTMLCanvasElement): void {
             const el = state.board.elements.find(x => x.id === id);
             if (el) orig.set(id, el);
           }
-          action = { pid: e.pointerId, kind: 'move', pre: state.board.elements, start: s, orig, moved: false, deselectOnUp: wasSelected };
+          const others = guideTargets(state.selection);
+          const box = others && orig.size > 0 ? [...orig.values()].map(elementAABB).reduce(aabbUnion) : null;
+          action = {
+            pid: e.pointerId, kind: 'move', pre: state.board.elements, start: s, orig, moved: false, deselectOnUp: wasSelected,
+            box, others,
+          };
           state.liveEdit = true;
         } else {
           if (!e.shiftKey) setSelection([]);
@@ -451,7 +501,10 @@ export function initController(canvas: HTMLCanvasElement): void {
         break; // указка не создаёт действий — след рисуется в onPointerMove
       case 'fadePen': {
         // толщина как у маркера (см. endStroke)
-        const stroke: FadeStroke = { color: state.style.color, width: state.style.width * 3.2, pts: [{ x: s.x, y: s.y, p: pressureOf(e) }], endT: null };
+        const stroke: FadeStroke = {
+          color: state.style.color, width: state.style.width * 3.2, ...opacityField(state.style.opacity),
+          pts: [{ x: s.x, y: s.y, p: pressureOf(e) }], endT: null,
+        };
         state.fadeStrokes.push(stroke);
         action = { pid: e.pointerId, kind: 'fade', stroke };
         update();
@@ -610,9 +663,31 @@ export function initController(canvas: HTMLCanvasElement): void {
           const a1 = Math.atan2(snapped.y - cy, snapped.x - cx);
           rotateAngle = a.rotBase.rot0 + (a1 - a.rotBase.a0);
         }
+        // направляющие: у ручки размера неповёрнутого элемента — по краю, который тянут; у конца линии и узла — по точке
+        const h = a.h;
+        const rotated = (a.el.type === 'shape' || a.el.type === 'image') && !!a.el.rot;
+        const guided = a.others && (h.kind === 'end' || h.kind === 'node' || (h.kind === 'resize' && !rotated)) ? a.others : null;
+        const gx = guided !== null && (h.kind !== 'resize' || h.dx !== 0);
+        const gy = guided !== null && (h.kind !== 'resize' || h.dy !== 0);
+        if (guided) {
+          const tol = GUIDE_SNAP_PX / state.camera.zoom;
+          const sx = gx ? alignShift([snapped.x], guided, 'x', tol) : null;
+          const sy = gy ? alignShift([snapped.y], guided, 'y', tol) : null;
+          if (sx !== null) snapped.x += sx;
+          if (sy !== null) snapped.y += sy;
+        }
         // картинки по настройке всегда пропорциональны: Shift и Ctrl не нужны
         const proportional = e.shiftKey || e.ctrlKey || e.metaKey || (a.el.type === 'image' && state.settings.keepImageAspect);
         const next = applyHandle(a.el, a.h, snapped, { proportional, fromCenter: e.altKey }, rotateAngle);
+        if (guided) {
+          const pt = { x0: snapped.x, y0: snapped.y, x1: snapped.x, y1: snapped.y };
+          const box = h.kind === 'resize' ? elementAABB(next) : pt;
+          // у ручки размера — край со стороны ручки (от центра — оба края)
+          const edges = (lo: number, hi: number, d: number) => (e.altKey ? [lo, hi] : d > 0 ? [hi] : [lo]);
+          const xs = !gx ? [] : h.kind === 'resize' ? edges(box.x0, box.x1, h.dx) : [snapped.x];
+          const ys = !gy ? [] : h.kind === 'resize' ? edges(box.y0, box.y1, h.dy) : [snapped.y];
+          showGuides(box, xs, ys, guided);
+        }
         replaceElements(state.board.elements.map(x => (x.id === a.el.id ? next : x)));
         a.changed = true;
         break;
@@ -631,6 +706,17 @@ export function initController(canvas: HTMLCanvasElement): void {
           const ry = ref.type === 'stroke' || ref.type === 'poly' ? ref.pts[0].y : ref.y;
           dx = snapValue(rx + dx, step) - rx;
           dy = snapValue(ry + dy, step) - ry;
+        }
+        if (a.box && a.others) {
+          // край или центр рядом с краем или центром соседа — примагничиваем (важнее сетки) и показываем линию
+          const tol = GUIDE_SNAP_PX / state.camera.zoom;
+          const shifted = (b: AABB) => ({ x0: b.x0 + dx, y0: b.y0 + dy, x1: b.x1 + dx, y1: b.y1 + dy });
+          const sx = alignShift(boxAnchors(shifted(a.box), 'x'), a.others, 'x', tol);
+          const sy = alignShift(boxAnchors(shifted(a.box), 'y'), a.others, 'y', tol);
+          if (sx !== null) dx += sx;
+          if (sy !== null) dy += sy;
+          const box = shifted(a.box);
+          showGuides(box, boxAnchors(box, 'x'), boxAnchors(box, 'y'), a.others);
         }
         replaceElements(
           state.board.elements.map(el => (a.orig.has(el.id) ? translateElement(a.orig.get(el.id)!, dx, dy) : el)),
@@ -692,6 +778,11 @@ export function initController(canvas: HTMLCanvasElement): void {
     }
     const hit = topHit(s.x, s.y);
     if (hit && (hit.type === 'text' || hit.type === 'note')) beginTextEdit({ el: hit });
+    // надпись фигуры: двойной клик (на планшете — двойное касание) сразу открывает редактор и клавиатуру
+    else if (shapeHoldsText(hit) && canEditBoard()) {
+      if (!state.selection.has(hit.id) || state.selection.size !== 1) setSelection([hit.id]);
+      beginTextEdit({ el: hit });
+    }
   }
 
   /** До какого момента (e.timeStamp) поток wheel-событий считается жестом тачпада. */
@@ -746,6 +837,21 @@ export function initController(canvas: HTMLCanvasElement): void {
 
   function onKeyDown(e: KeyboardEvent): void {
     if (isTypingTarget(e.target)) return;
+    // выделена фигура с текстовым курсором: печатные символы — её надпись (как в Miro), а не горячие клавиши
+    const captioned = selectedTextShape();
+    if (captioned && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      // пробел оставляем панораме, + и − — масштабу: надпись с них не начинается
+      if (e.key.length === 1 && e.key !== ' ' && !ZOOM_KEYS.has(e.code)) {
+        e.preventDefault();
+        beginTextEdit({ el: captioned, append: e.key });
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        beginTextEdit({ el: captioned });
+        return;
+      }
+    }
     // страницы: переход Ctrl/Alt + номер и новая страница — сочетания из «Горячих клавиш»
     const pageNo = pageNumberFromEvent(e, state.settings.pageKeyMod);
     if (pageNo) { e.preventDefault(); switchToPage(pageNo); return; }
@@ -782,6 +888,8 @@ export function initController(canvas: HTMLCanvasElement): void {
         break;
       case 'Escape':
         if (state.livePoly) { state.livePoly = null; update(); break; }
+        // без начатого действия Esc снимает выделение
+        if (!action && state.selection.size > 0) { setSelection([]); break; }
         finishAction();
         break;
       case 'Enter':
