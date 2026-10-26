@@ -1,13 +1,16 @@
-import type { Camera, Element, GridMode, ImageEl, NoteEl, Page, PageTransition, Project, ProjectMeta, ShapeEl, TextEl, ToolId, ToolbarPos, WheelMode } from './types';
+import type {
+  Camera, Element, GridMode, ImageEl, NoteEl, Page, PageTransition, Project, ProjectMeta, ShapeEl, TextAlign, TextEl, TextVAlign,
+  ToolId, ToolbarPos, WheelMode,
+} from './types';
 import {
   state, update, onChange, undo, redo, canUndo, canRedo, setTool, setGrid, setStyleColor,
   setStyleWidth, setStyleOpacity, setNoteColor, selectPreset, presetKind, addElement, replaceElements, pushHistory, uid,
-  applyStyleToSelection, setSettings, setView, switchPage, addPage, deletePage, renamePage,
+  applyStyleToSelection, setSettings, setView, switchPage, addPage, deletePage, renamePage, setSelection,
   openProject, blankProject, blankPage, projectMeta, groupSelected, ungroupSelected, movePage, moveItem,
   bringForward, sendBackward, deleteSelected, setSolidSides, duplicateSelected, removeImageFrames, selectInserted,
   clampOpacity, opacityField, OPACITY_MIN, parseZoomPercent, zoomAtPoint,
 } from './state';
-import type { PresetKind, StyleValue } from './state';
+import type { PresetKind, StylePatch, StyleValue } from './state';
 import { doskaApi, storage } from './storage';
 import { isNativeApp, sharePng } from './native';
 import { renderScene, contentBBox, imageEpoch, imagesLoaded, presentCanvas, renderNow } from './renderer';
@@ -15,8 +18,8 @@ import { makeSortable, reordering } from './reorder';
 import { capturePageTransition } from './page-transition';
 import { hasBaseSides, SIDES_MAX, SIDES_MIN, solidSides } from './solid';
 import {
-  type AABB, aabbUnion, elementAABB, fitShapeText, imageFrame, lineWidth, shapeHoldsText, shapeTextBox,
-  NOTE_W, NOTE_H, NOTE_PAD, NOTE_FONT, NOTE_TEXT_COLOR, SHAPE_TEXT_LH, TEXT_SIZE,
+  type AABB, aabbUnion, elementAABB, imageFrame, lineWidth, parseTextSize, shapeCaption, shapeHoldsText, stepTextSize,
+  NOTE_W, NOTE_H, NOTE_PAD, NOTE_FONT, NOTE_TEXT_COLOR, SHAPE_TEXT_LH, TEXT_SIZE, TEXT_SIZE_MAX, TEXT_SIZE_MIN, TEXT_SIZES,
 } from './geom';
 import * as pdfjsLib from 'pdfjs-dist';
 // ?worker&inline: воркер инлайнится в бандл и работает из file:// (Electron)
@@ -267,8 +270,20 @@ interface Editing {
   /** shape — надпись внутри прямоугольника, эллипса или треугольника. */
   target: 'text' | 'note' | 'shape';
   ta: HTMLTextAreaElement;
+  /** Кегль и начертание нового текста (у существующего — в самом элементе, их меняет меню выделения). */
+  draft: { size: number; bold: boolean; italic: boolean };
 }
 let editing: Editing | null = null;
+
+/** Набирают новый текст: элемента ещё нет, меню выделения правит черновик. */
+function editingNewText(): boolean {
+  return !!editing && editing.target === 'text' && !editing.el;
+}
+
+/** Фокус ушёл в меню выделения или его панели (поле размера, цвет): ввод текста продолжается. */
+function insideTextMenus(t: EventTarget | null): boolean {
+  return t instanceof Node && (quickMenuEl().contains(t) || ctxLayerEl().contains(t));
+}
 
 /** append — набранный символ, с которого начали ввод надписи выделенной фигуры. */
 export function beginTextEdit(opts: { el?: TextEl | NoteEl | ShapeEl; at?: { x: number; y: number }; target?: 'text' | 'note'; append?: string }): void {
@@ -291,8 +306,16 @@ export function beginTextEdit(opts: { el?: TextEl | NoteEl | ShapeEl; at?: { x: 
     // сразу возвращаем выделение, чтобы случайные клики не плодили стикеры
     if (state.tool === 'note') setTool('select');
   }
+  if (target === 'text' && !el) {
+    // новый текст сразу настраивают в меню выделения: оно — для него; инструмент — снова выделение
+    if (state.selection.size > 0) setSelection([]);
+    if (state.tool === 'text') setTool('select');
+  } else if (el && target !== 'note' && !(state.selection.size === 1 && state.selection.has(el.id))) {
+    // меню выделения при вводе — у правящегося элемента
+    setSelection([el.id]);
+  }
   document.getElementById('overlay')!.appendChild(ta);
-  editing = { el, at: opts.at ?? null, target, ta };
+  editing = { el, at: opts.at ?? null, target, ta, draft: { size: TEXT_SIZE, bold: false, italic: false } };
   positionEditor();
   syncLiveText();
   update();
@@ -300,6 +323,12 @@ export function beginTextEdit(opts: { el?: TextEl | NoteEl | ShapeEl; at?: { x: 
   ta.setSelectionRange(ta.value.length, ta.value.length);
   ta.addEventListener('keydown', e => {
     e.stopPropagation();
+    // Ctrl+B и Ctrl+I — начертание; Ctrl+Z, X, C, V остаются у поля ввода: работают с текстом
+    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.code === 'KeyB' || e.code === 'KeyI') && target !== 'note') {
+      e.preventDefault();
+      toggleTextFlag(e.code === 'KeyB' ? 'bold' : 'italic');
+      return;
+    }
     // Esc у надписи фигуры — «готово», как в Miro (фигура остаётся выделенной); у текста и стикера — отмена
     if (e.key === 'Escape') { e.preventDefault(); closeEditor(target === 'shape'); }
     else if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); closeEditor(true); }
@@ -309,13 +338,19 @@ export function beginTextEdit(opts: { el?: TextEl | NoteEl | ShapeEl; at?: { x: 
     syncLiveText();
     update(); // подписчик заодно подгоняет размер редактора
   });
-  ta.addEventListener('blur', () => closeEditor(true));
+  ta.addEventListener('blur', e => {
+    if (!insideTextMenus(e.relatedTarget)) closeEditor(true);
+  });
 }
 
-/** Фигура, надпись которой правится: актуальная версия с доски (её могли передвинуть или перекрасить). */
-function editedShape(e: Editing): ShapeEl {
+/** Правящийся элемент — актуальная версия с доски (её могли передвинуть, перекрасить, сменить кегль). */
+function editedEl<T extends TextEl | NoteEl | ShapeEl>(e: Editing): T {
   const cur = state.board.elements.find(x => x.id === e.el!.id);
-  return cur?.type === 'shape' ? cur : e.el as ShapeEl;
+  return (cur?.type === e.el!.type ? cur : e.el) as T;
+}
+
+function editedShape(e: Editing): ShapeEl {
+  return editedEl<ShapeEl>(e);
 }
 
 /** Вводимый текст — в state.liveText: окно демонстрации рисует его вместо редактора. */
@@ -327,13 +362,21 @@ function syncLiveText(): void {
     // без id: надпись фигуры с этим id не рисуется (её показывает редактор)
     state.liveText = { ...editedShape(e), id: '', text };
   } else if (e.el) {
-    state.liveText = { ...e.el, text };
+    state.liveText = { ...editedEl(e), text };
   } else if (e.target === 'text') {
-    state.liveText = { id: '', type: 'text', x: e.at!.x, y: e.at!.y, text, size: TEXT_SIZE, color: state.style.color, ...opacityField(state.style.opacity) };
+    state.liveText = { id: '', ...newTextProps(e), text };
   } else {
     const n = state.liveNote;
     state.liveText = n ? { id: '', type: 'note', x: n.x, y: n.y, w: n.w, h: n.h, text, color: n.color } : null;
   }
+}
+
+/** Новый текст по черновику: место, кегль, начертание и текущий цвет. */
+function newTextProps(e: Editing): Omit<TextEl, 'id' | 'text'> {
+  return {
+    type: 'text', x: e.at!.x, y: e.at!.y, size: e.draft.size, color: state.style.color,
+    ...(e.draft.bold ? { bold: true } : {}), ...(e.draft.italic ? { italic: true } : {}), ...opacityField(state.style.opacity),
+  };
 }
 
 function positionEditor(): void {
@@ -357,16 +400,15 @@ function positionEditor(): void {
     ta.style.color = NOTE_TEXT_COLOR;
     ta.style.maxHeight = `${(n.h - NOTE_PAD * 2) * z}px`;
   } else {
-    const x = e.el ? e.el.x : e.at!.x;
-    const y = e.el ? e.el.y : e.at!.y;
-    const size = e.el && e.el.type === 'text' ? (e.el as TextEl).size : TEXT_SIZE;
-    ta.style.left = `${(x - cam.x) * z}px`;
-    ta.style.top = `${(y - cam.y) * z}px`;
-    ta.style.fontSize = `${size * z}px`;
+    const t = e.el ? editedEl<TextEl>(e) : { ...newTextProps(e), text: '' };
+    ta.style.left = `${(t.x - cam.x) * z}px`;
+    ta.style.top = `${(t.y - cam.y) * z}px`;
+    ta.style.fontSize = `${t.size * z}px`;
+    ta.style.fontWeight = t.bold ? '700' : '';
+    ta.style.fontStyle = t.italic ? 'italic' : '';
     ta.style.lineHeight = '1.25';
-    ta.style.width = 'auto';
-    ta.style.color = e.el && e.el.type === 'text' ? (e.el as TextEl).color : state.style.color;
-    ta.style.opacity = String((e.el ? (e.el as TextEl).opacity : state.style.opacity) ?? 1);
+    ta.style.color = t.color;
+    ta.style.opacity = String(t.opacity ?? 1);
     ta.style.width = '10px';
     ta.style.width = `${Math.max(60, ta.scrollWidth + 12)}px`;
   }
@@ -374,14 +416,17 @@ function positionEditor(): void {
   ta.style.height = `${ta.scrollHeight + 2}px`;
 }
 
-/** Редактор надписи — по центру области текста фигуры, тем же кеглем и с тем же поворотом. */
+/** Редактор надписи — в области текста фигуры, тем же кеглем, начертанием, выравниванием и поворотом. */
 function positionShapeEditor(ta: HTMLTextAreaElement, s: ShapeEl): void {
   const cam = state.camera;
   const z = cam.zoom;
-  const box = shapeTextBox(s);
-  const fit = fitShapeText(ta.value, box.w, box.h);
+  const c = shapeCaption(s, ta.value);
+  const box = c.box;
   ta.style.width = `${box.w * z}px`;
-  ta.style.fontSize = `${fit.size * z}px`;
+  ta.style.fontSize = `${c.size * z}px`;
+  ta.style.fontWeight = s.bold ? '700' : '';
+  ta.style.fontStyle = s.italic ? 'italic' : '';
+  ta.style.textAlign = c.align;
   ta.style.lineHeight = String(SHAPE_TEXT_LH);
   ta.style.color = s.color;
   ta.style.opacity = String(s.opacity ?? 1);
@@ -389,7 +434,10 @@ function positionShapeEditor(ta: HTMLTextAreaElement, s: ShapeEl): void {
   const h = ta.scrollHeight;
   ta.style.height = `${h}px`;
   const left = (box.x - cam.x) * z;
-  const top = (box.y + box.h / 2 - cam.y) * z - h / 2;
+  // по вертикали — как на холсте: у верхнего края, по центру или у нижнего
+  const top = c.valign === 'top' ? (box.y - cam.y) * z
+    : c.valign === 'bottom' ? (box.y + box.h - cam.y) * z - h
+      : (box.y + box.h / 2 - cam.y) * z - h / 2;
   ta.style.left = `${left}px`;
   ta.style.top = `${top}px`;
   const rot = s.rot ?? 0;
@@ -412,22 +460,28 @@ export function closeEditor(commit: boolean): void {
   }
   const liveNote = state.liveNote;
   state.liveNote = null;
+  // элемент, который правили, — с доски: кегль и начертание могли поменять, пока шёл ввод
+  const cur = e.el ? state.board.elements.find(x => x.id === e.el!.id) as TextEl | NoteEl | undefined : undefined;
   if (!commit || text === '') {
-    if (commit && e.el) {
+    if (commit && cur) {
       // очистили текст существующего элемента — удаляем его
       pushHistory(state.board.elements);
-      replaceElements(state.board.elements.filter(x => x.id !== e.el!.id));
+      replaceElements(state.board.elements.filter(x => x.id !== cur.id));
     } else {
       update();
     }
     return;
   }
   if (e.el) {
+    // элемент успели удалить или текст не изменился — в истории нечего записывать
+    if (!cur || cur.text === text) { update(); return; }
     pushHistory(state.board.elements);
-    const el = e.el;
-    replaceElements(state.board.elements.map(x => (x.id === el.id ? ({ ...el, text } as Element) : x)));
+    replaceElements(state.board.elements.map(x => (x.id === cur.id ? ({ ...cur, text } as Element) : x)));
   } else if (e.target === 'text') {
-    addElement({ id: uid(), type: 'text', x: e.at!.x, y: e.at!.y, text, size: TEXT_SIZE, color: state.style.color, ...opacityField(state.style.opacity) });
+    const id = uid();
+    addElement({ id, ...newTextProps(e), text });
+    // вставленный текст выделен: его сразу можно двигать и оформлять
+    selectInserted(id);
   } else if (liveNote) {
     addElement({ id: uid(), type: 'note', x: liveNote.x, y: liveNote.y, w: liveNote.w, h: liveNote.h, text, color: liveNote.color });
   }
@@ -462,7 +516,7 @@ function isTypingField(t: EventTarget | null): boolean {
 let shapeCaret: HTMLElement | null = null;
 
 /**
- * Мигающий курсор в выделенной фигуре — за последним символом надписи (в пустой — по центру).
+ * Мигающий курсор в выделенной фигуре — за последним символом надписи (в пустой — у точки выравнивания).
  * Это только метка: настоящий редактор открывается с первым набранным символом (см. controller.ts).
  */
 function syncShapeCaret(): void {
@@ -477,22 +531,79 @@ function syncShapeCaret(): void {
     shapeCaret.className = 'shape-caret';
     document.getElementById('overlay')!.appendChild(shapeCaret);
   }
-  const box = shapeTextBox(el);
-  const fit = fitShapeText(el.text ?? '', box.w, box.h);
-  const lh = fit.size * SHAPE_TEXT_LH;
-  const n = fit.lines.length;
+  const c = shapeCaption(el);
+  const n = c.lines.length;
+  const last = lineWidth(c.lines[n - 1] ?? '', c.size, el.bold, el.italic);
   // верхний конец курсора в системе фигуры, затем — поворот вокруг её центра
-  const lx = box.x + box.w / 2 + lineWidth(fit.lines[n - 1] ?? '', fit.size) / 2 + 1;
-  const ly = box.y + (box.h - n * lh) / 2 + (n - 1) * lh;
+  const lx = (c.align === 'left' ? c.x + last : c.align === 'right' ? c.x : c.x + last / 2) + 1;
+  const ly = c.top + (n - 1) * c.lh;
   const cx = el.x + el.w / 2, cy = el.y + el.h / 2;
   const rot = el.rot ?? 0;
   const cos = Math.cos(rot), sin = Math.sin(rot);
   const cam = state.camera;
   shapeCaret.style.left = `${(cx + (lx - cx) * cos - (ly - cy) * sin - cam.x) * cam.zoom}px`;
   shapeCaret.style.top = `${(cy + (lx - cx) * sin + (ly - cy) * cos - cam.y) * cam.zoom}px`;
-  shapeCaret.style.height = `${lh * cam.zoom}px`;
+  shapeCaret.style.height = `${c.lh * cam.zoom}px`;
   shapeCaret.style.background = el.color;
   shapeCaret.style.transform = rot ? `rotate(${rot}rad)` : '';
+}
+
+// ----- Оформление текста: начертание, кегль, выравнивание -----
+
+/** Текстовые элементы выделения: текст и надписи фигур (у фигуры — если надпись есть или её сейчас набирают). */
+function textTargets(): (TextEl | ShapeEl)[] {
+  return state.board.elements.filter((e): e is TextEl | ShapeEl =>
+    state.selection.has(e.id) && (e.type === 'text' || (shapeHoldsText(e) && (!!e.text || editing?.el?.id === e.id))));
+}
+
+interface TextProps {
+  size: number;
+  bold: boolean;
+  italic: boolean;
+  /** Кегль надписи подбирается под фигуру. */
+  auto: boolean;
+  /** Среди оформляемого есть надписи фигур: у них — «Авто» и выравнивание. */
+  shapes: boolean;
+  align: TextAlign;
+  valign: TextVAlign;
+}
+
+/** Оформление того, что сейчас правят (новый текст — по черновику) или выделено. null — текста нет. */
+function textProps(): TextProps | null {
+  const e = editing;
+  if (e && editingNewText()) return { ...e.draft, auto: false, shapes: false, align: 'center', valign: 'middle' };
+  const els = textTargets();
+  if (els.length === 0) return null;
+  const first = els[0];
+  const shape = els.find((x): x is ShapeEl => x.type === 'shape');
+  // у надписи с подобранным кеглем показываем тот, что получился (с учётом набираемого текста)
+  const size = first.type === 'text' ? first.size
+    : shapeCaption(first, e?.el?.id === first.id ? e.ta.value : first.text).size;
+  return {
+    size, bold: els.every(x => !!x.bold), italic: els.every(x => !!x.italic),
+    auto: first.type === 'shape' && !first.textSize, shapes: !!shape,
+    align: shape?.align ?? 'center', valign: shape?.valign ?? 'middle',
+  };
+}
+
+/** Оформление: у нового текста — в черновик, иначе — выделенным (среди них и правящийся элемент). */
+function setTextProps(patch: StylePatch, history = true): void {
+  const e = editing;
+  if (e && editingNewText()) {
+    if (patch.size) e.draft.size = patch.size;
+    if (patch.bold !== undefined) e.draft.bold = patch.bold;
+    if (patch.italic !== undefined) e.draft.italic = patch.italic;
+    syncLiveText();
+    update();
+    return;
+  }
+  applyStyleToSelection(patch, history);
+}
+
+/** Полужирный или курсив (кнопки B и I, Ctrl+B и Ctrl+I): у всего текстового — включить, если не у всех. */
+export function toggleTextFlag(key: 'bold' | 'italic'): void {
+  const p = textProps();
+  if (p) setTextProps({ [key]: !p[key] });
 }
 
 // ----- Контекстная панель (цвет и толщина / стикеры) -----
@@ -562,9 +673,7 @@ function openCtxPanel(kind: CtxKind, source: CtxSource): void {
   ctxPanels.push(cp);
   el.addEventListener('pointerdown', () => { el.style.zIndex = String(++ctxZ); }, { capture: true });
   ctxLayerEl().appendChild(el);
-  if (kind === 'style') buildStylePanel(cp);
-  else if (kind === 'note') buildNotePanel(cp);
-  else buildToolGroupPanel(cp, kind);
+  buildPanelBody(cp);
   el.appendChild(buildCtxBar(cp));
   positionCtxPanel(cp);
   syncCtxButtons();
@@ -709,7 +818,9 @@ function positionCtxPanel(cp: CtxPanel): void {
     const qr = quickMenuEl().getBoundingClientRect();
     const below = wr.bottom - qr.bottom - gap - margin;
     const above = qr.top - wr.top - gap - margin;
-    if (below >= Math.min(natural, 260) || below >= above) {
+    // небольшие панели оформления текста — над меню, если влезают: не закрывают набираемый текст
+    const preferAbove = (cp.kind === 'font' || cp.kind === 'align') && above >= natural;
+    if (!preferAbove && (below >= Math.min(natural, 260) || below >= above)) {
       maxH = below;
       top = qr.bottom - wr.top + gap;
     } else {
@@ -771,7 +882,7 @@ function buildToolGroupPanel(cp: CtxPanel, groupId: string): void {
 /** Панель инструментов перенастроили: панели групп пересобираем, у исчезнувших групп — закрываем. */
 function syncGroupPanels(): void {
   for (const cp of [...ctxPanels]) {
-    if (cp.kind === 'style' || cp.kind === 'note') continue;
+    if (PANEL_KINDS.has(cp.kind)) continue;
     if (!toolbarGroup(cp.kind)) { closePanel(cp); continue; }
     cp.el.textContent = '';
     buildToolGroupPanel(cp, cp.kind);
@@ -1193,6 +1304,212 @@ function buildNotePanel(cp: CtxPanel): void {
   p.appendChild(grid);
 }
 
+// ----- Панели кегля и выравнивания текста (из меню выделения) -----
+
+/** Панели, которые не группы инструментов (у групп свои id, с этими не совпадают — см. toolbar.ts). */
+const PANEL_KINDS = new Set(['style', 'note', 'font', 'align']);
+
+function buildPanelBody(cp: CtxPanel): void {
+  if (cp.kind === 'style') buildStylePanel(cp);
+  else if (cp.kind === 'note') buildNotePanel(cp);
+  else if (cp.kind === 'font') buildFontPanel(cp);
+  else if (cp.kind === 'align') buildAlignPanel(cp);
+  else buildToolGroupPanel(cp, cp.kind);
+}
+
+/** Пересобирает содержимое панели на месте (подсветка выбранного после клика). */
+function rebuildPanel(cp: CtxPanel): void {
+  cp.el.textContent = '';
+  buildPanelBody(cp);
+  cp.el.appendChild(buildCtxBar(cp));
+  cp.baseHeight = 0;
+  positionCtxPanel(cp);
+}
+
+const FONT_ICON = svg('<path d="M3 19l5-14 5 14"/><path d="M5.2 13.5h5.6"/><path d="M14.5 19l3.5-9 3.5 9"/><path d="M15.8 16h4.4"/>');
+
+const ALIGN_ICONS: Record<TextAlign, string> = {
+  left: svg('<path d="M4 6h16M4 10h10M4 14h16M4 18h10"/>'),
+  center: svg('<path d="M4 6h16M7 10h10M4 14h16M7 18h10"/>'),
+  right: svg('<path d="M4 6h16M10 10h10M4 14h16M10 18h10"/>'),
+};
+const VALIGN_ICONS: Record<TextVAlign, string> = {
+  top: svg('<path d="M4 4h16"/><rect x="8" y="8" width="8" height="7" rx="1.5"/>'),
+  middle: svg('<path d="M4 12h3.5M16.5 12h3.5"/><rect x="8" y="8.5" width="8" height="7" rx="1.5"/>'),
+  bottom: svg('<path d="M4 20h16"/><rect x="8" y="9" width="8" height="7" rx="1.5"/>'),
+};
+const ALIGN_TITLES: Record<TextAlign, string> = { left: 'По левому краю', center: 'По центру', right: 'По правому краю' };
+const VALIGN_TITLES: Record<TextVAlign, string> = { top: 'Сверху', middle: 'Посередине', bottom: 'Снизу' };
+
+/** Кегль ↔ положение ползунка: шкала логарифмическая, мелкие кегли не теснятся у края. */
+const sizeToPos = (size: number) => Math.log(size / TEXT_SIZE_MIN) / Math.log(TEXT_SIZE_MAX / TEXT_SIZE_MIN);
+const posToSize = (pos: number) => Math.round(TEXT_SIZE_MIN * (TEXT_SIZE_MAX / TEXT_SIZE_MIN) ** pos);
+
+/** Поле кегля, пока в нём набирают (или тянут ползунок его панели); start — кегль до начала. */
+let fontEdit: { input: HTMLInputElement; start: number } | null = null;
+
+/**
+ * Кегль в меню выделения: стрелки — соседние значения из TEXT_SIZES, клик по числу — ввод вручную
+ * и панель с ползунком и готовыми кеглями под ним.
+ */
+function fontSizeControl(p: TextProps): HTMLElement {
+  const box = document.createElement('div');
+  box.className = 'qm-font';
+  box.dataset.ctx = 'font';
+  box.title = 'Размер текста';
+  const input = document.createElement('input');
+  input.className = 'qm-font-val';
+  input.inputMode = 'numeric';
+  input.autocomplete = 'off';
+  input.spellcheck = false;
+  input.maxLength = 5;
+  input.setAttribute('aria-label', 'Размер текста');
+  input.value = String(Math.round(p.size));
+  const steps = document.createElement('div');
+  steps.className = 'qm-font-steps';
+  const step = (dir: 1 | -1, icon: string, title: string): HTMLButtonElement => {
+    const b = document.createElement('button');
+    b.className = 'qm-font-step';
+    b.title = title;
+    b.innerHTML = icon;
+    b.addEventListener('mousedown', e => e.preventDefault());
+    b.addEventListener('click', () => {
+      const cur = textProps();
+      if (cur) setTextProps({ size: stepTextSize(Math.round(cur.size), dir) });
+    });
+    return b;
+  };
+  steps.append(step(1, ICONS.chevronUp, 'Крупнее'), step(-1, ICONS.chevronDown, 'Мельче'));
+  box.append(input, steps);
+  input.addEventListener('focus', () => {
+    fontEdit = { input, start: Math.round(p.size) };
+    input.select();
+    openCtxPanel('font', 'quick');
+  });
+  input.addEventListener('input', () => checkFontInput(false));
+  input.addEventListener('keydown', e => {
+    e.stopPropagation();
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const size = checkFontInput(true);
+      if (size !== null) finishFontEdit(size);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      finishFontEdit(null);
+    } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      // как у числового поля: стрелки — соседний кегль из списка
+      e.preventDefault();
+      const cur = checkFontInput(false) ?? fontEdit?.start ?? TEXT_SIZE;
+      pickFontSize(stepTextSize(cur, e.key === 'ArrowUp' ? 1 : -1), false);
+    }
+  });
+  // ушли из поля (не в его панель — та фокус не берёт): верное значение применяется, ошибочное — нет
+  input.addEventListener('blur', () => { if (fontEdit?.input === input) finishFontEdit(checkFontInput(false)); });
+  return box;
+}
+
+/** Проверка набранного кегля: ошибка — красная рамка и подсказка; strict — пустое поле тоже ошибка. */
+function checkFontInput(strict: boolean): number | null {
+  const f = fontEdit;
+  if (!f) return null;
+  const r = parseTextSize(f.input.value);
+  const error = 'error' in r && (strict || f.input.value.trim() !== '') ? r.error : '';
+  f.input.classList.toggle('invalid', !!error);
+  f.input.setAttribute('aria-invalid', String(!!error));
+  f.input.title = error;
+  return 'size' in r ? r.size : null;
+}
+
+/** Кегль из панели или стрелками поля: применяется сразу; close — ввод на этом закончен. */
+function pickFontSize(size: number, close: boolean): void {
+  if (close) { finishFontEdit(size); return; }
+  if (fontEdit) {
+    fontEdit.input.value = String(size);
+    checkFontInput(false);
+  }
+  setTextProps({ size });
+  const cp = panelOf('font');
+  if (cp) rebuildPanel(cp);
+}
+
+/** Конец ввода кегля: применить (null — ничего), закрыть панель, вернуть фокус редактору текста. */
+function finishFontEdit(size: number | null): void {
+  const f = fontEdit;
+  if (!f) return;
+  fontEdit = null;
+  const cp = panelOf('font');
+  if (cp) closePanel(cp);
+  const cur = textProps();
+  if (size !== null && cur && (size !== Math.round(cur.size) || (size === 0) !== cur.auto)) setTextProps({ size });
+  // ввод текста продолжается с того же места
+  if (editing) editing.ta.focus();
+  else f.input.blur();
+  refresh();
+}
+
+/** Ползунок кегля и готовые значения под ним в ряд (у надписей фигур — ещё «Авто»). */
+function buildFontPanel(cp: CtxPanel): void {
+  const p = cp.el;
+  p.dataset.kind = 'font';
+  const props = textProps();
+  const size = checkFontInput(false) ?? props?.size ?? TEXT_SIZE;
+  p.appendChild(buildRange({
+    kind: 'font-size', title: 'Размер текста', min: 0, max: 1, step: 0.001, value: sizeToPos(size),
+    format: v => String(posToSize(v)), icon: () => FONT_ICON,
+    onChange: (v, first) => {
+      const s = posToSize(v);
+      if (fontEdit) {
+        fontEdit.input.value = String(s);
+        checkFontInput(false);
+      }
+      setTextProps({ size: s }, first);
+      for (const c of p.querySelectorAll<HTMLElement>('.ctx-font-chip')) c.classList.toggle('active', Number(c.dataset.size) === s);
+    },
+  }));
+  const chips = document.createElement('div');
+  chips.className = 'ctx-font-chips';
+  const chip = (label: string, value: number, active: boolean, title: string): HTMLButtonElement => {
+    const b = document.createElement('button');
+    b.className = 'ctx-font-chip' + (active ? ' active' : '');
+    b.dataset.size = String(value);
+    b.textContent = label;
+    b.title = title;
+    b.addEventListener('click', () => pickFontSize(value, true));
+    return b;
+  };
+  if (props?.shapes) chips.appendChild(chip('Авто', 0, props.auto, 'Подбирать размер под фигуру'));
+  for (const s of TEXT_SIZES) chips.appendChild(chip(String(s), s, !props?.auto && Math.round(size) === s, `${s}`));
+  p.appendChild(chips);
+}
+
+/** Выравнивание надписи: по горизонтали и по вертикали, по три кнопки в ряд. */
+function buildAlignPanel(cp: CtxPanel): void {
+  const p = cp.el;
+  p.dataset.kind = 'align';
+  const props = textProps();
+  const row = <K extends string>(icons: Record<K, string>, titles: Record<K, string>, cur: K | undefined, apply: (v: K) => StylePatch) => {
+    const r = document.createElement('div');
+    r.className = 'ctx-align-row';
+    for (const v of Object.keys(icons) as K[]) {
+      const b = document.createElement('button');
+      b.className = 'tool' + (v === cur ? ' active' : '');
+      b.dataset.align = v;
+      b.title = titles[v];
+      b.innerHTML = icons[v];
+      b.addEventListener('click', () => {
+        setTextProps(apply(v));
+        rebuildPanel(cp);
+      });
+      r.appendChild(b);
+    }
+    return r;
+  };
+  p.append(
+    row(ALIGN_ICONS, ALIGN_TITLES, props?.align, align => ({ align })),
+    row(VALIGN_ICONS, VALIGN_TITLES, props?.valign, valign => ({ valign })),
+  );
+}
+
 // ----- Плавающее меню быстрых настроек выделения -----
 
 function quickMenuEl(): HTMLElement {
@@ -1232,8 +1549,11 @@ function layerMoves(): { up: boolean; down: boolean } {
 
 function updateQuickMenu(): void {
   const qm = quickMenuEl();
+  // кегль набирают в поле меню — меню не пересобираем, иначе поле пропадёт из-под курсора
+  if (fontEdit && !qm.hidden) { positionQuickMenu(); return; }
   const selEls = state.board.elements.filter(e => state.selection.has(e.id));
-  if (state.view !== 'board' || selEls.length === 0 || editing) {
+  // при вводе текста меню остаётся (у нового текста — над редактором); у стикера — нет: оформлять нечего
+  if (state.view !== 'board' || (selEls.length === 0 && !editingNewText()) || editing?.target === 'note') {
     qm.hidden = true;
     return;
   }
@@ -1249,24 +1569,37 @@ function updateQuickMenu(): void {
   sBtn.addEventListener('mousedown', e => e.preventDefault());
   sBtn.addEventListener('click', () => toggleStylePanel('quick'));
   qm.appendChild(sBtn);
-  // жирность/курсив — для текста
-  const textEls = selEls.filter(e => e.type === 'text');
-  if (textEls.length > 0) {
-    const allBold = textEls.every(e => e.bold);
-    const allItalic = textEls.every(e => e.italic);
+  // жирность, курсив и кегль — у текста и надписей фигур, выравнивание — у надписей
+  const tp = textProps();
+  if (tp) {
     const bBtn = document.createElement('button');
-    bBtn.className = 'qm-btn qm-text-b' + (allBold ? ' active' : '');
-    bBtn.title = 'Полужирный';
+    bBtn.className = 'qm-btn qm-text-b' + (tp.bold ? ' active' : '');
+    bBtn.title = macKeys('Полужирный (Ctrl+B)');
     bBtn.textContent = 'B';
     bBtn.addEventListener('mousedown', e => e.preventDefault());
-    bBtn.addEventListener('click', () => { applyStyleToSelection({ bold: !allBold }); });
+    bBtn.addEventListener('click', () => toggleTextFlag('bold'));
     const iBtn = document.createElement('button');
-    iBtn.className = 'qm-btn qm-text-i' + (allItalic ? ' active' : '');
-    iBtn.title = 'Курсив';
+    iBtn.className = 'qm-btn qm-text-i' + (tp.italic ? ' active' : '');
+    iBtn.title = macKeys('Курсив (Ctrl+I)');
     iBtn.textContent = 'I';
     iBtn.addEventListener('mousedown', e => e.preventDefault());
-    iBtn.addEventListener('click', () => { applyStyleToSelection({ italic: !allItalic }); });
-    qm.append(bBtn, iBtn);
+    iBtn.addEventListener('click', () => toggleTextFlag('italic'));
+    qm.append(bBtn, iBtn, fontSizeControl(tp));
+    if (tp.shapes) {
+      const aBtn = document.createElement('button');
+      aBtn.className = 'qm-btn qm-align' + (ctxOpenFrom('align', 'quick') ? ' active' : '');
+      aBtn.dataset.ctx = 'align';
+      aBtn.title = 'Выравнивание текста';
+      aBtn.innerHTML = ALIGN_ICONS[tp.align];
+      aBtn.addEventListener('mousedown', e => e.preventDefault());
+      aBtn.addEventListener('click', () => toggleCtxPanel('align', 'quick'));
+      qm.appendChild(aBtn);
+    }
+  }
+  // при вводе — только оформление: слои, группы и удаление — когда ввод закончат
+  if (editing) {
+    positionQuickMenu();
+    return;
   }
   // число сторон основания призмы/пирамиды
   const sides = new Set<number>();
@@ -1348,10 +1681,12 @@ function updateQuickMenu(): void {
   positionQuickMenu();
 }
 
-function positionQuickMenu(): void {
-  const qm = quickMenuEl();
-  const wrap = document.getElementById('canvas-wrap')!;
-  const wr = wrap.getBoundingClientRect();
+/** Где на экране то, над чем стоит меню: выделенное или (у нового текста) редактор. */
+function quickMenuTarget(wr: DOMRect): { sx: number; sy: number; sw: number; topGap: number } | null {
+  if (editing && editingNewText()) {
+    const r = editing.ta.getBoundingClientRect();
+    return { sx: r.left - wr.left, sy: r.top - wr.top, sw: r.width, topGap: 10 };
+  }
   const cam = state.camera;
   let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
   for (const el of state.board.elements) {
@@ -1360,14 +1695,20 @@ function positionQuickMenu(): void {
     x0 = Math.min(x0, a.x0); y0 = Math.min(y0, a.y0);
     x1 = Math.max(x1, a.x1); y1 = Math.max(y1, a.y1);
   }
-  if (x0 === Infinity) { qm.hidden = true; return; }
+  if (x0 === Infinity) return null;
   // над bbox может торчать ручка поворота (~44px) — оставляем ей место
   const hasRotateHandle = state.selection.size === 1 && state.board.elements.some(e =>
     state.selection.has(e.id) && ((e.type === 'shape' && e.shape !== 'line' && e.shape !== 'arrow') || e.type === 'image'));
-  const topGap = 10 + (hasRotateHandle ? 44 : 0);
-  const sx = (x0 - cam.x) * cam.zoom;
-  const sy = (y0 - cam.y) * cam.zoom;
-  const sw = (x1 - x0) * cam.zoom;
+  return { sx: (x0 - cam.x) * cam.zoom, sy: (y0 - cam.y) * cam.zoom, sw: (x1 - x0) * cam.zoom, topGap: 10 + (hasRotateHandle ? 44 : 0) };
+}
+
+function positionQuickMenu(): void {
+  const qm = quickMenuEl();
+  const wrap = document.getElementById('canvas-wrap')!;
+  const wr = wrap.getBoundingClientRect();
+  const target = quickMenuTarget(wr);
+  if (!target) { qm.hidden = true; return; }
+  const { sx, sy, sw, topGap } = target;
   const qr = qm.getBoundingClientRect();
   let left = sx + sw / 2 - qr.width / 2;
   let top = sy - qr.height - topGap;
@@ -2920,17 +3261,9 @@ function syncPresetButtons(tb: HTMLElement): void {
   shownPresetKey = key;
   // панель стиля с тулбара переезжает к новому пресету и показывает его цвет и толщину
   if (sp && sp.source === 'toolbar') {
-    if (sp.detached) rebuildStylePanel(sp);
+    if (sp.detached) rebuildPanel(sp);
     else if (withStyle) openCtxPanel('style', 'toolbar');
   }
-}
-
-function rebuildStylePanel(cp: CtxPanel): void {
-  cp.el.textContent = '';
-  buildStylePanel(cp);
-  cp.el.appendChild(buildCtxBar(cp));
-  cp.baseHeight = 0;
-  positionCtxPanel(cp);
 }
 
 function makeVsep(): HTMLElement {
@@ -3011,7 +3344,8 @@ function wireTopbar(): void {
       // Esc закрывает только верхнее: выделение на доске (см. controller.ts) остаётся до следующего нажатия
       if (!gridMenu().hidden) { e.stopPropagation(); closeGridMenu(); gridButton().focus(); return; }
       if (!settingsPopover().hidden) { e.stopPropagation(); closeSettings(); return; }
-      if (dockedPanel()) { e.stopPropagation(); closeCtxPanel(); return; }
+      // поле кегля закрывает свою панель само (Esc там — отмена ввода)
+      if (dockedPanel() && !fontEdit) { e.stopPropagation(); closeCtxPanel(); return; }
     }
   }, { capture: true });
 }
@@ -3316,6 +3650,16 @@ export function initApp(c: HTMLCanvasElement): void {
   wireImageInput();
   // курсор в выделенной фигуре прячется, пока набор идёт в поле ввода
   document.addEventListener('focusin', syncShapeCaret);
+  // пока правят текст (или кегль в поле меню), клики по меню выделения и панелям не забирают фокус
+  for (const host of [quickMenuEl(), ctxLayerEl()]) {
+    host.addEventListener('mousedown', e => {
+      if ((editing || fontEdit) && !isTypingField(e.target)) e.preventDefault();
+    }, { capture: true });
+  }
+  // фокус ушёл из редактора текста не в меню и не в панели (в название страницы и т. п.) — ввод закончен
+  document.addEventListener('focusin', e => {
+    if (editing && e.target !== editing.ta && !insideTextMenus(e.target)) closeEditor(true);
+  });
   document.addEventListener('focusout', () => queueMicrotask(syncShapeCaret));
   try { refresh(); } catch (err) { console.error('[doska] refresh failed:', err); }
   onToolbarChange(() => {

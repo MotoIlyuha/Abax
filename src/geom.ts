@@ -1,4 +1,4 @@
-import type { Camera, Element, Guide, Handle, HandlePos, ImageEl, PolyEl, Pt, ShapeEl, StrokeEl, TextEl } from './types';
+import type { Camera, Element, Guide, Handle, HandlePos, ImageEl, PolyEl, Pt, ShapeEl, StrokeEl, TextAlign, TextEl, TextVAlign } from './types';
 import { applySolidParam, solidGeometry, solidHandles } from './solid';
 import { widthAt } from './stroke';
 
@@ -22,9 +22,9 @@ export function textSize(el: TextEl): { w: number; h: number } {
   return { w, h: lines.length * el.size * 1.25 };
 }
 
-export function wrapText(text: string, size: number, maxW: number): string[] {
+export function wrapText(text: string, size: number, maxW: number, bold = false, italic = false): string[] {
   const ctx = mctx();
-  ctx.font = TEXT_FONT(size);
+  ctx.font = TEXT_FONT(size, bold, italic);
   const out: string[] = [];
   for (const raw of text.split('\n')) {
     if (!raw) { out.push(''); continue; }
@@ -47,10 +47,31 @@ export const NOTE_TEXT_COLOR = '#4a4633';
 export const TEXT_SIZE = 24;
 
 /** Ширина строки текста шрифтом size. */
-export function lineWidth(text: string, size: number): number {
+export function lineWidth(text: string, size: number, bold = false, italic = false): number {
   const ctx = mctx();
-  ctx.font = TEXT_FONT(size);
+  ctx.font = TEXT_FONT(size, bold, italic);
   return ctx.measureText(text).width;
+}
+
+// ----- Кегль текста: стрелки в меню выделения ходят по этим значениям -----
+
+export const TEXT_SIZES = [10, 12, 14, 18, 24, 36, 80, 144, 288];
+export const TEXT_SIZE_MIN = 6;
+export const TEXT_SIZE_MAX = 400;
+
+/** Следующий (dir = 1) или предыдущий кегль из TEXT_SIZES; за крайними значениями — без изменений. */
+export function stepTextSize(cur: number, dir: 1 | -1): number {
+  if (dir > 0) return TEXT_SIZES.find(s => s > cur) ?? cur;
+  return [...TEXT_SIZES].reverse().find(s => s < cur) ?? cur;
+}
+
+/** Кегль, набранный вручную: целое число в пределах TEXT_SIZE_MIN…TEXT_SIZE_MAX; иначе — что не так. */
+export function parseTextSize(text: string): { size: number } | { error: string } {
+  const m = /^\s*(\d+(?:[.,]\d+)?)\s*$/.exec(text);
+  if (!m) return { error: 'Введите число, например 24' };
+  const size = Math.round(Number(m[1].replace(',', '.')));
+  if (size < TEXT_SIZE_MIN || size > TEXT_SIZE_MAX) return { error: `Размер — от ${TEXT_SIZE_MIN} до ${TEXT_SIZE_MAX}` };
+  return { size };
 }
 
 // ----- Надпись внутри фигуры (как в Miro): по центру, кегль уменьшается, пока текст не влезет -----
@@ -88,15 +109,49 @@ export function shapeTextBox(s: ShapeEl): { x: number; y: number; w: number; h: 
   return { x: bx + pad, y: by + pad, w: Math.max(1, bw - pad * 2), h: Math.max(1, bh - pad * 2) };
 }
 
-/** Кегль и строки надписи в области w×h: от SHAPE_TEXT_MAX вниз, пока не влезет (не меньше SHAPE_TEXT_MIN). */
-export function fitShapeText(text: string, w: number, h: number): { size: number; lines: string[] } {
+/** Начертание надписи: заданный кегль (нет — подбирается) и жирность с курсивом. */
+export interface CaptionFont { size?: number; bold?: boolean; italic?: boolean }
+
+/**
+ * Кегль и строки надписи в области w×h. Кегль задан — только переносим строки;
+ * нет — от SHAPE_TEXT_MAX вниз, пока не влезет (не меньше SHAPE_TEXT_MIN).
+ */
+export function fitShapeText(text: string, w: number, h: number, font: CaptionFont = {}): { size: number; lines: string[] } {
+  const b = !!font.bold, i = !!font.italic;
+  if (font.size) return { size: font.size, lines: wrapText(text, font.size, w, b, i) };
   let size = SHAPE_TEXT_MAX;
   for (;;) {
-    const lines = wrapText(text, size, w);
-    const fits = lines.length * size * SHAPE_TEXT_LH <= h && lines.every(l => lineWidth(l, size) <= w);
+    const lines = wrapText(text, size, w, b, i);
+    const fits = lines.length * size * SHAPE_TEXT_LH <= h && lines.every(l => lineWidth(l, size, b, i) <= w);
     if (fits || size <= SHAPE_TEXT_MIN) return { size, lines };
     size = Math.max(SHAPE_TEXT_MIN, size - Math.max(1, Math.round(size * 0.1)));
   }
+}
+
+/** Раскладка надписи фигуры (без поворота): область, кегль, строки, межстрочие и выравнивание. */
+export interface Caption {
+  box: { x: number; y: number; w: number; h: number };
+  size: number;
+  lines: string[];
+  lh: number;
+  align: TextAlign;
+  valign: TextVAlign;
+  /** x опорной точки строк (левый край, середина или правый край области) и верх первой строки. */
+  x: number;
+  top: number;
+}
+
+/** Надпись фигуры s — с её текстом или с text (то, что сейчас набирают в редакторе). */
+export function shapeCaption(s: ShapeEl, text = s.text ?? ''): Caption {
+  const box = shapeTextBox(s);
+  const { size, lines } = fitShapeText(text, box.w, box.h, { size: s.textSize, bold: s.bold, italic: s.italic });
+  const lh = size * SHAPE_TEXT_LH;
+  const align = s.align ?? 'center';
+  const valign = s.valign ?? 'middle';
+  const x = align === 'left' ? box.x : align === 'right' ? box.x + box.w : box.x + box.w / 2;
+  const free = box.h - lines.length * lh;
+  const top = valign === 'top' ? box.y : valign === 'bottom' ? box.y + free : box.y + free / 2;
+  return { box, size, lines, lh, align, valign, x, top };
 }
 
 /** Радиус скругления, который реально помещается в элемент (не больше половины меньшей стороны). */

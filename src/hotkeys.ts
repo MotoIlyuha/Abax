@@ -94,6 +94,8 @@ export const FIXED_SHORTCUTS: ShortcutGroup[] = [
       { keys: ['Delete', 'Backspace'], what: 'Удалить выделенное' },
       { keys: ['Ctrl+KeyG'], what: 'Сгруппировать' },
       { keys: ['Ctrl+Shift+KeyG'], what: 'Разгруппировать' },
+      { keys: ['Ctrl+KeyB'], what: 'Полужирный текст' },
+      { keys: ['Ctrl+KeyI'], what: 'Курсив' },
     ],
   },
   {
@@ -124,7 +126,7 @@ export const FIXED_SHORTCUTS: ShortcutGroup[] = [
     items: [
       { keys: ['Enter'], what: 'Готово' },
       { keys: ['Shift+Enter'], what: 'Новая строка' },
-      { keys: ['Escape'], what: 'Отменить ввод' },
+      { keys: ['Escape'], what: 'Отменить ввод (у надписи в фигуре — закончить)' },
     ],
   },
 ];

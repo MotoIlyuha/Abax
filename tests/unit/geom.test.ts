@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   aabbIntersects, aabbUnion, alignGuides, alignShift, applyHandle, boxAnchors, cornerRadius, distToSeg, elementAABB, elementHandles, erasePart, fitShapeText,
-  gridStepFor, hitTest, imageFrame, insertPolyNode, pointInPoly, presentCamera, removePolyNode, shapeHoldsText, shapeTextBox,
-  snapValue, SHAPE_TEXT_LH, SHAPE_TEXT_MAX, SHAPE_TEXT_MIN, TEXT_FONT, textSize, wrapText,
+  gridStepFor, hitTest, imageFrame, insertPolyNode, parseTextSize, pointInPoly, presentCamera, removePolyNode, shapeCaption,
+  shapeHoldsText, shapeTextBox, snapValue, stepTextSize, SHAPE_TEXT_LH, SHAPE_TEXT_MAX, SHAPE_TEXT_MIN, TEXT_FONT, TEXT_SIZES,
+  textSize, wrapText,
 } from '../../src/geom';
 import type { Handle, ImageEl, NoteEl, PolyEl, ShapeEl, SolidEl, StrokeEl, TextEl } from '../../src/types';
 
@@ -85,6 +86,28 @@ describe('надпись в фигуре', () => {
     expect(fitShapeText(long.repeat(20), 20, 10).size).toBe(SHAPE_TEXT_MIN);
   });
 
+  it('заданный кегль не подбирается — только переносятся строки', () => {
+    const long = 'один два три четыре пять шесть семь восемь';
+    const fit = fitShapeText(long, 120, 60, { size: 30 });
+    expect(fit.size).toBe(30);
+    expect(fit.lines.length).toBeGreaterThan(2);
+  });
+
+  it('раскладка надписи: выравнивание по горизонтали и вертикали', () => {
+    const s = rect({ w: 200, h: 100, text: 'ab', textSize: 20 });
+    const box = shapeTextBox(s);
+    const mid = shapeCaption(s);
+    expect(mid).toMatchObject({ align: 'center', valign: 'middle', size: 20, lines: ['ab'], x: box.x + box.w / 2 });
+    expect(mid.top).toBeCloseTo(box.y + (box.h - 20 * SHAPE_TEXT_LH) / 2);
+    const lt = shapeCaption({ ...s, align: 'left', valign: 'top' });
+    expect(lt).toMatchObject({ x: box.x, top: box.y });
+    const rb = shapeCaption({ ...s, align: 'right', valign: 'bottom' });
+    expect(rb.x).toBe(box.x + box.w);
+    expect(rb.top).toBeCloseTo(box.y + box.h - 20 * SHAPE_TEXT_LH);
+    // набираемый в редакторе текст — вместо сохранённого
+    expect(shapeCaption(s, 'xyz').lines).toEqual(['xyz']);
+  });
+
   it('скругление не больше половины меньшей стороны; рамка картинки — только с цветом и толщиной', () => {
     expect(cornerRadius(rect({ radius: 10 }))).toBe(10);
     expect(cornerRadius(rect({ radius: 80 }))).toBe(25);
@@ -94,6 +117,29 @@ describe('надпись в фигуре', () => {
     expect(imageFrame(image({ color: '#ff0000' }))).toBeNull();
     expect(imageFrame(image({ color: '#ff0000', width: 0 }))).toBeNull();
     expect(imageFrame(image({ color: '#ff0000', width: 3 }))).toEqual({ color: '#ff0000', width: 3 });
+  });
+});
+
+describe('кегль текста', () => {
+  it('стрелки — соседние готовые значения; за крайними — без изменений', () => {
+    expect(TEXT_SIZES).toEqual([10, 12, 14, 18, 24, 36, 80, 144, 288]);
+    expect(stepTextSize(24, 1)).toBe(36);
+    expect(stepTextSize(24, -1)).toBe(18);
+    expect(stepTextSize(20, 1)).toBe(24);
+    expect(stepTextSize(20, -1)).toBe(18);
+    expect(stepTextSize(288, 1)).toBe(288);
+    expect(stepTextSize(10, -1)).toBe(10);
+    expect(stepTextSize(300, -1)).toBe(288);
+    expect(stepTextSize(8, 1)).toBe(10);
+  });
+
+  it('ввод вручную: целое в пределах, ошибки — понятным текстом', () => {
+    expect(parseTextSize('50')).toEqual({ size: 50 });
+    expect(parseTextSize(' 12,6 ')).toEqual({ size: 13 });
+    expect(parseTextSize('abc')).toEqual({ error: 'Введите число, например 24' });
+    expect(parseTextSize('')).toEqual({ error: 'Введите число, например 24' });
+    expect(parseTextSize('5')).toEqual({ error: 'Размер — от 6 до 400' });
+    expect(parseTextSize('401')).toEqual({ error: 'Размер — от 6 до 400' });
   });
 });
 

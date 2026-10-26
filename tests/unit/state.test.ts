@@ -282,6 +282,25 @@ describe('выделение и стиль', () => {
     expect(canUndo()).toBe(false);
   });
 
+  it('кегль, начертание и выравнивание: у текста и надписей фигур; умолчания не хранятся', () => {
+    replaceElements([
+      { id: 't', type: 'text', x: 0, y: 0, text: 'x', size: 20, color: '#000000' },
+      rect('a', { text: 'ab' }), rect('l', { shape: 'line' }),
+    ]);
+    setSelection(['t', 'a', 'l']);
+    applyStyleToSelection({ size: 36, bold: true, align: 'left', valign: 'bottom' });
+    const [t, a, l] = state.board.elements;
+    expect(t).toMatchObject({ size: 36, bold: true });
+    expect(t).not.toHaveProperty('align');
+    expect(a).toMatchObject({ textSize: 36, bold: true, align: 'left', valign: 'bottom' });
+    expect(l).toEqual(rect('l', { shape: 'line' }));
+    // «Авто» у надписи, центр и обычное начертание — без полей; у текста кегль 0 не применяется
+    applyStyleToSelection({ size: 0, bold: false, align: 'center', valign: 'middle' });
+    const [t2, a2] = state.board.elements;
+    expect(t2).toMatchObject({ size: 36, bold: false });
+    for (const k of ['textSize', 'bold', 'align', 'valign']) expect(a2).not.toHaveProperty(k);
+  });
+
   it('прозрачность: 1 не хранится, у стикеров её нет', () => {
     replaceElements([rect('a'), { id: 'n', type: 'note', x: 0, y: 0, w: 10, h: 10, text: 'x', color: '#ffe066' }]);
     setSelection(['a', 'n']);

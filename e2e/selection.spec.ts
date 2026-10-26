@@ -112,8 +112,9 @@ test.describe('выделение и перемещение', () => {
     await board.click({ x: 400, y: 300 });
     await page.keyboard.type('Теорема');
     await page.keyboard.press('Enter');
-    await board.tool('v');
-    await board.click({ x: 420, y: 312 });
+    // вставленный текст сразу выделен, включено выделение
+    expect((await board.state()).tool).toBe('select');
+    expect((await board.state()).selection).toHaveLength(1);
     await board.quickMenu.locator('.qm-text-b').click();
     await expect(board.quickMenu.locator('.qm-text-b')).toHaveClass(/active/);
     await board.quickMenu.locator('.qm-text-i').click();

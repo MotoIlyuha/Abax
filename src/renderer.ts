@@ -1,8 +1,8 @@
 import type { Camera, Element, GridMode, ImageEl, ShapeEl, SolidEl } from './types';
 import { foreignSelections } from './collab';
 import {
-  cornerRadius, elementAABB, elementHandles, fitShapeText, imageFrame, presentCamera, shapeHoldsText, shapeTextBox,
-  wrapText, TEXT_FONT, NOTE_PAD, NOTE_FONT, NOTE_TEXT_COLOR, SHAPE_TEXT_LH,
+  type Caption, cornerRadius, elementAABB, elementHandles, imageFrame, presentCamera, shapeCaption, shapeHoldsText,
+  wrapText, TEXT_FONT, NOTE_PAD, NOTE_FONT, NOTE_TEXT_COLOR,
 } from './geom';
 import { ribbonPath } from './stroke';
 import { fitSolid, solidGeometry, type SolidPrim } from './solid';
@@ -41,14 +41,12 @@ export function imagesLoaded(els: readonly Element[]): Promise<void> | null {
   return Promise.all(pending.map(img => img.decode().catch(() => undefined))).then(() => undefined);
 }
 
-type ShapeTextFit = { size: number; lines: string[] };
-
 interface ElCacheEntry {
   aabb: { x0: number; y0: number; x1: number; y1: number };
   path: Path2D | null;
   lines: string[] | null;
   /** Надпись фигуры, разложенная по строкам с подобранным кеглем. */
-  fit: ShapeTextFit | null;
+  fit: Caption | null;
 }
 
 // Элементы иммутабельны: кэш живёт столько же, сколько объект элемента.
@@ -60,10 +58,7 @@ function cacheOf(el: Element): ElCacheEntry {
     c = { aabb: elementAABB(el), path: null, lines: null, fit: null };
     if (el.type === 'stroke') c.path = ribbonPath(el.pts, el.width);
     if (el.type === 'note') c.lines = wrapText(el.text, NOTE_FONT, el.w - NOTE_PAD * 2);
-    if (shapeHoldsText(el) && el.text) {
-      const box = shapeTextBox(el);
-      c.fit = fitShapeText(el.text, box.w, box.h);
-    }
+    if (shapeHoldsText(el) && el.text) c.fit = shapeCaption(el);
     elCache.set(el, c);
   }
   return c;
@@ -245,7 +240,7 @@ function rotateShape(ctx: CanvasRenderingContext2D, el: ShapeEl, rot: number): v
   ctx.translate(-cx, -cy);
 }
 
-function drawShapeEl(ctx: CanvasRenderingContext2D, el: ShapeEl, text: ShapeTextFit | null = null): void {
+function drawShapeEl(ctx: CanvasRenderingContext2D, el: ShapeEl, text: Caption | null = null): void {
   const rot = el.rot ?? 0;
   if (rot) {
     ctx.save();
@@ -292,17 +287,13 @@ function drawShapeEl(ctx: CanvasRenderingContext2D, el: ShapeEl, text: ShapeText
   if (rot) ctx.restore();
 }
 
-/** Надпись по центру области текста фигуры (поворот уже применён). */
-function drawShapeText(ctx: CanvasRenderingContext2D, el: ShapeEl, fit: ShapeTextFit): void {
-  const box = shapeTextBox(el);
-  const lh = fit.size * SHAPE_TEXT_LH;
-  const top = box.y + (box.h - fit.lines.length * lh) / 2;
-  const cx = box.x + box.w / 2;
-  ctx.font = TEXT_FONT(fit.size);
+/** Надпись в области текста фигуры — с её выравниванием и начертанием (поворот уже применён). */
+function drawShapeText(ctx: CanvasRenderingContext2D, el: ShapeEl, c: Caption): void {
+  ctx.font = TEXT_FONT(c.size, el.bold, el.italic);
   ctx.fillStyle = el.color;
-  ctx.textAlign = 'center';
+  ctx.textAlign = c.align;
   ctx.textBaseline = 'middle';
-  for (let i = 0; i < fit.lines.length; i++) ctx.fillText(fit.lines[i], cx, top + (i + 0.5) * lh);
+  for (let i = 0; i < c.lines.length; i++) ctx.fillText(c.lines[i], c.x, c.top + (i + 0.5) * c.lh);
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
 }
@@ -310,11 +301,10 @@ function drawShapeText(ctx: CanvasRenderingContext2D, el: ShapeEl, fit: ShapeTex
 /** Только надпись фигуры (контур уже нарисован) — с её поворотом и прозрачностью. */
 function drawShapeCaption(ctx: CanvasRenderingContext2D, el: ShapeEl): void {
   if (!el.text) return;
-  const box = shapeTextBox(el);
   ctx.save();
   ctx.globalAlpha = el.opacity ?? 1;
   if (el.rot) rotateShape(ctx, el, el.rot);
-  drawShapeText(ctx, el, fitShapeText(el.text, box.w, box.h));
+  drawShapeText(ctx, el, shapeCaption(el));
   ctx.restore();
 }
 
