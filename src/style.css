@@ -409,7 +409,7 @@ select {
   outline: none;
 }
 /* удалить — круглая кнопка в углу карточки, появляется при наведении */
-.page-item .page-del, .home-page .page-del {
+.page-item .page-del {
   position: absolute;
   top: -8px;
   right: -8px;
@@ -426,17 +426,17 @@ select {
   transform: scale(0.8);
   transition: opacity 0.15s ease, transform 0.15s ease, visibility 0s linear 0.15s;
 }
-.page-item:hover .page-del, .home-page:hover .page-del { visibility: visible; opacity: 1; transform: none; transition: opacity 0.15s ease, transform 0.15s ease, visibility 0s; }
-.page-item .page-del:hover, .home-page .page-del:hover { background: #fdecec; border-color: #f3c1c1; color: var(--danger); }
-.page-item .page-del svg, .home-page .page-del svg { width: 11px; height: 11px; }
+.page-item:hover .page-del { visibility: visible; opacity: 1; transform: none; transition: opacity 0.15s ease, transform 0.15s ease, visibility 0s; }
+.page-item .page-del:hover { background: #fdecec; border-color: #f3c1c1; color: var(--danger); }
+.page-item .page-del svg { width: 11px; height: 11px; }
 /* карточку тащат, чтобы переставить: она над соседями и едет за указателем без задержки */
-.page-item.dragging, .home-page.dragging, .page-item.active.dragging, .home-page.active.dragging {
+.page-item.dragging, .page-item.active.dragging {
   z-index: 5;
   transition: none;
   animation: none;
   box-shadow: 0 10px 28px rgba(16, 24, 40, 0.22);
 }
-.page-item.dragging .page-del, .home-page.dragging .page-del { visibility: hidden; }
+.page-item.dragging .page-del { visibility: hidden; }
 body.reordering, body.reordering * { cursor: grabbing !important; user-select: none; }
 /* последний элемент: такая же карточка, но пунктиром и с «+» — новая страница */
 .page-add {
@@ -1390,134 +1390,385 @@ body.tbe-grabbing, body.tbe-grabbing * { cursor: grabbing !important; }
   overflow-y: auto;
   padding: 24px 32px;
 }
-.home-head h1 { font-size: 20px; margin-bottom: 18px; }
-.home-section + .home-section { margin-top: 26px; }
+.home-head { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; }
+.home-head h1 { flex: 1; font-size: 20px; }
+.home-tools { display: flex; align-items: center; gap: 12px; }
+/* сеткой / списком */
+.home-views { display: inline-flex; gap: 2px; padding: 3px; border-radius: 9px; background: #e7e9ee; }
+.home-view {
+  width: 32px;
+  height: 28px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: #5d6470;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.home-view:hover { color: var(--fg); }
+.home-view[aria-pressed="true"] { background: #fff; color: var(--fg); box-shadow: 0 1px 2px rgba(16, 24, 40, 0.14); }
+.home-view svg { width: 17px; height: 17px; }
+.new-project {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 14px 0 10px;
+  border: none;
+  border-radius: 9px;
+  background: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  color: #fff;
+  cursor: pointer;
+}
+.new-project:hover { background: #2160dd; }
+.new-project svg { width: 17px; height: 17px; stroke-width: 2.2; }
+.home-section + .home-section { margin-top: 28px; }
 .home-section-title {
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--muted);
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
-.home-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-  align-items: start;
-  gap: 14px;
+
+/* иконка проекта: эмодзи или своя картинка; без иконки — приглашение поставить */
+.project-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: #9aa1ac;
+  line-height: 1;
+  cursor: pointer;
+  font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif;
 }
-.project-card {
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.project-title { display: flex; align-items: center; gap: 6px; }
-.project-name { font-weight: 600; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-/* звёздочка: закрепить в избранном */
-.project-pin {
-  width: 26px;
-  height: 26px;
+.project-icon img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+.project-icon svg { width: 60%; height: 60%; }
+.project-icon:disabled { cursor: default; }
+.project-icon.top { width: 28px; height: 28px; border-radius: 7px; font-size: 18px; margin-right: -2px; }
+.project-icon.top img { width: 20px; height: 20px; border-radius: 5px; }
+.project-icon.top:not(:disabled):hover { background: #f0f2f5; }
+.project-icon.top.empty { opacity: 0.6; }
+.project-icon.top.empty:hover { opacity: 1; color: var(--fg); }
+.project-icon.top.empty:disabled { display: none; }
+/* на узкой шапке место нужнее названию; поставить иконку можно с домашней */
+@media (max-width: 760px) { .project-icon.top.empty { display: none; } }
+
+/* звёздочка: закрепить в избранном; корзина — удалить проект */
+.project-pin, .project-del {
+  width: 28px;
+  height: 28px;
   flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border: none;
-  border-radius: 6px;
+  border-radius: 7px;
   background: transparent;
-  color: #b8bec8;
+  color: #9aa1ac;
   cursor: pointer;
 }
 .project-pin svg { width: 17px; height: 17px; }
-.project-pin:hover { background: #f0f2f5; color: #e8a800; }
+.project-del svg { width: 16px; height: 16px; }
+.project-pin:hover { background: #e9ebef; color: #e8a800; }
+.project-del:hover { background: #fdecec; color: var(--danger); }
 .project-pin[aria-pressed="true"] { color: #f2b000; }
 .project-pin[aria-pressed="true"] svg { fill: currentColor; }
-.project-open {
-  font: inherit;
-  font-size: 12px;
-  padding: 4px 10px;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  background: #fff;
-  cursor: pointer;
-  color: var(--fg);
-}
-.project-open:hover { border-color: var(--accent); color: var(--accent); }
-.project-info { font-size: 12px; color: var(--muted); }
-/* страницы проекта — плитки с превью; их можно переставлять перетаскиванием */
-.home-pages {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(124px, 1fr));
-  gap: 10px;
-}
-.home-page {
-  position: relative;
+.project-name { min-width: 0; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.project-info { font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.project-card input.project-rename {
   min-width: 0;
-  padding: 5px;
+  font: inherit;
+  font-weight: 700;
+  padding: 1px 6px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  outline: none;
+}
+
+/* ----- Сеткой: превью с каруселью страниц, под ним — название, как в Miro ----- */
+.home-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  align-items: start;
+  gap: 24px 20px;
+}
+.home-grid .project-card { display: flex; flex-direction: column; min-width: 0; cursor: pointer; }
+.project-preview {
+  position: relative;
+  aspect-ratio: 164 / 100;
+  overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: 11px;
-  background: var(--panel);
-  cursor: pointer;
-  user-select: none;
+  border-radius: 14px;
+  background: #fff;
+  touch-action: pan-y;
   transition: box-shadow 0.15s ease, border-color 0.15s ease;
 }
-.home-page:hover { border-color: #c9d0db; box-shadow: var(--shadow); }
-.home-page.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
-.home-page.active .page-num { background: var(--accent); color: #fff; box-shadow: none; }
-.home-page .page-thumb { border-radius: 7px; }
-.home-page canvas { width: 100%; height: auto; }
-.home-page.skeleton { cursor: default; border-style: dashed; box-shadow: none; }
-.home-page.skeleton::before {
-  content: '';
-  display: block;
-  aspect-ratio: 164 / 100;
-  border-radius: 7px;
+.project-card:hover .project-preview { border-color: #cfd5de; box-shadow: 0 4px 10px rgba(16, 24, 40, 0.08), 0 14px 30px rgba(16, 24, 40, 0.1); }
+.project-card.current .project-preview { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.project-preview-empty {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: #eef0f3;
+  font-size: 12px;
+  font-style: italic;
+  color: var(--muted);
 }
-.home-page.skeleton::after { content: ''; display: block; height: 24px; }
-.home-page-caption { display: flex; align-items: center; gap: 5px; min-width: 0; padding: 6px 2px 1px; }
-.home-page-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; font-weight: 600; }
-.home-page input {
-  flex: 1;
-  width: 100%;
-  min-width: 0;
-  font: inherit;
+.carousel-track { display: flex; height: 100%; }
+.carousel-track.animate { transition: transform 0.32s cubic-bezier(0.22, 0.8, 0.24, 1); }
+.carousel-slide { flex: none; width: 100%; height: 100%; }
+.carousel-slide canvas { display: block; width: 100%; height: 100%; }
+/* номер и название показанной страницы */
+.carousel-page {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  max-width: calc(100% - 84px);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 9px 2px 2px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 0 0 1px rgba(16, 24, 40, 0.08);
   font-size: 12px;
   font-weight: 600;
-  padding: 1px 4px;
-  margin: -2px 0;
+  white-space: nowrap;
+  cursor: text;
+}
+.carousel-page .page-num { position: static; flex: none; }
+.project-card.current .carousel-page .page-num { background: var(--accent); color: #fff; box-shadow: none; }
+.carousel-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.carousel-page input {
+  min-width: 0;
+  width: 120px;
+  font: inherit;
+  padding: 0 4px;
   border: 1px solid var(--accent);
   border-radius: 5px;
   outline: none;
-  user-select: text;
 }
-.home-pages-hint { grid-column: 1 / -1; font-size: 12px; color: var(--muted); font-style: italic; }
-.home-add-page {
-  min-height: 96px;
-  border: 2px dashed #c3c9d3;
-  border-radius: 11px;
-  background: transparent;
-  color: #98a0ac;
+.carousel-prev, .carousel-next {
+  position: absolute;
+  top: 50%;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 1px 4px rgba(16, 24, 40, 0.22);
+  color: var(--fg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transform: translateY(-50%);
+  transition: opacity 0.15s ease;
+  cursor: pointer;
+}
+.carousel-prev { left: 8px; }
+.carousel-next { right: 8px; }
+.carousel-prev svg, .carousel-next svg { width: 17px; height: 17px; }
+.carousel-prev[hidden], .carousel-next[hidden] { display: none; }
+.carousel-dots {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  max-width: calc(100% - 110px);
+  display: flex;
+  gap: 5px;
+  padding: 5px 7px;
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.9);
+  transform: translateX(-50%);
+  overflow: hidden;
+}
+.carousel-dots[hidden] { display: none; }
+.carousel-dot { flex: none; width: 6px; height: 6px; padding: 0; border: none; border-radius: 50%; background: #c3c9d3; cursor: pointer; }
+.carousel-dot.active { background: var(--accent); }
+/* добавить и удалить страницу */
+.carousel-tools { position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; opacity: 0; transition: opacity 0.15s ease; }
+.carousel-tools button {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+  color: #5d6572;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
 }
-.home-add-page:hover { border-color: var(--accent); color: var(--accent); background: rgba(234, 240, 254, 0.6); }
-.home-add-page svg { width: 24px; height: 24px; }
-.new-project {
-  min-height: 90px;
-  border: 2px dashed var(--border);
-  border-radius: 12px;
+.carousel-tools svg { width: 15px; height: 15px; }
+.carousel-add:hover { border-color: var(--accent); color: var(--accent); }
+.carousel-del:hover { border-color: #f3c1c1; background: #fdecec; color: var(--danger); }
+.project-card:hover :is(.carousel-prev, .carousel-next, .carousel-tools) { opacity: 1; }
+/* иконка проекта — в левом нижнем углу превью */
+.project-icon.badge {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(16, 24, 40, 0.18);
+  font-size: 21px;
+  transition: opacity 0.15s ease;
+}
+.project-icon.badge.empty { opacity: 0; }
+.project-card:hover .project-icon.badge.empty, .project-icon.badge.empty:focus-visible { opacity: 1; }
+.project-icon.badge.empty:hover { color: var(--fg); }
+.home-grid .project-title { display: flex; align-items: center; gap: 2px; padding: 10px 2px 1px; }
+.home-grid .project-title .project-name { flex: 1; font-size: 15px; }
+.home-grid .project-info { padding: 0 2px; }
+.home-grid :is(.project-pin, .project-del) { opacity: 0; }
+.home-grid .project-card:hover :is(.project-pin, .project-del), .home-grid .project-pin[aria-pressed="true"] { opacity: 1; }
+/* на сенсорном экране наведения нет — кнопки видны всегда */
+@media (hover: none) {
+  .home-grid :is(.project-pin, .project-del), .carousel-tools, .carousel-prev, .carousel-next, .project-icon.badge.empty { opacity: 1; }
+}
+
+/* ----- Списком: строка — иконка, название, страницы, последнее открытие ----- */
+.home-list-head, .project-row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) 90px 120px 64px;
+  align-items: center;
+  column-gap: 14px;
+  padding: 0 12px;
+}
+.home-list-head { height: 34px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.project-row {
+  min-height: 62px;
+  border-top: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.project-row:hover { background: #fff; }
+.project-row.current .project-name { color: var(--accent); }
+.project-icon.row { width: 36px; height: 36px; border-radius: 9px; font-size: 22px; }
+.project-icon.row:hover { background: #e9ebef; }
+.project-icon.row.empty:hover { color: var(--fg); }
+.project-main { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.project-main .project-name { font-size: 14.5px; }
+.project-cell { font-size: 13px; color: #5d6572; font-variant-numeric: tabular-nums; }
+.project-actions { display: flex; justify-content: flex-end; }
+.project-row .project-del { opacity: 0; }
+.project-row:hover .project-del { opacity: 1; }
+@media (hover: none) { .project-row .project-del { opacity: 1; } }
+@media (max-width: 640px) {
+  #home { padding: 18px 16px; }
+  .home-list-head, .project-row { grid-template-columns: 40px minmax(0, 1fr) 64px; }
+  :is(.home-list-head, .project-row) > :is(:nth-child(3), :nth-child(4)) { display: none; }
+}
+
+/* ----- Выбор иконки проекта (как в Miro) ----- */
+#icon-picker {
+  position: fixed;
+  z-index: 90;
+  width: 380px;
+  max-width: calc(100vw - 16px);
+  height: 440px;
+  max-height: calc(100vh - 16px);
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: 0 4px 12px rgba(16, 24, 40, 0.1), 0 16px 40px rgba(16, 24, 40, 0.16);
+  animation: ui-pop 0.18s cubic-bezier(0.22, 0.8, 0.24, 1);
+  --pop-y: -6px;
+}
+body.no-ui-anim #icon-picker { animation: none; }
+.ip-head { display: flex; align-items: center; gap: 8px; padding: 12px 12px 6px; }
+.ip-search {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #f6f7f9;
+  font: inherit;
+  outline: none;
+}
+.ip-search:focus { border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px var(--accent-soft); }
+.ip-remove {
+  height: 36px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 9px;
   background: transparent;
   font: inherit;
-  color: var(--muted);
+  color: var(--danger);
   cursor: pointer;
 }
-.new-project:hover { border-color: var(--accent); color: var(--accent); }
+.ip-remove:hover { background: #fdecec; }
+.ip-tabs { display: flex; gap: 2px; padding: 0 10px 6px; border-bottom: 1px solid var(--border); }
+.ip-tab {
+  flex: 1;
+  height: 34px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #5d6470;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.ip-tab:hover { background: #f0f2f5; color: var(--fg); }
+.ip-tab[aria-selected="true"] { background: #eceef2; color: var(--fg); }
+.ip-tab svg { width: 19px; height: 19px; }
+.ip-body { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 10px 8px; position: relative; overscroll-behavior: contain; }
+.ip-status { padding: 24px 0; text-align: center; color: var(--muted); }
+.ip-section[hidden] { display: none; }
+.ip-title { padding: 10px 4px 6px; font-size: 13px; font-weight: 600; color: #3b414b; }
+.ip-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(38px, 1fr)); }
+.ip-emoji {
+  height: 38px;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 24px;
+  line-height: 1;
+  font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif;
+  cursor: pointer;
+}
+.ip-emoji:hover { background: #f0f2f5; }
+.ip-emoji.active { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
+.ip-foot { display: flex; justify-content: flex-end; padding: 8px 12px; border-top: 1px solid var(--border); }
+.ip-upload {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 8px;
+  background: #eceef2;
+  font: inherit;
+  font-weight: 600;
+  color: var(--fg);
+  cursor: pointer;
+}
+.ip-upload:hover { background: #e2e5ea; }
+.ip-upload svg { width: 16px; height: 16px; }
 
 /* ----- Редактор текста на месте ----- */
 #overlay { position: absolute; inset: 0; pointer-events: none; z-index: 8; }

@@ -6,7 +6,7 @@ import {
   state, update, onChange, undo, redo, canUndo, canRedo, setTool, setGrid, setStyleColor,
   setStyleWidth, setStyleOpacity, setNoteColor, selectPreset, presetKind, addElement, replaceElements, pushHistory, uid,
   applyStyleToSelection, setSettings, setView, switchPage, addPage, deletePage, renamePage, setSelection,
-  openProject, blankProject, blankPage, projectMeta, groupSelected, ungroupSelected, movePage, moveItem,
+  openProject, blankProject, blankPage, projectMeta, groupSelected, ungroupSelected, movePage,
   bringForward, sendBackward, deleteSelected, setSolidSides, duplicateSelected, removeImageFrames, selectInserted,
   clampOpacity, opacityField, OPACITY_MIN, parseZoomPercent, zoomAtPoint,
 } from './state';
@@ -32,6 +32,8 @@ import { renderToolbarEditor } from './toolbar-editor';
 import { renderHotkeysSettings } from './hotkeys-settings';
 import { DEFAULT_NEW_PAGE_KEY, comboLabel, macKeys, newPageKeyProblem } from './hotkeys';
 import { renderAbout } from './about';
+import { closeIconPicker, openIconPicker } from './icon-picker';
+import { capitalize, dayLabel, pagesLabel } from './format';
 import { copySelection, COPY_STEP_PX, pasteFromMemory, pasteFromSystem } from './clipboard';
 
 pdfjsLib.GlobalWorkerOptions.workerPort = new PdfWorker();
@@ -62,6 +64,11 @@ const ICONS = {
   chevron: svg('<path d="M9 6l6 6-6 6"/>'),
   star: svg('<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/>'),
   info: svg('<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.5v.01"/>'),
+  chevronLeft: svg('<path d="M15 6l-6 6 6 6"/>'),
+  grid: svg('<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>'),
+  list: svg('<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4.5 6h.01M4.5 12h.01M4.5 18h.01"/>'),
+  /** Иконки у проекта нет: смайлик с плюсом — «поставить». */
+  addIcon: svg('<path d="M20.5 12A8.5 8.5 0 1 1 12 3.5"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0"/><path d="M9 9.5h.01M15 9.5h.01"/><path d="M19 2.5v5M16.5 5h5"/>'),
 };
 
 const GRID_ICONS: Record<GridMode, string> = {
@@ -2601,6 +2608,9 @@ function renderPages(): void {
   if (reordering()) return;
   try {
     document.getElementById('project-name')!.textContent = state.project.name;
+    const icon = document.getElementById('project-icon')!;
+    paintProjectIcon(icon, state.project.icon);
+    icon.title = state.project.icon ? 'Сменить иконку проекта' : 'Добавить иконку проекта';
     const list = document.getElementById('pages-list')!;
     const pages = state.project.pages;
     const seen = new Set<string>();
@@ -2761,8 +2771,6 @@ const homeProjects = new Map<string, { at: number; project: Project | null }>();
 const homeLoading = new Set<string>();
 /** Превью страниц на домашней: холсты переживают перестройку списка, перерисовываются по изменению. */
 const homeThumbs = new Map<string, { cv: HTMLCanvasElement; shot: { elements: Element[]; grid: GridMode } | null }>();
-/** Список перестроить не дали (тащили страницу) — перестроим, когда отпустят. */
-let homeRenderPending = false;
 
 /** Проект для карточки на домашней: открытый — из состояния, остальные — из кэша (null — ещё грузится). */
 function homeProject(meta: ProjectMeta): Project | null {
@@ -2837,6 +2845,8 @@ async function deleteProjectHandler(id: string): Promise<void> {
   if (!meta || !confirm(`Удалить проект «${meta.name}» со всеми страницами?`)) return;
   await storage.remove(id);
   homeProjects.delete(id);
+  carouselPos.delete(id);
+  if (openedMap()[id]) { delete openedMap()[id]; saveOpened(); }
   state.projects = state.projects.filter(m => m.id !== id);
   if (state.project.id === id) {
     // удаляют из списка проектов — там и остаёмся
@@ -2927,18 +2937,115 @@ async function homeRenamePage(projectId: string, pageId: string, name: string): 
   renderHome();
 }
 
-async function homeMovePage(projectId: string, from: number, to: number): Promise<void> {
-  if (state.project.id === projectId) {
-    movePage(from, to);
+/** Иконка проекта (null — убрать); дата изменения не трогается — это не правка содержимого. */
+async function setProjectIconHandler(id: string, icon: string | null): Promise<void> {
+  const withIcon = (p: Project): Project => {
+    const next = { ...p };
+    if (icon) next.icon = icon;
+    else delete next.icon;
+    return next;
+  };
+  if (state.project.id === id) {
     await saveNow();
+    state.project = withIcon(state.project);
+    await storage.save(state.project);
+    state.projects = state.projects.map(m => (m.id === id ? projectMeta(state.project) : m));
   } else {
-    await editClosedProject(projectId, p => ({ ...p, pages: moveItem(p.pages, from, to) }));
+    await editClosedProject(id, withIcon, false);
   }
+  renderHome();
+  renderPages();
+}
+
+/** Иконка в кнопке: эмодзи, загруженная картинка или (нет иконки) приглашение её поставить. */
+function paintProjectIcon(host: HTMLElement, icon: string | undefined): void {
+  host.textContent = '';
+  host.classList.toggle('empty', !icon);
+  if (!icon) {
+    host.innerHTML = ICONS.addIcon;
+  } else if (icon.startsWith('data:image/')) {
+    const img = document.createElement('img');
+    img.src = icon;
+    img.alt = '';
+    host.appendChild(img);
+  } else {
+    const glyph = document.createElement('span');
+    glyph.textContent = icon;
+    host.appendChild(glyph);
+  }
+}
+
+/** Кнопка-иконка проекта: клик — окно выбора иконки, как в Miro. */
+function projectIconButton(meta: ProjectMeta, variant: 'badge' | 'row'): HTMLButtonElement {
+  const b = document.createElement('button');
+  b.className = `project-icon ${variant}`;
+  b.title = meta.icon ? 'Сменить иконку' : 'Добавить иконку';
+  paintProjectIcon(b, meta.icon);
+  b.addEventListener('click', e => {
+    e.stopPropagation();
+    openIconPicker(b, meta.icon ?? null, icon => { void setProjectIconHandler(meta.id, icon); });
+  });
+  return b;
+}
+
+// ----- Последнее открытие: на этом устройстве, по проектам -----
+
+const OPENED_KEY = 'doska.opened';
+/** Когда проект открывали в последний раз и на какой странице. */
+type OpenedMap = Record<string, { at: number; page: string }>;
+let opened: OpenedMap | null = null;
+/** Проект и страница, уже записанные в «последнее открытие» (сбрасывается на домашней). */
+let openedKey = '';
+
+function openedMap(): OpenedMap {
+  if (opened) return opened;
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(OPENED_KEY) || '{}');
+    opened = v && typeof v === 'object' ? v as OpenedMap : {};
+  } catch {
+    opened = {};
+  }
+  return opened;
+}
+
+function saveOpened(): void {
+  try { localStorage.setItem(OPENED_KEY, JSON.stringify(openedMap())); } catch { /* хранилище недоступно — без истории */ }
+}
+
+/**
+ * Открытый на доске проект и страница — в «последнее открытие» (при входе в проект и смене страницы)
+ * и в doska.last: с них приложение и запустится, даже если на доске ничего не меняли.
+ */
+function noteOpened(): void {
+  // у гостя совместной работы проект чужой — не его история
+  if (state.view !== 'board' || (collabActive() && !isHost())) { openedKey = ''; return; }
+  const key = `${state.project.id}:${state.pageId}`;
+  if (key === openedKey) return;
+  openedKey = key;
+  openedMap()[state.project.id] = { at: Date.now(), page: state.pageId };
+  saveOpened();
+  try {
+    localStorage.setItem('doska.last', JSON.stringify({ pid: state.project.id, pageId: state.pageId }));
+  } catch { /* хранилище недоступно — запустимся с последнего сохранённого */ }
+}
+
+// ----- Домашняя страница: вид сеткой и списком -----
+
+const HOME_VIEW_KEY = 'doska.homeView';
+type HomeView = 'grid' | 'list';
+
+function homeView(): HomeView {
+  try { return localStorage.getItem(HOME_VIEW_KEY) === 'list' ? 'list' : 'grid'; } catch { return 'grid'; }
+}
+
+function setHomeView(v: HomeView): void {
+  try { localStorage.setItem(HOME_VIEW_KEY, v); } catch { /* вид не запомнится */ }
   renderHome();
 }
 
 function homeKey(): string {
-  return state.projects.map(m => `${m.id}:${m.name}:${m.updatedAt}:${m.pageCount}:${m.pinned ? 1 : 0}`).join('#') + `@${state.project.id}`;
+  return state.projects.map(m => `${m.id}:${m.name}:${m.updatedAt}:${m.pageCount}:${m.pinned ? 1 : 0}:${m.icon ?? ''}`).join('#')
+    + `@${state.project.id}@${homeView()}`;
 }
 
 /** Холст превью страницы: перерисовывается, только если содержимое или фон поменялись. */
@@ -2960,30 +3067,51 @@ function homeThumb(page: Page): HTMLCanvasElement {
 }
 
 function renderHome(): void {
-  // страницу тащат: перестроим список, когда её отпустят
-  if (reordering()) { homeRenderPending = true; return; }
-  homeRenderPending = false;
   const home = document.getElementById('home')!;
   const scroll = home.scrollTop;
   home.textContent = '';
+  const view = homeView();
+  home.dataset.view = view;
   const head = document.createElement('div');
   head.className = 'home-head';
   const h = document.createElement('h1');
   h.textContent = 'Проекты';
-  head.appendChild(h);
+  const tools = document.createElement('div');
+  tools.className = 'home-tools';
+  const views = document.createElement('div');
+  views.className = 'home-views';
+  views.setAttribute('role', 'group');
+  views.setAttribute('aria-label', 'Вид');
+  for (const [v, icon, title] of [['grid', ICONS.grid, 'Сеткой'], ['list', ICONS.list, 'Списком']] as const) {
+    const b = document.createElement('button');
+    b.className = 'home-view';
+    b.dataset.view = v;
+    b.title = title;
+    b.innerHTML = icon;
+    b.setAttribute('aria-pressed', String(v === view));
+    b.addEventListener('click', () => setHomeView(v));
+    views.appendChild(b);
+  }
+  const newBtn = document.createElement('button');
+  newBtn.className = 'new-project';
+  newBtn.innerHTML = ICONS.plus;
+  newBtn.append('Новый проект');
+  newBtn.addEventListener('click', () => { void newProjectHandler(); });
+  tools.append(views, newBtn);
+  head.append(h, tools);
   home.appendChild(head);
   const pinned = state.projects.filter(m => m.pinned);
   const rest = state.projects.filter(m => !m.pinned);
   const seen = new Set<string>();
-  if (pinned.length > 0) home.appendChild(homeSection('Избранное', pinned, false, seen));
-  home.appendChild(homeSection(pinned.length > 0 ? 'Остальные проекты' : '', rest, true, seen));
+  if (pinned.length > 0) home.appendChild(homeSection('Избранное', pinned, view, seen));
+  if (rest.length > 0 || pinned.length === 0) home.appendChild(homeSection(pinned.length > 0 ? 'Остальные проекты' : '', rest, view, seen));
   for (const id of homeThumbs.keys()) if (!seen.has(id)) homeThumbs.delete(id);
   home.scrollTop = scroll;
   loadHomeProjects();
 }
 
-/** Раздел домашней: заголовок (если есть) и сетка карточек проектов. */
-function homeSection(title: string, metas: ProjectMeta[], withNew: boolean, seen: Set<string>): HTMLElement {
+/** Раздел домашней: заголовок (если есть) и проекты — карточками или строками списка. */
+function homeSection(title: string, metas: ProjectMeta[], view: HomeView, seen: Set<string>): HTMLElement {
   const section = document.createElement('section');
   section.className = 'home-section';
   if (title) {
@@ -2992,138 +3120,254 @@ function homeSection(title: string, metas: ProjectMeta[], withNew: boolean, seen
     h.textContent = title;
     section.appendChild(h);
   }
-  const grid = document.createElement('div');
-  grid.className = 'home-grid';
-  for (const meta of metas) grid.appendChild(projectCard(meta, seen));
-  if (withNew) {
-    const newCard = document.createElement('button');
-    newCard.className = 'new-project';
-    newCard.textContent = '+ Новый проект';
-    newCard.addEventListener('click', () => { void newProjectHandler(); });
-    grid.appendChild(newCard);
+  if (view === 'grid') {
+    const grid = document.createElement('div');
+    grid.className = 'home-grid';
+    for (const meta of metas) grid.appendChild(projectCard(meta, seen));
+    section.appendChild(grid);
+    return section;
   }
-  section.appendChild(grid);
+  const list = document.createElement('div');
+  list.className = 'home-list';
+  const head = document.createElement('div');
+  head.className = 'home-list-head';
+  for (const text of ['', 'Название', 'Страниц', 'Открыт', '']) {
+    const c = document.createElement('span');
+    c.textContent = text;
+    head.appendChild(c);
+  }
+  list.appendChild(head);
+  for (const meta of metas) list.appendChild(projectRow(meta));
+  section.appendChild(list);
   return section;
 }
 
-function projectCard(meta: ProjectMeta, seen: Set<string>): HTMLElement {
-  const card = document.createElement('div');
-  card.className = 'project-card';
-  card.classList.toggle('pinned', !!meta.pinned);
-  card.classList.toggle('current', state.project.id === meta.id);
-  const title = document.createElement('div');
-  title.className = 'project-title';
+/** Звёздочка «в избранное» и корзина — у карточки и у строки списка. */
+function projectActions(meta: ProjectMeta): HTMLButtonElement[] {
   const pin = document.createElement('button');
   pin.className = 'project-pin';
   pin.title = meta.pinned ? 'Убрать из избранного' : 'Закрепить в избранном';
   pin.setAttribute('aria-pressed', String(!!meta.pinned));
   pin.innerHTML = ICONS.star;
+  pin.addEventListener('click', e => { e.stopPropagation(); void togglePinnedHandler(meta.id); });
+  const del = document.createElement('button');
+  del.className = 'project-del';
+  del.title = 'Удалить проект';
+  del.innerHTML = ICONS.trash;
+  del.addEventListener('click', e => { e.stopPropagation(); void deleteProjectHandler(meta.id); });
+  return [pin, del];
+}
+
+/**
+ * Клик по карточке или строке открывает проект на странице page(); по названию — с задержкой:
+ * это может быть начало двойного клика (переименование).
+ */
+function wireProjectOpen(host: HTMLElement, meta: ProjectMeta, page: () => string | undefined): void {
+  let timer = 0;
+  host.addEventListener('click', e => {
+    const t = e.target as HTMLElement;
+    if (t.closest('button, input, .carousel-page')) return;
+    clearTimeout(timer);
+    const delay = t.closest('.project-name') ? 300 : 0;
+    timer = window.setTimeout(() => { void openFromHome(meta.id, page()); }, delay);
+  });
+  host.querySelector('.project-name')!.addEventListener('dblclick', e => {
+    e.stopPropagation();
+    clearTimeout(timer);
+    startProjectRename(host, meta.id, meta.name);
+  });
+}
+
+/** Карточка сетки, как в Miro: карусель страниц с иконкой проекта, под ней — название и сведения. */
+function projectCard(meta: ProjectMeta, seen: Set<string>): HTMLElement {
+  const card = document.createElement('div');
+  card.className = 'project-card';
+  card.classList.toggle('pinned', !!meta.pinned);
+  card.classList.toggle('current', state.project.id === meta.id);
+  const preview = document.createElement('div');
+  preview.className = 'project-preview';
+  const project = homeProject(meta);
+  if (project) {
+    buildCarousel(preview, project, seen);
+  } else {
+    const empty = document.createElement('div');
+    empty.className = 'project-preview-empty';
+    // пока проект грузится — пустое превью; не прочитался — так и пишем
+    if (homeProjectFailed(meta)) empty.textContent = 'Не удалось загрузить страницы';
+    preview.appendChild(empty);
+  }
+  preview.appendChild(projectIconButton(meta, 'badge'));
+  const title = document.createElement('div');
+  title.className = 'project-title';
   const name = document.createElement('span');
   name.className = 'project-name';
   name.textContent = meta.name;
   name.title = 'Двойной клик — переименовать';
-  const openBtn = document.createElement('button');
-  openBtn.className = 'project-open';
-  openBtn.textContent = 'Открыть';
-  const delBtn = document.createElement('button');
-  delBtn.className = 'icon';
-  delBtn.title = 'Удалить проект';
-  delBtn.innerHTML = ICONS.trash;
-  title.append(pin, name, openBtn, delBtn);
+  title.append(name, ...projectActions(meta));
   const info = document.createElement('div');
   info.className = 'project-info';
-  info.textContent = `Страниц: ${meta.pageCount} · ${new Date(meta.updatedAt).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}`;
-  const pages = document.createElement('div');
-  pages.className = 'home-pages';
-  const project = homeProject(meta);
-  if (project) {
-    project.pages.forEach((pg, i) => pages.appendChild(homePageTile(meta.id, project, pg, i, seen)));
-    makeSortable(pages, {
-      items: () => [...pages.querySelectorAll<HTMLElement>(':scope > .home-page')],
-      scroller: document.getElementById('home')!,
-      onEnd: (from, to) => {
-        if (from !== to) void homeMovePage(meta.id, from, to);
-        else if (homeRenderPending) renderHome();
-      },
-    });
-  } else if (homeProjectFailed(meta)) {
-    const hint = document.createElement('div');
-    hint.className = 'home-pages-hint';
-    hint.textContent = 'Не удалось загрузить страницы';
-    pages.appendChild(hint);
-  } else {
-    // пока проект грузится — пустые плитки по числу страниц, чтобы карточка не прыгала
-    for (let i = 0; i < meta.pageCount; i++) {
-      const sk = document.createElement('div');
-      sk.className = 'home-page skeleton';
-      pages.appendChild(sk);
-    }
-  }
-  const addPage = document.createElement('button');
-  addPage.className = 'home-add-page';
-  addPage.title = 'Новая страница';
-  addPage.innerHTML = ICONS.plus;
-  pages.appendChild(addPage);
-  card.append(title, info, pages);
-  pin.addEventListener('click', () => { void togglePinnedHandler(meta.id); });
-  openBtn.addEventListener('click', () => { void openFromHome(meta.id); });
-  name.addEventListener('dblclick', () => startProjectRename(card, meta.id, meta.name));
-  delBtn.addEventListener('click', () => { void deleteProjectHandler(meta.id); });
-  addPage.addEventListener('click', () => { void homeAddPage(meta.id); });
+  info.textContent = `${pagesLabel(meta.pageCount)} · изменён ${dayLabel(meta.updatedAt)}`;
+  card.append(preview, title, info);
+  wireProjectOpen(card, meta, () => project?.pages[carouselPos.get(meta.id) ?? 0]?.id);
   return card;
 }
 
-/** Плитка страницы: превью, номер, фон и название; тянется для перестановки. */
-function homePageTile(projectId: string, project: Project, pg: Page, i: number, seen: Set<string>): HTMLElement {
-  seen.add(pg.id);
-  const tile = document.createElement('div');
-  tile.className = 'home-page';
-  tile.classList.toggle('active', state.project.id === projectId && pg.id === state.pageId);
-  const thumbBox = document.createElement('div');
-  thumbBox.className = 'page-thumb';
+/** Строка списка: иконка, название и дата изменения, число страниц, последнее открытие, действия. */
+function projectRow(meta: ProjectMeta): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'project-card project-row';
+  row.classList.toggle('pinned', !!meta.pinned);
+  row.classList.toggle('current', state.project.id === meta.id);
+  const main = document.createElement('div');
+  main.className = 'project-main';
+  const name = document.createElement('span');
+  name.className = 'project-name';
+  name.textContent = meta.name;
+  name.title = 'Двойной клик — переименовать';
+  const info = document.createElement('span');
+  info.className = 'project-info';
+  info.textContent = `Изменён ${dayLabel(meta.updatedAt)}`;
+  main.append(name, info);
+  const pages = document.createElement('span');
+  pages.className = 'project-cell project-pages';
+  pages.textContent = String(meta.pageCount);
+  const last = openedMap()[meta.id];
+  const openedCell = document.createElement('span');
+  openedCell.className = 'project-cell project-opened';
+  openedCell.textContent = last ? capitalize(dayLabel(last.at)) : '—';
+  const actions = document.createElement('div');
+  actions.className = 'project-actions';
+  actions.append(...projectActions(meta));
+  row.append(projectIconButton(meta, 'row'), main, pages, openedCell, actions);
+  wireProjectOpen(row, meta, () => openedMap()[meta.id]?.page);
+  return row;
+}
+
+/** Позиция карусели по проектам: пока открыта домашняя; при входе на неё — с последней открытой страницы. */
+const carouselPos = new Map<string, number>();
+
+/** С какой страницы начинать карусель: последняя открытая на этом устройстве, у открытого проекта — текущая. */
+function carouselStart(project: Project): number {
+  const page = openedMap()[project.id]?.page ?? (state.project.id === project.id ? state.pageId : undefined);
+  return Math.max(0, project.pages.findIndex(p => p.id === page));
+}
+
+/**
+ * Карусель страниц в превью карточки: стрелки и точки (листается и пальцем), номер и название страницы
+ * (двойной клик — переименовать), добавить и удалить страницу. Клик по превью открывает показанную страницу.
+ */
+function buildCarousel(preview: HTMLElement, project: Project, seen: Set<string>): void {
+  const pages = project.pages;
+  for (const pg of pages) seen.add(pg.id);
+  const last = pages.length - 1;
+  const track = document.createElement('div');
+  track.className = 'carousel-track';
+  const slides = pages.map(pg => {
+    const slide = document.createElement('div');
+    slide.className = 'carousel-slide';
+    slide.dataset.page = pg.id;
+    track.appendChild(slide);
+    return slide;
+  });
+  const label = document.createElement('div');
+  label.className = 'carousel-page';
+  label.title = 'Двойной клик — переименовать страницу';
   const num = document.createElement('span');
   num.className = 'page-num';
-  num.textContent = String(i + 1);
-  thumbBox.append(homeThumb(pg), num);
-  const caption = document.createElement('div');
-  caption.className = 'home-page-caption';
-  const gi = document.createElement('span');
-  gi.className = 'page-grid-icon';
-  gi.innerHTML = GRID_ICONS[pg.grid];
-  const pn = document.createElement('span');
-  pn.className = 'home-page-name';
-  pn.textContent = pg.name;
-  pn.title = 'Двойной клик — переименовать';
-  caption.append(gi, pn);
-  const pd = document.createElement('button');
-  pd.className = 'page-del';
-  pd.title = 'Удалить страницу';
-  pd.innerHTML = ICONS.del;
-  tile.append(thumbBox, caption, pd);
-  tile.title = `${pg.name} — открыть; перетащите, чтобы переставить`;
-  // клик по названию ждёт: это может быть начало двойного клика (переименование)
-  let openTimer = 0;
-  tile.addEventListener('click', e => {
-    if ((e.target as HTMLElement).closest('.page-del, input')) return;
-    clearTimeout(openTimer);
-    const delay = (e.target as HTMLElement).closest('.home-page-name') ? 300 : 0;
-    openTimer = window.setTimeout(() => { void openFromHome(project.id, pg.id); }, delay);
+  const pageName = document.createElement('span');
+  pageName.className = 'carousel-name';
+  label.append(num, pageName);
+  const arrow = (cls: string, icon: string, title: string, step: number): HTMLButtonElement => {
+    const b = document.createElement('button');
+    b.className = cls;
+    b.title = title;
+    b.innerHTML = icon;
+    b.addEventListener('click', () => go(i + step));
+    return b;
+  };
+  const prev = arrow('carousel-prev', ICONS.chevronLeft, 'Предыдущая страница', -1);
+  const next = arrow('carousel-next', ICONS.chevron, 'Следующая страница', 1);
+  const dots = document.createElement('div');
+  dots.className = 'carousel-dots';
+  dots.hidden = pages.length < 2;
+  const dotEls = pages.map((pg, k) => {
+    const d = document.createElement('button');
+    d.className = 'carousel-dot';
+    d.title = pg.name;
+    d.addEventListener('click', () => go(k));
+    dots.appendChild(d);
+    return d;
   });
-  pn.addEventListener('dblclick', e => {
+  const tools = document.createElement('div');
+  tools.className = 'carousel-tools';
+  const add = document.createElement('button');
+  add.className = 'carousel-add';
+  add.title = 'Новая страница';
+  add.innerHTML = ICONS.plus;
+  add.addEventListener('click', () => {
+    // карусель встанет на новую страницу
+    carouselPos.set(project.id, pages.length);
+    void homeAddPage(project.id);
+  });
+  const del = document.createElement('button');
+  del.className = 'carousel-del';
+  del.title = 'Удалить страницу';
+  del.innerHTML = ICONS.del;
+  del.addEventListener('click', () => { void homeDeletePage(project.id, pages[i].id); });
+  tools.append(add, del);
+  preview.append(track, label, prev, next, dots, tools);
+
+  let i = Math.min(last, carouselPos.get(project.id) ?? carouselStart(project));
+  const show = () => {
+    carouselPos.set(project.id, i);
+    track.style.transform = `translateX(${-i * 100}%)`;
+    // холсты превью — только у показанной страницы и соседних: проект может быть большим
+    for (let k = Math.max(0, i - 1); k <= Math.min(last, i + 1); k++) {
+      if (!slides[k].firstChild) slides[k].appendChild(homeThumb(pages[k]));
+    }
+    num.textContent = String(i + 1);
+    pageName.textContent = pages[i].name;
+    prev.hidden = i === 0;
+    next.hidden = i === last;
+    dotEls.forEach((d, k) => d.classList.toggle('active', k === i));
+  };
+  const go = (k: number) => {
+    i = Math.max(0, Math.min(last, k));
+    track.classList.add('animate');
+    show();
+  };
+  show();
+
+  // пальцем: смахнуть влево или вправо; смахивание — не клик
+  let swipe: { x: number; y: number } | null = null;
+  let swiped = false;
+  preview.addEventListener('pointerdown', e => { swipe = { x: e.clientX, y: e.clientY }; swiped = false; });
+  preview.addEventListener('pointerup', e => {
+    if (!swipe) return;
+    const dx = e.clientX - swipe.x, dy = e.clientY - swipe.y;
+    swipe = null;
+    if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      swiped = true;
+      go(i + (dx < 0 ? 1 : -1));
+    }
+  });
+  preview.addEventListener('click', e => {
+    // кнопки карусели — не открытие страницы
+    if (swiped || (e.target as HTMLElement).closest('.carousel-prev, .carousel-next, .carousel-dots, .carousel-tools')) {
+      e.stopPropagation();
+      swiped = false;
+    }
+  });
+  label.addEventListener('dblclick', e => {
     e.stopPropagation();
-    clearTimeout(openTimer);
-    startHomePageRename(tile, projectId, pg.id, pg.name);
+    startCarouselRename(pageName, project.id, pages[i].id, pages[i].name);
   });
-  pd.addEventListener('click', e => {
-    e.stopPropagation();
-    void homeDeletePage(projectId, pg.id);
-  });
-  return tile;
 }
 
 function startProjectRename(card: HTMLElement, projectId: string, oldName: string): void {
   const nameEl = card.querySelector('.project-name')!;
   const input = document.createElement('input');
+  input.className = 'project-rename';
   input.value = oldName;
   input.spellcheck = false;
   nameEl.replaceWith(input);
@@ -3145,8 +3389,7 @@ function startProjectRename(card: HTMLElement, projectId: string, oldName: strin
   });
 }
 
-function startHomePageRename(tile: HTMLElement, projectId: string, pageId: string, oldName: string): void {
-  const nameEl = tile.querySelector('.home-page-name')!;
+function startCarouselRename(nameEl: HTMLElement, projectId: string, pageId: string, oldName: string): void {
   const input = document.createElement('input');
   input.value = oldName;
   input.spellcheck = false;
@@ -3286,11 +3529,17 @@ function wireTopbar(): void {
   document.getElementById('btn-settings')!.innerHTML = ICONS.settings;
   document.getElementById('btn-share')!.innerHTML = svg('<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/>');
   document.getElementById('btn-share')!.addEventListener('click', () => { void openShareDialog(); });
+  const iconBtn = document.getElementById('project-icon') as HTMLButtonElement;
+  iconBtn.addEventListener('click', () => {
+    openIconPicker(iconBtn, state.project.icon ?? null, icon => { void setProjectIconHandler(state.project.id, icon); });
+  });
   // guest-режим: скрываем недоступные функции
   if (collabActive() && !isHost()) {
     for (const id of ['btn-home', 'btn-import', 'btn-image', 'btn-share']) {
       document.getElementById(id)!.style.display = 'none';
     }
+    // иконку проекта меняет только автор
+    iconBtn.disabled = true;
   }
   // сервер совместной работы живёт в main-процессе Electron: в браузере и на Android раздавать нечем
   if (!doskaApi) document.getElementById('btn-share')!.style.display = 'none';
@@ -3605,7 +3854,13 @@ function refresh(): void {
   // вид домашней страницы
   const home = document.getElementById('home')!;
   const isHome = state.view === 'home';
-  if (home.hidden === isHome) home.hidden = !isHome;
+  if (home.hidden === isHome) {
+    home.hidden = !isHome;
+    // на домашнюю пришли заново: карусели — снова с последней открытой страницы
+    if (isHome) { carouselPos.clear(); lastHomeKey = ''; }
+    closeIconPicker();
+  }
+  noteOpened();
   if (isHome) {
     const hk = homeKey();
     if (hk !== lastHomeKey) {

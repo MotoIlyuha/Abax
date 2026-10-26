@@ -37,38 +37,38 @@ test.describe('сенсорный экран', () => {
     expect(await board.count('stroke')).toBe(1);
   });
 
-  test('страницу на домашней переставляют долгим нажатием пальца, короткое движение — прокрутка', async ({ board, page }) => {
+  test('карусель страниц на домашней листают пальцем, касание открывает показанную страницу', async ({ board, page }) => {
+    await board.addPage();
+    await board.addPage();
     await page.locator('#btn-home').click();
     const card = page.locator('#home .project-card');
-    await card.locator('.home-add-page').click();
-    await card.locator('.home-add-page').click();
-    const names = card.locator('.home-page-name');
-    await expect(names).toHaveText(['Страница 1', 'Страница 2', 'Страница 3']);
+    const name = card.locator('.carousel-name');
+    await expect(name).toHaveText('Страница 3');
     const cdp = await page.context().newCDPSession(page);
     const send = (type: 'touchStart' | 'touchMove' | 'touchEnd', touchPoints: Touch[]) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints });
-    const center = async (i: number) => {
-      const b = (await card.locator('.home-page').nth(i).boundingBox())!;
-      return { x: b.x + b.width / 2, y: b.y + b.height / 3 };
+    const b = (await card.locator('.project-preview').boundingBox())!;
+    const y = b.y + b.height / 2;
+    const swipe = async (from: number, to: number, id: number) => {
+      await send('touchStart', [{ x: b.x + b.width * from, y, id }]);
+      for (let i = 1; i <= 6; i++) await send('touchMove', [{ x: b.x + b.width * (from + (to - from) * i / 6), y, id }]);
+      await send('touchEnd', []);
     };
 
-    // сразу повели пальцем — перетаскивания нет
-    let a = await center(0);
-    let b = await center(2);
-    await send('touchStart', [{ ...a, id: 0 }]);
-    for (let i = 1; i <= 8; i++) await send('touchMove', [{ x: a.x + (b.x - a.x) * i / 8, y: a.y + (b.y - a.y) * i / 8, id: 0 }]);
-    await send('touchEnd', []);
-    await expect(names).toHaveText(['Страница 1', 'Страница 2', 'Страница 3']);
-
-    // подержали — карточка поехала за пальцем
-    a = await center(0);
-    b = await center(2);
-    await send('touchStart', [{ ...a, id: 1 }]);
-    await page.waitForTimeout(500);
-    for (let i = 1; i <= 8; i++) await send('touchMove', [{ x: a.x + (b.x - a.x) * i / 8, y: a.y + (b.y - a.y) * i / 8, id: 1 }]);
-    await send('touchEnd', []);
-    await expect(names).toHaveText(['Страница 2', 'Страница 3', 'Страница 1']);
+    // вправо — к предыдущей, влево — к следующей; смахивание проект не открывает
+    await swipe(0.3, 0.8, 1);
+    await expect(name).toHaveText('Страница 2');
+    await swipe(0.3, 0.8, 2);
+    await expect(name).toHaveText('Страница 1');
+    await swipe(0.8, 0.3, 3);
+    await expect(name).toHaveText('Страница 2');
     await expect(page.locator('#home')).toBeVisible();
-    expect((await board.state()).project.pages.map(p => p.name)).toEqual(['Страница 2', 'Страница 3', 'Страница 1']);
+
+    // касание — открыть. Сразу после смахивания Chromium касание кликом не считает (оно гасит инерцию) — ждём
+    await page.waitForTimeout(600);
+    await send('touchStart', [{ x: b.x + b.width / 2, y, id: 4 }]);
+    await send('touchEnd', []);
+    await expect(page.locator('#home')).toBeHidden();
+    await expect(page.locator('#page-name')).toHaveValue('Страница 2');
   });
 
   for (const [tool, key, cls] of [['стикер', 'n', '.inplace-edit.note'], ['текст', 't', '.inplace-edit']] as const) {

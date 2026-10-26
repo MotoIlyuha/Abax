@@ -528,6 +528,7 @@ export function projectMeta(p: Project): ProjectMeta {
   return {
     id: p.id, name: p.name, createdAt: p.createdAt, updatedAt: p.updatedAt, pageCount: p.pages.length,
     ...(p.pinned ? { pinned: true } : {}),
+    ...(p.icon ? { icon: p.icon } : {}),
   };
 }
 

@@ -200,6 +200,17 @@ describe('хранение проектов', () => {
     ]);
   });
 
+  it('иконка проекта — в списке; пустая или не строка не попадает', async () => {
+    await invoke('boards:save', { ...project('a', 1), icon: '🚀' });
+    await invoke('boards:save', { ...project('b', 2), icon: '' });
+    await invoke('boards:save', { ...project('c', 3), icon: 42 });
+    expect(await invoke('boards:list')).toEqual([
+      { id: 'c', name: 'P-c', createdAt: 1, updatedAt: 3, pageCount: 1 },
+      { id: 'b', name: 'P-b', createdAt: 1, updatedAt: 2, pageCount: 1 },
+      { id: 'a', name: 'P-a', createdAt: 1, updatedAt: 1, pageCount: 1, icon: '🚀' },
+    ]);
+  });
+
   it('запись атомарна: временный файл не остаётся', async () => {
     await invoke('boards:save', project('a', 1));
     const files = fs.readdirSync(path.join(userData, 'boards'));
