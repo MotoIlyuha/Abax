@@ -1,6 +1,7 @@
-// Раздел «О проекте» окна всех настроек: название, версия, ссылки на репозиторий.
+// Раздел «О проекте» окна всех настроек: название, версия, обновления, ссылки на репозиторий.
 
-const REPO_URL = 'https://github.com/MotoIlyuha/Doska';
+import { renderUpdateSettings } from './update-notice';
+import { REPO_URL } from './updates';
 
 const FEATURES = [
   'перо, маркер, фигуры, текст и лазерная указка',
@@ -86,6 +87,7 @@ export function renderAbout(host: HTMLElement): void {
   const list = el('ul', 'sd-about-features');
   for (const f of FEATURES) list.appendChild(el('li', '', f));
   box.appendChild(list);
+  renderUpdateSettings(box);
 
   const links = el('div', 'sd-about-links');
   links.append(link(REPO_URL, 'Исходный код на GitHub'), link(`${REPO_URL}/issues`, 'Сообщить о проблеме'));

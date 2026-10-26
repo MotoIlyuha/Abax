@@ -6,6 +6,7 @@ import { state, openProject, blankProject, projectMeta, onChange, undo, redo } f
 import { storage, setStorage } from './storage';
 import { startCollab, netStorage } from './collab';
 import { initTooltips } from './tooltip';
+import { startUpdateChecks } from './update-notice';
 
 async function boot(): Promise<void> {
   initTooltips();
@@ -50,6 +51,8 @@ async function boot(): Promise<void> {
   initApp(canvas);
   initController(canvas);
   onChange(() => requestRender());
+  // обновления — только здесь: гость совместной работы (ветка выше) открыл приложение автора
+  startUpdateChecks();
 
   // отладочный доступ для smoke-тестов
   (window as unknown as Record<string, unknown>).__doska = { state, undo, redo, requestRender, importPdfFromDataUrl };

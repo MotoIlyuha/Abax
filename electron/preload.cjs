@@ -13,4 +13,5 @@ contextBridge.exposeInMainWorld('doskaAPI', {
   shareStatus: () => ipcRenderer.invoke('share:status'),
   shareSetRights: (uid, patch) => ipcRenderer.invoke('share:setRights', { uid, patch }),
   shareOpenTestWindow: () => ipcRenderer.invoke('share:openTestWindow'),
+  appInfo: () => ipcRenderer.invoke('app:info'),
 });

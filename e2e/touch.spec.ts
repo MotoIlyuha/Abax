@@ -48,9 +48,13 @@ test.describe('сенсорный экран', () => {
     const send = (type: 'touchStart' | 'touchMove' | 'touchEnd', touchPoints: Touch[]) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints });
     const b = (await card.locator('.project-preview').boundingBox())!;
     const y = b.y + b.height / 2;
+    // в конце палец замирает: без скорости у отпускания Chromium не запускает инерцию прокрутки,
+    // иначе следующее касание лишь гасило бы её и кликом не считалось
     const swipe = async (from: number, to: number, id: number) => {
       await send('touchStart', [{ x: b.x + b.width * from, y, id }]);
       for (let i = 1; i <= 6; i++) await send('touchMove', [{ x: b.x + b.width * (from + (to - from) * i / 6), y, id }]);
+      await page.waitForTimeout(150);
+      await send('touchMove', [{ x: b.x + b.width * to, y, id }]);
       await send('touchEnd', []);
     };
 
@@ -63,8 +67,7 @@ test.describe('сенсорный экран', () => {
     await expect(name).toHaveText('Страница 2');
     await expect(page.locator('#home')).toBeVisible();
 
-    // касание — открыть. Сразу после смахивания Chromium касание кликом не считает (оно гасит инерцию) — ждём
-    await page.waitForTimeout(600);
+    // касание — открыть
     await send('touchStart', [{ x: b.x + b.width / 2, y, id: 4 }]);
     await send('touchEnd', []);
     await expect(page.locator('#home')).toBeHidden();

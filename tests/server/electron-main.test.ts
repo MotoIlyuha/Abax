@@ -169,6 +169,24 @@ describe('окно', () => {
   });
 });
 
+describe('сведения о приложении', () => {
+  beforeEach(() => loadMain({ packaged: true }));
+
+  it('ОС и переносная ли версия — для выбора файла обновления', async () => {
+    const was = process.env.PORTABLE_EXECUTABLE_FILE;
+    try {
+      delete process.env.PORTABLE_EXECUTABLE_FILE;
+      expect(await invoke('app:info')).toEqual({ platform: process.platform, portable: false });
+      // переносной exe electron-builder запускает приложение с путём к себе в окружении
+      process.env.PORTABLE_EXECUTABLE_FILE = 'D:\\Abax.2.1.0.exe';
+      expect(await invoke('app:info')).toEqual({ platform: process.platform, portable: true });
+    } finally {
+      if (was === undefined) delete process.env.PORTABLE_EXECUTABLE_FILE;
+      else process.env.PORTABLE_EXECUTABLE_FILE = was;
+    }
+  });
+});
+
 describe('хранение проектов', () => {
   beforeEach(() => loadMain());
 
@@ -327,16 +345,18 @@ describe('preload', () => {
     const [name, api] = fakeElectron.contextBridge.exposeInMainWorld.mock.calls[0];
     expect(name).toBe('doskaAPI');
     expect(Object.keys(api).sort()).toEqual([
-      'exportPng', 'list', 'load', 'pickImage', 'pickPdf', 'remove', 'save',
+      'appInfo', 'exportPng', 'list', 'load', 'pickImage', 'pickPdf', 'remove', 'save',
       'shareOpenTestWindow', 'shareSetRights', 'shareStart', 'shareStatus', 'shareStop',
     ]);
     api.save({ id: 'x' });
     api.exportPng('data:', 'a.png');
     api.shareSetRights(3, { all: 'edit' });
+    api.appInfo();
     expect(fakeElectron.ipcRenderer.invoke.mock.calls).toEqual([
       ['boards:save', { id: 'x' }],
       ['export:png', { dataUrl: 'data:', name: 'a.png' }],
       ['share:setRights', { uid: 3, patch: { all: 'edit' } }],
+      ['app:info'],
     ]);
   });
 });

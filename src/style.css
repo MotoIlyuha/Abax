@@ -1101,6 +1101,94 @@ body.no-ui-anim #toast.show { animation: none; }
 .sd-about-links { display: flex; flex-wrap: wrap; gap: 8px; }
 .sd-about-link { text-decoration: none; }
 .sd-about-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* обновления: состояние проверки, кнопка, найденная версия, автопроверка */
+.sd-updates { margin-bottom: 20px; }
+.sd-updates-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin-bottom: 10px; }
+.sd-updates-status { color: #5d6572; }
+.sd-updates-status.error { color: var(--danger); }
+.sd-updates-check:disabled { opacity: 0.6; cursor: default; }
+.sd-updates-found { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+.sd-updates-found[hidden] { display: none; }
+.sd-updates-download { border-color: var(--accent); background: var(--accent); color: #fff; }
+.sd-updates-download:hover { background: #2160dd; color: #fff; }
+
+/* ----- Карточка «Вышла новая версия» (справа под шапкой) ----- */
+#update-card {
+  position: fixed;
+  top: 58px;
+  right: 16px;
+  z-index: 75;
+  width: 340px;
+  max-width: calc(100vw - 32px);
+  max-height: calc(100vh - 74px);
+  overflow-y: auto;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--panel);
+  box-shadow: 0 4px 12px rgba(16, 24, 40, 0.1), 0 16px 40px rgba(16, 24, 40, 0.14);
+  animation: ui-pop 0.22s cubic-bezier(0.22, 0.8, 0.24, 1);
+  --pop-y: -8px;
+  transform-origin: top right;
+}
+body.no-ui-anim #update-card { animation: none; }
+@media (prefers-reduced-motion: reduce) { #update-card { animation: none; } }
+.uc-head { display: flex; align-items: center; gap: 10px; }
+.uc-icon { flex: none; width: 30px; height: 30px; border-radius: 9px; background: var(--accent-soft); color: var(--accent); display: flex; align-items: center; justify-content: center; }
+.uc-icon svg { width: 19px; height: 19px; }
+.uc-title { flex: 1; min-width: 0; font-size: 15px; font-weight: 700; }
+.uc-close {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  margin: -4px -6px 0 0;
+  padding: 0;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.uc-close:hover { background: #f0f2f5; color: var(--fg); }
+.uc-close svg { width: 16px; height: 16px; }
+.uc-sub { margin: 2px 0 0 40px; font-size: 12px; color: var(--muted); }
+.uc-summary { margin-top: 10px; line-height: 1.5; }
+.uc-notes { margin-top: 8px; }
+.uc-notes summary { width: fit-content; color: var(--accent); font-weight: 600; cursor: pointer; }
+.uc-notes ul { margin: 6px 0 0; padding-left: 18px; line-height: 1.5; }
+.uc-notes li + li { margin-top: 4px; }
+.uc-hint { margin-top: 10px; padding: 8px 10px; border-radius: 8px; background: var(--accent-soft); line-height: 1.45; }
+.uc-hint[hidden] { display: none; }
+.uc-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
+.uc-download, .uc-later {
+  font: inherit;
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: 8px;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+}
+.uc-download { border: 1px solid var(--accent); background: var(--accent); color: #fff; }
+.uc-download:hover { background: #2160dd; }
+.uc-later { border: 1px solid var(--border); background: #fff; color: var(--fg); }
+.uc-later:hover { border-color: #c9ced8; }
+.uc-skip {
+  margin-left: auto;
+  padding: 4px 2px;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.uc-skip:hover { color: var(--fg); text-decoration: underline; }
+:is(.uc-download, .uc-later, .uc-skip, .uc-close):focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* ----- Настройка панели инструментов ----- */
 .tbe { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 14px; }

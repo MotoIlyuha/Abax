@@ -80,6 +80,13 @@ function boardsDir() {
   return d;
 }
 
+// ОС и переносная ли версия: обновление предлагает файл под неё (установщик или переносной exe).
+// Переносной exe electron-builder распаковывает и запускает с PORTABLE_EXECUTABLE_FILE в окружении.
+ipcMain.handle('app:info', async () => ({
+  platform: process.platform,
+  portable: !!process.env.PORTABLE_EXECUTABLE_FILE,
+}));
+
 const safeId = (id) => String(id).replace(/[^a-zA-Z0-9-]/g, '');
 const boardPath = (id) => path.join(boardsDir(), `${safeId(id)}.json`);
 
