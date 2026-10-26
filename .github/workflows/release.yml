@@ -1,0 +1,191 @@
+name: release
+
+# Выпуск новой версии — вручную: Actions → release → Run workflow (с ветки main).
+# Версия — из package.json, описание — release-notes/<версия>.md (строку <!-- files -->
+# заменяет таблица файлов). Собирает Windows (установщик и переносная версия), веб-версию
+# и, если в секретах репозитория есть ключ подписи, APK для Android; публикует релиз
+# v<версия> с контрольными суммами. Приложение проверяет обновления по этим релизам
+# и ищет файлы по именам: Abax.Setup.X.exe, Abax.X.exe, Abax-X.apk (см. src/updates.ts).
+#
+# Ключ подписи Android — тот же, что в ~/.abax/keystore.properties: иначе APK не встанет
+# поверх прежней версии. Секреты: ABAX_KEYSTORE_BASE64 (файл ключа в base64),
+# ABAX_KEYSTORE_PASSWORD, ABAX_KEY_ALIAS, ABAX_KEY_PASSWORD. Без них APK не собирается.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        name: Версия и описание
+        run: |
+          v=$(node -p "require('./package.json').version")
+          if [ ! -f "release-notes/$v.md" ]; then echo "::error::Нет описания release-notes/$v.md"; exit 1; fi
+          if git ls-remote --exit-code --tags origin "refs/tags/v$v" > /dev/null; then
+            echo "::error::Релиз v$v уже есть — поднимите версию в package.json"; exit 1
+          fi
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+
+  windows:
+    needs: version
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # --publish never: electron-builder сам ничего не выкладывает, релиз создаёт задача release
+      - run: npm run dist -- --publish never
+      - name: Файлы
+        shell: bash
+        run: |
+          v=${{ needs.version.outputs.version }}
+          mkdir out
+          cp "release/Abax Setup $v.exe" "out/Abax.Setup.$v.exe"
+          cp "release/Abax $v.exe" "out/Abax.$v.exe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: out/
+          if-no-files-found: error
+
+  web:
+    needs: version
+    runs-on: ubuntu-latest
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Архив
+        run: |
+          v=${{ needs.version.outputs.version }}
+          mkdir out
+          cp -r dist abax-web
+          zip -r -X "out/Abax-$v-web.zip" abax-web
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web
+          path: out/
+          if-no-files-found: error
+
+  android:
+    needs: version
+    runs-on: ubuntu-latest
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      KEYSTORE_BASE64: ${{ secrets.ABAX_KEYSTORE_BASE64 }}
+    steps:
+      - id: key
+        name: Ключ подписи
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::warning::Нет секрета ABAX_KEYSTORE_BASE64 — APK не собран (см. начало release.yml)"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.key.outputs.ok == 'true'
+        uses: actions/checkout@v4
+      - if: steps.key.outputs.ok == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - if: steps.key.outputs.ok == 'true'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - if: steps.key.outputs.ok == 'true'
+        name: Сборка APK
+        env:
+          STORE_PASSWORD: ${{ secrets.ABAX_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ABAX_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ABAX_KEY_PASSWORD }}
+        run: |
+          v=${{ needs.version.outputs.version }}
+          npm ci
+          npm run build
+          npx cap sync android
+          mkdir -p "$RUNNER_TEMP/abax"
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/abax/release.keystore"
+          {
+            echo "storeFile=$RUNNER_TEMP/abax/release.keystore"
+            echo "storePassword=$STORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > "$RUNNER_TEMP/abax/keystore.properties"
+          (cd android && ./gradlew --no-daemon assembleRelease -PabaxKeystore="$RUNNER_TEMP/abax/keystore.properties")
+          mkdir out
+          cp android/app/build/outputs/apk/release/app-release.apk "out/Abax-$v.apk"
+      - if: steps.key.outputs.ok == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: out/
+          if-no-files-found: error
+
+  release:
+    needs: [version, windows, web, android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - name: Описание
+        run: |
+          v=${{ needs.version.outputs.version }}
+          row() { if [ -f "out/$2" ]; then echo "| $1 | \`$2\` |"; fi; }
+          {
+            echo '| Платформа | Файл |'
+            echo '|---|---|'
+            row 'Windows — установщик' "Abax.Setup.$v.exe"
+            row 'Windows — без установки' "Abax.$v.exe"
+            row 'Android (планшет)' "Abax-$v.apk"
+            row 'Веб-версия' "Abax-$v-web.zip"
+          } > files.md
+          FILES="$(cat files.md)" awk '{ if ($0 == "<!-- files -->") print ENVIRON["FILES"]; else print }' "release-notes/$v.md" > body.md
+          prev=$(git tag -l 'v*' --sort=-v:refname | head -n 1)
+          {
+            echo
+            echo '## Контрольные суммы SHA-256'
+            echo
+            echo '```'
+            (cd out && sha256sum *)
+            echo '```'
+            if [ -n "$prev" ]; then
+              echo
+              echo "**Full Changelog**: https://github.com/$GITHUB_REPOSITORY/compare/$prev...v$v"
+            fi
+          } >> body.md
+          cat body.md
+      - name: Релиз
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v=${{ needs.version.outputs.version }}
+          gh release create "v$v" out/* --title "Abax $v" --notes-file body.md --target "$GITHUB_SHA"
