@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
-  aabbIntersects, aabbUnion, applyHandle, distToSeg, elementAABB, elementHandles, erasePart, gridStepFor,
-  hitTest, insertPolyNode, pointInPoly, presentCamera, removePolyNode, snapValue, TEXT_FONT, textSize, wrapText,
+  aabbIntersects, aabbUnion, alignGuides, alignShift, applyHandle, boxAnchors, cornerRadius, distToSeg, elementAABB, elementHandles, erasePart, fitShapeText,
+  gridStepFor, hitTest, imageFrame, insertPolyNode, pointInPoly, presentCamera, removePolyNode, shapeHoldsText, shapeTextBox,
+  snapValue, SHAPE_TEXT_LH, SHAPE_TEXT_MAX, SHAPE_TEXT_MIN, TEXT_FONT, textSize, wrapText,
 } from '../../src/geom';
 import type { Handle, ImageEl, NoteEl, PolyEl, ShapeEl, SolidEl, StrokeEl, TextEl } from '../../src/types';
 
@@ -47,6 +48,83 @@ describe('шрифт и текст', () => {
 
   it('wrapText не рвёт длинное слово', () => {
     expect(wrapText('verylongword x', 10, 20)).toEqual(['verylongword', 'x']);
+  });
+});
+
+describe('надпись в фигуре', () => {
+  it('пишут в прямоугольнике, эллипсе и треугольнике', () => {
+    expect(shapeHoldsText(rect())).toBe(true);
+    expect(shapeHoldsText(rect({ shape: 'ellipse' }))).toBe(true);
+    expect(shapeHoldsText(rect({ shape: 'triangle' }))).toBe(true);
+    expect(shapeHoldsText(rect({ shape: 'line' }))).toBe(false);
+    expect(shapeHoldsText(rect({ shape: 'arrow' }))).toBe(false);
+    expect(shapeHoldsText(text())).toBe(false);
+    expect(shapeHoldsText(null)).toBe(false);
+  });
+
+  it('область текста: прямоугольник без полей, вписанный прямоугольник эллипса, низ треугольника', () => {
+    expect(shapeTextBox(rect({ w: 200, h: 100 }))).toEqual({ x: 8, y: 8, w: 184, h: 84 });
+    const e = shapeTextBox(rect({ shape: 'ellipse', w: 200, h: 200 }));
+    const side = 200 / Math.SQRT2;
+    expect(e.w).toBeCloseTo(side - 16);
+    expect(e.x + e.w / 2).toBeCloseTo(100);
+    expect(e.y + e.h / 2).toBeCloseTo(100);
+    expect(shapeTextBox(rect({ shape: 'triangle', w: 200, h: 200 }))).toEqual({ x: 58, y: 108, w: 84, h: 84 });
+    // отрицательные размеры — та же область
+    expect(shapeTextBox(rect({ x: 200, y: 100, w: -200, h: -100 }))).toEqual(shapeTextBox(rect({ w: 200, h: 100 })));
+  });
+
+  it('кегль уменьшается, пока текст не влезет', () => {
+    expect(fitShapeText('ab', 200, 100)).toEqual({ size: SHAPE_TEXT_MAX, lines: ['ab'] });
+    const long = 'один два три четыре пять шесть семь восемь';
+    const fit = fitShapeText(long, 120, 60);
+    expect(fit.size).toBeLessThan(SHAPE_TEXT_MAX);
+    expect(fit.lines.length * fit.size * SHAPE_TEXT_LH).toBeLessThanOrEqual(60);
+    expect(fit.lines.join(' ')).toBe(long);
+    // не влезает и мелким — останавливается на минимуме
+    expect(fitShapeText(long.repeat(20), 20, 10).size).toBe(SHAPE_TEXT_MIN);
+  });
+
+  it('скругление не больше половины меньшей стороны; рамка картинки — только с цветом и толщиной', () => {
+    expect(cornerRadius(rect({ radius: 10 }))).toBe(10);
+    expect(cornerRadius(rect({ radius: 80 }))).toBe(25);
+    expect(cornerRadius(rect())).toBe(0);
+    expect(cornerRadius(image({ radius: 100 }))).toBe(25);
+    expect(imageFrame(image())).toBeNull();
+    expect(imageFrame(image({ color: '#ff0000' }))).toBeNull();
+    expect(imageFrame(image({ color: '#ff0000', width: 0 }))).toBeNull();
+    expect(imageFrame(image({ color: '#ff0000', width: 3 }))).toEqual({ color: '#ff0000', width: 3 });
+  });
+});
+
+describe('направляющие выравнивания', () => {
+  const box = (x0: number, y0: number, x1: number, y1: number) => ({ x0, y0, x1, y1 });
+
+  it('опорные линии — края и центр', () => {
+    expect(boxAnchors(box(0, 10, 100, 50), 'x')).toEqual([0, 50, 100]);
+    expect(boxAnchors(box(0, 10, 100, 50), 'y')).toEqual([10, 30, 50]);
+  });
+
+  it('сдвиг — к ближайшей опорной линии соседа в пределах допуска', () => {
+    const others = [box(200, 0, 300, 100), box(0, 400, 50, 450)];
+    // левый край 203 → 200 (край соседа), правый край 253 → 250 (его центр) — ближе на 3
+    expect(alignShift([203, 228, 253], others, 'x', 6)).toBe(-3);
+    // ближе всего центр второго соседа: 23 → 25
+    expect(alignShift([23], others, 'x', 6)).toBe(2);
+    expect(alignShift([120], others, 'x', 6)).toBeNull();
+    expect(alignShift([404], others, 'y', 6)).toBe(-4);
+  });
+
+  it('линия идёт от рамки до соседа, совпадения на одной линии сливаются', () => {
+    const moving = box(200, 300, 260, 340);
+    const others = [box(200, 0, 300, 100), box(150, 500, 250, 600), box(600, 300, 700, 320)];
+    const xs = alignGuides(moving, boxAnchors(moving, 'x'), others, 'x', 0.01);
+    // x = 200: левый край первого соседа и центр второго — одна линия от y=0 до y=600
+    expect(xs).toEqual([{ axis: 'x', at: 200, from: 0, to: 600 }]);
+    const ys = alignGuides(moving, boxAnchors(moving, 'y'), others, 'y', 0.01);
+    // верх и низ рамки совпали с верхом и низом третьего соседа
+    expect(ys).toEqual([{ axis: 'y', at: 300, from: 200, to: 700 }, { axis: 'y', at: 320, from: 200, to: 700 }]);
+    expect(alignGuides(moving, [], others, 'x', 0.01)).toEqual([]);
   });
 });
 

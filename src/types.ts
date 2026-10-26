@@ -22,6 +22,8 @@ export interface StrokeEl {
   color: string;
   /** Базовая толщина в юнитах сцены (умножается на давление при рендере). */
   width: number;
+  /** Непрозрачность 0..1; нет поля — непрозрачный. */
+  opacity?: number;
   pts: Pt[];
   /** Идентификатор группы, если элемент сгруппирован. */
   groupId?: string;
@@ -35,8 +37,13 @@ export interface ShapeEl {
   x: number; y: number; w: number; h: number;
   color: string;
   width: number;
+  opacity?: number;
   /** Поворот вокруг центра в радианах (только rect/ellipse/triangle). */
   rot?: number;
+  /** Радиус скругления углов в юнитах сцены (только rect). */
+  radius?: number;
+  /** Надпись внутри фигуры (только rect/ellipse/triangle). */
+  text?: string;
   groupId?: string;
 }
 
@@ -47,6 +54,7 @@ export interface PolyEl {
   closed: boolean;
   color: string;
   width: number;
+  opacity?: number;
   pts: Pt[];
   groupId?: string;
 }
@@ -59,6 +67,7 @@ export interface TextEl {
   text: string;
   size: number;
   color: string;
+  opacity?: number;
   bold?: boolean;
   italic?: boolean;
   groupId?: string;
@@ -81,6 +90,12 @@ export interface ImageEl {
   src: string;
   /** Поворот вокруг центра в радианах. */
   rot?: number;
+  /** Рамка: цвет, толщина и непрозрачность; без цвета рамки нет. */
+  color?: string;
+  width?: number;
+  opacity?: number;
+  /** Радиус скругления углов (картинка обрезается вместе с рамкой). */
+  radius?: number;
   groupId?: string;
 }
 
@@ -110,6 +125,7 @@ export interface SolidEl {
   t?: number;
   color: string;
   width: number;
+  opacity?: number;
   groupId?: string;
 }
 
@@ -155,7 +171,7 @@ export type GridMode = 'none' | 'dots' | 'square' | 'coord';
 export interface LaserPt { x: number; y: number; t: number }
 
 /** Росчерк исчезающего маркера; endT — когда оторвали перо (с этого момента гаснет). */
-export interface FadeStroke { color: string; width: number; pts: Pt[]; endT: number | null }
+export interface FadeStroke { color: string; width: number; opacity?: number; pts: Pt[]; endT: number | null }
 
 /** Кратковременная подсветка контура элементов; t — момент начала. */
 export interface Flash { ids: string[]; t: number }
@@ -169,6 +185,9 @@ export type Handle =
   | { kind: 'rotate' }
   /** Параметр тела: a — ребро куба (меняет w, d, h разом). */
   | { kind: 'param'; key: 'w' | 'd' | 'h' | 't' | 'a' };
+
+/** Направляющая выравнивания: axis 'x' — вертикальная линия x = at (от y = from до y = to), 'y' — горизонтальная. */
+export interface Guide { axis: 'x' | 'y'; at: number; from: number; to: number }
 
 /** from — начало направляющей (высота, радиус), которую рисуем к ручке. */
 export interface HandlePos { h: Handle; x: number; y: number; from?: { x: number; y: number } }
@@ -203,4 +222,10 @@ export interface BoardSettings {
   hideUndoRedo: boolean;
   /** Изображения (и страницы PDF) меняют размер только пропорционально — без Shift и Ctrl. */
   keepImageAspect: boolean;
+  /** Направляющие выравнивания по соседним объектам при переносе и изменении размера (с примагничиванием). */
+  alignGuides: boolean;
+  /** Список страниц закрывается, когда в нём выбрали страницу. */
+  closePagesOnPick: boolean;
+  /** На превью текущей страницы — рамка видимой сейчас области (цветом курсора). */
+  thumbViewport: boolean;
 }

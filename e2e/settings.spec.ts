@@ -74,7 +74,8 @@ test.describe('окно «Все настройки»', () => {
     expect(await board.count()).toBe(1);
     expect((await board.state()).tool).toBe('select');
     await page.keyboard.press('Escape');
-    await page.keyboard.press('e');
+    // у выделенного прямоугольника стоит текстовый курсор: tool() сперва снимет выделение
+    await board.tool('e');
     expect((await board.state()).tool).toBe('eraser');
   });
 

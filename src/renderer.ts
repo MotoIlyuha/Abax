@@ -1,8 +1,8 @@
 import type { Camera, Element, GridMode, ImageEl, ShapeEl, SolidEl } from './types';
 import { foreignSelections } from './collab';
 import {
-  elementAABB, elementHandles, presentCamera, wrapText, TEXT_FONT,
-  NOTE_PAD, NOTE_FONT, NOTE_TEXT_COLOR,
+  cornerRadius, elementAABB, elementHandles, fitShapeText, imageFrame, presentCamera, shapeHoldsText, shapeTextBox,
+  wrapText, TEXT_FONT, NOTE_PAD, NOTE_FONT, NOTE_TEXT_COLOR, SHAPE_TEXT_LH,
 } from './geom';
 import { ribbonPath } from './stroke';
 import { fitSolid, solidGeometry, type SolidPrim } from './solid';
@@ -41,10 +41,14 @@ export function imagesLoaded(els: readonly Element[]): Promise<void> | null {
   return Promise.all(pending.map(img => img.decode().catch(() => undefined))).then(() => undefined);
 }
 
+type ShapeTextFit = { size: number; lines: string[] };
+
 interface ElCacheEntry {
   aabb: { x0: number; y0: number; x1: number; y1: number };
   path: Path2D | null;
   lines: string[] | null;
+  /** Надпись фигуры, разложенная по строкам с подобранным кеглем. */
+  fit: ShapeTextFit | null;
 }
 
 // Элементы иммутабельны: кэш живёт столько же, сколько объект элемента.
@@ -53,9 +57,13 @@ const elCache = new WeakMap<Element, ElCacheEntry>();
 function cacheOf(el: Element): ElCacheEntry {
   let c = elCache.get(el);
   if (!c) {
-    c = { aabb: elementAABB(el), path: null, lines: null };
+    c = { aabb: elementAABB(el), path: null, lines: null, fit: null };
     if (el.type === 'stroke') c.path = ribbonPath(el.pts, el.width);
     if (el.type === 'note') c.lines = wrapText(el.text, NOTE_FONT, el.w - NOTE_PAD * 2);
+    if (shapeHoldsText(el) && el.text) {
+      const box = shapeTextBox(el);
+      c.fit = fitShapeText(el.text, box.w, box.h);
+    }
     elCache.set(el, c);
   }
   return c;
@@ -77,6 +85,7 @@ const FLASH_IN = 140;
 const FLASH_OUT = 600;
 const FLASH_COLOR = '#ff9f1c';
 const FLASH_R = 4; // толщина контура подсветки, px экрана
+const GUIDE_COLOR = '#f2357b';
 
 function drawGrid(ctx: CanvasRenderingContext2D, cam: Camera, w: number, h: number, mode: GridMode): void {
   const z = cam.zoom;
@@ -227,15 +236,20 @@ function drawCoordAxes(ctx: CanvasRenderingContext2D, cam: Camera, w: number, h:
   }
 }
 
-function drawShapeEl(ctx: CanvasRenderingContext2D, el: ShapeEl): void {
+/** Поворот фигуры вокруг её центра (вызывающий делает save/restore). */
+function rotateShape(ctx: CanvasRenderingContext2D, el: ShapeEl, rot: number): void {
+  const cx = el.x + el.w / 2;
+  const cy = el.y + el.h / 2;
+  ctx.translate(cx, cy);
+  ctx.rotate(rot);
+  ctx.translate(-cx, -cy);
+}
+
+function drawShapeEl(ctx: CanvasRenderingContext2D, el: ShapeEl, text: ShapeTextFit | null = null): void {
   const rot = el.rot ?? 0;
   if (rot) {
-    const cx = el.x + el.w / 2;
-    const cy = el.y + el.h / 2;
     ctx.save();
-    ctx.translate(cx, cy);
-    ctx.rotate(rot);
-    ctx.translate(-cx, -cy);
+    rotateShape(ctx, el, rot);
   }
   ctx.strokeStyle = el.color;
   ctx.lineWidth = el.width;
@@ -243,7 +257,10 @@ function drawShapeEl(ctx: CanvasRenderingContext2D, el: ShapeEl): void {
   ctx.lineJoin = el.shape === 'triangle' ? 'round' : 'miter';
   ctx.beginPath();
   if (el.shape === 'rect') {
-    ctx.rect(Math.min(el.x, el.x + el.w), Math.min(el.y, el.y + el.h), Math.abs(el.w), Math.abs(el.h));
+    const x = Math.min(el.x, el.x + el.w), y = Math.min(el.y, el.y + el.h);
+    const r = cornerRadius(el);
+    if (r > 0) ctx.roundRect(x, y, Math.abs(el.w), Math.abs(el.h), r);
+    else ctx.rect(x, y, Math.abs(el.w), Math.abs(el.h));
   } else if (el.shape === 'triangle') {
     const x0 = Math.min(el.x, el.x + el.w), y0 = Math.min(el.y, el.y + el.h);
     const x1 = Math.max(el.x, el.x + el.w), y1 = Math.max(el.y, el.y + el.h);
@@ -259,20 +276,46 @@ function drawShapeEl(ctx: CanvasRenderingContext2D, el: ShapeEl): void {
     ctx.moveTo(el.x, el.y);
     ctx.lineTo(el.x + el.w, el.y + el.h);
   }
-  ctx.stroke();
   if (el.shape === 'arrow') {
+    // наконечник — в том же контуре: у полупрозрачной стрелки острие не темнее древка
     const tipx = el.x + el.w;
     const tipy = el.y + el.h;
     const ang = Math.atan2(el.h, el.w);
     const hl = Math.min(Math.max(el.width * 4.5, 12), 46);
     for (const s of [-0.45, 0.45]) {
-      ctx.beginPath();
       ctx.moveTo(tipx, tipy);
       ctx.lineTo(tipx - hl * Math.cos(ang + s), tipy - hl * Math.sin(ang + s));
-      ctx.stroke();
     }
   }
+  ctx.stroke();
+  if (text) drawShapeText(ctx, el, text);
   if (rot) ctx.restore();
+}
+
+/** Надпись по центру области текста фигуры (поворот уже применён). */
+function drawShapeText(ctx: CanvasRenderingContext2D, el: ShapeEl, fit: ShapeTextFit): void {
+  const box = shapeTextBox(el);
+  const lh = fit.size * SHAPE_TEXT_LH;
+  const top = box.y + (box.h - fit.lines.length * lh) / 2;
+  const cx = box.x + box.w / 2;
+  ctx.font = TEXT_FONT(fit.size);
+  ctx.fillStyle = el.color;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (let i = 0; i < fit.lines.length; i++) ctx.fillText(fit.lines[i], cx, top + (i + 0.5) * lh);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+}
+
+/** Только надпись фигуры (контур уже нарисован) — с её поворотом и прозрачностью. */
+function drawShapeCaption(ctx: CanvasRenderingContext2D, el: ShapeEl): void {
+  if (!el.text) return;
+  const box = shapeTextBox(el);
+  ctx.save();
+  ctx.globalAlpha = el.opacity ?? 1;
+  if (el.rot) rotateShape(ctx, el, el.rot);
+  drawShapeText(ctx, el, fitShapeText(el.text, box.w, box.h));
+  ctx.restore();
 }
 
 function traceSolidPrims(ctx: CanvasRenderingContext2D, prims: SolidPrim[], hidden: boolean): void {
@@ -316,13 +359,22 @@ function drawElement(
 ): void {
   const c = cacheOf(el);
   if (c.aabb.x1 < vx0 || c.aabb.x0 > vx1 || c.aabb.y1 < vy0 || c.aabb.y0 > vy1) return;
+  // у картинки прозрачна только рамка — её непрозрачность выставляется при рисовании рамки
+  const alpha = el.type !== 'image' && el.type !== 'note' ? el.opacity ?? 1 : 1;
+  if (alpha < 1) ctx.globalAlpha = alpha;
+  drawElementBody(ctx, el, c);
+  if (alpha < 1) ctx.globalAlpha = 1;
+}
+
+function drawElementBody(ctx: CanvasRenderingContext2D, el: Element, c: ElCacheEntry): void {
   switch (el.type) {
     case 'stroke':
       ctx.fillStyle = el.tool === 'highlighter' ? hexA(el.color, HIGHLIGHTER_ALPHA) : el.color;
       ctx.fill(c.path!);
       break;
     case 'shape':
-      drawShapeEl(ctx, el);
+      // надпись, которую правят на месте, показывает редактор
+      drawShapeEl(ctx, el, el.id === state.hideTextId ? null : c.fit);
       break;
     case 'solid':
       drawSolidEl(ctx, el);
@@ -368,11 +420,32 @@ function drawElement(
         ctx.rotate(rot);
         ctx.translate(-cx, -cy);
       }
+      const r = cornerRadius(el);
+      if (r > 0) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.roundRect(el.x, el.y, el.w, el.h, r);
+        ctx.clip();
+      }
       if (img.complete && img.naturalWidth > 0) {
         ctx.drawImage(img, el.x, el.y, el.w, el.h);
       } else {
         ctx.fillStyle = '#f0f2f5';
         ctx.fillRect(el.x, el.y, el.w, el.h);
+      }
+      if (r > 0) ctx.restore();
+      const frame = imageFrame(el);
+      if (frame) {
+        // рамка — внутри картинки: габарит элемента не меняется
+        const bw = Math.min(frame.width, el.w / 2, el.h / 2);
+        ctx.globalAlpha = el.opacity ?? 1;
+        ctx.strokeStyle = frame.color;
+        ctx.lineWidth = bw;
+        ctx.lineJoin = 'miter';
+        ctx.beginPath();
+        ctx.roundRect(el.x + bw / 2, el.y + bw / 2, el.w - bw, el.h - bw, Math.max(0, r - bw / 2));
+        ctx.stroke();
+        ctx.globalAlpha = 1;
       }
       if (rot) ctx.restore();
       break;
@@ -471,6 +544,7 @@ class SceneCache {
   private coordLabels = true;
   private liveEdit = false;
   private hideId: string | null = null;
+  private hideTextId: string | null = null;
   private imgEpoch = 0;
   private stale = false;
 
@@ -488,7 +562,7 @@ class SceneCache {
       this.stale = true;
     }
     if (state.board.grid !== this.grid || state.settings.coordLabels !== this.coordLabels || state.liveEdit !== this.liveEdit
-      || state.hideElId !== this.hideId || imgEpoch !== this.imgEpoch) this.stale = true;
+      || state.hideElId !== this.hideId || state.hideTextId !== this.hideTextId || imgEpoch !== this.imgEpoch) this.stale = true;
     const arr = state.board.elements;
     if (arr !== this.arr) {
       if (this.arr && !this.stale && isPrefixExtension(arr, this.arr)) this.append(this.arr.length);
@@ -517,6 +591,7 @@ class SceneCache {
     this.coordLabels = state.settings.coordLabels;
     this.liveEdit = state.liveEdit;
     this.hideId = state.hideElId;
+    this.hideTextId = state.hideTextId;
     this.imgEpoch = imgEpoch;
     this.stale = false;
   }
@@ -697,6 +772,29 @@ function drawHandles(ctx: CanvasRenderingContext2D, cam: Camera): void {
   }
 }
 
+/** Направляющие выравнивания: пунктир по линии совпадения краёв или центров (экранные координаты). */
+function drawGuides(ctx: CanvasRenderingContext2D, cam: Camera): void {
+  ctx.strokeStyle = GUIDE_COLOR;
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 3]);
+  ctx.beginPath();
+  for (const g of state.guides) {
+    // полпикселя — чтобы однопиксельная линия была резкой
+    const at = Math.round((g.axis === 'x' ? g.at - cam.x : g.at - cam.y) * cam.zoom) + 0.5;
+    const from = (g.axis === 'x' ? g.from - cam.y : g.from - cam.x) * cam.zoom;
+    const to = (g.axis === 'x' ? g.to - cam.y : g.to - cam.x) * cam.zoom;
+    if (g.axis === 'x') {
+      ctx.moveTo(at, from);
+      ctx.lineTo(at, to);
+    } else {
+      ctx.moveTo(from, at);
+      ctx.lineTo(to, at);
+    }
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
 /** Содержимое доски без интерфейса: кэш статики и превью живых объектов. */
 function drawContent(ctx: CanvasRenderingContext2D, cache: SceneCache, cam: Camera, w: number, h: number, dpr: number): void {
   if (cache.cam) {
@@ -731,23 +829,30 @@ function drawContent(ctx: CanvasRenderingContext2D, cache: SceneCache, cam: Came
   if (state.liveStroke) {
     const ls = state.liveStroke;
     const base = ls.tool === 'highlighter' ? ls.width * 3.2 : ls.width;
+    ctx.globalAlpha = ls.opacity ?? 1;
     ctx.fillStyle = ls.tool === 'highlighter' ? hexA(ls.color, HIGHLIGHTER_ALPHA) : ls.color;
     ctx.fill(ribbonPath(ls.pts, base));
+    ctx.globalAlpha = 1;
   }
   if (state.liveShape) {
     const ls = state.liveShape;
+    ctx.globalAlpha = ls.opacity ?? 1;
     drawShapeEl(ctx, {
       id: '', type: 'shape', shape: ls.shape,
       x: ls.x0, y: ls.y0, w: ls.x1 - ls.x0, h: ls.y1 - ls.y0,
       color: ls.color, width: ls.width,
     });
+    ctx.globalAlpha = 1;
   }
   if (state.liveSolid) {
     const ls = state.liveSolid;
+    ctx.globalAlpha = ls.opacity ?? 1;
     drawSolidEl(ctx, fitSolid(ls.solid, ls.x0, ls.y0, ls.x1, ls.y1, { id: '', color: ls.color, width: ls.width }));
+    ctx.globalAlpha = 1;
   }
   if (state.livePoly) {
     const lp = state.livePoly;
+    ctx.globalAlpha = state.style.opacity ?? 1;
     ctx.strokeStyle = state.style.color;
     ctx.lineWidth = state.style.width * 1.1;
     ctx.lineCap = 'round';
@@ -768,6 +873,7 @@ function drawContent(ctx: CanvasRenderingContext2D, cache: SceneCache, cam: Came
       ctx.stroke();
       ctx.restore();
     }
+    ctx.globalAlpha = 1;
     // узлы: поставленные точки + колечко на первой (замыкание)
     ctx.fillStyle = '#ffffff';
     ctx.strokeStyle = '#3273f5';
@@ -813,6 +919,7 @@ function draw(): void {
     ctx.setLineDash([]);
     if (state.selection.size === 1) drawHandles(ctx, cam);
   }
+  if (state.guides.length > 0) drawGuides(ctx, cam);
   if (state.marquee) {
     const m = state.marquee;
     ctx.strokeStyle = '#3273f5';
@@ -914,7 +1021,9 @@ function drawPresent(camSettled: boolean): void {
     // текст в процессе ввода: в основном окне его показывает редактор поверх холста
     const zx = pdpr * pcam.zoom;
     c.setTransform(zx, 0, 0, zx, -pcam.x * zx, -pcam.y * zx);
-    drawElement(c, state.liveText, pcam.x, pcam.y, pcam.x + w / pcam.zoom, pcam.y + h / pcam.zoom);
+    // у фигуры контур уже в кэше — дорисовываем только надпись
+    if (state.liveText.type === 'shape') drawShapeCaption(c, state.liveText);
+    else drawElement(c, state.liveText, pcam.x, pcam.y, pcam.x + w / pcam.zoom, pcam.y + h / pcam.zoom);
   }
   c.setTransform(pdpr, 0, 0, pdpr, 0, 0);
   if (state.flashes.length > 0) drawFlashes(c, pcam, w, h, pdpr, p.flash);
@@ -990,7 +1099,7 @@ function drawFadeStrokes(ctx: CanvasRenderingContext2D): void {
   state.fadeStrokes = state.fadeStrokes.filter(f => f.endT === null || now - f.endT < FADE_MS);
   for (const f of state.fadeStrokes) {
     const k = f.endT === null ? 1 : 1 - (now - f.endT) / FADE_MS;
-    ctx.globalAlpha = k * k; // к концу гаснет быстрее
+    ctx.globalAlpha = k * k * (f.opacity ?? 1); // к концу гаснет быстрее
     ctx.fillStyle = hexA(f.color, HIGHLIGHTER_ALPHA); // полупрозрачный, как маркер
     ctx.fill(ribbonPath(f.pts, f.width));
   }

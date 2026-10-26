@@ -185,7 +185,8 @@ test.describe('панель цвета и толщины', () => {
     await board.drag([{ x: 900, y: 600 }, { x: 1000, y: 650 }]);
     await expect(panel).toBeVisible();
 
-    // рядом можно открыть пристыкованную панель другого вида
+    // рядом можно открыть пристыкованную панель другого вида (эллипс выделен — включено выделение, берём перо)
+    await board.tool('p');
     await page.locator('#btn-style').click();
     await expect(page.locator('#ctx-layer .ctx-panel')).toHaveCount(2);
     await page.keyboard.press('Escape');

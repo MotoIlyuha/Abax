@@ -67,6 +67,51 @@ body.hide-undo-redo :is(#btn-undo, #btn-redo, .sep:has(+ #btn-undo), #btn-redo +
 /* у поля названия свой внутренний отступ — подтягиваем его к разделителю */
 .crumb-sep { color: #c3c8d1; margin-right: -7px; }
 
+/* масштаб: подпись-кнопка, по клику — поле для точного значения */
+#zoom-label {
+  min-width: 52px;
+  height: 30px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+  cursor: pointer;
+}
+#zoom-label:hover { background: #f0f2f5; }
+#zoom-label[hidden] { display: none; }
+.zoom-edit { position: relative; display: inline-flex; align-items: center; }
+#zoom-input {
+  width: 64px;
+  height: 30px;
+  padding: 0 20px 0 7px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--fg);
+  outline: none;
+}
+#zoom-input.invalid { border-color: var(--danger); box-shadow: 0 0 0 2px rgba(224, 49, 49, 0.15); }
+.zoom-unit { position: absolute; right: 7px; color: var(--muted); pointer-events: none; }
+.zoom-hint {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 80;
+  padding: 5px 9px;
+  border-radius: 7px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 12px;
+  white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(16, 24, 40, 0.18);
+}
+.zoom-hint[hidden] { display: none; }
+
 select {
   font: inherit;
   padding: 5px 6px;
@@ -329,6 +374,16 @@ select {
   justify-content: center;
 }
 .page-item.active .page-num { background: var(--accent); color: #fff; box-shadow: none; }
+/* видимая сейчас область текущей страницы: пунктир цветом курсора (--view) */
+.page-view {
+  position: absolute;
+  border: 1.5px dashed var(--view, var(--accent));
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--view, var(--accent)) 8%, transparent);
+  opacity: 0.75;
+  pointer-events: none;
+}
+.page-view[hidden] { display: none; }
 .page-row { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 7px 4px 2px; }
 .page-name {
   flex: 1;
@@ -520,6 +575,9 @@ body.no-ui-anim #pages-dock.open :is(.page-item, .page-add) { animation: none; }
   box-shadow: var(--shadow);
   padding: 14px 16px 16px;
 }
+/* заголовки групп и подписи панелей, кнопки тулбара и меню выделения мышью не выделяются */
+.ctx-panel, #toolbar, #quick-menu { user-select: none; -webkit-user-select: none; }
+.ctx-panel input { user-select: text; -webkit-user-select: text; }
 .ctx-panel[data-kind="shapes"] { width: auto; padding: 10px; }
 /* заголовок группы не заезжает под ручку и кнопки в углу */
 .ctx-panel[data-kind="shapes"] .ctx-title { padding-right: 24px; }
@@ -724,6 +782,61 @@ body.no-ui-anim #pages-dock.open :is(.page-item, .page-add) { animation: none; }
   cursor: grab;
   pointer-events: none;
 }
+
+/* ----- Толщина, прозрачность и скругление: иконка — дорожка — значение ----- */
+.ctx-range { display: flex; align-items: center; gap: 8px; flex: none; height: 28px; margin: -4px 0 8px; }
+/* у толщины дорожка — «капля»: ручка до 24px, строка выше */
+.ctx-range.ctx-width { height: 44px; margin: -10px 0 4px; gap: 1px; }
+.ctx-width .ctx-drop-slider { flex: 1; height: 100%; margin: 0; }
+.ctx-range-icon { display: flex; flex: none; color: #5d6470; }
+.ctx-range-icon svg { width: 18px; height: 18px; }
+.ctx-range-track {
+  position: relative;
+  flex: 1;
+  height: 10px;
+  margin: 0 7px;
+  border-radius: 99px;
+  background: #dbe0e8;
+  cursor: pointer;
+  touch-action: none;
+  outline: none;
+}
+.ctx-range-track:hover { background: #cfd6e0; }
+.ctx-range-track:focus-visible { box-shadow: 0 0 0 2px var(--accent-soft), 0 0 0 3.5px var(--accent); }
+/* прозрачность: шахматка, поверх — от прозрачного к текущему цвету */
+.ctx-opacity .ctx-range-track, .ctx-opacity .ctx-range-track:hover {
+  background:
+    linear-gradient(to right, transparent, var(--ink, var(--fg))),
+    repeating-conic-gradient(#e3e6eb 0 25%, #fff 0 50%) 0 0 / 8px 8px;
+  box-shadow: inset 0 0 0 1px rgba(16, 24, 40, 0.1);
+}
+.ctx-range-thumb {
+  position: absolute;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--accent);
+  box-shadow: 0 1px 4px rgba(16, 24, 40, 0.25);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.ctx-range-val { flex: none; min-width: 34px; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; color: #5d6572; }
+.ctx-frame-off {
+  align-self: flex-start;
+  margin: -2px 0 12px;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+}
+.ctx-frame-off:hover { text-decoration: underline; }
+.ctx-frame-off[hidden] { display: none; }
 
 /* B/I в плавающем меню */
 .qm-text-b { font-weight: 800; font-size: 14px; }
@@ -1366,6 +1479,24 @@ body.tbe-grabbing, body.tbe-grabbing * { cursor: grabbing !important; }
 }
 /* стикер редактируется на месте: без фона и рамок */
 #overlay textarea.inplace-edit { border: none; padding: 0; }
+/* надпись фигуры: по центру, с переносом строк — как её рисует холст */
+#overlay textarea.inplace-edit.shape {
+  min-width: 0;
+  background: transparent;
+  box-shadow: none;
+  text-align: center;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+/* курсор в выделенной фигуре: набранный текст сразу пойдёт в её надпись */
+.shape-caret {
+  position: absolute;
+  width: 1.5px;
+  transform-origin: 0 0;
+  pointer-events: none;
+  animation: caret-blink 1.06s steps(1) infinite;
+}
+@keyframes caret-blink { 50% { opacity: 0; } }
 
 /* ----- Совместная работа ----- */
 #share-dialog {
@@ -1430,7 +1561,7 @@ body.collab-guest .page-add { display: none; }
 body.collab-guest .page-del { display: none !important; }
 body.collab-guest.readonly-mode #toolbar { display: none; }
 #overlay textarea.inplace-edit.note { background: transparent; box-shadow: none; }
-#overlay textarea.inplace-edit:not(.note) { background: rgba(255, 255, 255, 0.85); box-shadow: 0 0 0 1.5px rgba(50, 115, 245, 0.35); border-radius: 3px; }
+#overlay textarea.inplace-edit:not(.note):not(.shape) { background: rgba(255, 255, 255, 0.85); box-shadow: 0 0 0 1.5px rgba(50, 115, 245, 0.35); border-radius: 3px; }
 
 /* ----- Подсказки (tooltip) ----- */
 #tooltip {

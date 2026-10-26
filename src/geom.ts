@@ -1,4 +1,4 @@
-import type { Camera, Element, Handle, HandlePos, PolyEl, Pt, ShapeEl, StrokeEl, TextEl } from './types';
+import type { Camera, Element, Guide, Handle, HandlePos, ImageEl, PolyEl, Pt, ShapeEl, StrokeEl, TextEl } from './types';
 import { applySolidParam, solidGeometry, solidHandles } from './solid';
 import { widthAt } from './stroke';
 
@@ -45,6 +45,69 @@ export const NOTE_PAD = 14;
 export const NOTE_FONT = 15;
 export const NOTE_TEXT_COLOR = '#4a4633';
 export const TEXT_SIZE = 24;
+
+/** Ширина строки текста шрифтом size. */
+export function lineWidth(text: string, size: number): number {
+  const ctx = mctx();
+  ctx.font = TEXT_FONT(size);
+  return ctx.measureText(text).width;
+}
+
+// ----- Надпись внутри фигуры (как в Miro): по центру, кегль уменьшается, пока текст не влезет -----
+
+export const SHAPE_TEXT_MAX = TEXT_SIZE;
+export const SHAPE_TEXT_MIN = 6;
+export const SHAPE_TEXT_LH = 1.25;
+const SHAPE_TEXT_PAD = 8;
+
+/** Фигуры, в которых можно писать: прямоугольник, эллипс, треугольник. */
+export function shapeHoldsText(el: Element | null | undefined): el is ShapeEl {
+  return !!el && el.type === 'shape' && (el.shape === 'rect' || el.shape === 'ellipse' || el.shape === 'triangle');
+}
+
+/**
+ * Область надписи без учёта поворота: у прямоугольника — он сам без полей, у эллипса — вписанный
+ * прямоугольник, у треугольника — вписанный наибольший (нижняя половина, по центру).
+ */
+export function shapeTextBox(s: ShapeEl): { x: number; y: number; w: number; h: number } {
+  const x0 = Math.min(s.x, s.x + s.w), y0 = Math.min(s.y, s.y + s.h);
+  const w = Math.abs(s.w), h = Math.abs(s.h);
+  let bx = x0, by = y0, bw = w, bh = h;
+  if (s.shape === 'ellipse') {
+    bw = w / Math.SQRT2;
+    bh = h / Math.SQRT2;
+    bx = x0 + (w - bw) / 2;
+    by = y0 + (h - bh) / 2;
+  } else if (s.shape === 'triangle') {
+    bw = w / 2;
+    bh = h / 2;
+    bx = x0 + w / 4;
+    by = y0 + h / 2;
+  }
+  const pad = Math.min(SHAPE_TEXT_PAD, bw / 8, bh / 8);
+  return { x: bx + pad, y: by + pad, w: Math.max(1, bw - pad * 2), h: Math.max(1, bh - pad * 2) };
+}
+
+/** Кегль и строки надписи в области w×h: от SHAPE_TEXT_MAX вниз, пока не влезет (не меньше SHAPE_TEXT_MIN). */
+export function fitShapeText(text: string, w: number, h: number): { size: number; lines: string[] } {
+  let size = SHAPE_TEXT_MAX;
+  for (;;) {
+    const lines = wrapText(text, size, w);
+    const fits = lines.length * size * SHAPE_TEXT_LH <= h && lines.every(l => lineWidth(l, size) <= w);
+    if (fits || size <= SHAPE_TEXT_MIN) return { size, lines };
+    size = Math.max(SHAPE_TEXT_MIN, size - Math.max(1, Math.round(size * 0.1)));
+  }
+}
+
+/** Радиус скругления, который реально помещается в элемент (не больше половины меньшей стороны). */
+export function cornerRadius(el: ShapeEl | ImageEl): number {
+  return Math.max(0, Math.min(el.radius ?? 0, Math.abs(el.w) / 2, Math.abs(el.h) / 2));
+}
+
+/** У картинки есть рамка: задан цвет и ненулевая толщина. */
+export function imageFrame(el: ImageEl): { color: string; width: number } | null {
+  return el.color && (el.width ?? 0) > 0 ? { color: el.color, width: el.width! } : null;
+}
 
 export function elementAABB(el: Element): AABB {
   switch (el.type) {
@@ -543,6 +606,53 @@ export function aabbUnion(a: AABB, b: AABB): AABB {
 
 export function aabbIntersects(a: AABB, b: AABB): boolean {
   return a.x0 <= b.x1 && a.x1 >= b.x0 && a.y0 <= b.y1 && a.y1 >= b.y0;
+}
+
+// ----- Направляющие выравнивания (как в Miro и Figma) -----
+
+/** Опорные линии рамки по оси: оба края и центр. */
+export function boxAnchors(b: AABB, axis: 'x' | 'y'): number[] {
+  return axis === 'x' ? [b.x0, (b.x0 + b.x1) / 2, b.x1] : [b.y0, (b.y0 + b.y1) / 2, b.y1];
+}
+
+/**
+ * Сдвиг по оси (по модулю не больше tol), совмещающий одно из values (опорные линии того, что тянут)
+ * с ближайшей опорной линией соседей; null — рядом ничего нет.
+ */
+export function alignShift(values: number[], others: AABB[], axis: 'x' | 'y', tol: number): number | null {
+  let best: number | null = null;
+  for (const o of others) {
+    for (const t of boxAnchors(o, axis)) {
+      for (const v of values) {
+        const d = t - v;
+        if (Math.abs(d) <= tol && (best === null || Math.abs(d) < Math.abs(best))) best = d;
+      }
+    }
+  }
+  return best;
+}
+
+/**
+ * Направляющие через совпавшие (с точностью eps) опорные линии: values — линии того, что тянут (его рамка — box),
+ * линия идёт от box до каждого совпавшего соседа; совпадения на одной линии сливаются в одну.
+ */
+export function alignGuides(box: AABB, values: number[], others: AABB[], axis: 'x' | 'y', eps: number): Guide[] {
+  const out: Guide[] = [];
+  for (const o of others) {
+    for (const t of boxAnchors(o, axis)) {
+      if (!values.some(v => Math.abs(v - t) <= eps)) continue;
+      const from = axis === 'x' ? Math.min(box.y0, o.y0) : Math.min(box.x0, o.x0);
+      const to = axis === 'x' ? Math.max(box.y1, o.y1) : Math.max(box.x1, o.x1);
+      const same = out.find(g => Math.abs(g.at - t) <= eps);
+      if (same) {
+        same.from = Math.min(same.from, from);
+        same.to = Math.max(same.to, to);
+      } else {
+        out.push({ axis, at: t, from, to });
+      }
+    }
+  }
+  return out;
 }
 
 /**

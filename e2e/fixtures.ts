@@ -8,7 +8,7 @@ export interface Snapshot {
   tool: string;
   selection: string[];
   camera: { x: number; y: number; zoom: number };
-  style: { color: string; width: number };
+  style: { color: string; width: number; opacity?: number };
   noteColor: string;
   pageId: string;
   view: string;
@@ -119,9 +119,13 @@ export class Board {
     for (const m of opts.modifiers ?? []) await this.page.keyboard.up(m);
   }
 
-  /** Инструмент горячей клавишей (фокус уводим с полей ввода). */
+  /**
+   * Инструмент горячей клавишей (фокус уводим с полей ввода). У выделенной фигуры стоит текстовый
+   * курсор и буква ушла бы в её надпись — сперва Esc снимает выделение, как сделал бы пользователь.
+   */
   async tool(key: string): Promise<void> {
     await this.page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    if (await this.page.locator('.shape-caret').count() > 0) await this.page.keyboard.press('Escape');
     await this.page.keyboard.press(key);
   }
 
@@ -162,7 +166,9 @@ export class Board {
 
   /** Дождаться конца CSS-переходов и анимаций (подъём кнопки, появление карточек, смена страницы). */
   async settled(): Promise<void> {
-    await this.page.waitForFunction(() => document.getAnimations().every(a => a.playState !== 'running'));
+    // бесконечные (мигающий курсор в выделенной фигуре) не ждём
+    await this.page.waitForFunction(() => document.getAnimations()
+      .every(a => a.playState !== 'running' || a.effect?.getTiming().iterations === Infinity));
   }
 
   /** Дождаться автосохранения в localStorage. */

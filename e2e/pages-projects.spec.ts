@@ -139,9 +139,9 @@ test.describe('страницы проекта', () => {
     });
     expect(await ink(0)).toBeGreaterThan(100);
     expect(await ink(1)).toBe(0);
-    // рисунок на открытой странице сразу попадает в её превью
+    // рисунок на открытой странице сразу попадает в её превью (оно вписывает ещё и видимую область — мельче)
     await board.rect(0, 0, 200, 120);
-    await expect.poll(() => ink(1)).toBeGreaterThan(100);
+    await expect.poll(() => ink(1)).toBeGreaterThan(30);
   });
 
   test('переименование страницы двойным кликом', async ({ board, page }) => {
