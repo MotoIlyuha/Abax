@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
 const fss = require('fs');
@@ -79,6 +79,27 @@ function boardsDir() {
   fss.mkdirSync(d, { recursive: true });
   return d;
 }
+
+// ОС и переносная ли версия: обновление предлагает файл под неё (установщик или переносной exe).
+// Переносной exe electron-builder распаковывает и запускает с PORTABLE_EXECUTABLE_FILE в окружении.
+ipcMain.handle('app:info', async () => ({
+  platform: process.platform,
+  portable: !!process.env.PORTABLE_EXECUTABLE_FILE,
+}));
+
+// Иконка окна со своими цветами логотипа (раздел «Экспериментальные»): PNG из renderer.
+// Ярлык и значок exe не меняются — только окна запущенного приложения, и новые тоже.
+let customIcon = null;
+const ICON_MAX = 2 * 1024 * 1024;
+ipcMain.handle('app:setIcon', async (_e, png) => {
+  if (typeof png !== 'string' || !png.startsWith('data:image/png;base64,') || png.length > ICON_MAX) return false;
+  const img = nativeImage.createFromDataURL(png);
+  if (img.isEmpty()) return false;
+  customIcon = img;
+  for (const w of BrowserWindow.getAllWindows()) w.setIcon(img);
+  return true;
+});
+app.on('browser-window-created', (_e, win) => { if (customIcon) win.setIcon(customIcon); });
 
 const safeId = (id) => String(id).replace(/[^a-zA-Z0-9-]/g, '');
 const boardPath = (id) => path.join(boardsDir(), `${safeId(id)}.json`);

@@ -89,7 +89,7 @@ test.describe('окно «Все настройки»', () => {
     await expect(about.locator('.sd-about-version')).toHaveText(/^Версия \d+\.\d+\.\d+$/);
     const links = about.locator('a.sd-about-link');
     await expect(links).toHaveCount(2);
-    await expect(links.first()).toHaveAttribute('href', 'https://github.com/MotoIlyuha/Doska');
+    await expect(links.first()).toHaveAttribute('href', 'https://github.com/MotoIlyuha/Abax');
     await expect(links.first()).toHaveAttribute('target', '_blank');
   });
 

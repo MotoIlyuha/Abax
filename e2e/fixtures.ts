@@ -34,6 +34,10 @@ export class Board {
   }
 
   async open(path = '/'): Promise<void> {
+    // в сеть тесты не ходят: проверка обновлений при запуске видит «нет связи»
+    // (тесты обновлений подставляют свой ответ GitHub, см. e2e/updates.spec.ts); на весь контекст —
+    // и ссылки «Скачать», открытые в новой вкладке
+    await this.page.context().route(/^https:\/\/(api\.)?github\.com\//, route => route.abort());
     await this.page.goto(path);
     await this.ready();
   }

@@ -145,7 +145,7 @@ export const state: AppState = {
   settings: {
     toolbarPos: 'left', coordLabels: true, snapToGrid: false, wheelMode: 'scroll', pageTransition: 'slide',
     pageKeyMod: 'alt', newPageKey: DEFAULT_NEW_PAGE_KEY, uiAnimations: true, hideUndoRedo: false,
-    keepImageAspect: true, alignGuides: true, closePagesOnPick: false, thumbViewport: true,
+    keepImageAspect: true, alignGuides: true, closePagesOnPick: false, thumbViewport: true, pageLinks: false,
   },
   selection: new Set(),
   liveStroke: null,

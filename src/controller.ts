@@ -1,4 +1,4 @@
-import type { Camera, Element, FadeStroke, Handle, Pt, ShapeEl, ToolId } from './types';
+import type { Camera, Element, FadeStroke, Handle, ImageEl, Pt, ShapeEl, ToolId } from './types';
 import {
   state, update, onChange, beginStroke, extendStroke, endStroke, pushHistory, replaceElements,
   addElement, setSelection, deleteSelected, undo, redo, setTool, uid, commitPoly,
@@ -13,8 +13,8 @@ import { collabActive, noteCursor, readOnly } from './collab';
 import { partEraseRadius, presenting, requestRender } from './renderer';
 import { fitSolid, SOLID_CLICK_SIZE, solidKeepsAspect } from './solid';
 import {
-  addPageFromKey, beginTextEdit, canEditBoard, closeEditor, duplicateSelection, exportPng, fitContent, openAllSettings, saveNow,
-  selectedTextShape, switchToPage, toggleTextFlag, togglePages,
+  addPageFromKey, beginTextEdit, canEditBoard, closeEditor, duplicateSelection, exportPng, fitContent, openAllSettings, openPageLink,
+  saveNow, selectedTextShape, switchToPage, toggleTextFlag, togglePages,
 } from './app';
 import { comboFromEvent, pageNumberFromEvent } from './hotkeys';
 import { ERASER_PATHS, ERASER_TIP, toolByKey } from './toolbar';
@@ -55,6 +55,8 @@ type Action = { pid: number } & (
     kind: 'move'; pre: Element[]; start: Pt; orig: Map<string, Element>; moved: boolean; deselectOnUp: boolean;
     /** Общая рамка переносимого до начала переноса и рамки соседей для направляющих (null — выключены). */
     box: AABB | null; others: AABB[] | null;
+    /** Нажали на страницу на холсте: отпустили не сдвинув — переход на неё. */
+    link: ImageEl | null;
   }
   | { kind: 'shape' }
   | { kind: 'solid' }
@@ -462,9 +464,11 @@ export function initController(canvas: HTMLCanvasElement): void {
           }
           const others = guideTargets(state.selection);
           const box = others && orig.size > 0 ? [...orig.values()].map(elementAABB).reduce(aabbUnion) : null;
+          // страница на холсте: клик переходит на неё, перетаскивание двигает (и выделяет — для ручек)
+          const link = !e.shiftKey && hit.type === 'image' && hit.page ? hit : null;
           action = {
-            pid: e.pointerId, kind: 'move', pre: state.board.elements, start: s, orig, moved: false, deselectOnUp: wasSelected,
-            box, others,
+            pid: e.pointerId, kind: 'move', pre: state.board.elements, start: s, orig, moved: false,
+            deselectOnUp: wasSelected && !link, box, others, link,
           };
           state.liveEdit = true;
         } else {
@@ -741,7 +745,9 @@ export function initController(canvas: HTMLCanvasElement): void {
     }
     if (touchBlocked && touchPtrs().length === 0) touchBlocked = false;
     if (action && action.pid !== e.pointerId) return;
+    const a = action;
     finishAction();
+    if (a?.kind === 'move' && !a.moved && a.link) openPageLink(a.link);
   }
 
   function onPointerLeave(): void {

@@ -1,6 +1,8 @@
-// Раздел «О проекте» окна всех настроек: название, версия, ссылки на репозиторий.
+// Раздел «О проекте» окна всех настроек: название, версия, обновления, ссылки на репозиторий.
 
-const REPO_URL = 'https://github.com/MotoIlyuha/Doska';
+import { logoSrc } from './app-icon';
+import { renderUpdateSettings } from './update-notice';
+import { REPO_URL } from './updates';
 
 const FEATURES = [
   'перо, маркер, фигуры, текст и лазерная указка',
@@ -31,14 +33,14 @@ const HOLD_MS = 800;
 const TOAST_MS = 4000;
 const SECRET = 'Сделано для Инны с любовью от Ильи 💚';
 
-/** Пасхалка: логотип нажали и держат — внизу окна всплывает тост. */
-function holdToReveal(logo: HTMLElement): void {
+/** Пасхалка: логотип нажали и держат — внизу окна всплывает тост (и открывается раздел «Экспериментальные»). */
+function holdToReveal(logo: HTMLElement, onHold?: () => void): void {
   let timer = 0;
   const cancel = () => { clearTimeout(timer); timer = 0; };
   logo.addEventListener('pointerdown', e => {
     if (e.button !== 0) return;
     cancel();
-    timer = window.setTimeout(() => { timer = 0; showToast(SECRET); }, HOLD_MS);
+    timer = window.setTimeout(() => { timer = 0; showToast(SECRET); onHold?.(); }, HOLD_MS);
   });
   for (const ev of ['pointerup', 'pointerleave', 'pointercancel'] as const) logo.addEventListener(ev, cancel);
   // долгое нажатие пальцем иначе открывает системное меню картинки
@@ -47,7 +49,8 @@ function holdToReveal(logo: HTMLElement): void {
 
 let toastTimer = 0;
 
-function showToast(text: string): void {
+/** Тост внизу окна на несколько секунд. */
+export function showToast(text: string): void {
   let t = document.getElementById('toast');
   if (!t) {
     t = el('div', '');
@@ -65,15 +68,17 @@ function showToast(text: string): void {
   toastTimer = window.setTimeout(() => { t!.hidden = true; t!.classList.remove('show'); }, TOAST_MS);
 }
 
-export function renderAbout(host: HTMLElement): void {
+/** onLogoHold — логотип задержали (показать скрытый раздел настроек). */
+export function renderAbout(host: HTMLElement, onLogoHold?: () => void): void {
   const box = el('div', 'sd-about');
   const head = el('div', 'sd-about-head');
-  // логотип лежит в public/ — рядом с index.html и в Electron, и у гостей совместной работы
-  const logo = el('img', 'sd-about-logo');
-  logo.src = 'logo.svg';
+  // логотип лежит в public/ — рядом с index.html и в Electron, и у гостей совместной работы;
+  // свои цвета иконки (раздел «Экспериментальные») — SVG на лету
+  const logo = el('img', 'sd-about-logo app-logo');
+  logo.src = logoSrc();
   logo.alt = '';
   logo.draggable = false;
-  holdToReveal(logo);
+  holdToReveal(logo, onLogoHold);
   const title = el('div', 'sd-about-title');
   const name = el('div', 'sd-about-name');
   name.append(el('span', '', 'Abax'), el('span', 'sd-about-greek', 'ἄβαξ'));
@@ -86,6 +91,7 @@ export function renderAbout(host: HTMLElement): void {
   const list = el('ul', 'sd-about-features');
   for (const f of FEATURES) list.appendChild(el('li', '', f));
   box.appendChild(list);
+  renderUpdateSettings(box);
 
   const links = el('div', 'sd-about-links');
   links.append(link(REPO_URL, 'Исходный код на GitHub'), link(`${REPO_URL}/issues`, 'Сообщить о проблеме'));

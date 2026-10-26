@@ -455,7 +455,7 @@ export function elementHandles(el: Element, zoom: number): HandlePos[] {
       return out;
     }
     case 'image': {
-      // картинка масштабируется и вращается как прямоугольник
+      // картинка масштабируется и вращается как прямоугольник; страница на холсте — не вращается
       const cx = el.x + el.w / 2, cy = el.y + el.h / 2;
       const rot = el.rot ?? 0;
       const cos = Math.cos(rot), sin = Math.sin(rot);
@@ -465,6 +465,7 @@ export function elementHandles(el: Element, zoom: number): HandlePos[] {
         const lx = (dx * el.w) / 2, ly = (dy * el.h) / 2;
         out.push({ h: { kind: 'resize', dx: dx as -1 | 0 | 1, dy: dy as -1 | 0 | 1 }, x: cx + lx * cos - ly * sin, y: cy + lx * sin + ly * cos });
       }
+      if (el.page) return out;
       const lx = 0, ly = -el.h / 2 - ROT_HANDLE_OFF_PX / zoom;
       out.push({ h: { kind: 'rotate' }, x: cx + lx * cos - ly * sin, y: cy + lx * sin + ly * cos });
       return out;
@@ -721,4 +722,30 @@ export function presentCamera(cam: Camera, mainW: number, mainH: number, w: numb
     y: cam.y + mainH / cam.zoom / 2 - h / zoom / 2,
     zoom,
   };
+}
+
+/** Поля вокруг содержимого в превью страницы на холсте — как у «Показать всё» (fitContent). */
+const LINK_VIEW_PAD = 80;
+/** Меньше этого превью не приближает: точка на пустой странице не растягивается на весь экран. */
+const LINK_VIEW_MIN_W = 640;
+const LINK_VIEW_MIN_H = 400;
+
+/**
+ * Какую область страницы показывает её превью на холсте с соотношением сторон aspect:
+ * всё содержимое с полями по центру (пустая — вокруг начала координат), не меньше минимума.
+ * При переходе на страницу она встаёт на экран ровно так же — поэтому переход бесшовный.
+ */
+export function pageLinkView(elements: readonly Element[], aspect: number): AABB {
+  let cx = 0, cy = 0, w = 0, h = 0;
+  if (elements.length > 0) {
+    const bb = elements.map(elementAABB).reduce(aabbUnion);
+    cx = (bb.x0 + bb.x1) / 2;
+    cy = (bb.y0 + bb.y1) / 2;
+    w = bb.x1 - bb.x0 + LINK_VIEW_PAD * 2;
+    h = bb.y1 - bb.y0 + LINK_VIEW_PAD * 2;
+  }
+  const a = Number.isFinite(aspect) && aspect > 0 ? aspect : LINK_VIEW_MIN_W / LINK_VIEW_MIN_H;
+  const vw = Math.max(w, h * a, LINK_VIEW_MIN_W, LINK_VIEW_MIN_H * a);
+  const vh = vw / a;
+  return { x0: cx - vw / 2, y0: cy - vh / 2, x1: cx + vw / 2, y1: cy + vh / 2 };
 }

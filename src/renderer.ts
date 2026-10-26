@@ -1,8 +1,8 @@
-import type { Camera, Element, GridMode, ImageEl, ShapeEl, SolidEl } from './types';
+import type { Camera, Element, GridMode, ImageEl, Page, ShapeEl, SolidEl } from './types';
 import { foreignSelections } from './collab';
 import {
-  type Caption, cornerRadius, elementAABB, elementHandles, imageFrame, presentCamera, shapeCaption, shapeHoldsText,
-  wrapText, TEXT_FONT, NOTE_PAD, NOTE_FONT, NOTE_TEXT_COLOR,
+  type AABB, type Caption, cornerRadius, elementAABB, elementHandles, imageFrame, pageLinkView, presentCamera, shapeCaption,
+  shapeHoldsText, wrapText, TEXT_FONT, NOTE_PAD, NOTE_FONT, NOTE_TEXT_COLOR,
 } from './geom';
 import { ribbonPath } from './stroke';
 import { fitSolid, solidGeometry, type SolidPrim } from './solid';
@@ -36,7 +36,7 @@ function imageOf(el: ImageEl): HTMLImageElement {
 
 /** Ждёт картинок среди элементов, которые ещё грузятся; null — все уже готовы. */
 export function imagesLoaded(els: readonly Element[]): Promise<void> | null {
-  const pending = els.filter((e): e is ImageEl => e.type === 'image').map(imageOf).filter(img => !img.complete);
+  const pending = els.filter((e): e is ImageEl => e.type === 'image' && !e.page).map(imageOf).filter(img => !img.complete);
   if (pending.length === 0) return null;
   return Promise.all(pending.map(img => img.decode().catch(() => undefined))).then(() => undefined);
 }
@@ -401,6 +401,7 @@ function drawElementBody(ctx: CanvasRenderingContext2D, el: Element, c: ElCacheE
       break;
     }
     case 'image': {
+      if (el.page) { drawPageLink(ctx, el); break; }
       const img = imageOf(el);
       const rot = el.rot ?? 0;
       if (rot) {
@@ -424,19 +425,7 @@ function drawElementBody(ctx: CanvasRenderingContext2D, el: Element, c: ElCacheE
         ctx.fillRect(el.x, el.y, el.w, el.h);
       }
       if (r > 0) ctx.restore();
-      const frame = imageFrame(el);
-      if (frame) {
-        // рамка — внутри картинки: габарит элемента не меняется
-        const bw = Math.min(frame.width, el.w / 2, el.h / 2);
-        ctx.globalAlpha = el.opacity ?? 1;
-        ctx.strokeStyle = frame.color;
-        ctx.lineWidth = bw;
-        ctx.lineJoin = 'miter';
-        ctx.beginPath();
-        ctx.roundRect(el.x + bw / 2, el.y + bw / 2, el.w - bw, el.h - bw, Math.max(0, r - bw / 2));
-        ctx.stroke();
-        ctx.globalAlpha = 1;
-      }
+      drawImageFrame(ctx, el, r);
       if (rot) ctx.restore();
       break;
     }
@@ -455,12 +444,125 @@ function drawElementBody(ctx: CanvasRenderingContext2D, el: Element, c: ElCacheE
   }
 }
 
+/** Рамка картинки — внутри неё: габарит элемента не меняется. */
+function drawImageFrame(ctx: CanvasRenderingContext2D, el: ImageEl, r: number): void {
+  const frame = imageFrame(el);
+  if (!frame) return;
+  const bw = Math.min(frame.width, el.w / 2, el.h / 2);
+  ctx.globalAlpha = el.opacity ?? 1;
+  ctx.strokeStyle = frame.color;
+  ctx.lineWidth = bw;
+  ctx.lineJoin = 'miter';
+  ctx.beginPath();
+  ctx.roundRect(el.x + bw / 2, el.y + bw / 2, el.w - bw, el.h - bw, Math.max(0, r - bw / 2));
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+
+// ----- Страница на холсте (раздел «Экспериментальные») -----
+// Превью рисуется векторно, теми же функциями, что и сама страница: при приближении перед
+// переходом оно остаётся чётким и совпадает с кадром страницы до пикселя (см. openPageLink в app.ts).
+
+/** Страница внутри страницы внутри страницы — дальше только подложка. */
+const LINK_DEPTH = 2;
+let linkDepth = 0;
+/** CSS-пиксель в пикселях холста, на котором сейчас рисуем: сетке внутри превью нужна экранная толщина. */
+let drawDpr = 1;
+
+/** Страница проекта по id (у неоткрытых проектов на домашней ссылок не найти — будет подложка). */
+export function linkedPage(id: string): Page | undefined {
+  return state.project.pages.find(p => p.id === id);
+}
+
+const linkViews = new WeakMap<readonly Element[], Map<number, AABB>>();
+
+/** Область страницы в превью (кэш по массиву элементов и соотношению сторон). */
+export function linkView(page: Page, aspect: number): AABB {
+  let m = linkViews.get(page.elements);
+  if (!m) { m = new Map(); linkViews.set(page.elements, m); }
+  let v = m.get(aspect);
+  if (!v) {
+    // пока превью тянут за ручку, соотношение сторон меняется каждый кадр — кэш не копим
+    if (m.size > 32) m.clear();
+    v = pageLinkView(page.elements, aspect);
+    m.set(aspect, v);
+  }
+  return v;
+}
+
+function drawPageLink(ctx: CanvasRenderingContext2D, el: ImageEl): void {
+  const r = cornerRadius(el);
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(el.x, el.y, el.w, el.h, r);
+  ctx.clip();
+  const page = el.page ? linkedPage(el.page) : undefined;
+  if (!page || linkDepth >= LINK_DEPTH) {
+    // страницы нет (удалили, другой проект) или слишком глубоко — подложка
+    ctx.fillStyle = '#eef0f3';
+    ctx.fillRect(el.x, el.y, el.w, el.h);
+  } else {
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(el.x, el.y, el.w, el.h);
+    const view = linkView(page, el.w / el.h);
+    const s = el.w / (view.x1 - view.x0);
+    const m = ctx.getTransform();
+    // пикселей холста на единицу сцены снаружи → CSS-пикселей на единицу страницы внутри
+    const outer = Math.hypot(m.a, m.b) / drawDpr;
+    if (page.grid !== 'none' && outer > 0) {
+      ctx.save();
+      ctx.translate(el.x, el.y);
+      ctx.scale(1 / outer, 1 / outer);
+      drawGrid(ctx, { x: view.x0, y: view.y0, zoom: s * outer }, el.w * outer, el.h * outer, page.grid);
+      ctx.restore();
+    }
+    ctx.translate(el.x, el.y);
+    ctx.scale(s, s);
+    ctx.translate(-view.x0, -view.y0);
+    linkDepth++;
+    try {
+      for (const e of page.elements) drawElement(ctx, e, view.x0, view.y0, view.x1, view.y1);
+    } finally {
+      linkDepth--;
+    }
+  }
+  ctx.restore();
+  drawImageFrame(ctx, el, r);
+}
+
+const linkLists = new WeakMap<readonly Element[], ImageEl[]>();
+
+/** Страницы на холсте среди элементов (кэш по массиву). */
+function pageLinksIn(els: readonly Element[]): ImageEl[] {
+  let l = linkLists.get(els);
+  if (!l) {
+    l = els.filter((e): e is ImageEl => e.type === 'image' && !!e.page);
+    linkLists.set(els, l);
+  }
+  return l;
+}
+
+/** Что показывают страницы на холсте: поменялось — кэш сцены устарел. */
+function linkStamp(els: readonly Element[]): unknown[] {
+  const out: unknown[] = [];
+  for (const l of pageLinksIn(els)) {
+    const p = linkedPage(l.page!);
+    out.push(p?.elements, p?.grid);
+  }
+  return out;
+}
+
+function sameStamp(a: unknown[], b: unknown[]): boolean {
+  return a.length === b.length && a.every((x, i) => x === b[i]);
+}
+
 /** Полный рендер набора элементов. Используется для кэша сцены и экспорта PNG. */
 export function renderScene(
   ctx: CanvasRenderingContext2D, elements: Element[],
   cam: Camera, wCss: number, hCss: number, dpr: number, grid: GridMode,
   exclude?: Set<string>,
 ): void {
+  drawDpr = dpr;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, wCss, hCss);
@@ -536,6 +638,7 @@ class SceneCache {
   private hideId: string | null = null;
   private hideTextId: string | null = null;
   private imgEpoch = 0;
+  private links: unknown[] = [];
   private stale = false;
 
   resize(wPx: number, hPx: number): void {
@@ -553,6 +656,8 @@ class SceneCache {
     }
     if (state.board.grid !== this.grid || state.settings.coordLabels !== this.coordLabels || state.liveEdit !== this.liveEdit
       || state.hideElId !== this.hideId || state.hideTextId !== this.hideTextId || imgEpoch !== this.imgEpoch) this.stale = true;
+    // страницы на холсте показывают другие страницы: те поменялись — перерисовать
+    if (!sameStamp(linkStamp(state.board.elements), this.links)) this.stale = true;
     const arr = state.board.elements;
     if (arr !== this.arr) {
       if (this.arr && !this.stale && isPrefixExtension(arr, this.arr)) this.append(this.arr.length);
@@ -583,12 +688,14 @@ class SceneCache {
     this.hideId = state.hideElId;
     this.hideTextId = state.hideTextId;
     this.imgEpoch = imgEpoch;
+    this.links = linkStamp(state.board.elements);
     this.stale = false;
   }
 
   /** Дописывает только новые элементы поверх существующего кэша. */
   private append(from: number): void {
     const cam = this.cam!;
+    drawDpr = this.dpr;
     const zx = this.dpr * cam.zoom;
     this.ctx!.setTransform(zx, 0, 0, zx, -cam.x * zx, -cam.y * zx);
     const vx1 = cam.x + this.w / cam.zoom;
@@ -787,6 +894,7 @@ function drawGuides(ctx: CanvasRenderingContext2D, cam: Camera): void {
 
 /** Содержимое доски без интерфейса: кэш статики и превью живых объектов. */
 function drawContent(ctx: CanvasRenderingContext2D, cache: SceneCache, cam: Camera, w: number, h: number, dpr: number): void {
+  drawDpr = dpr;
   if (cache.cam) {
     cache.blit(ctx, cam, w, h, dpr);
     // во время перетаскивания выделенное исключено из кэша — рисуем поверх;

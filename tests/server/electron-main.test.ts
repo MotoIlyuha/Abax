@@ -15,8 +15,11 @@ type Handler = (e: unknown, ...args: unknown[]) => Promise<any>;
 
 class FakeWindow {
   static all: FakeWindow[] = [];
+  static getAllWindows() { return FakeWindow.all; }
   url = '';
   file = '';
+  icon: unknown = null;
+  setIcon(img: unknown) { this.icon = img; }
   listeners = new Map<string, (...a: unknown[]) => void>();
   openHandler: ((d: { url?: string; frameName: string }) => Record<string, any>) | null = null;
   webContents = {
@@ -54,6 +57,9 @@ const fakeElectron = {
   dialog,
   shell: { openExternal: vi.fn() },
   contextBridge: { exposeInMainWorld: vi.fn() },
+  nativeImage: {
+    createFromDataURL: (url: string) => ({ url, isEmpty: () => url.endsWith(',') }),
+  },
   ipcRenderer: { invoke: vi.fn(async (...a: unknown[]) => a) },
 };
 
@@ -166,6 +172,42 @@ describe('окно', () => {
     await loadMain();
     appEvents.get('window-all-closed')!();
     expect(fakeElectron.app.quit).toHaveBeenCalled();
+  });
+});
+
+describe('сведения о приложении', () => {
+  beforeEach(() => loadMain({ packaged: true }));
+
+  it('ОС и переносная ли версия — для выбора файла обновления', async () => {
+    const was = process.env.PORTABLE_EXECUTABLE_FILE;
+    try {
+      delete process.env.PORTABLE_EXECUTABLE_FILE;
+      expect(await invoke('app:info')).toEqual({ platform: process.platform, portable: false });
+      // переносной exe electron-builder запускает приложение с путём к себе в окружении
+      process.env.PORTABLE_EXECUTABLE_FILE = 'D:\\Abax.2.1.0.exe';
+      expect(await invoke('app:info')).toEqual({ platform: process.platform, portable: true });
+    } finally {
+      if (was === undefined) delete process.env.PORTABLE_EXECUTABLE_FILE;
+      else process.env.PORTABLE_EXECUTABLE_FILE = was;
+    }
+  });
+});
+
+describe('иконка окна', () => {
+  beforeEach(() => loadMain({ packaged: true }));
+
+  it('свои цвета логотипа: PNG ставится всем окнам и тем, что откроются потом; не PNG — отказ', async () => {
+    const win = FakeWindow.all[0];
+    expect(await invoke('app:setIcon', 'data:image/png;base64,AAAA')).toBe(true);
+    expect(win.icon).toEqual(expect.objectContaining({ url: 'data:image/png;base64,AAAA' }));
+    const later = new FakeWindow({});
+    (appEvents.get('browser-window-created') as unknown as (e: unknown, w: FakeWindow) => void)({}, later);
+    expect(later.icon).toEqual(expect.objectContaining({ url: 'data:image/png;base64,AAAA' }));
+
+    for (const bad of [42, 'data:image/svg+xml,<svg/>', 'data:image/png;base64,', `data:image/png;base64,${'A'.repeat(3 * 1024 * 1024)}`]) {
+      expect(await invoke('app:setIcon', bad)).toBe(false);
+    }
+    expect(win.icon).toEqual(expect.objectContaining({ url: 'data:image/png;base64,AAAA' }));
   });
 });
 
@@ -327,16 +369,20 @@ describe('preload', () => {
     const [name, api] = fakeElectron.contextBridge.exposeInMainWorld.mock.calls[0];
     expect(name).toBe('doskaAPI');
     expect(Object.keys(api).sort()).toEqual([
-      'exportPng', 'list', 'load', 'pickImage', 'pickPdf', 'remove', 'save',
+      'appInfo', 'exportPng', 'list', 'load', 'pickImage', 'pickPdf', 'remove', 'save', 'setAppIcon',
       'shareOpenTestWindow', 'shareSetRights', 'shareStart', 'shareStatus', 'shareStop',
     ]);
     api.save({ id: 'x' });
     api.exportPng('data:', 'a.png');
     api.shareSetRights(3, { all: 'edit' });
+    api.appInfo();
+    api.setAppIcon('data:image/png;base64,AA');
     expect(fakeElectron.ipcRenderer.invoke.mock.calls).toEqual([
       ['boards:save', { id: 'x' }],
       ['export:png', { dataUrl: 'data:', name: 'a.png' }],
       ['share:setRights', { uid: 3, patch: { all: 'edit' } }],
+      ['app:info'],
+      ['app:setIcon', 'data:image/png;base64,AA'],
     ]);
   });
 });

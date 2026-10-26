@@ -15,6 +15,10 @@ export interface DoskaApi {
   exportPng(dataUrl: string, name: string): Promise<boolean>;
   pickPdf(): Promise<string | null>;
   pickImage(): Promise<string | null>;
+  /** ОС и переносная ли версия — для выбора файла обновления (в старом preload нет). */
+  appInfo?(): Promise<{ platform: string; portable: boolean }>;
+  /** Иконка окна приложения (PNG data URL) — свои цвета логотипа. */
+  setAppIcon?(png: string): Promise<boolean>;
 }
 
 // Граница IPC: preload кладёт doskaAPI на window; форма проверяется в рантайме.

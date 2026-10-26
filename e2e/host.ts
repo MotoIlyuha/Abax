@@ -32,6 +32,10 @@ export class Host {
   /** Что «выберет» пользователь в следующем диалоге открытия файла (null — отмена). */
   nextImage: string | null = null;
   nextPdf: string | null = null;
+  /** Что ответит appInfo (electron/main.cjs, app:info): Windows, установленная или переносная версия. */
+  appInfo = { platform: 'win32', portable: false };
+  /** Иконки окна, которые поставило приложение (свои цвета логотипа). */
+  readonly icons: string[] = [];
 
   constructor(readonly page: Page) {
     this.board = new Board(page);
@@ -57,6 +61,8 @@ export class Host {
       if (op === 'pickPdf') return this.nextPdf;
       throw new Error(op);
     });
+    await this.page.exposeFunction('__pwAppInfo', async () => this.appInfo);
+    await this.page.exposeFunction('__pwSetIcon', async (png: string) => { this.icons.push(png); return true; });
     // то же, что делают обработчики share:* в electron/main.cjs
     await this.page.exposeFunction('__pwShare', async (op: string, arg: any) => {
       const info = () => ({
@@ -93,6 +99,8 @@ export class Host {
         shareStatus: () => sh('status'),
         shareSetRights: (uid: number, patch: unknown) => sh('setRights', { uid, patch }),
         shareOpenTestWindow: () => sh('testWindow'),
+        appInfo: () => w.__pwAppInfo(),
+        setAppIcon: (png: string) => w.__pwSetIcon(png),
       };
     });
     await this.board.open();
