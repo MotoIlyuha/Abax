@@ -85,6 +85,7 @@ const lsStorage: BoardsStorage = {
       createdAt: project.createdAt, updatedAt: project.updatedAt,
       pageCount: project.pages.length,
       ...(project.pinned ? { pinned: true } : {}),
+      ...(project.icon ? { icon: project.icon } : {}),
     };
     localStorage.setItem(IDX_KEY, JSON.stringify([meta, ...metas.filter(m => m.id !== project.id)]));
     localStorage.setItem(projectKey(project.id), JSON.stringify(project));

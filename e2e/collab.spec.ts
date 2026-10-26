@@ -20,6 +20,8 @@ test.describe('совместная работа', () => {
     for (const id of ['btn-home', 'btn-import', 'btn-image', 'btn-share']) {
       await expect(guest.page.locator(`#${id}`)).toBeHidden();
     }
+    // иконку проекта ставит только автор
+    await expect(guest.page.locator('#project-icon')).toBeHidden();
     // страницы гость листает, но не добавляет и не удаляет
     await expect(guest.page.locator('#btn-pages')).toHaveText('Страницы 1');
     await guest.page.locator('#btn-pages').click();

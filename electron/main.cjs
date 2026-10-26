@@ -94,6 +94,7 @@ ipcMain.handle('boards:list', async () => {
         id: b.id, name: b.name, createdAt: b.createdAt, updatedAt: b.updatedAt,
         pageCount: Array.isArray(b.pages) ? b.pages.length : 1,
         ...(b.pinned ? { pinned: true } : {}),
+        ...(typeof b.icon === 'string' && b.icon ? { icon: b.icon } : {}),
       });
     } catch { /* битый файл пропускаем */ }
   }

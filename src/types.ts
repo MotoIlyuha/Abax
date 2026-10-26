@@ -162,6 +162,8 @@ export interface Project {
   pages: Page[];
   /** Закреплён в избранном на домашней странице. */
   pinned?: boolean;
+  /** Иконка рядом с названием: эмодзи или загруженная картинка (data:image/…). */
+  icon?: string;
 }
 
 export interface ProjectMeta {
@@ -171,6 +173,7 @@ export interface ProjectMeta {
   updatedAt: number;
   pageCount: number;
   pinned?: boolean;
+  icon?: string;
 }
 
 export type GridMode = 'none' | 'dots' | 'square' | 'coord';

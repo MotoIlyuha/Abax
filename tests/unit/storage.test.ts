@@ -55,6 +55,19 @@ describe('localStorage-хранилище (браузер)', () => {
     expect((await storage.list()).find(m => m.id === 'a')).not.toHaveProperty('pinned');
   });
 
+  it('иконка проекта сохраняется в метаданных', async () => {
+    const { storage } = await load();
+    await storage.save({ ...project('a', 10), icon: '🚀' });
+    await storage.save(project('b', 20));
+    const metas = await storage.list();
+    expect(metas.find(m => m.id === 'a')?.icon).toBe('🚀');
+    expect(metas.find(m => m.id === 'b')).not.toHaveProperty('icon');
+    expect((await storage.load('a'))?.icon).toBe('🚀');
+    // убрали — пропала и из метаданных
+    await storage.save(project('a', 10));
+    expect((await storage.list()).find(m => m.id === 'a')).not.toHaveProperty('icon');
+  });
+
   it('битые данные не роняют хранилище', async () => {
     const { storage } = await load();
     localStorage.setItem('doska.projects', '{oops');

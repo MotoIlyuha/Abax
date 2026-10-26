@@ -55,6 +55,9 @@ describe('проекты и страницы', () => {
     // избранное попадает в метаданные, только когда проект закреплён
     expect(projectMeta({ ...p, pinned: true }).pinned).toBe(true);
     expect('pinned' in projectMeta({ ...p, pinned: undefined })).toBe(false);
+    // иконка — тоже только если есть
+    expect(projectMeta({ ...p, icon: '📐' }).icon).toBe('📐');
+    expect('icon' in projectMeta(p)).toBe(false);
   });
 
   it('moveItem переставляет копию списка', () => {
