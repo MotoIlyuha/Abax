@@ -158,6 +158,7 @@ test.describe('раздел «Горячие клавиши»: справка', 
 
     const row = (what: string) => page.locator('.hk-row', { has: page.locator('.hk-what', { hasText: what }) });
     await expect(row('Удалить выделенное').locator('kbd')).toHaveText(['Delete', 'Backspace']);
+    await expect(row('Сдвинуть выделенное').locator('kbd')).toHaveText(['←', '→', '↑', '↓']);
     await expect(row('Выделить всё').locator('kbd')).toHaveText(['Ctrl', 'A']);
     await expect(row('Отменить').first().locator('kbd')).toHaveText(['Ctrl', 'Z']);
     await expect(row('Копировать').locator('kbd')).toHaveText(['Ctrl', 'C']);
