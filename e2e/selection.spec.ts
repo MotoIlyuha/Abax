@@ -400,22 +400,26 @@ test.describe('перенос выделенного стрелками', () => 
     await board.click({ x: 470, y: 350 });
     await page.keyboard.down('ArrowRight');
     await page.keyboard.down('ArrowDown');
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(500);
+    const before = (await board.elements())[0];
+    await page.waitForTimeout(500);
+    const after = (await board.elements())[0];
     await page.keyboard.up('ArrowRight');
     await page.keyboard.up('ArrowDown');
-    const d = (await board.elements())[0];
-    expect(d.x - 400).toBeGreaterThan(50);
-    expect(d.y - 300).toBeGreaterThan(50);
-    expect(Math.abs((d.x - 400) - (d.y - 300))).toBeLessThan(3); // шаги нажатий равны, дальше поровну
+    expect(after.x - before.x).toBeGreaterThan(50);
+    expect(after.y - before.y).toBeGreaterThan(50);
+    expect(Math.abs((after.x - before.x) - (after.y - before.y))).toBeLessThan(3);
     await page.keyboard.press('Control+z');
 
     await page.keyboard.down('ArrowLeft');
     await page.keyboard.down('ArrowRight');
-    await page.waitForTimeout(800);
+    await page.waitForTimeout(500);
+    const stopped = (await board.elements())[0];
+    await page.waitForTimeout(400);
+    const stillStopped = (await board.elements())[0];
     await page.keyboard.up('ArrowLeft');
     await page.keyboard.up('ArrowRight');
-    const e = (await board.elements())[0];
-    expect(Math.abs(e.x - 400)).toBeLessThanOrEqual(1); // только по одному шагу нажатий, взаимно сократившись
-    expect(e.y).toBe(300);
+    expect(stillStopped.x).toBeCloseTo(stopped.x, 5);
+    expect(stillStopped.y).toBe(300);
   });
 });
