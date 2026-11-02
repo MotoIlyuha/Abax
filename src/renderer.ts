@@ -8,6 +8,7 @@ import { ribbonPath } from './stroke';
 import { fitSolid, solidGeometry, type SolidPrim } from './solid';
 import { state } from './state';
 import { ERASER_PATHS, ERASER_TIP } from './toolbar';
+import { SpatialIndex } from './spatial-index';
 
 /** Сколько картинок догрузилось: кэш сцены, собранный с заглушкой, устаревает. */
 let imgEpoch = 0;
@@ -614,6 +615,9 @@ function sameStamp(a: unknown[], b: unknown[]): boolean {
 }
 
 /** Полный рендер набора элементов. Используется для кэша сцены и экспорта PNG. */
+const sceneIndexes = new WeakMap<Element[], SpatialIndex<Element>>();
+const seenScenes = new WeakSet<Element[]>();
+
 export function renderScene(
   ctx: CanvasRenderingContext2D, elements: Element[],
   cam: Camera, wCss: number, hCss: number, dpr: number, grid: GridMode,
@@ -633,7 +637,18 @@ export function renderScene(
   const vy1 = cam.y + hCss / cam.zoom;
   // честный z-порядок: элементы рисуются строго по порядку массива,
   // слои (выше/ниже) работают одинаково для всех типов
-  for (const el of elements) {
+  let candidates: readonly Element[] = elements;
+  if (elements.length >= 500) {
+    let index = sceneIndexes.get(elements);
+    // Не строим индекс для промежуточных массивов при непрерывном редактировании.
+    if (!index && seenScenes.has(elements)) {
+      index = new SpatialIndex(elements, el => cacheOf(el).aabb);
+      sceneIndexes.set(elements, index);
+    }
+    seenScenes.add(elements);
+    if (index) candidates = index.query({ x0: vx0, y0: vy0, x1: vx1, y1: vy1 });
+  }
+  for (const el of candidates) {
     if (!exclude?.has(el.id)) {
       drawElement(ctx, el, vx0, vy0, vx1, vy1);
     }
@@ -644,8 +659,8 @@ export function renderScene(
 // Статика (фон + все элементы) рисуется в offscreen-канвас один раз и blit'ается
 // каждый кадр. Новые элементы дописываются в кэш инкрементально (префикс-проверка
 // массива). Изменение камеры НЕ инвалидирует кэш мгновенно: во время pan/zoom
-// устаревший кэш рисуется с трансформом (мгновенно), а резкая перерисовка
-// происходит через REBUILD_DELAY после остановки движения.
+// устаревший кэш рисуется с трансформом, открывшиеся края дорисовываются
+// сразу, а полная резкая перерисовка происходит после остановки движения.
 // Кэш свой у каждого холста: основного и окна демонстрации.
 
 const REBUILD_DELAY = 120; // мс покоя камеры до резкой перерисовки
@@ -791,6 +806,28 @@ class SceneCache {
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, w, h);
     ctx.drawImage(this.canvas, 0, 0, this.canvas.width, this.canvas.height, dx, dy, dw, dh);
+
+    // Рисуем только области, которых нет в снимке. Пересечение ограничиваем
+    // экраном: прямоугольник за его пределами нельзя вычитать через evenodd.
+    const x0 = Math.max(0, Math.min(w, dx));
+    const y0 = Math.max(0, Math.min(h, dy));
+    const x1 = Math.max(0, Math.min(w, dx + dw));
+    const y1 = Math.max(0, Math.min(h, dy + dh));
+    if (x0 > 0 || y0 > 0 || x1 < w || y1 < h) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, w, h);
+      if (x1 > x0 && y1 > y0) ctx.rect(x0, y0, x1 - x0, y1 - y0);
+      ctx.clip('evenodd');
+      const exclude = new Set<string>();
+      if (state.liveEdit && state.board.elements.length > HEAVY_BOARD) {
+        for (const id of state.selection) exclude.add(id);
+      }
+      if (state.hideElId) exclude.add(state.hideElId);
+      if (state.dragHidden?.pageId === state.pageId) for (const id of state.dragHidden.ids) exclude.add(id);
+      renderScene(ctx, state.board.elements, cam, w, h, dpr, state.board.grid, exclude.size ? exclude : undefined);
+      ctx.restore();
+    }
   }
 }
 
