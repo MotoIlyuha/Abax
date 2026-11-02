@@ -572,7 +572,7 @@ body.no-ui-anim #pages-dock.open :is(.page-item, .page-add) { animation: none; }
 .style-btn.current .style-ind { box-shadow: inset 0 0 0 1.5px var(--accent); }
 
 /* ----- Группа «Фигуры» ----- */
-#toolbar .tool-shapes { position: relative; }
+#toolbar .tool-shapes { position: relative; touch-action: none; }
 /* уголок-индикатор: у кнопки есть всплывающая панель */
 #toolbar .tool-shapes::after {
   content: ''; position: absolute; right: 3px; bottom: 3px;
@@ -580,6 +580,7 @@ body.no-ui-anim #pages-dock.open :is(.page-item, .page-add) { animation: none; }
   opacity: 0.55;
 }
 .ctx-shapes { display: grid; grid-template-columns: repeat(3, auto); gap: 4px; justify-content: start; }
+.ctx-shapes .tool.gesture-hover { background: var(--accent-soft); color: var(--accent); outline: 2px solid var(--accent); outline-offset: -2px; }
 
 /* ----- Контекстные панели ----- */
 /* общий слой: свой контекст наложения, внутри — порядок «кого трогали последним» через z-index */

@@ -41,6 +41,7 @@ import { closeIconPicker, openIconPicker } from './icon-picker';
 import { capitalize, dayLabel, pagesLabel } from './format';
 import { buildCustomColorPicker } from './color-picker';
 import { copySelection, COPY_STEP_PX, pasteFromMemory, pasteFromSystem } from './clipboard';
+import { hideHeldTooltip, showHeldTooltip } from './tooltip';
 
 pdfjsLib.GlobalWorkerOptions.workerPort = new PdfWorker();
 
@@ -3508,7 +3509,67 @@ function buildToolbar(): void {
       b.dataset.tools = item.tools.join(' ');
       b.classList.add('tool-shapes');
       b.title = item.name;
-      b.addEventListener('click', () => toggleCtxPanel(groupId, 'toolbar'));
+      let suppressClick = false;
+      b.addEventListener('pointerdown', e => {
+        if (!e.isPrimary || e.button !== 0) return;
+        suppressClick = false;
+        const existing = panelOf(groupId);
+        // Откреплённая палитра сохраняет обычное поведение кнопки.
+        if (existing?.detached) return;
+        if (!existing) openCtxPanel(groupId, 'toolbar');
+        const panel = panelOf(groupId);
+        if (!panel) return;
+        const startX = e.clientX, startY = e.clientY;
+        let moved = false;
+        let hovered: HTMLButtonElement | null = null;
+        const hitTool = (event: PointerEvent): HTMLButtonElement | null => {
+          const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLButtonElement>('.ctx-shapes [data-shape]');
+          return target && panel.el.contains(target) ? target : null;
+        };
+        const highlight = (next: HTMLButtonElement | null) => {
+          if (next === hovered) return;
+          hovered?.classList.remove('gesture-hover');
+          hovered = next;
+          hideHeldTooltip();
+          if (!next) return;
+          next.classList.add('gesture-hover');
+          const pos = state.settings.toolbarPos;
+          showHeldTooltip(next, panel.el, pos === 'right' ? 'left' : pos === 'top' ? 'bottom' : pos === 'bottom' ? 'top' : 'right');
+          navigator.vibrate?.(10);
+        };
+        try { b.setPointerCapture(e.pointerId); } catch { /* синтетический pointer */ }
+        const move = (event: PointerEvent) => {
+          if (event.pointerId !== e.pointerId) return;
+          if (Math.hypot(event.clientX - startX, event.clientY - startY) > 5) moved = true;
+          highlight(hitTool(event));
+        };
+        const finish = (event: PointerEvent) => {
+          if (event.pointerId !== e.pointerId) return;
+          window.removeEventListener('pointermove', move);
+          window.removeEventListener('pointerup', finish);
+          window.removeEventListener('pointercancel', finish);
+          const id = hitTool(event)?.dataset.shape as ToolId | undefined;
+          highlight(null);
+          if (event.type === 'pointerup' && id) {
+            suppressClick = true;
+            closePanel(panel);
+            setTool(id);
+          } else if (moved || event.type === 'pointercancel') {
+            suppressClick = true;
+            closePanel(panel);
+          } else if (!existing) {
+            // Первый короткий клик оставляет только что открытую группу открытой.
+            suppressClick = true;
+          }
+        };
+        window.addEventListener('pointermove', move);
+        window.addEventListener('pointerup', finish);
+        window.addEventListener('pointercancel', finish);
+      });
+      b.addEventListener('click', () => {
+        if (suppressClick) { suppressClick = false; return; }
+        toggleCtxPanel(groupId, 'toolbar');
+      });
     } else {
       const id = item.id;
       b.dataset.tool = id;

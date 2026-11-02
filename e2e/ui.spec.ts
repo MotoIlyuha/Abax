@@ -165,6 +165,34 @@ test.describe('панель цвета и толщины', () => {
     await expect(panel).toHaveCount(0);
   });
 
+  test('выбор инструмента из группы удержанием и отпусканием', async ({ board, page }) => {
+    await page.evaluate(() => {
+      (window as unknown as { vibrations: number[] }).vibrations = [];
+      Object.defineProperty(navigator, 'vibrate', { configurable: true, value: (ms: number) => {
+        (window as unknown as { vibrations: number[] }).vibrations.push(ms);
+        return true;
+      } });
+    });
+    const group = page.locator('#btn-shapes');
+    const box = (await group.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    const panel = page.locator('.ctx-panel[data-kind="shapes"]');
+    await expect(panel).toBeVisible();
+    const target = (await panel.locator('[data-shape="ellipse"]').boundingBox())!;
+    await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 5 });
+    await expect(panel.locator('[data-shape="ellipse"]')).toHaveClass(/gesture-hover/);
+    await expect(page.locator('#tooltip')).toBeVisible();
+    await expect(page.locator('#tooltip')).toContainText('Эллипс');
+    expect(await page.evaluate(() => (window as unknown as { vibrations: number[] }).vibrations)).toContain(10);
+    await page.mouse.up();
+    expect((await board.state()).tool).toBe('ellipse');
+    await expect(panel).toHaveCount(0);
+    await expect(page.locator('#tooltip')).toBeHidden();
+    await group.click();
+    await expect(panel).toBeVisible();
+  });
+
   test('откреплённая панель остаётся на доске, возвращается кнопкой-булавкой', async ({ board, page }) => {
     await page.locator('#btn-shapes').click();
     const panel = page.locator('.ctx-panel[data-kind="shapes"]');

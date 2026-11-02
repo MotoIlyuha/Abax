@@ -119,6 +119,17 @@ describe('подсказки', () => {
     expect(shown()).toBe(false);
   });
 
+  it('не показывает подсказку при переходе с зажатой кнопкой мыши', () => {
+    const b = document.getElementById('plain')!;
+    b.dispatchEvent(new MouseEvent('pointerover', { bubbles: true, buttons: 1 }));
+    vi.advanceTimersByTime(1000);
+    expect(shown()).toBe(false);
+    expect(b.hasAttribute('title')).toBe(false);
+    over(b);
+    vi.advanceTimersByTime(500);
+    expect(shown()).toBe(true);
+  });
+
   it('пустой title просто снимается', () => {
     const b = document.getElementById('empty')!;
     over(b);

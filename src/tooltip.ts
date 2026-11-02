@@ -75,7 +75,7 @@ function preferredSide(el: HTMLElement): Side {
 
 const OPPOSITE: Record<Side, Side> = { top: 'bottom', bottom: 'top', left: 'right', right: 'left' };
 
-function place(el: HTMLDivElement, anchor: HTMLElement): void {
+function place(el: HTMLDivElement, anchor: HTMLElement, preferred?: Side): void {
   const r = anchor.getBoundingClientRect();
   const w = el.offsetWidth;
   const h = el.offsetHeight;
@@ -86,7 +86,7 @@ function place(el: HTMLDivElement, anchor: HTMLElement): void {
     : s === 'left' ? r.left - GAP - w >= MARGIN
     : s === 'bottom' ? r.bottom + GAP + h <= vh - MARGIN
     : r.top - GAP - h >= MARGIN;
-  let side = preferredSide(anchor);
+  let side = preferred ?? preferredSide(anchor);
   if (!fits(side) && fits(OPPOSITE[side])) side = OPPOSITE[side];
 
   let left: number;
@@ -135,10 +135,29 @@ function hide(): void {
   }
 }
 
+/** Подсказка для выбора жестом: размещается снаружи панели, не закрывая её кнопки. */
+export function showHeldTooltip(item: HTMLElement, panel: HTMLElement, side: Side): void {
+  hide();
+  const t = findTarget(item);
+  if (!t?.dataset.tip) return;
+  target = t;
+  const el = ensureEl();
+  render(el, t.dataset.tip);
+  el.hidden = false;
+  place(el, panel, side);
+  el.classList.add('show');
+  visible = true;
+}
+
+export function hideHeldTooltip(): void { hide(); }
+
 export function initTooltips(): void {
   document.addEventListener('pointerover', (e) => {
     if (e.pointerType === 'touch') return;
     const t = findTarget(e.target);
+    // При удержании кнопки (например, выборе инструмента из группы) подсказка
+    // не должна перекрывать панель. title уже снят, чтобы не всплыла нативная.
+    if (e.buttons) { hide(); return; }
     if (t === target) return;
     const warm = visible || performance.now() - hiddenAt < WARM_WINDOW;
     hide();
