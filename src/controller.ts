@@ -1,3 +1,4 @@
+import { foundationFor, withAttached } from './attachment';
 import type { Camera, Element, FadeStroke, Handle, ImageEl, Pt, ShapeEl, ToolId } from './types';
 import {
   state, update, onChange, beginStroke, extendStroke, endStroke, pushHistory, replaceElements,
@@ -339,7 +340,7 @@ export function initController(canvas: HTMLCanvasElement): void {
     action = null;
     if (!a) return;
     if (transfer && a.kind === 'move') {
-      clearTransfer(); state.liveEdit = false; state.guides = []; update(); return;
+      clearTransfer(); state.attachmentPreview = null; state.liveEdit = false; state.guides = []; update(); return;
     }
     state.guides = [];
     switch (a.kind) {
@@ -355,6 +356,7 @@ export function initController(canvas: HTMLCanvasElement): void {
       case 'shape': finishShape(); break;
       case 'solid': finishSolid(); break;
       case 'move':
+        state.attachmentPreview = null;
         state.liveEdit = false;
         if (a.moved) pushHistory(a.pre);
         else if (a.deselectOnUp) setSelection([]);
@@ -524,11 +526,11 @@ export function initController(canvas: HTMLCanvasElement): void {
             setSelection(groupIds);
           }
           const orig = new Map<string, Element>();
-          for (const id of state.selection) {
+          for (const id of withAttached(state.selection, state.board.elements)) {
             const el = state.board.elements.find(x => x.id === id);
             if (el) orig.set(id, el);
           }
-          const others = guideTargets(state.selection);
+          const others = guideTargets(new Set(orig.keys()));
           const box = others && orig.size > 0 ? [...orig.values()].map(elementAABB).reduce(aabbUnion) : null;
           // страница на холсте: клик переходит на неё, перетаскивание двигает (и выделяет — для ручек)
           const link = !e.shiftKey && hit.type === 'image' && hit.page ? hit : null;
@@ -536,7 +538,8 @@ export function initController(canvas: HTMLCanvasElement): void {
             pid: e.pointerId, kind: 'move', pre: state.board.elements, start: s, orig, moved: false,
             deselectOnUp: wasSelected && !link, box, others, link, duplicate: e.altKey, source: [...orig.values()],
           };
-          state.liveEdit = true;
+          // При невыделенных прикреплённых элементах нужен полный рендер всех слоёв.
+          state.liveEdit = orig.size === state.selection.size;
         } else {
           if (!e.shiftKey) setSelection([]);
           action = { pid: e.pointerId, kind: 'marquee' };
@@ -806,9 +809,15 @@ export function initController(canvas: HTMLCanvasElement): void {
           const box = shifted(a.box);
           showGuides(box, boxAnchors(box, 'x'), boxAnchors(box, 'y'), a.others);
         }
-        replaceElements(
-          state.board.elements.map(el => (a.orig.has(el.id) ? translateElement(a.orig.get(el.id)!, dx, dy) : el)),
-        );
+        const moved = state.board.elements.map(el => (a.orig.has(el.id) ? translateElement(a.orig.get(el.id)!, dx, dy) : el));
+        const previews: { item: string; base: string }[] = [];
+        for (const el of moved) {
+          if (!state.selection.has(el.id)) continue;
+          const base = foundationFor(el, moved, new Set(a.orig.keys()));
+          if (base) previews.push({ item: el.id, base: base.id });
+        }
+        state.attachmentPreview = previews;
+        replaceElements(moved);
         break;
       }
       case 'marquee':
@@ -939,7 +948,8 @@ export function initController(canvas: HTMLCanvasElement): void {
   function nudgeBy(dx: number, dy: number): void {
     if (!nudge || (dx === 0 && dy === 0)) return;
     nudge.moved = true;
-    replaceElements(state.board.elements.map(el => (state.selection.has(el.id) ? translateElement(el, dx, dy) : el)));
+    const moving = withAttached(state.selection, state.board.elements);
+    replaceElements(state.board.elements.map(el => (moving.has(el.id) ? translateElement(el, dx, dy) : el)));
   }
 
   function nudgeTick(t: number): void {

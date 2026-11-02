@@ -1069,6 +1069,23 @@ function draw(): void {
   // оверлеи в экранных координатах
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   if (state.flashes.length > 0) drawFlashes(ctx, cam, cssW, cssH, dpr, mainFlash);
+  if (state.attachmentPreview?.length) {
+    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = '#3273f5';
+    ctx.fillStyle = 'rgba(50,115,245,0.16)';
+    ctx.setLineDash([5, 4]);
+    for (const preview of state.attachmentPreview) {
+      for (const [id, fill] of [[preview.item, true], [preview.base, false]] as const) {
+        const el = state.board.elements.find(e => e.id === id);
+        if (!el) continue;
+        const a = cacheOf(el).aabb;
+        const x = (a.x0 - cam.x) * cam.zoom - 4, y = (a.y0 - cam.y) * cam.zoom - 4;
+        const w = (a.x1 - a.x0) * cam.zoom + 8, h = (a.y1 - a.y0) * cam.zoom + 8;
+        if (fill) ctx.fillRect(x, y, w, h); else ctx.strokeRect(x, y, w, h);
+      }
+    }
+    ctx.setLineDash([]);
+  }
   if (state.selection.size > 0) {
     ctx.strokeStyle = '#3273f5';
     ctx.lineWidth = 1.5;

@@ -85,6 +85,7 @@ export interface AppState {
   noteColor: string;
   settings: BoardSettings;
   selection: Set<string>;
+  attachmentPreview: { item: string; base: string }[] | null;
   liveStroke: LiveStroke | null;
   liveShape: LiveShape | null;
   liveSolid: LiveSolid | null;
@@ -150,6 +151,7 @@ export const state: AppState = {
     keepImageAspect: true, alignGuides: true, closePagesOnPick: false, thumbViewport: true, pageLinks: false, recursionEnabled: false,
   },
   selection: new Set(),
+  attachmentPreview: null,
   liveStroke: null,
   liveShape: null,
   liveSolid: null,
