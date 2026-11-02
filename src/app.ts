@@ -1911,7 +1911,7 @@ function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
   wheelRow.className = 'ctx-toolbar-pos';
   const wheelModes: { mode: WheelMode; name: string; hint: string }[] = [
     { mode: 'scroll', name: 'Прокрутка', hint: 'Колёсико прокручивает, Shift — по горизонтали, Ctrl — масштаб' },
-    { mode: 'zoom', name: 'Масштаб', hint: 'Колёсико масштабирует, Shift — прокрутка по горизонтали, Ctrl+Shift — по вертикали. Тачпад всегда прокручивает' },
+    { mode: 'zoom', name: 'Масштаб', hint: 'Колёсико масштабирует, Shift — прокрутка по горизонтали, Ctrl+Shift — по вертикали. Настройка также действует на тачпад' },
   ];
   for (const { mode, name, hint } of wheelModes) {
     const b = document.createElement('button');
@@ -2247,23 +2247,44 @@ function wireImageInput(): void {
 
 // ----- Камера -----
 
-export function fitContent(preserveZoom = false): void {
+export function fitContent(): void {
   const r = canvas.getBoundingClientRect();
   const els = state.board.elements;
   if (els.length === 0) {
-    const zoom = preserveZoom ? state.camera.zoom : 1;
-    state.camera = { x: -r.width / (2 * zoom), y: -r.height / (2 * zoom), zoom };
+    state.camera = { x: -r.width / 2, y: -r.height / 2, zoom: 1 };
     update();
     return;
   }
   const bb = contentBBox(els);
-  const zoom = preserveZoom ? state.camera.zoom : Math.max(0.05, Math.min(1.5, Math.min(r.width / (bb.w + 160), r.height / (bb.h + 160))));
+  const zoom = Math.max(0.05, Math.min(1.5, Math.min(r.width / (bb.w + 160), r.height / (bb.h + 160))));
   state.camera = {
     zoom,
     x: bb.x0 + bb.w / 2 - r.width / (2 * zoom),
     y: bb.y0 + bb.h / 2 - r.height / (2 * zoom),
   };
   update();
+}
+
+// Положение просмотра хранится локально, отдельно от содержимого общего проекта.
+function cameraKey(projectId: string, pageId: string): string {
+  return `doska.camera.${encodeURIComponent(projectId)}.${encodeURIComponent(pageId)}`;
+}
+
+function saveCamera(): void {
+  if (linkTransit) return;
+  try { localStorage.setItem(cameraKey(state.project.id, state.pageId), JSON.stringify(state.camera)); }
+  catch { /* просмотр продолжает работать, даже если хранилище недоступно */ }
+}
+
+function restoreCamera(): boolean {
+  try {
+    const camera = JSON.parse(localStorage.getItem(cameraKey(state.project.id, state.pageId)) || 'null') as Camera | null;
+    if (!camera || !Number.isFinite(camera.x) || !Number.isFinite(camera.y) ||
+        !Number.isFinite(camera.zoom) || camera.zoom <= 0) return false;
+    state.camera = { x: camera.x, y: camera.y, zoom: camera.zoom };
+    update();
+    return true;
+  } catch { return false; }
 }
 
 // ----- Сохранение -----
@@ -2288,8 +2309,9 @@ function scheduleSave(): void {
 // уход в фон (свернули окно, на планшете — кнопка «Домой» или «Назад»): сохраняем сразу,
 // не дожидаясь таймера — система может выгрузить приложение раньше
 document.addEventListener('visibilitychange', () => {
-  if (document.hidden) void saveNow();
+  if (document.hidden) { saveCamera(); void saveNow(); }
 });
+window.addEventListener('beforeunload', saveCamera);
 
 // ----- Страницы и проекты -----
 
@@ -2306,11 +2328,15 @@ function pageIndex(pageId: string): number {
 /** Смена активной страницы (переключение, новая, удаление) — с анимацией перехода из настроек. */
 function changePage(change: () => void): void {
   const fromId = state.pageId;
+  saveCamera();
   const from = pageIndex(fromId);
   const play = state.view === 'board' ? capturePageTransition(state.settings.pageTransition, transitionCanvases()) : null;
   change();
   refresh();
-  fitContent(true);
+  if (state.pageId !== fromId) {
+    if (!restoreCamera()) fitContent();
+    localStorage.setItem('doska.last', JSON.stringify({ pid: state.project.id, pageId: state.pageId }));
+  }
   // кадр новой страницы — сразу и начисто, не дожидаясь покоя камеры
   renderNow();
   if (play && state.pageId !== fromId) play(pageIndex(state.pageId) >= from ? 1 : -1);
@@ -2331,6 +2357,7 @@ export function openPageLink(el: ImageEl): void {
   if (linkTransit || !el.page || state.view !== 'board') return;
   const page = state.project.pages.find(p => p.id === el.page);
   if (!page || page.id === state.pageId) return;
+  saveCamera();
   linkTransit = true;
   const unlock = lockInput();
   setSelection([]);
@@ -2352,7 +2379,8 @@ export function openPageLink(el: ImageEl): void {
         // кадр «до» растворяется поверх страницы: отличаются только поля вокруг превью и его рамка
         const play = capturePageTransition('fade', transitionCanvases());
         switchPage(page.id);
-        state.camera = target;
+        if (!restoreCamera()) { state.camera = target; update(); }
+        localStorage.setItem('doska.last', JSON.stringify({ pid: state.project.id, pageId: state.pageId }));
         refresh();
         renderNow();
         play?.(1);
@@ -2360,6 +2388,7 @@ export function openPageLink(el: ImageEl): void {
       } finally {
         unlock();
         linkTransit = false;
+        saveCamera();
       }
     })();
   };
@@ -2430,6 +2459,7 @@ async function deletePageHandler(pageId: string): Promise<void> {
   if (!page || !confirm(`Удалить страницу «${page.name}»?`)) return;
   await saveNow();
   changePage(() => deletePage(pageId));
+  try { localStorage.removeItem(cameraKey(state.project.id, pageId)); } catch { /* нет доступа к хранилищу */ }
 }
 
 async function renamePageHandler(pageId: string, name: string): Promise<void> {
@@ -2838,11 +2868,12 @@ async function editClosedProject(id: string, edit: (p: Project) => Project, touc
 
 async function openProjectHandler(project: Project, pageId?: string): Promise<void> {
   await saveNow();
+  saveCamera();
   if (project.id !== state.project.id) rememberOpenProject();
   openProject(project, pageId);
   localStorage.setItem('doska.last', JSON.stringify({ pid: project.id, pageId: state.pageId }));
   refresh();
-  fitContent();
+  if (!restoreCamera()) fitContent();
 }
 
 /** Открывает проект с домашней (на заданной странице или первой). */
@@ -2853,6 +2884,7 @@ async function openFromHome(projectId: string, pageId?: string): Promise<void> {
 
 async function newProjectHandler(): Promise<void> {
   await saveNow();
+  saveCamera();
   rememberOpenProject();
   const p = blankProject(`Проект ${state.projects.length + 1}`);
   await storage.save(p);
@@ -3914,6 +3946,7 @@ function syncSelectionToCollab(): void {
 
 export function initApp(c: HTMLCanvasElement): void {
   canvas = c;
+  restoreCamera();
   restoreStyle();
   restoreSettings();
   applyUiAnimations();
@@ -3945,7 +3978,26 @@ export function initApp(c: HTMLCanvasElement): void {
     refresh();
     positionCtxPanels(true);
   });
+  let cameraIdentity = cameraKey(state.project.id, state.pageId);
+  let observedCamera = state.camera;
+  let cameraTimer = 0;
   onChange(() => {
+    const identity = cameraKey(state.project.id, state.pageId);
+    if (identity !== cameraIdentity) {
+      clearTimeout(cameraTimer);
+      cameraIdentity = identity;
+      observedCamera = state.camera;
+    } else if (linkTransit) {
+      clearTimeout(cameraTimer);
+      observedCamera = state.camera;
+    } else if (observedCamera !== state.camera) {
+      observedCamera = state.camera;
+      clearTimeout(cameraTimer);
+      const camera = JSON.stringify(state.camera);
+      cameraTimer = window.setTimeout(() => {
+        try { localStorage.setItem(identity, camera); } catch { /* хранилище недоступно */ }
+      }, 200);
+    }
     refresh();
     scheduleSave();
     syncSelectionToCollab();

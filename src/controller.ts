@@ -794,29 +794,12 @@ export function initController(canvas: HTMLCanvasElement): void {
     }
   }
 
-  /** До какого момента (e.timeStamp) поток wheel-событий считается жестом тачпада. */
-  let touchpadUntil = 0;
-
-  /**
-   * Тачпад обычно передаёт дробные дельты или движение по двум осям.
-   * Значение wheelDeltaY зависит от устройства и не обязано быть кратно 120.
-   * Решение «залипает» на весь жест, включая инерцию: отдельные события
-   * тачпада случайно бывают похожи на шаг колёсика.
-   */
-  function isTouchpad(e: WheelEvent): boolean {
-    const looksTouchpad = e.deltaMode === 0 && (
-      e.deltaX !== 0 || !Number.isInteger(e.deltaY)
-    );
-    if (looksTouchpad) touchpadUntil = e.timeStamp + 400;
-    return looksTouchpad || e.timeStamp < touchpadUntil;
-  }
-
   function onWheel(e: WheelEvent): void {
     e.preventDefault();
     const lp = localPos(e);
     const k = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 100 : 1;
-    // настройка колёсика касается только мыши: тачпад всегда прокручивает
-    const zoomMode = state.settings.wheelMode === 'zoom' && !isTouchpad(e);
+    // WheelEvent не позволяет надёжно отличить мышь от тачпада.
+    const zoomMode = state.settings.wheelMode === 'zoom';
     // pinch жест точпада приходит как ctrl+wheel — это всегда масштаб;
     // в режиме «как в Figma» Ctrl+Shift прокручивает по вертикали
     const panVertical = zoomMode && e.ctrlKey && e.shiftKey;

@@ -227,23 +227,16 @@ test.describe('камера', () => {
     expect((await board.state()).camera.zoom).toBeGreaterThan(1);
   });
 
-  test('нестандартный шаг колёсика масштабирует, а жест тачпада прокручивает', async ({ board, page }) => {
+  test('режим «Масштаб» обрабатывает дробные и диагональные события колёсика', async ({ board, page }) => {
     await page.locator('#btn-settings').click();
     await page.locator('#settings-popover button', { hasText: 'Масштаб' }).click();
-    await board.canvas.evaluate(canvas => {
-      const event = new WheelEvent('wheel', { deltaY: -100, bubbles: true, cancelable: true });
-      Object.defineProperty(event, 'wheelDeltaY', { value: 100 });
-      canvas.dispatchEvent(event);
-    });
-    const before = (await board.state()).camera;
-    const zoom = before.zoom;
-    expect(zoom).toBeGreaterThan(1);
-    await board.canvas.evaluate(canvas => canvas.dispatchEvent(new WheelEvent('wheel', {
-      deltaY: 2.5, bubbles: true, cancelable: true,
-    })));
-    const camera = (await board.state()).camera;
-    expect(camera.zoom).toBe(zoom);
-    expect(camera.y).toBeGreaterThan(before.y);
+    for (const [dx, dy] of [[0, -2.5], [1.5, -3.5], [0, -100]]) {
+      const before = (await board.state()).camera.zoom;
+      await board.canvas.evaluate((canvas, [deltaX, deltaY]) => canvas.dispatchEvent(new WheelEvent('wheel', {
+        deltaX, deltaY, bubbles: true, cancelable: true,
+      })), [dx, dy]);
+      expect((await board.state()).camera.zoom).toBeGreaterThan(before);
+    }
   });
 
   test('панорама инструментом, пробелом и средней кнопкой', async ({ board, page }) => {

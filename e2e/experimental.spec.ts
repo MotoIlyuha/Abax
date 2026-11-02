@@ -217,8 +217,16 @@ test.describe('страницы на холсте', () => {
       return w.__doska.state.selection.size;
     })).toBe(1);
 
+    // У каждой страницы свой вид, в том числе при переходе по превью.
+    await page.locator('#pages-list .page-item').nth(1).click();
+    await expect.poll(async () => (await board.state()).pageId).toBe(second);
+    await page.keyboard.press('Equal');
+    const secondCamera = (await board.state()).camera;
+    await page.locator('#pages-list .page-item').first().click();
+    await expect.poll(async () => (await board.state()).pageId).toBe(first);
+    const firstCamera = (await board.state()).camera;
+
     // клик — переход: пока идёт, щит над окном, клавиши не работают
-    const zoom0 = (await board.state()).camera.zoom;
     const c = await board.screen({ x: moved.x + moved.w / 2, y: moved.y + moved.h / 2 });
     await page.mouse.click(c.x, c.y);
     await expect(page.locator('#input-lock')).toHaveCount(1);
@@ -229,15 +237,12 @@ test.describe('страницы на холсте', () => {
     expect(s.pageId).toBe(second);
     expect(s.tool).toBe('select');
     expect(s.selection).toEqual([]);
-    expect(s.camera.zoom).not.toBe(zoom0);
+    expect(s.camera).toEqual(secondCamera);
     await expect(page.locator('#page-name')).toHaveValue('Страница 2');
     // на первой странице превью осталось
     expect(s.project.pages.find(p => p.id === first)!.count).toBe(1);
-    // открытая страница лежит там, где была в превью: прямоугольник на экране — на месте внутренней картинки
-    const r = (await board.elements())[0];
-    const tl = await board.screen({ x: r.x, y: r.y });
-    const br = await board.screen({ x: r.x + r.w, y: r.y + r.h });
-    expect((tl.x + br.x) / 2).toBeCloseTo(box.x + box.width / 2, -1);
-    expect((tl.y + br.y) / 2).toBeCloseTo(box.y + box.height / 2, -1);
+    await page.locator('#pages-list .page-item').first().click();
+    await expect.poll(async () => (await board.state()).pageId).toBe(first);
+    expect((await board.state()).camera).toEqual(firstCamera);
   });
 });
