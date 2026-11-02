@@ -2247,16 +2247,17 @@ function wireImageInput(): void {
 
 // ----- Камера -----
 
-export function fitContent(): void {
+export function fitContent(preserveZoom = false): void {
   const r = canvas.getBoundingClientRect();
   const els = state.board.elements;
   if (els.length === 0) {
-    state.camera = { x: -r.width / 2, y: -r.height / 2, zoom: 1 };
+    const zoom = preserveZoom ? state.camera.zoom : 1;
+    state.camera = { x: -r.width / (2 * zoom), y: -r.height / (2 * zoom), zoom };
     update();
     return;
   }
   const bb = contentBBox(els);
-  const zoom = Math.max(0.05, Math.min(1.5, Math.min(r.width / (bb.w + 160), r.height / (bb.h + 160))));
+  const zoom = preserveZoom ? state.camera.zoom : Math.max(0.05, Math.min(1.5, Math.min(r.width / (bb.w + 160), r.height / (bb.h + 160))));
   state.camera = {
     zoom,
     x: bb.x0 + bb.w / 2 - r.width / (2 * zoom),
@@ -2309,7 +2310,7 @@ function changePage(change: () => void): void {
   const play = state.view === 'board' ? capturePageTransition(state.settings.pageTransition, transitionCanvases()) : null;
   change();
   refresh();
-  fitContent();
+  fitContent(true);
   // кадр новой страницы — сразу и начисто, не дожидаясь покоя камеры
   renderNow();
   if (play && state.pageId !== fromId) play(pageIndex(state.pageId) >= from ? 1 : -1);
@@ -3575,7 +3576,7 @@ function wireTopbar(): void {
   });
   document.getElementById('btn-undo')!.addEventListener('click', () => undo());
   document.getElementById('btn-redo')!.addEventListener('click', () => redo());
-  document.getElementById('btn-fit')!.addEventListener('click', fitContent);
+  document.getElementById('btn-fit')!.addEventListener('click', () => fitContent());
   document.getElementById('btn-export')!.addEventListener('click', () => { void exportPng(); });
   document.getElementById('btn-present')!.addEventListener('click', togglePresent);
   document.getElementById('btn-import')!.addEventListener('click', () => { void importPdf(); });

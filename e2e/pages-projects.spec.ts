@@ -125,6 +125,21 @@ test.describe('страницы проекта', () => {
     await expect(page.locator('#pages-list .page-num')).toHaveText(['1', '2']);
   });
 
+  test('масштаб сохраняется при создании и переключении страниц', async ({ board, page }) => {
+    await board.rect(400, 300, 500, 400);
+    await page.keyboard.press('Equal');
+    const zoom = (await board.state()).camera.zoom;
+    expect(zoom).toBeGreaterThan(1);
+    await board.addPage();
+    expect((await board.state()).camera.zoom).toBe(zoom);
+    await page.locator('#pages-list .page-item').first().click();
+    await expect(page.locator('#page-name')).toHaveValue('Страница 1');
+    expect((await board.state()).camera.zoom).toBe(zoom);
+    await page.locator('#pages-list .page-item').nth(1).click();
+    await expect(page.locator('#page-name')).toHaveValue('Страница 2');
+    expect((await board.state()).camera.zoom).toBe(zoom);
+  });
+
   test('превью страниц показывают их содержимое', async ({ board, page }) => {
     await board.rect(400, 300, 500, 400);
     await board.addPage();
