@@ -798,16 +798,14 @@ export function initController(canvas: HTMLCanvasElement): void {
   let touchpadUntil = 0;
 
   /**
-   * Тачпад или колёсико мыши. Колёсико шлёт шаги, кратные 120 в wheelDeltaY
-   * (в Firefox — построчный deltaMode), тачпад — мелкие дробные дельты и deltaX.
+   * Тачпад обычно передаёт дробные дельты или движение по двум осям.
+   * Значение wheelDeltaY зависит от устройства и не обязано быть кратно 120.
    * Решение «залипает» на весь жест, включая инерцию: отдельные события
    * тачпада случайно бывают похожи на шаг колёсика.
    */
   function isTouchpad(e: WheelEvent): boolean {
-    const wheelDeltaY = (e as WheelEvent & { wheelDeltaY?: number }).wheelDeltaY;
     const looksTouchpad = e.deltaMode === 0 && (
-      e.deltaX !== 0 ||
-      (wheelDeltaY !== undefined ? wheelDeltaY % 120 !== 0 : !Number.isInteger(e.deltaY))
+      e.deltaX !== 0 || !Number.isInteger(e.deltaY)
     );
     if (looksTouchpad) touchpadUntil = e.timeStamp + 400;
     return looksTouchpad || e.timeStamp < touchpadUntil;

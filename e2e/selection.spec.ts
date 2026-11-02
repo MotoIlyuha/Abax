@@ -227,6 +227,25 @@ test.describe('камера', () => {
     expect((await board.state()).camera.zoom).toBeGreaterThan(1);
   });
 
+  test('нестандартный шаг колёсика масштабирует, а жест тачпада прокручивает', async ({ board, page }) => {
+    await page.locator('#btn-settings').click();
+    await page.locator('#settings-popover button', { hasText: 'Масштаб' }).click();
+    await board.canvas.evaluate(canvas => {
+      const event = new WheelEvent('wheel', { deltaY: -100, bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'wheelDeltaY', { value: 100 });
+      canvas.dispatchEvent(event);
+    });
+    const before = (await board.state()).camera;
+    const zoom = before.zoom;
+    expect(zoom).toBeGreaterThan(1);
+    await board.canvas.evaluate(canvas => canvas.dispatchEvent(new WheelEvent('wheel', {
+      deltaY: 2.5, bubbles: true, cancelable: true,
+    })));
+    const camera = (await board.state()).camera;
+    expect(camera.zoom).toBe(zoom);
+    expect(camera.y).toBeGreaterThan(before.y);
+  });
+
   test('панорама инструментом, пробелом и средней кнопкой', async ({ board, page }) => {
     await board.tool('h');
     await board.drag([{ x: 500, y: 400 }, { x: 400, y: 350 }]);
