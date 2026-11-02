@@ -1,5 +1,9 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+if (process.platform !== 'darwin' && typeof window !== 'undefined') {
+  window.addEventListener('DOMContentLoaded', () => document.documentElement.classList.add('window-controls-overlay'));
+}
+
 contextBridge.exposeInMainWorld('doskaAPI', {
   list: () => ipcRenderer.invoke('boards:list'),
   load: (id) => ipcRenderer.invoke('boards:load', id),

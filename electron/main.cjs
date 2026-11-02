@@ -26,6 +26,11 @@ async function createWindow() {
     minWidth: 960,
     minHeight: 600,
     backgroundColor: '#ffffff',
+    autoHideMenuBar: true,
+    ...(process.platform !== 'darwin' ? {
+      titleBarStyle: 'hidden',
+      titleBarOverlay: { color: '#ffffff', symbolColor: '#20242b', height: 46 },
+    } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
