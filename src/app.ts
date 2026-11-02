@@ -1,3 +1,4 @@
+import { startCrop } from './crop';
 import type {
   Camera, Element, GridMode, ImageEl, NoteEl, Page, PageTransition, Project, ProjectMeta, ShapeEl, TextAlign, TextEl, TextVAlign,
   ToolId, ToolbarPos, WheelMode,
@@ -1495,6 +1496,16 @@ function updateQuickMenu(): void {
   sBtn.addEventListener('mousedown', e => e.preventDefault());
   sBtn.addEventListener('click', () => toggleStylePanel('quick'));
   qm.appendChild(sBtn);
+  if (selEls.length === 1 && selEls[0].type === 'image' && !selEls[0].page && canEditBoard()) {
+    const image = selEls[0];
+    const crop = document.createElement('button');
+    crop.className = 'qm-btn qm-crop';
+    crop.title = 'Кадрировать';
+    crop.setAttribute('aria-label', 'Кадрировать');
+    crop.innerHTML = svg('<path d="M6 3v13a2 2 0 0 0 2 2h13M3 6h13a2 2 0 0 1 2 2v13"/>');
+    crop.addEventListener('click', () => startCrop(image));
+    qm.appendChild(crop);
+  }
   // жирность, курсив и кегль — у текста и надписей фигур, выравнивание — у надписей
   const tp = textProps();
   if (tp) {

@@ -99,6 +99,8 @@ export interface ImageEl {
   x: number; y: number; w: number; h: number;
   /** data:image/jpeg;base64,... или data:image/png;base64,... */
   src: string;
+  /** Видимая область исходного изображения в долях его размера. */
+  crop?: { x: number; y: number; w: number; h: number };
   /** Поворот вокруг центра в радианах. */
   rot?: number;
   /** Рамка: цвет, толщина и непрозрачность; без цвета рамки нет. */

@@ -419,7 +419,8 @@ function drawElementBody(ctx: CanvasRenderingContext2D, el: Element, c: ElCacheE
         ctx.clip();
       }
       if (img.complete && img.naturalWidth > 0) {
-        ctx.drawImage(img, el.x, el.y, el.w, el.h);
+        const c = el.crop ?? { x: 0, y: 0, w: 1, h: 1 };
+        ctx.drawImage(img, c.x * img.naturalWidth, c.y * img.naturalHeight, c.w * img.naturalWidth, c.h * img.naturalHeight, el.x, el.y, el.w, el.h);
       } else {
         ctx.fillStyle = '#f0f2f5';
         ctx.fillRect(el.x, el.y, el.w, el.h);

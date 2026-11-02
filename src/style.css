@@ -2074,3 +2074,6 @@ body.no-ui-anim :is(.ctx-panel, #settings-popover, #grid-menu, #share-dialog, #s
 @media (prefers-reduced-motion: reduce) {
   .ctx-panel, #settings-popover, #grid-menu, #share-dialog, #settings-dialog, .sd-window { animation: none; }
 }
+
+.crop-preset { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border: 0; border-radius: 5px; background: transparent; color: var(--fg); font: inherit; cursor: pointer; }
+.crop-preset:hover, .crop-preset:focus-visible { background: var(--accent-soft); color: var(--accent); }
