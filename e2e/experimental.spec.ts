@@ -186,12 +186,21 @@ test.describe('страницы на холсте', () => {
     expect(s.tool).toBe('select');
     expect(s.project.pages.map(p => p.name)).toEqual(['Страница 1', 'Страница 2']); // порядок страниц прежний
 
-    // мимо холста (на панель инструментов) — ничего; открытую страницу — нельзя
+    // мимо холста — ничего; открытую страницу можно вынести как рекурсию
     const tb = (await page.locator('#toolbar').boundingBox())!;
     await dragCard(page, 1, tb.x + tb.width / 2, tb.y + 40);
     await dragCard(page, 0, box.x + 300, box.y + 600);
-    await expect(page.locator('#toast')).toHaveText('Это открытая страница — на холст можно положить другую');
-    expect(await board.count()).toBe(1);
+    expect(await board.count()).toBe(2);
+    const recursive = (await board.elements())[1];
+    expect(recursive.page).toBe((await board.state()).pageId);
+    await page.keyboard.press('Escape');
+    const point = await board.screen({ x: recursive.x + recursive.w / 2, y: recursive.y + recursive.h / 2 });
+    const before = await board.canvas.screenshot();
+    await page.mouse.click(point.x, point.y);
+    await page.waitForTimeout(500);
+    const after = await board.canvas.screenshot();
+    expect(after.equals(before)).toBe(false);
+    expect((await board.state()).pageId).toBe(recursive.page);
   });
 
   test('клик по превью — приближение и переход на страницу, ввод на это время заблокирован; перенос — не переход', async ({ board, page }) => {
@@ -245,4 +254,27 @@ test.describe('страницы на холсте', () => {
     await expect.poll(async () => (await board.state()).pageId).toBe(first);
     expect((await board.state()).camera).toEqual(firstCamera);
   });
+});
+
+test('настройка рекурсии открывается после самоссылки и сбрасывается при скрытии раздела', async ({board,page}) => {
+  await twoPages(board);
+  await enablePageLinks(page);
+  await openSection(page, 'experimental');
+  await expect(page.getByText('Включить рекурсию!', {exact:true})).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  const box=(await board.canvas.boundingBox())!;
+  await dragCard(page,0,box.x+600,box.y+300);
+  await expect.poll(async () => (await board.elements()).length).toBe(1);
+  await openSection(page, 'experimental');
+  const setting=page.locator('#settings-dialog label', {hasText:'Включить рекурсию!'}).locator('input');
+  await expect(setting).toBeVisible();
+  await setting.check();
+  expect((await board.state()).settings.recursionEnabled).toBe(true);
+  await page.reload(); await board.ready();
+  await openSection(page,'experimental');
+  await expect(page.locator('#settings-dialog label', {hasText:'Включить рекурсию!'}).locator('input')).toBeChecked();
+  await page.locator('.sd-exp-hide').click();
+  expect((await board.state()).settings.recursionEnabled).toBe(false);
+  await openSection(page,'about'); await holdLogo(page); await openSection(page,'experimental');
+  await expect(page.getByText('Включить рекурсию!', {exact:true})).toHaveCount(0);
 });

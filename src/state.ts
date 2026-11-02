@@ -94,6 +94,8 @@ export interface AppState {
   liveText: TextEl | NoteEl | ShapeEl | null;
   /** id элемента, скрытого на время редактирования текста. */
   hideElId: string | null;
+  /** Объекты, временно скрытые на исходной странице при переносе. */
+  dragHidden: { pageId: string; ids: Set<string> } | null;
   /** id фигуры, надпись которой правится на месте: контур рисуется, надпись — нет. */
   hideTextId: string | null;
   /** Идёт активное перетаскивание/правка выделенного — рисуем его поверх. */
@@ -145,7 +147,7 @@ export const state: AppState = {
   settings: {
     toolbarPos: 'left', coordLabels: true, snapToGrid: false, wheelMode: 'scroll', pageTransition: 'slide',
     pageKeyMod: 'alt', newPageKey: DEFAULT_NEW_PAGE_KEY, uiAnimations: true, hideUndoRedo: false,
-    keepImageAspect: true, alignGuides: true, closePagesOnPick: false, thumbViewport: true, pageLinks: false,
+    keepImageAspect: true, alignGuides: true, closePagesOnPick: false, thumbViewport: true, pageLinks: false, recursionEnabled: false,
   },
   selection: new Set(),
   liveStroke: null,
@@ -155,6 +157,7 @@ export const state: AppState = {
   liveNote: null,
   liveText: null,
   hideElId: null,
+  dragHidden: null,
   hideTextId: null,
   liveEdit: false,
   marquee: null,

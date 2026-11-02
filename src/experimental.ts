@@ -7,6 +7,16 @@ import {
 } from './app-icon';
 
 const KEY = 'doska.experiments';
+const RECURSION_KEY = 'doska.recursionDiscovered';
+let recursionSeen = false;
+export function recursionDiscovered(): boolean {
+  try { return recursionSeen || localStorage.getItem(RECURSION_KEY) === '1'; } catch { return recursionSeen; }
+}
+export function setRecursionDiscovered(value: boolean): void {
+  recursionSeen = value;
+  try { if (value) localStorage.setItem(RECURSION_KEY, '1'); else localStorage.removeItem(RECURSION_KEY); } catch { /* доступно до перезапуска */ }
+}
+
 
 export function experimentsShown(): boolean {
   try { return localStorage.getItem(KEY) === '1'; } catch { return false; }
@@ -26,7 +36,7 @@ export function experimentalHeadIcon(): string {
 
 export interface ExperimentalDeps {
   /** Флажок настройки доски: меняет и сразу сохраняет. */
-  check(key: 'thumbViewport' | 'pageLinks', text: string, hint: string): HTMLElement;
+  check(key: 'thumbViewport' | 'pageLinks' | 'recursionEnabled', text: string, hint: string): HTMLElement;
   /** Снова спрятать раздел. */
   hide(): void;
 }
@@ -125,6 +135,9 @@ export function renderExperimental(host: HTMLElement, deps: ExperimentalDeps): v
   box.appendChild(deps.check('pageLinks', 'Страницы на холсте',
     'Перетащите страницу из списка страниц на холст — появится её превью. Его можно двигать, менять размер и рамку, '
     + 'а клик по нему плавно приближает и открывает эту страницу'));
+
+  if (recursionDiscovered()) box.appendChild(deps.check('recursionEnabled', 'Включить рекурсию!',
+    'Показывать вложенные копии страницы вместо пасхалки'));
 
   const hide = el('button', 'sd-btn sd-exp-hide', 'Скрыть раздел');
   hide.title = 'Раздел снова появится, если задержать логотип в «О проекте»';

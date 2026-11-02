@@ -3,18 +3,18 @@ import {
   state, update, onChange, beginStroke, extendStroke, endStroke, pushHistory, replaceElements,
   addElement, setSelection, deleteSelected, undo, redo, setTool, uid, commitPoly,
   expandSelectionWithGroups, groupSelected, ungroupSelected, selectAll, selectInserted, opacityField,
-  zoomAtPoint, ZOOM_MAX, ZOOM_MIN,
+  zoomAtPoint, ZOOM_MAX, ZOOM_MIN, insertCopies,
 } from './state';
 import {
   type AABB, hitTest, erasePart, aabbIntersects, aabbUnion, alignGuides, alignShift, boxAnchors, elementAABB, elementHandles,
   applyHandle, insertPolyNode, removePolyNode, gridStepFor, shapeHoldsText, snapValue, translateElement,
 } from './geom';
 import { collabActive, noteCursor, readOnly } from './collab';
-import { partEraseRadius, presenting, requestRender } from './renderer';
+import { partEraseRadius, presenting, requestRender, renderScene } from './renderer';
 import { fitSolid, SOLID_CLICK_SIZE, solidKeepsAspect } from './solid';
 import {
   addPageFromKey, beginTextEdit, canEditBoard, closeEditor, duplicateSelection, exportPng, fitContent, openAllSettings, openPageLink,
-  saveNow, selectedTextShape, switchToPage, toggleTextFlag, togglePages,
+  saveNow, selectedTextShape, switchToPage, switchPageForDrag, toggleTextFlag, togglePages,
 } from './app';
 import { comboFromEvent, pageNumberFromEvent } from './hotkeys';
 import { ERASER_PATHS, ERASER_TIP, toolByKey } from './toolbar';
@@ -55,7 +55,7 @@ type Action = { pid: number } & (
   | { kind: 'erase'; pre: Element[]; removed: Element[]; last: { x: number; y: number } | null }
   | { kind: 'erasePart'; pre: Element[]; changed: boolean; last: { x: number; y: number } | null }
   | {
-    kind: 'move'; pre: Element[]; start: Pt; orig: Map<string, Element>; moved: boolean; deselectOnUp: boolean;
+    kind: 'move'; pre: Element[]; start: Pt; orig: Map<string, Element>; moved: boolean; deselectOnUp: boolean; duplicate: boolean; source: Element[];
     /** Общая рамка переносимого до начала переноса и рамки соседей для направляющих (null — выключены). */
     box: AABB | null; others: AABB[] | null;
     /** Нажали на страницу на холсте: отпустили не сдвинув — переход на неё. */
@@ -81,6 +81,66 @@ export function initController(canvas: HTMLCanvasElement): void {
   let touchBlocked = false; // после жеста оставшийся палец не должен рисовать
   let action: Action | null = null;
   let spacePan = false;
+  let transfer: { sourceId: string; sourcePage: typeof state.board; source: Element[]; original: Element[]; copy: boolean; ghost: HTMLCanvasElement; hover: string | null; timer: ReturnType<typeof setTimeout> | null; transition: Promise<void> | null } | null = null;
+  function clearTransfer(): void {
+    if (!transfer) return;
+    if (transfer.timer) clearTimeout(transfer.timer);
+    transfer.ghost.remove(); transfer = null; state.dragHidden = null;
+  }
+  function pageUnderPointer(e: PointerEvent): string | null {
+    if (!document.querySelector('#pages-dock.open')) return null;
+    const target = document.elementFromPoint(e.clientX, e.clientY)?.closest<HTMLElement>('.page-item');
+    return target?.dataset.pageId ?? null;
+  }
+  function updateTransfer(e: PointerEvent, a: Extract<Action, {kind:'move'}>): boolean {
+    const tray = document.querySelector<HTMLElement>('#pages-dock.open #pages-tray');
+    const rect = tray?.getBoundingClientRect();
+    const inTray = !!rect && e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
+    const scene = toScene(localPos(e).x, localPos(e).y);
+    const link = state.settings.pageLinks && !inTray && !transfer?.transition
+      ? [...state.board.elements].reverse().find((item): item is ImageEl => item.type === 'image' && !!item.page && item.page !== state.pageId && !a.source.some(source => source.id === item.id) && hitTest(item,scene.x,scene.y,0))
+      : undefined;
+    if (!transfer && !inTray && !link) return false;
+    if (!transfer) {
+      const original = a.pre;
+      state.board.elements = original;
+      state.selection = new Set();
+      state.guides = [];
+      const bounds = a.source.map(elementAABB).reduce(aabbUnion);
+      const scale = Math.min(110 / Math.max(1,bounds.x1-bounds.x0), 80 / Math.max(1,bounds.y1-bounds.y0), state.camera.zoom * .4);
+      const ghost = document.createElement('canvas');
+      const w = Math.max(1,Math.ceil((bounds.x1-bounds.x0)*scale)), h = Math.max(1,Math.ceil((bounds.y1-bounds.y0)*scale));
+      ghost.width=w; ghost.height=h;
+      ghost.style.cssText='position:fixed;z-index:9999;pointer-events:none;opacity:.8;box-shadow:0 2px 8px #0003;border-radius:3px;';
+      renderScene(ghost.getContext('2d')!,a.source,{x:bounds.x0,y:bounds.y0,zoom:scale},w,h,1,'none');
+      document.body.appendChild(ghost);
+      transfer={sourceId:state.pageId,sourcePage:state.board,source:a.source,original,copy:a.duplicate || e.altKey,ghost,hover:null,timer:null,transition:null};
+      update(true);
+    }
+    const tr=transfer;
+    tr.copy=e.altKey || a.duplicate;
+    const shouldHide = !tr.copy;
+    if (shouldHide !== (state.dragHidden !== null)) {
+      state.dragHidden = shouldHide ? { pageId: tr.sourceId, ids: new Set(tr.source.map(el => el.id)) } : null;
+      update();
+    }
+    tr.ghost.style.left=`${e.clientX+12}px`; tr.ghost.style.top=`${e.clientY+12}px`;
+    const target=pageUnderPointer(e) ?? link?.page ?? null;
+    if (target !== tr.hover) {
+      if (tr.timer) clearTimeout(tr.timer);
+      tr.hover=target; tr.timer=null;
+      if (target && target!==state.pageId) tr.timer=setTimeout(() => {
+        if (!transfer || transfer!==tr || tr.hover!==target || action!==a) return;
+        tr.timer=null;
+        if (link && link.page === target) {
+          tr.transition = openPageLink(link, true);
+          void tr.transition.finally(() => { if (transfer === tr) tr.transition = null; });
+        } else switchPageForDrag(target);
+      },650);
+    }
+    return true;
+  }
+
 
   onChange(() => { canvas.style.cursor = spacePan ? 'grab' : CURSORS[state.tool]; });
 
@@ -278,6 +338,9 @@ export function initController(canvas: HTMLCanvasElement): void {
     const a = action;
     action = null;
     if (!a) return;
+    if (transfer && a.kind === 'move') {
+      clearTransfer(); state.liveEdit = false; state.guides = []; update(); return;
+    }
     state.guides = [];
     switch (a.kind) {
       case 'draw': endStroke(); break;
@@ -471,7 +534,7 @@ export function initController(canvas: HTMLCanvasElement): void {
           const link = !e.shiftKey && hit.type === 'image' && hit.page ? hit : null;
           action = {
             pid: e.pointerId, kind: 'move', pre: state.board.elements, start: s, orig, moved: false,
-            deselectOnUp: wasSelected && !link, box, others, link,
+            deselectOnUp: wasSelected && !link, box, others, link, duplicate: e.altKey, source: [...orig.values()],
           };
           state.liveEdit = true;
         } else {
@@ -700,10 +763,28 @@ export function initController(canvas: HTMLCanvasElement): void {
         break;
       }
       case 'move': {
+        if ((a.moved || Math.hypot(lp.x/state.camera.zoom + state.camera.x-a.start.x,lp.y/state.camera.zoom + state.camera.y-a.start.y)*state.camera.zoom >= MOVE_THRESHOLD_PX) && updateTransfer(e,a)) { a.moved=true; break; }
         const s = toScene(lp.x, lp.y);
         let dx = s.x - a.start.x;
         let dy = s.y - a.start.y;
         if (!a.moved && Math.hypot(dx, dy) * state.camera.zoom < MOVE_THRESHOLD_PX) break;
+        if (!a.moved && (a.duplicate || e.altKey)) {
+          const groupIds = new Map<string, string>();
+          const copies = a.pre.filter(el => a.orig.has(el.id)).map(el => {
+            const copy = { ...structuredClone(el), id: uid() };
+            if (copy.groupId) {
+              if (!groupIds.has(copy.groupId)) groupIds.set(copy.groupId, uid());
+              copy.groupId = groupIds.get(copy.groupId)!;
+            }
+            return copy;
+          });
+          a.orig = new Map(copies.map(el => [el.id, el]));
+          state.board.elements = [...a.pre, ...copies];
+          state.selection = new Set(copies.map(el => el.id));
+          a.others = guideTargets(state.selection);
+          a.box = a.others && copies.length ? copies.map(elementAABB).reduce(aabbUnion) : null;
+          a.link = null;
+        }
         a.moved = true;
         const step = snapStepNow();
         if (step > 0 && a.orig.size > 0) {
@@ -749,6 +830,30 @@ export function initController(canvas: HTMLCanvasElement): void {
     if (touchBlocked && touchPtrs().length === 0) touchBlocked = false;
     if (action && action.pid !== e.pointerId) return;
     const a = action;
+    if (transfer && a?.kind === 'move') {
+      const tr=transfer;
+      if (tr.transition) { void tr.transition.then(() => { if (transfer === tr && action === a) onPointerUp(e); }); return; }
+      if (e.type !== 'pointercancel') {
+        const p=toScene(localPos(e).x,localPos(e).y);
+        const bounds=tr.source.map(elementAABB).reduce(aabbUnion);
+        const dx=p.x-(bounds.x0+bounds.x1)/2, dy=p.y-(bounds.y0+bounds.y1)/2;
+        const copy=tr.copy || e.altKey;
+        if (state.pageId===tr.sourceId && !copy) {
+          pushHistory(tr.original);
+          const ids=new Set(tr.source.map(el=>el.id));
+          replaceElements(tr.original.map(el=>ids.has(el.id)?translateElement(el,dx,dy):el));
+          setSelection([...ids]);
+        } else {
+          if (!copy) {
+            const ids=new Set(tr.source.map(el=>el.id));
+            tr.sourcePage.elements=tr.original.filter(el=>!ids.has(el.id));
+          }
+          insertCopies(tr.source,dx,dy);
+        }
+      }
+      clearTransfer(); action=null; state.liveEdit=false; state.guides=[]; update(true);
+      return;
+    }
     finishAction();
     if (a?.kind === 'move' && !a.moved && a.link) openPageLink(a.link);
   }

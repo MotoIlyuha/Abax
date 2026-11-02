@@ -14,7 +14,7 @@ import {
 import type { PresetKind, StylePatch, StyleValue } from './state';
 import { doskaApi, storage } from './storage';
 import { isNativeApp, sharePng } from './native';
-import { renderScene, contentBBox, imageEpoch, imagesLoaded, linkView, presentCanvas, renderNow } from './renderer';
+import { renderScene, contentBBox, imageEpoch, imagesLoaded, linkView, presentCanvas, renderNow, advanceRecursion } from './renderer';
 import { easeInOut, linkCameras, lockInput, newPageLink, zoomDuration, zoomPath } from './page-links';
 import { makeSortable, reordering } from './reorder';
 import { capturePageTransition } from './page-transition';
@@ -32,11 +32,11 @@ import { type ToolbarGroup, onToolbarChange, restoreToolbar, svg, toolDef, toolT
 import {
   addSettingsSection, openSettingsDialog, removeSettingsSection, settingsDialogOpen, type SettingsSection,
 } from './settings-dialog';
-import { experimentalHeadIcon, experimentsShown, renderExperimental, setExperimentsShown } from './experimental';
+import { experimentalHeadIcon, experimentsShown, renderExperimental, setExperimentsShown, setRecursionDiscovered } from './experimental';
 import { renderToolbarEditor } from './toolbar-editor';
 import { renderHotkeysSettings } from './hotkeys-settings';
 import { DEFAULT_NEW_PAGE_KEY, comboLabel, macKeys, newPageKeyProblem } from './hotkeys';
-import { renderAbout, showToast } from './about';
+import { renderAbout } from './about';
 import { closeIconPicker, openIconPicker } from './icon-picker';
 import { capitalize, dayLabel, pagesLabel } from './format';
 import { buildCustomColorPicker } from './color-picker';
@@ -187,6 +187,7 @@ function restoreSettings(): void {
         closePagesOnPick: typeof v.closePagesOnPick === 'boolean' ? v.closePagesOnPick : false,
         thumbViewport: typeof v.thumbViewport === 'boolean' ? v.thumbViewport : true,
         pageLinks: typeof v.pageLinks === 'boolean' ? v.pageLinks : false,
+        recursionEnabled: typeof v.recursionEnabled === 'boolean' ? v.recursionEnabled : false,
       };
       // null — пользователь снял сочетание; занятое или битое значение — снова по умолчанию
       const k = v.newPageKey;
@@ -1839,6 +1840,9 @@ const EXPERIMENTAL: SettingsSection = {
     check: (key, text, hint) => settingCheck(key, text, hint, key === 'thumbViewport' ? () => syncThumbViewport() : undefined),
     hide: () => {
       setExperimentsShown(false);
+      setRecursionDiscovered(false);
+      setSettings({ recursionEnabled: false });
+      persistSettings();
       removeSettingsSection('experimental');
     },
   }),
@@ -1993,7 +1997,7 @@ function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
   pop.appendChild(lbl7);
 }
 
-type BoolSetting = 'alignGuides' | 'closePagesOnPick' | 'thumbViewport' | 'pageLinks';
+type BoolSetting = 'alignGuides' | 'closePagesOnPick' | 'thumbViewport' | 'pageLinks' | 'recursionEnabled';
 
 /** Флажок настройки доски: меняет и сразу сохраняет. */
 function settingCheck(key: BoolSetting, text: string, hint?: string, after?: () => void): HTMLElement {
@@ -2364,19 +2368,21 @@ let linkTransit = false;
  * Клик по странице на холсте: превью плавно приближается на весь экран, и открывается сама страница —
  * в том же положении, поэтому переход бесшовный. Пока он идёт, ввод заблокирован.
  */
-export function openPageLink(el: ImageEl): void {
+export async function openPageLink(el: ImageEl, duringDrag = false): Promise<void> {
   if (linkTransit || !el.page || state.view !== 'board') return;
   const page = state.project.pages.find(p => p.id === el.page);
-  if (!page || page.id === state.pageId) return;
+  if (!page) return;
+  if (page.id === state.pageId) { setRecursionDiscovered(true); if (!state.settings.recursionEnabled) advanceRecursion(el); return; }
   saveCamera();
   linkTransit = true;
-  const unlock = lockInput();
+  const unlock = duringDrag ? () => {} : lockInput();
   setSelection([]);
   const r = canvas.getBoundingClientRect();
   const { fill, target } = linkCameras(el, page, r.width, r.height, linkView(page, el.w / el.h));
   const from = { ...state.camera };
   const ms = zoomDuration(from, fill);
   const t0 = performance.now();
+  await new Promise<void>(resolve => {
   const step = (now: number) => {
     const t = Math.min(1, (now - t0) / ms);
     state.camera = zoomPath(from, fill, easeInOut(t));
@@ -2400,10 +2406,12 @@ export function openPageLink(el: ImageEl): void {
         unlock();
         linkTransit = false;
         saveCamera();
+        resolve();
       }
     })();
   };
   requestAnimationFrame(step);
+  });
 }
 
 /** Карточка страницы, вынесенная из списка: её превью едет за указателем. */
@@ -2425,10 +2433,7 @@ function pageCardGhost(item: HTMLElement): HTMLElement {
 function dropPageOnCanvas(index: number, x: number, y: number): void {
   const page = state.project.pages[index];
   if (!page || state.view !== 'board' || !canEditBoard() || document.elementFromPoint(x, y) !== canvas) return;
-  if (page.id === state.pageId) {
-    showToast('Это открытая страница — на холст можно положить другую');
-    return;
-  }
+  if (page.id === state.pageId) setRecursionDiscovered(true);
   const r = canvas.getBoundingClientRect();
   const cam = state.camera;
   const el = newPageLink(uid(), page, { x: (x - r.left) / cam.zoom + cam.x, y: (y - r.top) / cam.zoom + cam.y }, cam, r.width, r.height);
@@ -2440,6 +2445,11 @@ async function switchPageHandler(pageId: string): Promise<void> {
   if (pageId === state.pageId || state.view !== 'board') return;
   await saveNow();
   changePage(() => switchPage(pageId));
+}
+
+/** Переход во время переноса без задержки на сохранение и анимацию. */
+export function switchPageForDrag(pageId: string): void {
+  if (pageId !== state.pageId) changePage(() => switchPage(pageId));
 }
 
 /** Переход на страницу по номеру (Ctrl или Alt + 1…9); такой страницы нет — ничего. */
@@ -2542,7 +2552,7 @@ interface PageCard {
   name: HTMLElement;
   gridMode: GridMode | null;
   /** С чего снято превью: массивы элементов иммутабельны — сравниваем по ссылке. */
-  shot: { elements: Element[]; grid: GridMode; epoch: number } | null;
+  shot: { elements: Element[]; grid: GridMode; epoch: number; recursion: boolean } | null;
 }
 const pageCards = new Map<string, PageCard>();
 let addPageTile: HTMLButtonElement | null = null;
@@ -2556,6 +2566,7 @@ function canEditPages(): boolean {
 function makePageCard(pageId: string): PageCard {
   const el = document.createElement('div');
   el.className = 'page-item';
+  el.dataset.pageId = pageId;
   const thumbBox = document.createElement('div');
   thumbBox.className = 'page-thumb';
   const thumb = document.createElement('canvas');
@@ -2626,8 +2637,8 @@ function syncPageThumb(card: PageCard, page: Page): void {
   const epoch = imageEpoch();
   const shot = card.shot;
   const view = thumbView(page.id);
-  if (shot && shot.elements === page.elements && shot.grid === page.grid && shot.epoch === epoch && !thumbOffFrame(card, view)) return;
-  card.shot = { elements: page.elements, grid: page.grid, epoch };
+  if (shot && shot.elements === page.elements && shot.grid === page.grid && shot.epoch === epoch && shot.recursion === state.settings.recursionEnabled && !thumbOffFrame(card, view)) return;
+  card.shot = { elements: page.elements, grid: page.grid, epoch, recursion: state.settings.recursionEnabled };
   ({ cam: card.cam, content: card.content } = renderPageThumb(page, card.thumb, view));
 }
 

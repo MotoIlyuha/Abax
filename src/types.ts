@@ -251,4 +251,6 @@ export interface BoardSettings {
   thumbViewport: boolean;
   /** Экспериментальное: страницу из списка можно перетащить на холст — ссылкой на неё. */
   pageLinks: boolean;
+  /** Показывать вложенные страницы вместо пасхалки при самоссылке. */
+  recursionEnabled: boolean;
 }

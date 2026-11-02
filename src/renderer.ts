@@ -491,6 +491,60 @@ export function linkView(page: Page, aspect: number): AABB {
   return v;
 }
 
+const RECURSION_TEXTS = ['Вы достигли рекурсии!', 'Бесконечность - не предел!', 'Это вообще как? 🤔', 'Ты чего наделал...'];
+const recursionStates = new Map<string, { current: number; previous: number; started: number }>();
+let recursionEpoch = 0;
+
+/** Ссылка считается рекурсивной относительно страницы, которой принадлежит элемент. */
+export function isRecursiveLink(el: ImageEl): boolean {
+  return !!el.page && !!state.project.pages.find(page => page.id === el.page && page.elements.some(item => item.id === el.id));
+}
+function recursionState(id: string) {
+  let value = recursionStates.get(id);
+  if (!value) { const n = Math.floor(Math.random() * RECURSION_TEXTS.length); value = { current: n, previous: n, started: 0 }; recursionStates.set(id, value); }
+  return value;
+}
+export function advanceRecursion(el: ImageEl): void {
+  const value = recursionState(el.id);
+  value.previous = value.current;
+  value.current = (value.current + 1 + Math.floor(Math.random() * (RECURSION_TEXTS.length - 1))) % RECURSION_TEXTS.length;
+  value.started = performance.now();
+  const animate = () => {
+    recursionEpoch++; requestRender();
+    if (performance.now() - value.started < 350) requestAnimationFrame(animate);
+  };
+  requestAnimationFrame(animate);
+}
+function drawRecursion(ctx: CanvasRenderingContext2D, el: ImageEl): void {
+  const value = recursionState(el.id);
+  ctx.fillStyle = '#f3f6fc'; ctx.fillRect(el.x, el.y, el.w, el.h);
+  // Рамки повторяют внешнюю рамку страницы, уменьшаясь к центру.
+  const frame = imageFrame(el);
+  const line = Math.min(frame?.width ?? Math.min(el.w, el.h) * .012, Math.min(el.w, el.h) * .025);
+  ctx.strokeStyle = frame?.color ?? '#9aa3b2';
+  ctx.lineWidth = line;
+  ctx.globalAlpha = el.opacity ?? 1;
+  for (const scale of [.9, .8, .7]) {
+    const w = el.w * scale, h = el.h * scale;
+    const x = el.x + (el.w - w) / 2, y = el.y + (el.h - h) / 2;
+    ctx.beginPath();
+    ctx.roundRect(x + line / 2, y + line / 2, Math.max(0, w - line), Math.max(0, h - line), Math.max(0, cornerRadius(el) * scale - line / 2));
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#3273f5'; ctx.font = `600 ${Math.min(el.w * .32, el.h * .4)}px "Segoe UI Symbol", sans-serif`;
+  ctx.fillText('∞', el.x + el.w / 2, el.y + el.h * .44, el.w * .58);
+  const size = Math.min(el.h * .09, el.w * .04);
+  ctx.font = `500 ${size}px "Segoe UI", sans-serif`; ctx.fillStyle = '#3b465a';
+  const progress = value.started ? Math.min(1, (performance.now() - value.started) / 350) : 1;
+  ctx.globalAlpha = 1 - progress;
+  ctx.fillText(RECURSION_TEXTS[value.previous], el.x + el.w / 2, el.y + el.h * .68, el.w * .6);
+  ctx.globalAlpha = progress;
+  ctx.fillText(RECURSION_TEXTS[value.current], el.x + el.w / 2, el.y + el.h * .68, el.w * .6);
+  ctx.globalAlpha = 1;
+}
+
 function drawPageLink(ctx: CanvasRenderingContext2D, el: ImageEl): void {
   const r = cornerRadius(el);
   ctx.save();
@@ -498,7 +552,9 @@ function drawPageLink(ctx: CanvasRenderingContext2D, el: ImageEl): void {
   ctx.roundRect(el.x, el.y, el.w, el.h, r);
   ctx.clip();
   const page = el.page ? linkedPage(el.page) : undefined;
-  if (!page || linkDepth >= LINK_DEPTH) {
+  if (isRecursiveLink(el) && !state.settings.recursionEnabled) {
+    drawRecursion(ctx, el);
+  } else if (!page || linkDepth >= LINK_DEPTH) {
     // страницы нет (удалили, другой проект) или слишком глубоко — подложка
     ctx.fillStyle = '#eef0f3';
     ctx.fillRect(el.x, el.y, el.w, el.h);
@@ -637,8 +693,12 @@ class SceneCache {
   private coordLabels = true;
   private liveEdit = false;
   private hideId: string | null = null;
+  private dragHidden: typeof state.dragHidden = null;
+  private dragPage = '';
   private hideTextId: string | null = null;
   private imgEpoch = 0;
+  private recursionEpoch = -1;
+  private recursionEnabled = false;
   private links: unknown[] = [];
   private stale = false;
 
@@ -656,7 +716,7 @@ class SceneCache {
       this.stale = true;
     }
     if (state.board.grid !== this.grid || state.settings.coordLabels !== this.coordLabels || state.liveEdit !== this.liveEdit
-      || state.hideElId !== this.hideId || state.hideTextId !== this.hideTextId || imgEpoch !== this.imgEpoch) this.stale = true;
+      || this.recursionEpoch !== recursionEpoch || this.recursionEnabled !== state.settings.recursionEnabled || state.hideElId !== this.hideId || state.dragHidden !== this.dragHidden || state.pageId !== this.dragPage || state.hideTextId !== this.hideTextId || imgEpoch !== this.imgEpoch) this.stale = true;
     // страницы на холсте показывают другие страницы: те поменялись — перерисовать
     if (!sameStamp(linkStamp(state.board.elements), this.links)) this.stale = true;
     const arr = state.board.elements;
@@ -677,6 +737,7 @@ class SceneCache {
       for (const id of state.selection) excl.add(id);
     }
     if (state.hideElId) excl.add(state.hideElId);
+    if (state.dragHidden?.pageId === state.pageId) for (const id of state.dragHidden.ids) excl.add(id);
     renderScene(this.ctx!, state.board.elements, cam, w, h, dpr, state.board.grid, excl.size ? excl : undefined);
     this.cam = { ...cam };
     this.w = w;
@@ -687,8 +748,12 @@ class SceneCache {
     this.coordLabels = state.settings.coordLabels;
     this.liveEdit = state.liveEdit;
     this.hideId = state.hideElId;
+    this.dragHidden = state.dragHidden;
+    this.dragPage = state.pageId;
     this.hideTextId = state.hideTextId;
     this.imgEpoch = imgEpoch;
+    this.recursionEpoch = recursionEpoch;
+    this.recursionEnabled = state.settings.recursionEnabled;
     this.links = linkStamp(state.board.elements);
     this.stale = false;
   }
