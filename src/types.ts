@@ -244,6 +244,8 @@ export interface BoardSettings {
   wheelMode: WheelMode;
   pageTransition: PageTransition;
   pageKeyMod: PageKeyMod;
+  mouseMode: 'pages' | 'history' | 'custom';
+  mouseBindings: Record<'1' | '3' | '4', { action: string; label: string } | null>;
   /** Сочетание «новая страница» («Ctrl+KeyN», см. hotkeys.ts); null — без сочетания. */
   newPageKey: string | null;
   /** Плавное появление меню и панелей (кроме плавающего меню выделения). */

@@ -149,7 +149,7 @@ export const state: AppState = {
   noteColor: '#ffe066',
   settings: {
     toolbarPos: 'left', coordLabels: true, snapToGrid: false, wheelMode: 'scroll', pageTransition: 'slide',
-    pageKeyMod: 'alt', newPageKey: DEFAULT_NEW_PAGE_KEY, uiAnimations: true, hideUndoRedo: false,
+    pageKeyMod: 'alt', mouseMode: 'pages', mouseBindings: { '1': null, '3': null, '4': null }, newPageKey: DEFAULT_NEW_PAGE_KEY, uiAnimations: true, hideUndoRedo: false,
     keepImageAspect: true, alignGuides: true, closePagesOnPick: false, thumbViewport: true, pageLinks: false, recursionEnabled: false,
   },
   selection: new Set(),

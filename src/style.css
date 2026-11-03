@@ -2114,3 +2114,31 @@ body.no-ui-anim :is(.ctx-panel, #settings-popover, #grid-menu, #share-dialog, #s
 .qm-layer-tick { position: absolute; left: 10px; width: 10px; height: 2px; transform: translateY(50%); background: var(--fg); opacity: .35; }
 .qm-layer-thumb { position: absolute; left: 6px; width: 18px; height: 18px; padding: 0; transform: translateY(50%); border: 2px solid var(--accent); border-radius: 50%; background: var(--panel); cursor: grab; touch-action: none; }
 .qm-layer-thumb.pinned { background: var(--accent); }
+
+.hk-arrows { display: grid; grid-template-columns: repeat(3, auto); gap: 3px; flex: none; }
+.hk-arrows .hk-arrow-up { grid-column: 2; }
+.hk-arrows kbd:nth-child(2) { grid-column: 1; }
+
+.hk-mouse-options { display: flex; flex-wrap: wrap; gap: 12px 20px; }
+.hk-mouse-option { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.hk-bindable { cursor: pointer; border-radius: 6px; }
+.hk-bindable:hover, .hk-bindable:focus-visible { background: #e8efff; outline: 2px solid #3273f5; }
+
+.hk-mouse-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--line, #e9ebef); }
+.hk-mouse-description { min-width: 0; }
+.hk-mouse-description .hk-sub { margin-top: 4px; max-width: 340px; }
+.hk-mouse-controls, .hk-mouse-presets { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.hk-mouse-controls { justify-content: flex-end; }
+.hk-mouse-select { max-width: 260px; overflow-wrap: anywhere; text-align: left; }
+.hk-mouse-presets { padding: 14px 0 4px; }
+.hk-mouse-presets button[aria-pressed="true"], .hk-mouse-select[aria-pressed="true"] { color: #3273f5; border-color: #3273f5; background: #edf3ff; }
+.hk-mouse-hint { margin-top: 14px; color: #3273f5; font-weight: 600; }
+.hk-bindable { padding-left: 12px; padding-right: 12px; }
+@media (max-width: 700px) {
+  .hk-mouse-row { align-items: flex-start; flex-direction: column; gap: 8px; }
+  .hk-mouse-controls { justify-content: flex-start; width: 100%; }
+  .hk-mouse-select { max-width: 100%; }
+}
+
+.hk-mouse-select { display: inline-flex; align-items: center; gap: 8px; }
+.hk-mouse-select .hk-icon { flex: none; }

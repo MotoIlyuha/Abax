@@ -88,6 +88,7 @@ export const FIXED_SHORTCUTS: ShortcutGroup[] = [
       { keys: ['Ctrl+KeyY', 'Ctrl+Shift+KeyZ'], what: 'Повторить' },
       { keys: ['Ctrl+KeyA'], what: 'Выделить всё' },
       { keys: ['Ctrl+KeyC'], what: 'Копировать' },
+      { keys: ['Ctrl+Shift+KeyC'], what: 'Копировать как изображение' },
       { keys: ['Ctrl+KeyX'], what: 'Вырезать' },
       { keys: ['Ctrl+KeyV'], what: 'Вставить' },
       { keys: ['Ctrl+KeyD'], what: 'Дублировать' },
@@ -97,6 +98,15 @@ export const FIXED_SHORTCUTS: ShortcutGroup[] = [
       { keys: ['Ctrl+Shift+KeyG'], what: 'Разгруппировать' },
       { keys: ['Ctrl+KeyB'], what: 'Полужирный текст' },
       { keys: ['Ctrl+KeyI'], what: 'Курсив' },
+    ],
+  },
+  {
+    title: 'Слои',
+    items: [
+      { keys: ['Shift+PageUp'], what: 'На слой выше' },
+      { keys: ['PageUp'], what: 'На передний план' },
+      { keys: ['Shift+PageDown'], what: 'На слой ниже' },
+      { keys: ['PageDown'], what: 'На задний план' },
     ],
   },
   {

@@ -1,6 +1,6 @@
 import { startCrop } from './crop';
 import type {
-  Camera, Element, GridMode, ImageEl, NoteEl, Page, PageTransition, Project, ProjectMeta, ShapeEl, TextAlign, TextEl, TextVAlign,
+  BoardSettings, Camera, Element, GridMode, ImageEl, NoteEl, Page, PageTransition, Project, ProjectMeta, ShapeEl, TextAlign, TextEl, TextVAlign,
   ToolId, ToolbarPos, WheelMode,
 } from './types';
 import {
@@ -175,6 +175,8 @@ function restoreSettings(): void {
         wheelMode: v.wheelMode === 'zoom' ? 'zoom' : 'scroll',
         pageTransition: PAGE_TRANSITIONS.some(t => t.mode === v.pageTransition) ? v.pageTransition : 'slide',
         pageKeyMod: v.pageKeyMod === 'ctrl' ? 'ctrl' : 'alt',
+        mouseMode: v.mouseMode === 'history' || v.mouseMode === 'custom' ? v.mouseMode : 'pages',
+        mouseBindings: Object.fromEntries(['1', '3', '4'].map(key => { const b = v.mouseBindings?.[key]; return [key, b && typeof b.action === 'string' && typeof b.label === 'string' ? { action: b.action, label: b.label } : null]; })) as BoardSettings['mouseBindings'],
         newPageKey: DEFAULT_NEW_PAGE_KEY,
         uiAnimations: typeof v.uiAnimations === 'boolean' ? v.uiAnimations : true,
         hideUndoRedo: typeof v.hideUndoRedo === 'boolean' ? v.hideUndoRedo : false,

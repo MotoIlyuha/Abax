@@ -3,7 +3,7 @@ import type { Camera, Element, FadeStroke, Handle, ImageEl, Pt, ShapeEl, ToolId 
 import {
   state, update, onChange, beginStroke, extendStroke, endStroke, pushHistory, replaceElements,
   addElement, setSelection, deleteSelected, undo, redo, setTool, uid, commitPoly,
-  expandSelectionWithGroups, groupSelected, ungroupSelected, selectAll, selectInserted, opacityField,
+  bringForward, sendBackward, moveSelectionLayer, expandSelectionWithGroups, groupSelected, ungroupSelected, selectAll, selectInserted, opacityField,
   zoomAtPoint, ZOOM_MAX, ZOOM_MIN, insertCopies,
 } from './state';
 import {
@@ -11,6 +11,8 @@ import {
   applyHandle, insertPolyNode, removePolyNode, gridStepFor, shapeHoldsText, snapValue, translateElement,
 } from './geom';
 import { collabActive, noteCursor, readOnly } from './collab';
+import { isNativeApp } from './native';
+import { settingsDialogOpen } from './settings-dialog';
 import { partEraseRadius, presenting, requestRender, renderScene } from './renderer';
 import { fitSolid, SOLID_CLICK_SIZE, solidKeepsAspect } from './solid';
 import {
@@ -18,7 +20,7 @@ import {
   saveNow, selectedTextShape, switchToPage, switchPageForDrag, toggleTextFlag, togglePages,
 } from './app';
 import { comboFromEvent, pageNumberFromEvent } from './hotkeys';
-import { ERASER_PATHS, ERASER_TIP, toolByKey } from './toolbar';
+import { ERASER_PATHS, ERASER_TIP, TOOL_DEFS, toolByKey } from './toolbar';
 import {
   arrowDirection, arrowStep, isArrowKey, NUDGE_FAST, NUDGE_HOLD_MS, NUDGE_SPEED, NUDGE_STEP, NUDGE_STEP_FAST,
 } from './nudge';
@@ -997,6 +999,12 @@ export function initController(canvas: HTMLCanvasElement): void {
 
   function onKeyDown(e: KeyboardEvent): void {
     if (isTypingTarget(e.target)) return;
+    if ((e.code === 'PageUp' || e.code === 'PageDown') && !e.ctrlKey && !e.metaKey && !e.altKey && state.selection.size && canEditBoard()) {
+      e.preventDefault();
+      if (e.shiftKey) { if (e.code === 'PageUp') bringForward(); else sendBackward(); }
+      else moveSelectionLayer(e.code === 'PageUp' ? state.board.elements.length : 0);
+      return;
+    }
     if (nudge) {
       if (e.ctrlKey || e.metaKey || e.altKey) endNudge(); // Ctrl+Z и другие сочетания не должны застать перенос на полпути
       else if (e.key === 'Shift') nudge.fast = true;
@@ -1096,6 +1104,47 @@ export function initController(canvas: HTMLCanvasElement): void {
       canvas.style.cursor = CURSORS[state.tool];
     }
   }
+
+  // Отменяем события боковых кнопок до браузерной навигации. Колёсико
+  // перехватываем только при явном назначении, иначе оно двигает доску.
+  function mouseAction(e: MouseEvent): { action: string } | null {
+    if (isNativeApp() || state.view !== 'board' || settingsDialogOpen() || isTypingTarget(e.target)) return null;
+    if (e.button !== 1 && e.button !== 3 && e.button !== 4) return null;
+    const id = String(e.button) as '1' | '3' | '4';
+    if (e.button === 1) return state.settings.mouseBindings['1'];
+    if (state.settings.mouseMode === 'custom') return state.settings.mouseBindings[id] ?? { action: '' };
+    return { action: state.settings.mouseMode === 'pages' ? (e.button === 3 ? 'page:previous' : 'page:next') : (e.button === 3 ? 'key:Ctrl+KeyZ' : 'key:Ctrl+KeyY') };
+  }
+  window.addEventListener('pointerdown', e => {
+    if (e.pointerType !== 'mouse') return;
+    const binding = mouseAction(e);
+    if (!binding) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    const a = binding.action;
+    if (a === 'page:new') {
+      addPageFromKey();
+    } else if (a.startsWith('page:')) {
+      const index = state.project.pages.findIndex(page => page.id === state.pageId);
+      const count = state.project.pages.length;
+      if (count && index >= 0) {
+        const target = (index + (a === 'page:previous' ? -1 : 1) + count) % count;
+        if (target !== index) switchToPage(target + 1);
+      }
+    } else if (a.startsWith('tool:')) {
+      const id = a.slice(5);
+      if (TOOL_DEFS.some(def => def.id === id)) setTool(id as ToolId);
+    } else if (a.startsWith('key:')) {
+      const parts = a.slice(4).split('+');
+      const code = parts.pop()!;
+      const key = code.startsWith('Key') ? code.slice(3).toLowerCase() : code.startsWith('Digit') ? code.slice(5) : code;
+      const init = { code, key, ctrlKey: parts.includes('Ctrl'), shiftKey: parts.includes('Shift'), altKey: parts.includes('Alt'), bubbles: true, cancelable: true };
+      onKeyDown(new KeyboardEvent('keydown', init));
+      onKeyUp(new KeyboardEvent('keyup', init));
+    }
+  }, true);
+  for (const type of ['mousedown', 'mouseup', 'auxclick'] as const) window.addEventListener(type, e => {
+    if (mouseAction(e)) { e.preventDefault(); e.stopImmediatePropagation(); }
+  }, true);
 
   canvas.addEventListener('pointerdown', onPointerDown);
   canvas.addEventListener('pointermove', onPointerMove);
