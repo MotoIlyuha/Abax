@@ -1005,7 +1005,9 @@ function drawGuides(ctx: CanvasRenderingContext2D, cam: Camera): void {
 /** Содержимое доски без интерфейса: кэш статики и превью живых объектов. */
 function drawContent(ctx: CanvasRenderingContext2D, cache: SceneCache, cam: Camera, w: number, h: number, dpr: number): void {
   drawDpr = dpr;
-  if (cache.cam) {
+  if (state.layerPreview) {
+    renderScene(ctx, state.layerPreview, cam, w, h, dpr, state.board.grid);
+  } else if (cache.cam) {
     cache.blit(ctx, cam, w, h, dpr);
     // во время перетаскивания выделенное исключено из кэша — рисуем поверх;
     // в покое выделенный рендерится в кэше на своём слое
@@ -1034,7 +1036,14 @@ function drawContent(ctx: CanvasRenderingContext2D, cache: SceneCache, cam: Came
     ctx.lineWidth = 1;
     ctx.stroke();
   }
-  if (state.liveStroke) {
+  if (state.liveStroke && state.board.elements.some(el => el.layerPin === 'top')) {
+    // Живой штрих тоже должен находиться под закреплёнными верхними объектами.
+    const ls = state.liveStroke;
+    const at = state.board.elements.findIndex(el => el.layerPin === 'top');
+    const stroke: Element = { id: '', type: 'stroke', tool: ls.tool, color: ls.color,
+      width: ls.tool === 'highlighter' ? ls.width * 3.2 : ls.width, opacity: ls.opacity, pts: ls.pts };
+    renderScene(ctx, [...state.board.elements.slice(0, at), stroke, ...state.board.elements.slice(at)], cam, w, h, dpr, state.board.grid);
+  } else if (state.liveStroke) {
     const ls = state.liveStroke;
     const base = ls.tool === 'highlighter' ? ls.width * 3.2 : ls.width;
     ctx.globalAlpha = ls.opacity ?? 1;

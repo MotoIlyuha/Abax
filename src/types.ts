@@ -151,7 +151,10 @@ export interface SolidEl {
   groupId?: string;
 }
 
-export type Element = StrokeEl | ShapeEl | PolyEl | TextEl | NoteEl | ImageEl | SolidEl;
+export type Element = (StrokeEl | ShapeEl | PolyEl | TextEl | NoteEl | ImageEl | SolidEl) & {
+  /** Закрепление относительно обычных слоёв. */
+  layerPin?: 'top' | 'bottom';
+};
 
 /** Экран = (сцена - камера) * zoom. */
 export interface Camera { x: number; y: number; zoom: number }

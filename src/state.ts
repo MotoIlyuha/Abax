@@ -86,6 +86,8 @@ export interface AppState {
   settings: BoardSettings;
   selection: Set<string>;
   attachmentPreview: { item: string; base: string }[] | null;
+  /** Временный порядок слоёв только для отрисовки, без изменения проекта. */
+  layerPreview: Element[] | null;
   liveStroke: LiveStroke | null;
   liveShape: LiveShape | null;
   liveSolid: LiveSolid | null;
@@ -152,6 +154,7 @@ export const state: AppState = {
   },
   selection: new Set(),
   attachmentPreview: null,
+  layerPreview: null,
   liveStroke: null,
   liveShape: null,
   liveSolid: null,
@@ -250,7 +253,12 @@ export function redo(): void {
 // ----- Мутации сцены (элементы заменяются, никогда не правятся на месте) -----
 
 export function replaceElements(next: Element[]): void {
-  state.board.elements = next;
+  // Закреплённые объекты сохраняют относительный порядок внутри своих областей.
+  state.board.elements = [
+    ...next.filter(e => e.layerPin === 'bottom'),
+    ...next.filter(e => !e.layerPin),
+    ...next.filter(e => e.layerPin === 'top'),
+  ];
   update(true);
 }
 
@@ -657,29 +665,70 @@ export function movePage(from: number, to: number): void {
 
 // ----- Слои и группы -----
 
-/** Поднимает выделенные элементы на один слой выше. */
-export function bringForward(): void {
-  const arr = state.board.elements.slice();
-  for (let i = arr.length - 2; i >= 0; i--) {
-    if (state.selection.has(arr[i].id) && !state.selection.has(arr[i + 1].id)) {
-      [arr[i], arr[i + 1]] = [arr[i + 1], arr[i]];
+/** Рассчитывает положение выделения, не изменяя проект. */
+export function selectionLayerOrder(old: Element[], position: number): Element[] {
+  const selected = old.filter(e => state.selection.has(e.id));
+  if (!selected.length) return old;
+  const rest = old.filter(e => !state.selection.has(e.id));
+  const movable = selected.map(e => {
+    if (!e.layerPin) return e;
+    const { layerPin: _pin, ...item } = e;
+    return item as Element;
+  });
+  const low = rest.filter(e => e.layerPin === 'bottom').length;
+  const high = rest.length - rest.filter(e => e.layerPin === 'top').length;
+  const at = Math.max(low, Math.min(high, position));
+  return [...rest.slice(0, at), ...movable, ...rest.slice(at)];
+}
+
+/** Перемещает выделение как группу, снимая закрепление при ручном перемещении. */
+export function moveSelectionLayer(position: number): void {
+  const old = state.board.elements;
+  const next = selectionLayerOrder(old, position);
+  if (next.every((e, i) => e === old[i])) return;
+  pushHistory(old);
+  replaceElements(next);
+}
+
+export function pinSelectionLayer(pin: 'top' | 'bottom' | null): void {
+  const old = state.board.elements;
+  if (!old.some(e => state.selection.has(e.id) && (e.layerPin ?? null) !== pin)) return;
+  pushHistory(old);
+  replaceElements(old.map(e => {
+    if (!state.selection.has(e.id)) return e;
+    const { layerPin: _pin, ...item } = e;
+    return pin ? { ...item, layerPin: pin } as Element : item as Element;
+  }));
+}
+
+function stepSelectionLayer(up: boolean): void {
+  const old = state.board.elements;
+  if (!old.some(e => state.selection.has(e.id))) return;
+  const arr = old.map(e => {
+    if (!state.selection.has(e.id) || !e.layerPin) return e;
+    const { layerPin: _pin, ...item } = e;
+    return item as Element;
+  });
+  if (up) {
+    for (let i = arr.length - 2; i >= 0; i--) {
+      if (state.selection.has(arr[i].id) && !state.selection.has(arr[i + 1].id) && arr[i + 1].layerPin !== 'top') {
+        [arr[i], arr[i + 1]] = [arr[i + 1], arr[i]];
+      }
+    }
+  } else {
+    for (let i = 1; i < arr.length; i++) {
+      if (state.selection.has(arr[i].id) && !state.selection.has(arr[i - 1].id) && arr[i - 1].layerPin !== 'bottom') {
+        [arr[i], arr[i - 1]] = [arr[i - 1], arr[i]];
+      }
     }
   }
-  pushHistory(state.board.elements);
+  if (arr.every((e, i) => e === old[i])) return;
+  pushHistory(old);
   replaceElements(arr);
 }
 
-/** Опускает выделенные элементы на один слой ниже. */
-export function sendBackward(): void {
-  const arr = state.board.elements.slice();
-  for (let i = 1; i < arr.length; i++) {
-    if (state.selection.has(arr[i].id) && !state.selection.has(arr[i - 1].id)) {
-      [arr[i], arr[i - 1]] = [arr[i - 1], arr[i]];
-    }
-  }
-  pushHistory(state.board.elements);
-  replaceElements(arr);
-}
+export function bringForward(): void { stepSelectionLayer(true); }
+export function sendBackward(): void { stepSelectionLayer(false); }
 
 /** Объединяет выделенные элементы в группу. */
 export function groupSelected(): void {

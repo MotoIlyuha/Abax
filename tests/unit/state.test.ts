@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   addElement, addPage, applyStyleToSelection, beginStroke, blankPage, blankProject, bringForward, canRedo, canUndo,
   commitPoly, deletePage, deleteSelected, endStroke, expandSelectionWithGroups, extendStroke, groupSelected,
-  moveItem, movePage, onChange, openProject, projectMeta, pushHistory, redo, renamePage, replaceElements, sendBackward, setGrid,
+  moveItem, movePage, moveSelectionLayer, selectionLayerOrder, pinSelectionLayer, onChange, openProject, projectMeta, pushHistory, redo, renamePage, replaceElements, sendBackward, setGrid,
   presetKind, selectAll, selectPreset, setNoteColor, setSelection, setSettings, setSolidSides, setStyleColor, setStyleWidth, setTool, setView, state,
   switchPage, uid, undo, ungroupSelected, update, clampOpacity, opacityField, parseZoomPercent, removeImageFrames, setStyleOpacity,
   zoomAtPoint, ZOOM_MAX, ZOOM_MIN,
@@ -637,6 +637,48 @@ describe('слои и группы', () => {
     setSelection(['b', 'a']);
     sendBackward(); // уже внизу — порядок не меняется
     expect(ids()).toEqual(['b', 'a', 'd', 'c']);
+  });
+
+  it('закреплённые слои остаются над и под новыми объектами и поддерживают отмену', () => {
+    setSelection(['b']);
+    pinSelectionLayer('top');
+    setSelection(['c']);
+    pinSelectionLayer('bottom');
+    addElement(rect('new'));
+    expect(ids()).toEqual(['c', 'a', 'd', 'new', 'b']);
+    undo();
+    expect(ids()).toEqual(['c', 'a', 'd', 'b']);
+    undo();
+    expect(state.board.elements.find(e => e.id === 'c')?.layerPin).toBeUndefined();
+    redo();
+    expect(state.board.elements.find(e => e.id === 'c')?.layerPin).toBe('bottom');
+  });
+
+  it('предварительный порядок не изменяет доску и не создаёт историю', () => {
+    setSelection(['a']);
+    const before = state.board.elements;
+    const preview = selectionLayerOrder(before, 3);
+    expect(preview.map(e => e.id)).toEqual(['b', 'c', 'd', 'a']);
+    expect(state.board.elements).toBe(before);
+    expect(ids()).toEqual(['a', 'b', 'c', 'd']);
+    moveSelectionLayer(3);
+    expect(ids()).toEqual(['b', 'c', 'd', 'a']);
+    undo();
+    expect(ids()).toEqual(['a', 'b', 'c', 'd']);
+  });
+
+  it('ручное перемещение снимает закрепление и учитывает закреплённые границы', () => {
+    setSelection(['a']);
+    pinSelectionLayer('bottom');
+    setSelection(['d']);
+    pinSelectionLayer('top');
+    setSelection(['b']);
+    moveSelectionLayer(99);
+    expect(ids()).toEqual(['a', 'c', 'b', 'd']);
+    setSelection(['d']);
+    moveSelectionLayer(0);
+    expect(ids()).toEqual(['a', 'd', 'c', 'b']);
+    expect(state.board.elements.find(e => e.id === 'd')?.layerPin).toBeUndefined();
   });
 
   it('groupSelected / ungroupSelected', () => {

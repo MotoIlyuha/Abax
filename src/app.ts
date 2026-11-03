@@ -8,13 +8,13 @@ import {
   setStyleWidth, setStyleOpacity, setNoteColor, selectPreset, presetKind, addElement, replaceElements, pushHistory, uid,
   applyStyleToSelection, colorElement, setSettings, setView, switchPage, addPage, deletePage, renamePage, setSelection,
   openProject, blankProject, blankPage, projectMeta, groupSelected, ungroupSelected, movePage,
-  bringForward, sendBackward, deleteSelected, setSolidSides, duplicateSelected, removeImageFrames, selectInserted,
+  bringForward, sendBackward, moveSelectionLayer, selectionLayerOrder, pinSelectionLayer, deleteSelected, setSolidSides, duplicateSelected, removeImageFrames, selectInserted,
   clampOpacity, opacityField, OPACITY_MIN, parseZoomPercent, zoomAtPoint,
 } from './state';
 import type { PresetKind, StylePatch, StyleValue } from './state';
 import { doskaApi, storage } from './storage';
 import { isNativeApp, sharePng } from './native';
-import { renderScene, contentBBox, imageEpoch, imagesLoaded, linkView, presentCanvas, renderNow, advanceRecursion } from './renderer';
+import { renderScene, contentBBox, imageEpoch, imagesLoaded, linkView, presentCanvas, renderNow, requestRender, advanceRecursion } from './renderer';
 import { easeInOut, linkCameras, lockInput, newPageLink, zoomDuration, zoomPath } from './page-links';
 import { makeSortable, reordering } from './reorder';
 import { capturePageTransition } from './page-transition';
@@ -1566,6 +1566,130 @@ function layerMoves(): { up: boolean; down: boolean } {
   return { up, down };
 }
 
+let layerPanelOpen = false;
+let layerPanelSelection = '';
+let layerClickTimer = 0;
+
+function buildLayerControl(sel: Element[], moves: { up: boolean; down: boolean }): HTMLElement {
+  const root = document.createElement('div');
+  root.className = 'qm-layers';
+  const pinned = sel.length > 0 && sel.every(e => e.layerPin === sel[0].layerPin) ? sel[0].layerPin : undefined;
+  const button = document.createElement('button');
+  button.className = 'qm-btn qm-layer-icon' + (layerPanelOpen ? ' active' : '');
+  button.title = 'Слои: открыть ползунок для перемещения и закрепления';
+  button.setAttribute('aria-label', button.title);
+  button.innerHTML = svg('<path d="m12 3 9 5-9 5-9-5 9-5ZM3 12l9 5 9-5M3 16l9 5 9-5"/>') + (pinned ? '<span class="qm-layer-pin">📌</span>' : '');
+  button.addEventListener('click', () => { layerPanelOpen = !layerPanelOpen; updateQuickMenu(); });
+  root.appendChild(button);
+  const arrows = document.createElement('div');
+  arrows.className = 'qm-layer-arrows';
+  const arrow = (direction: 'top' | 'bottom', visible: boolean) => {
+    if (!visible) return;
+    const b = document.createElement('button');
+    b.className = 'qm-layer-arrow';
+    b.title = direction === 'top'
+      ? 'Выше на слой; двойной клик — наверх; удержание — закрепить наверху'
+      : 'Ниже на слой; двойной клик — вниз; удержание — закрепить внизу';
+    b.setAttribute('aria-label', b.title);
+    b.innerHTML = svg(direction === 'top' ? '<path d="m5 15 7-7 7 7"/>' : '<path d="m5 9 7 7 7-7"/>');
+    let hold = 0, held = false;
+    b.addEventListener('pointerdown', e => {
+      if (e.button !== 0) return;
+      held = false;
+      hold = window.setTimeout(() => { held = true; clearTimeout(layerClickTimer); pinSelectionLayer(direction); }, 600);
+    });
+    for (const event of ['pointerup', 'pointercancel', 'pointerleave'] as const) b.addEventListener(event, () => clearTimeout(hold));
+    b.addEventListener('click', e => {
+      if (held) { held = false; return; }
+      if (e.detail >= 2) {
+        clearTimeout(layerClickTimer);
+        moveSelectionLayer(direction === 'top' ? state.board.elements.length : 0);
+      } else {
+        clearTimeout(layerClickTimer);
+        layerClickTimer = window.setTimeout(() => direction === 'top' ? bringForward() : sendBackward(), 250);
+      }
+    });
+    arrows.appendChild(b);
+  };
+  arrow('top', moves.up); arrow('bottom', moves.down);
+  if (arrows.childElementCount) root.appendChild(arrows);
+  if (layerPanelOpen) {
+    const panel = document.createElement('div');
+    panel.className = 'qm-layer-panel';
+    const rest = state.board.elements.filter(e => !state.selection.has(e.id));
+    const first = state.board.elements.findIndex(e => state.selection.has(e.id));
+    let value = state.board.elements.slice(0, first).filter(e => !state.selection.has(e.id)).length;
+    const track = document.createElement('div');
+    track.className = 'qm-layer-track';
+    const count = rest.length + 1;
+    for (let i = 0; i < count; i++) {
+      const tick = document.createElement('span');
+      tick.className = 'qm-layer-tick';
+      tick.style.bottom = `${count === 1 ? 50 : i * 100 / (count - 1)}%`;
+      track.appendChild(tick);
+    }
+    const thumb = document.createElement('button');
+    thumb.className = 'qm-layer-thumb' + (pinned ? ' pinned' : '');
+    thumb.title = pinned ? 'Нажмите, чтобы открепить слой' : 'Нажмите, чтобы закрепить слой';
+    thumb.setAttribute('aria-label', thumb.title);
+    const place = () => { thumb.style.bottom = `${count === 1 ? 50 : value * 100 / (count - 1)}%`; };
+    place(); track.appendChild(thumb); panel.appendChild(track); root.appendChild(panel);
+    let startY = 0, dragging = false, startedOnThumb = false;
+    let original: Element[] | null = null;
+    const fromPointer = (y: number) => {
+      const r = track.getBoundingClientRect();
+      const nextValue = Math.max(0, Math.min(count - 1, Math.round((r.bottom - y) / r.height * (count - 1))));
+      if (state.layerPreview && nextValue === value) return;
+      value = nextValue;
+      place();
+      if (original) {
+        state.layerPreview = selectionLayerOrder(original, value);
+        requestRender();
+      }
+    };
+    const cancelPreview = () => {
+      original = null;
+      if (state.layerPreview) { state.layerPreview = null; requestRender(); }
+    };
+    track.addEventListener('pointerdown', e => {
+      if (e.button !== 0) return;
+      e.preventDefault(); e.stopPropagation();
+      startY = e.clientY; dragging = false; startedOnThumb = e.target === thumb;
+      original = state.board.elements;
+      track.setPointerCapture(e.pointerId);
+      if (!startedOnThumb) { dragging = true; fromPointer(e.clientY); }
+    });
+    track.addEventListener('pointermove', e => {
+      if (!track.hasPointerCapture(e.pointerId)) return;
+      if (Math.abs(e.clientY - startY) > 4) dragging = true;
+      if (dragging) fromPointer(e.clientY);
+    });
+    track.addEventListener('pointerup', e => {
+      if (!track.hasPointerCapture(e.pointerId)) return;
+      const unchanged = original === state.board.elements;
+      cancelPreview();
+      track.releasePointerCapture(e.pointerId);
+      if (!unchanged) return;
+      if (dragging) moveSelectionLayer(value);
+      else if (startedOnThumb) pinSelectionLayer(pinned ? null : (value >= (count - 1) / 2 ? 'top' : 'bottom'));
+    });
+    track.addEventListener('pointercancel', cancelPreview);
+    track.addEventListener('lostpointercapture', cancelPreview);
+    thumb.addEventListener('keydown', e => {
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); moveSelectionLayer(value + (e.key === 'ArrowUp' ? 1 : -1)); }
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pinSelectionLayer(pinned ? null : (value >= (count - 1) / 2 ? 'top' : 'bottom')); }
+    });
+  }
+  return root;
+}
+
+document.addEventListener('pointerdown', e => {
+  if (layerPanelOpen && e.target instanceof window.Element && !e.target.closest('.qm-layers')) {
+    layerPanelOpen = false;
+    document.querySelector('.qm-layer-panel')?.remove();
+  }
+});
+
 function updateQuickMenu(): void {
   const qm = quickMenuEl();
   // кегль набирают в поле меню — меню не пересобираем, иначе поле пропадёт из-под курсора
@@ -1576,6 +1700,8 @@ function updateQuickMenu(): void {
     qm.hidden = true;
     return;
   }
+  const selectionKey = selEls.map(e => e.id).sort().join(',');
+  if (selectionKey !== layerPanelSelection) { layerPanelOpen = false; layerPanelSelection = selectionKey; }
   qm.hidden = false;
   qm.textContent = '';
   // цвет и толщина — одна кнопка и одна панель; толщина — только для «линейных» элементов и рамок картинок
@@ -1654,24 +1780,8 @@ function updateQuickMenu(): void {
     box.append(minus, val, plus);
     qm.appendChild(box);
   }
-  // слои
-  const layers = layerMoves();
-  if (layers.up) {
-    const up = document.createElement('button');
-    up.className = 'qm-btn';
-    up.title = 'Выше (слой)';
-    up.innerHTML = ICONS.up;
-    up.addEventListener('click', () => { bringForward(); });
-    qm.appendChild(up);
-  }
-  if (layers.down) {
-    const down = document.createElement('button');
-    down.className = 'qm-btn';
-    down.title = 'Ниже (слой)';
-    down.innerHTML = ICONS.down;
-    down.addEventListener('click', () => { sendBackward(); });
-    qm.appendChild(down);
-  }
+  // Слои и закрепление доступны и без пересечений с другими объектами.
+  if (selEls.length) qm.appendChild(buildLayerControl(selEls, layerMoves()));
   // группы
   const sel = state.board.elements.filter(e => state.selection.has(e.id));
   const allGrouped = sel.length > 0 && sel.every(e => e.groupId === sel[0].groupId && e.groupId);
