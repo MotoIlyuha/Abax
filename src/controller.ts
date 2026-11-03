@@ -45,6 +45,8 @@ const CURSORS: Record<ToolId, string> = {
   cylinder: 'crosshair', cone: 'crosshair', truncCone: 'crosshair', sphere: 'crosshair',
 };
 const MOVE_THRESHOLD_PX = 3;
+const AUTO_PAN_EDGE = 64;
+const AUTO_PAN_SPEED = 600; // px экрана в секунду у самого края
 /** Радиус примагничивания к направляющим соседей, px экрана. */
 const GUIDE_SNAP_PX = 6;
 const LASER_MAX_PTS = 400;
@@ -83,6 +85,7 @@ export function initController(canvas: HTMLCanvasElement): void {
   let gesture: { dist: number; mx: number; my: number; cam: Camera } | null = null;
   let touchBlocked = false; // после жеста оставшийся палец не должен рисовать
   let action: Action | null = null;
+  let autoPan: { event: PointerEvent; raf: number; last: number } | null = null;
   let spacePan = false;
   let transfer: { sourceId: string; sourcePage: typeof state.board; source: Element[]; original: Element[]; copy: boolean; ghost: HTMLCanvasElement; hover: string | null; timer: ReturnType<typeof setTimeout> | null; transition: Promise<void> | null } | null = null;
   function clearTransfer(): void {
@@ -161,6 +164,42 @@ export function initController(canvas: HTMLCanvasElement): void {
   });
   const activeTool = (): ToolId => (spacePan ? 'pan' : state.tool);
   const touchPtrs = (): Ptr[] => [...pointers.values()].filter(p => p.type === 'touch');
+
+  function stopAutoPan(): void {
+    if (autoPan) cancelAnimationFrame(autoPan.raf);
+    autoPan = null;
+  }
+
+  function updateAutoPan(e: PointerEvent): void {
+    const p = localPos(e);
+    const r = canvas.getBoundingClientRect();
+    const velocity = (v: number, size: number) => {
+      if (v < 0 || v > size) return 0;
+      return Math.max(0, Math.min(1, (v - (size - AUTO_PAN_EDGE)) / AUTO_PAN_EDGE))
+        - Math.max(0, Math.min(1, (AUTO_PAN_EDGE - v) / AUTO_PAN_EDGE));
+    };
+    const direction = () => ({ x: velocity(p.x, r.width), y: velocity(p.y, r.height) });
+    // Не прокручиваем, когда указатель покинул холст или переносится на другую страницу.
+    if (p.x < 0 || p.y < 0 || p.x > r.width || p.y > r.height || transfer || (!direction().x && !direction().y)) {
+      stopAutoPan();
+      return;
+    }
+    if (autoPan) { autoPan.event = e; return; }
+    autoPan = { event: e, raf: 0, last: performance.now() };
+    const tick = (time: number) => {
+      const pan = autoPan;
+      if (!pan || action?.kind !== 'move' || transfer) { stopAutoPan(); return; }
+      const pos = localPos(pan.event);
+      const rect = canvas.getBoundingClientRect();
+      const dt = Math.min((time - pan.last) / 1000, 0.05);
+      pan.last = time;
+      state.camera.x += velocity(pos.x, rect.width) * AUTO_PAN_SPEED * dt / state.camera.zoom;
+      state.camera.y += velocity(pos.y, rect.height) * AUTO_PAN_SPEED * dt / state.camera.zoom;
+      onPointerMove(pan.event);
+      if (autoPan === pan) pan.raf = requestAnimationFrame(tick);
+    };
+    autoPan.raf = requestAnimationFrame(tick);
+  }
 
   const topHit = (x: number, y: number): Element | null => {
     const tol = SELECT_TOL / state.camera.zoom;
@@ -338,6 +377,7 @@ export function initController(canvas: HTMLCanvasElement): void {
   }
 
   function finishAction(): void {
+    stopAutoPan();
     const a = action;
     action = null;
     if (!a) return;
@@ -425,10 +465,12 @@ export function initController(canvas: HTMLCanvasElement): void {
       canvas.style.cursor = 'grabbing';
       return;
     }
-    if (e.button !== 0) return;
+    const temporaryEraser = e.pointerType === 'mouse' && e.button === 2
+      && (activeTool() === 'pen' || activeTool() === 'highlighter');
+    if (e.button !== 0 && !temporaryEraser) return;
 
     const s = toScene(lp.x, lp.y);
-    const tool = activeTool();
+    const tool = temporaryEraser ? 'partEraser' : activeTool();
     switch (tool) {
       case 'pen':
       case 'highlighter':
@@ -768,7 +810,7 @@ export function initController(canvas: HTMLCanvasElement): void {
         break;
       }
       case 'move': {
-        if ((a.moved || Math.hypot(lp.x/state.camera.zoom + state.camera.x-a.start.x,lp.y/state.camera.zoom + state.camera.y-a.start.y)*state.camera.zoom >= MOVE_THRESHOLD_PX) && updateTransfer(e,a)) { a.moved=true; break; }
+        if ((a.moved || Math.hypot(lp.x/state.camera.zoom + state.camera.x-a.start.x,lp.y/state.camera.zoom + state.camera.y-a.start.y)*state.camera.zoom >= MOVE_THRESHOLD_PX) && updateTransfer(e,a)) { a.moved=true; stopAutoPan(); break; }
         const s = toScene(lp.x, lp.y);
         let dx = s.x - a.start.x;
         let dy = s.y - a.start.y;
@@ -820,6 +862,7 @@ export function initController(canvas: HTMLCanvasElement): void {
         }
         state.attachmentPreview = previews;
         replaceElements(moved);
+        updateAutoPan(e);
         break;
       }
       case 'marquee':
@@ -830,6 +873,7 @@ export function initController(canvas: HTMLCanvasElement): void {
   }
 
   function onPointerUp(e: PointerEvent): void {
+    if (action?.pid === e.pointerId) stopAutoPan();
     pointers.delete(e.pointerId);
     if (gesture) {
       if (touchPtrs().length < 2) {
@@ -1160,6 +1204,7 @@ export function initController(canvas: HTMLCanvasElement): void {
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
   window.addEventListener('blur', endNudge); // стрелку отпустили в другом окне — keyup не придёт
+  window.addEventListener('blur', stopAutoPan);
 }
 
 function pressureOf(e: PointerEvent): number {

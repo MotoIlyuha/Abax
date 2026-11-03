@@ -412,7 +412,7 @@ function syncLiveText(): void {
 /** Новый текст по черновику: место, кегль, начертание и текущий цвет. */
 function newTextProps(e: Editing): Omit<TextEl, 'id' | 'text'> {
   return {
-    type: 'text', x: e.at!.x, y: e.at!.y, size: e.draft.size, color: state.style.color,
+    type: 'text', x: e.at!.x, y: e.at!.y - e.draft.size * 1.25 / 2, size: e.draft.size, color: state.style.color,
     ...(e.draft.bold ? { bold: true } : {}), ...(e.draft.italic ? { italic: true } : {}), ...opacityField(state.style.opacity),
   };
 }

@@ -27,6 +27,24 @@ test.describe('загрузка', () => {
 });
 
 test.describe('перо и маркер', () => {
+  for (const [key, tool] of [['p', 'pen'], ['m', 'highlighter']] as const) {
+    test(`правая кнопка временно стирает штрих: ${tool}`, async ({ board, page }) => {
+      await board.tool(key);
+      await board.drag([{ x: 400, y: 300 }, { x: 600, y: 300 }]);
+      await board.move({ x: 500, y: 280 });
+      await page.mouse.down({ button: 'right' });
+      await board.move({ x: 500, y: 320 }, 6);
+      expect((await board.state()).tool).toBe(tool);
+      await page.mouse.up({ button: 'right' });
+      expect(await board.count('stroke')).toBe(2);
+      await page.keyboard.press('Control+z');
+      expect(await board.count('stroke')).toBe(1);
+      await board.drag([{ x: 400, y: 400 }, { x: 600, y: 400 }]);
+      expect(await board.count('stroke')).toBe(2);
+      expect((await board.elements())[1].tool).toBe(tool);
+    });
+  }
+
   test('перо рисует штрих текущим цветом и толщиной', async ({ board }) => {
     await board.drag([{ x: 400, y: 300 }, { x: 500, y: 320 }, { x: 600, y: 400 }]);
     const [s] = await board.elements();
@@ -266,13 +284,16 @@ test.describe('текст и стикеры', () => {
     await board.click({ x: 400, y: 300 });
     const ta = page.locator('#overlay textarea.inplace-edit');
     await expect(ta).toBeFocused();
+    const click = await board.screen({ x: 400, y: 300 });
+    const editor = (await ta.boundingBox())!;
+    expect(editor.y - click.y).toBeCloseTo(-15, 0);
     await ta.pressSequentially('Пусть x = 2');
     await ta.press('Shift+Enter');
     await ta.pressSequentially('тогда y = 4   ');
     await ta.press('Enter');
     await expect(ta).toHaveCount(0);
     const [t] = await board.elements();
-    expect(t).toMatchObject({ type: 'text', x: 400, y: 300, text: 'Пусть x = 2\nтогда y = 4', size: 24, color: '#1f2329' });
+    expect(t).toMatchObject({ type: 'text', x: 400, y: 285, text: 'Пусть x = 2\nтогда y = 4', size: 24, color: '#1f2329' });
   });
 
   test('Esc и пустой текст ничего не создают', async ({ board, page }) => {
@@ -291,14 +312,14 @@ test.describe('текст и стикеры', () => {
     await page.keyboard.type('abc');
     await page.keyboard.press('Enter');
     await board.tool('v');
-    await board.dblclick({ x: 410, y: 312 });
+    await board.dblclick({ x: 410, y: 297 });
     const ta = page.locator('textarea.inplace-edit');
     await expect(ta).toHaveValue('abc');
     await ta.fill('abcdef');
     await ta.press('Enter');
     expect((await board.elements())[0].text).toBe('abcdef');
 
-    await board.dblclick({ x: 410, y: 312 });
+    await board.dblclick({ x: 410, y: 297 });
     await page.locator('textarea.inplace-edit').fill('');
     await page.keyboard.press('Enter');
     expect(await board.count()).toBe(0);
