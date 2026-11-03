@@ -31,6 +31,18 @@ test.describe('панель цвета и толщины', () => {
     expect((await board.state()).style.color).toBe('#ff6464');
   });
 
+  test('контекстное меню добавляет и убирает цвет из моих цветов', async ({ page }) => {
+    await page.locator('#btn-style').click();
+    const panel = page.locator('.ctx-panel[data-kind="style"]');
+    const color = '#ff6464';
+    await panel.locator(`.ctx-swatches:not(.custom) [data-c="${color}"]`).click({ button: 'right' });
+    await page.getByRole('button', { name: 'Добавить в мои цвета' }).click();
+    await expect(panel.locator(`.ctx-swatches.custom [data-c="${color}"]`)).toHaveCount(1);
+    await panel.locator(`.ctx-swatches.custom [data-c="${color}"]`).click({ button: 'right' });
+    await page.getByRole('button', { name: 'Убрать из моих цветов' }).click();
+    await expect(panel.locator(`.ctx-swatches.custom [data-c="${color}"]`)).toHaveCount(0);
+  });
+
   test('пресеты: три у пера и маркера, один у остальных', async ({ board, page }) => {
     const presets = page.locator('#toolbar .style-btn');
     await expect(presets.locator('visible=true')).toHaveCount(3);

@@ -660,7 +660,8 @@ body.no-ui-anim #pages-dock.open :is(.page-item, .page-add) { animation: none; }
   overflow-y: auto;
   /* тонкий скроллбар живёт в правом поле панели и не сжимает сетку */
   margin-right: -12px;
-  padding-right: 8px;
+  margin-left: -4px;
+  padding: 0 8px 4px 4px;
   scrollbar-gutter: stable;
 }
 .ctx-scroll::-webkit-scrollbar { width: 4px; }
@@ -688,6 +689,7 @@ body.no-ui-anim #pages-dock.open :is(.page-item, .page-add) { animation: none; }
   grid-template-columns: repeat(4, 34px);
   justify-content: space-between;
   row-gap: 12px;
+  padding: 4px 0;
 }
 .ctx-swatches[hidden] { display: none; }
 .ctx-swatch {
@@ -2084,3 +2086,18 @@ body.no-ui-anim :is(.ctx-panel, #settings-popover, #grid-menu, #share-dialog, #s
 
 .crop-preset { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border: 0; border-radius: 5px; background: transparent; color: var(--fg); font: inherit; cursor: pointer; }
 .crop-preset:hover, .crop-preset:focus-visible { background: var(--accent-soft); color: var(--accent); }
+
+.ctx-color-tabs { display: flex; gap: 4px; padding: 4px 0 8px; }
+.ctx-color-tabs button { flex: 1; border: 0; border-radius: 6px; padding: 7px 8px; background: transparent; color: #59616d; cursor: pointer; }
+.ctx-color-tabs button.active { background: #e9edff; color: #3549b8; font-weight: 600; }
+.ctx-fill-clear { width: 100%; border: 1px solid #d9dde4; border-radius: 6px; background: white; padding: 7px; margin-bottom: 10px; cursor: pointer; }
+.ctx-fill-clear.active { border-color: #586de0; color: #3549b8; }
+
+.ctx-section-row { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.ctx-section-row .ctx-add-color { margin:0; white-space:nowrap; }
+.ctx-section-action { border:0; padding:0; background:none; color:var(--accent); font:inherit; cursor:pointer; }
+.ctx-section-action:hover { text-decoration:underline; }
+.ctx-my-colors { min-height:38px; }
+.color-context-menu { position:fixed; z-index:10000; padding:4px; background:white; border:1px solid #d9dde4; border-radius:8px; box-shadow:0 4px 16px #0002; }
+.color-context-menu button { border:0; border-radius:5px; background:none; padding:8px 12px; cursor:pointer; font:inherit; }
+.color-context-menu button:hover { background:#eef1f7; }

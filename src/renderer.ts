@@ -283,6 +283,13 @@ function drawShapeEl(ctx: CanvasRenderingContext2D, el: ShapeEl, text: Caption |
       ctx.lineTo(tipx - hl * Math.cos(ang + s), tipy - hl * Math.sin(ang + s));
     }
   }
+  if (el.fill && el.shape !== 'line' && el.shape !== 'arrow') {
+    const borderAlpha = ctx.globalAlpha;
+    ctx.globalAlpha = el.fillOpacity ?? el.opacity ?? 1;
+    ctx.fillStyle = el.fill;
+    ctx.fill();
+    ctx.globalAlpha = borderAlpha;
+  }
   ctx.stroke();
   if (text) drawShapeText(ctx, el, text);
   if (rot) ctx.restore();

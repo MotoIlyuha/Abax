@@ -6,7 +6,7 @@ import type {
 import {
   state, update, onChange, undo, redo, canUndo, canRedo, setTool, setGrid, setStyleColor,
   setStyleWidth, setStyleOpacity, setNoteColor, selectPreset, presetKind, addElement, replaceElements, pushHistory, uid,
-  applyStyleToSelection, setSettings, setView, switchPage, addPage, deletePage, renamePage, setSelection,
+  applyStyleToSelection, colorElement, setSettings, setView, switchPage, addPage, deletePage, renamePage, setSelection,
   openProject, blankProject, blankPage, projectMeta, groupSelected, ungroupSelected, movePage,
   bringForward, sendBackward, deleteSelected, setSolidSides, duplicateSelected, removeImageFrames, selectInserted,
   clampOpacity, opacityField, OPACITY_MIN, parseZoomPercent, zoomAtPoint,
@@ -20,7 +20,7 @@ import { makeSortable, reordering } from './reorder';
 import { capturePageTransition } from './page-transition';
 import { hasBaseSides, SIDES_MAX, SIDES_MIN, solidSides } from './solid';
 import {
-  type AABB, aabbUnion, elementAABB, imageFrame, lineWidth, parseTextSize, shapeCaption, shapeHoldsText, stepTextSize,
+  type AABB, aabbUnion, elementAABB, hitTest, imageFrame, lineWidth, parseTextSize, shapeCaption, shapeHoldsText, stepTextSize,
   NOTE_W, NOTE_H, NOTE_PAD, NOTE_FONT, NOTE_TEXT_COLOR, SHAPE_TEXT_LH, TEXT_SIZE, TEXT_SIZE_MAX, TEXT_SIZE_MIN, TEXT_SIZES,
 } from './geom';
 import * as pdfjsLib from 'pdfjs-dist';
@@ -132,11 +132,6 @@ function saveCustomColors(list: string[]): void {
   localStorage.setItem(CUSTOM_COLORS_KEY, JSON.stringify(list.slice(0, CUSTOM_MAX)));
 }
 
-function addCustomColor(c: string): void {
-  if (PALETTE.includes(c)) return;
-  saveCustomColors([c, ...loadCustomColors().filter(x => x !== c)]);
-}
-
 function persistStyle(): void {
   localStorage.setItem(STYLE_KEY, JSON.stringify({ ...state.style, noteColor: state.noteColor, presets: state.presets }));
 }
@@ -220,8 +215,28 @@ function applyUndoRedoVisibility(): void {
   document.body.classList.toggle('hide-undo-redo', state.settings.hideUndoRedo);
 }
 
+let styleColorTab: 'border' | 'fill' = 'border';
+
+function currentPanelColor(): string {
+  if (styleColorTab === 'fill') {
+    const shape = selectedForStyle().find((e): e is ShapeEl => e.type === 'shape' && e.shape !== 'line' && e.shape !== 'arrow');
+    return shape?.fill ?? '';
+  }
+  return state.style.color;
+}
+
 /** Выбор цвета: применяется к выделению (если есть) и становится текущим. */
 function chooseColor(c: string): void {
+  if (styleColorTab === 'fill') {
+    applyStyleToSelection({ fill: c });
+    const sp = panelOf('style');
+    if (sp) {
+      updateSwatchActive(sp.el, c);
+      sp.el.querySelector('.ctx-fill-clear')?.classList.remove('active');
+    }
+    refresh();
+    return;
+  }
   if (state.selection.size > 0) applyStyleToSelection({ color: c });
   setStyleColor(c);
   persistStyle();
@@ -268,6 +283,10 @@ function chooseWidth(w: number, first = true): void {
 
 /** Выбор непрозрачности: к выделению (у картинок — к рамке) и как текущая. */
 function chooseOpacity(v: number, first: boolean): void {
+  if (styleColorTab === 'fill') {
+    applyStyleToSelection({ fillOpacity: v }, first);
+    return;
+  }
   if (state.selection.size > 0) applyStyleToSelection({ opacity: v }, first);
   setStyleOpacity(v);
   persistStyle();
@@ -677,6 +696,7 @@ export function closeCtxPanel(): void {
 }
 
 function openCtxPanel(kind: CtxKind, source: CtxSource): void {
+  if (kind === 'style') styleColorTab = 'border';
   // пристыкованное место одно, а вид панели не дублируется
   closeCtxPanel();
   const same = panelOf(kind);
@@ -920,7 +940,15 @@ function isLightColor(hex: string): boolean {
 }
 
 /** Круглый свотч в стиле Miro; у активного — галочка контрастного цвета. */
-function makeSwatch(c: string, active: boolean, onPick: (c: string) => void): HTMLButtonElement {
+let colorMenuController: AbortController | null = null;
+let allColorsCollapsed = false;
+let draggedColor: { color: string; custom: boolean } | null = null;
+function changeFavorite(c: string, add: boolean): void {
+  const rest = loadCustomColors().filter(x => x !== c);
+  saveCustomColors(add ? [c, ...rest] : rest);
+  renderCustomSwatches();
+}
+function makeSwatch(c: string, active: boolean, onPick: (c: string) => void, custom = false): HTMLButtonElement {
   const b = document.createElement('button');
   b.className = 'ctx-swatch' + (active ? ' active' : '');
   b.dataset.c = c;
@@ -928,6 +956,30 @@ function makeSwatch(c: string, active: boolean, onPick: (c: string) => void): HT
   b.style.background = c;
   b.style.setProperty('--check', isLightColor(c) ? '#1f2329' : '#ffffff');
   b.addEventListener('click', () => onPick(c));
+  if (onPick === chooseColor) {
+    b.draggable = true;
+    b.addEventListener('dragstart', e => { draggedColor = { color: c, custom }; e.dataTransfer?.setData('text/plain', c); });
+    b.addEventListener('dragend', () => { draggedColor = null; });
+    b.addEventListener('contextmenu', e => {
+      e.preventDefault(); e.stopPropagation();
+      colorMenuController?.abort();
+      document.querySelector('.color-context-menu')?.remove();
+      const controller = new AbortController();
+      colorMenuController = controller;
+      const menu = document.createElement('div');
+      menu.className = 'color-context-menu';
+      const action = document.createElement('button');
+      action.textContent = custom ? 'Убрать из моих цветов' : 'Добавить в мои цвета';
+      const close = () => { controller.abort(); menu.remove(); };
+      action.addEventListener('click', () => { changeFavorite(c, !custom); close(); });
+      menu.appendChild(action); document.body.appendChild(menu);
+      menu.style.left = `${Math.min(e.clientX, window.innerWidth - menu.offsetWidth - 4)}px`;
+      menu.style.top = `${Math.min(e.clientY, window.innerHeight - menu.offsetHeight - 4)}px`;
+      document.addEventListener('pointerdown', event => {
+        if (!menu.contains(event.target as Node)) close();
+      }, { signal: controller.signal });
+    });
+  }
   return b;
 }
 
@@ -936,7 +988,7 @@ function renderCustomSwatches(): void {
   if (!grid) return;
   grid.textContent = '';
   const list = loadCustomColors();
-  for (const c of list) grid.appendChild(makeSwatch(c, c === state.style.color, chooseColor));
+  for (const c of list) grid.appendChild(makeSwatch(c, c === currentPanelColor(), chooseColor, true));
   grid.hidden = list.length === 0;
 }
 
@@ -994,9 +1046,11 @@ const OPACITY_ICON = svg('<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 
 function buildStylePanel(cp: CtxPanel): void {
   const p = cp.el;
   p.dataset.kind = 'style';
+  p.dataset.selection = `${state.pageId}:${[...state.selection].sort().join(',')}`;
+  const selected = selectedForStyle();
+  const hasFill = selected.some(e => e.type === 'shape' && e.shape !== 'line' && e.shape !== 'arrow');
+  if (!hasFill) styleColorTab = 'border';
   p.style.setProperty('--ink', state.style.color);
-  // текущий цвет не из палитры (старая палитра, чужой элемент) — сразу в «Мои цвета»
-  addCustomColor(state.style.color);
   if (styleNeedsWidth(cp.source)) {
     // как у прозрачности и скругления: иконка — «капля» — значение
     const row = document.createElement('div');
@@ -1018,13 +1072,7 @@ function buildStylePanel(cp: CtxPanel): void {
     row.append(icon, sliderHost, val);
     p.appendChild(row);
   }
-  if (styleNeedsOpacity(cp.source)) {
-    p.appendChild(buildRange({
-      kind: 'opacity', title: 'Прозрачность', min: OPACITY_MIN, max: 1, step: 0.01, value: state.style.opacity ?? 1,
-      format: v => `${Math.round(v * 100)}%`, icon: () => OPACITY_ICON, onChange: chooseOpacity,
-    }));
-  }
-  const sel = cp.source === 'quick' ? selectedForStyle() : [];
+  const sel = cp.source === 'quick' || cp.detached ? selected : [];
   const round = sel.filter(roundable);
   if (round.length > 0) {
     p.appendChild(buildRange({
@@ -1041,8 +1089,35 @@ function buildStylePanel(cp: CtxPanel): void {
     off.addEventListener('click', () => removeImageFrames());
     p.appendChild(off);
   }
+  if (hasFill) {
+    const tabs = document.createElement('div');
+    tabs.className = 'ctx-color-tabs';
+    for (const [tab, label] of [['border', 'Рамка'], ['fill', 'Заливка']] as const) {
+      const button = document.createElement('button');
+      button.textContent = label;
+      button.className = tab === styleColorTab ? 'active' : '';
+      button.setAttribute('aria-pressed', String(tab === styleColorTab));
+      button.addEventListener('click', () => { styleColorTab = tab; rebuildPanel(cp); });
+      tabs.appendChild(button);
+    }
+    p.appendChild(tabs);
+  }
+  if (styleNeedsOpacity(cp.source)) {
+    p.appendChild(buildRange({
+      kind: 'opacity', title: 'Прозрачность', min: OPACITY_MIN, max: 1, step: 0.01, value: styleColorTab === 'fill' ? ((selected.find((e): e is ShapeEl => e.type === 'shape' && e.shape !== 'line' && e.shape !== 'arrow')?.fillOpacity) ?? (selected.find((e): e is ShapeEl => e.type === 'shape' && e.shape !== 'line' && e.shape !== 'arrow')?.opacity) ?? 1) : (state.style.opacity ?? 1),
+      format: v => `${Math.round(v * 100)}%`, icon: () => OPACITY_ICON, onChange: chooseOpacity,
+    }));
+  }
   const scroll = document.createElement('div');
   scroll.className = 'ctx-scroll';
+  if (hasFill && styleColorTab === 'fill') {
+    const clear = document.createElement('button');
+    clear.className = 'ctx-fill-clear';
+    clear.textContent = 'Без заливки';
+    clear.classList.toggle('active', !currentPanelColor());
+    clear.addEventListener('click', () => { applyStyleToSelection({ fill: null }); rebuildPanel(cp); });
+    scroll.appendChild(clear);
+  }
   const add = document.createElement('button');
   add.className = 'ctx-add-color';
   add.textContent = '+ Добавить цвет';
@@ -1054,7 +1129,7 @@ function buildStylePanel(cp: CtxPanel): void {
     pickerHost.hidden = !pickerHost.hidden;
     if (!pickerHost.hidden) {
       pickerHead = null;
-      buildCustomColorPicker(pickerHost, state.style.color, choosePickedColor);
+      buildCustomColorPicker(pickerHost, currentPanelColor() || '#ffffff', choosePickedColor);
     }
     add.textContent = pickerHost.hidden ? '+ Добавить цвет' : 'Готово';
     positionCtxPanel(cp);
@@ -1063,8 +1138,23 @@ function buildStylePanel(cp: CtxPanel): void {
   custom.className = 'ctx-swatches custom';
   const all = document.createElement('div');
   all.className = 'ctx-swatches';
-  for (const c of PALETTE) all.appendChild(makeSwatch(c, c === state.style.color, chooseColor));
-  scroll.append(sectionHead('Мои цвета'), add, pickerHost, custom, sectionHead('Все цвета'), all);
+  for (const c of PALETTE) all.appendChild(makeSwatch(c, c === currentPanelColor(), chooseColor));
+  const myHeader = sectionHead('Мои цвета');
+  myHeader.classList.add('ctx-section-row'); myHeader.appendChild(add);
+  const allHeader = sectionHead('Все цвета');
+  allHeader.classList.add('ctx-section-row');
+  const toggle = document.createElement('button'); toggle.className = 'ctx-section-action';
+  const updateCollapsed = () => { all.hidden = allColorsCollapsed; toggle.textContent = allColorsCollapsed ? 'Развернуть' : 'Свернуть'; };
+  toggle.addEventListener('click', () => { allColorsCollapsed = !allColorsCollapsed; updateCollapsed(); positionCtxPanel(cp); });
+  allHeader.appendChild(toggle); updateCollapsed();
+  const dropZone = (zone: HTMLElement, addFavorite: boolean) => {
+    zone.addEventListener('dragover', e => { if (draggedColor) { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'; } });
+    zone.addEventListener('drop', e => { if (!draggedColor) return; e.preventDefault(); e.stopPropagation(); changeFavorite(draggedColor.color, addFavorite); });
+  };
+  const mine = document.createElement('div'); mine.className = 'ctx-my-colors';
+  mine.append(myHeader, pickerHost, custom); dropZone(mine, true);
+  const allSection = document.createElement('div'); allSection.append(allHeader, all); dropZone(allSection, false);
+  scroll.append(mine, allSection);
   p.appendChild(scroll);
   renderCustomSwatches();
 }
@@ -4012,6 +4102,15 @@ function refresh(): void {
     renderPages();
   }
   updateQuickMenu();
+  const stylePanel = panelOf('style');
+  const selectionKey = `${state.pageId}:${[...state.selection].sort().join(',')}`;
+  if (stylePanel && stylePanel.el.dataset.selection !== selectionKey) {
+    styleColorTab = 'border';
+    rebuildPanel(stylePanel);
+  } else if (stylePanel) {
+    updateSwatchActive(stylePanel.el, currentPanelColor());
+    stylePanel.el.querySelector('.ctx-fill-clear')?.classList.toggle('active', !currentPanelColor());
+  }
   syncShapeCaret();
   syncFrameOff();
   syncThumbViewport();
@@ -4028,6 +4127,16 @@ function syncSelectionToCollab(): void {
 }
 
 export function initApp(c: HTMLCanvasElement): void {
+  c.addEventListener('dragover', e => { if (draggedColor && !readOnly()) e.preventDefault(); });
+  c.addEventListener('drop', e => {
+    if (!draggedColor || readOnly()) return;
+    e.preventDefault();
+    const rect = c.getBoundingClientRect();
+    const x = (e.clientX - rect.left) / state.camera.zoom + state.camera.x;
+    const y = (e.clientY - rect.top) / state.camera.zoom + state.camera.y;
+    const target = [...state.board.elements].reverse().find(el => hitTest(el, x, y, 5 / state.camera.zoom));
+    if (target) colorElement(target.id, draggedColor.color, styleColorTab === 'fill');
+  });
   canvas = c;
   restoreCamera();
   restoreStyle();

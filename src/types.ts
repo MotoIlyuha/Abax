@@ -40,6 +40,10 @@ export interface ShapeEl {
   /** x,y — якорь; w,h — смещения (для линии/стрелки могут быть отрицательными). */
   x: number; y: number; w: number; h: number;
   color: string;
+  /** Цвет заливки; отсутствие означает прозрачную заливку. */
+  fill?: string;
+  /** Непрозрачность заливки; старые фигуры наследуют opacity. */
+  fillOpacity?: number;
   width: number;
   opacity?: number;
   /** Поворот вокруг центра в радианах (только rect/ellipse/triangle). */

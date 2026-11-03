@@ -339,6 +339,7 @@ export function setTool(tool: ToolId): void {
   if (state.tool === tool) return;
   const kindChanged = presetKind(state.tool) !== presetKind(tool);
   state.tool = tool;
+  if (tool === 'pen' || tool === 'highlighter') state.selection = new Set();
   if (kindChanged) state.style = { ...activePreset() };
   state.liveStroke = null;
   state.liveShape = null;
@@ -350,6 +351,8 @@ export function setTool(tool: ToolId): void {
 
 export interface StylePatch {
   color?: string;
+  fill?: string | null;
+  fillOpacity?: number;
   width?: number;
   opacity?: number;
   /** Скругление углов: у прямоугольников и картинок. */
@@ -390,6 +393,11 @@ function styledElement(el: Element, p: StylePatch): Element {
       if (p.valign !== undefined) set.valign = p.valign;
     }
   }
+  if (p.fill !== undefined && el.type === 'shape' && el.shape !== 'line' && el.shape !== 'arrow') set.fill = p.fill;
+  if (el.type === 'shape' && el.shape !== 'line' && el.shape !== 'arrow') {
+    if (p.fillOpacity !== undefined) set.fillOpacity = p.fillOpacity;
+    else if (p.opacity !== undefined && el.fillOpacity === undefined) set.fillOpacity = el.opacity ?? 1;
+  }
   if (p.opacity !== undefined) set.opacity = p.opacity;
   if (p.radius !== undefined && (el.type === 'image' || (el.type === 'shape' && el.shape === 'rect'))) set.radius = p.radius;
   if (Object.keys(set).length === 0) return el;
@@ -397,6 +405,7 @@ function styledElement(el: Element, p: StylePatch): Element {
   // значения по умолчанию не храним
   if (typeof out.opacity === 'number' && out.opacity >= 1) delete out.opacity;
   if (out.radius === 0) delete out.radius;
+  if (out.fill === null) delete out.fill;
   if (el.type === 'shape') {
     if (out.textSize === 0) delete out.textSize;
     if (out.align === 'center') delete out.align;
@@ -417,6 +426,20 @@ export function applyStyleToSelection(patch: StylePatch, history = true): void {
   const next = prev.map(el => (state.selection.has(el.id) ? styledElement(el, patch) : el));
   if (next.every((el, i) => el === prev[i])) return;
   if (history) pushHistory(prev);
+  replaceElements(next);
+}
+
+/** Перекрашивает конкретный объект, не меняя выделение. */
+export function colorElement(id: string, color: string, fill: boolean): void {
+  const prev = state.board.elements;
+  const next = prev.map(el => {
+    if (el.id !== id) return el;
+    if (el.type === 'note') return { ...el, color };
+    const useFill = fill && el.type === 'shape' && el.shape !== 'line' && el.shape !== 'arrow';
+    return styledElement(el, useFill ? { fill: color } : { color });
+  });
+  if (next.every((el, i) => el === prev[i])) return;
+  pushHistory(prev);
   replaceElements(next);
 }
 

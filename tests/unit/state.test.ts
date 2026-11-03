@@ -304,6 +304,29 @@ describe('выделение и стиль', () => {
     for (const k of ['textSize', 'bold', 'align', 'valign']) expect(a2).not.toHaveProperty(k);
   });
 
+  it('заливка применяется только к замкнутым фигурам и отменяется', () => {
+    replaceElements([rect('a'), rect('l', { shape: 'line' })]);
+    setSelection(['a', 'l']);
+    applyStyleToSelection({ fill: '#ff6464' });
+    expect(state.board.elements[0]).toMatchObject({ fill: '#ff6464', color: rect('a').color });
+    expect(state.board.elements[1]).not.toHaveProperty('fill');
+    applyStyleToSelection({ fill: null });
+    expect(state.board.elements[0]).not.toHaveProperty('fill');
+    undo();
+    expect(state.board.elements[0]).toMatchObject({ fill: '#ff6464' });
+  });
+
+  it('прозрачность рамки и заливки фигур меняется независимо', () => {
+    replaceElements([rect('a', { fill: '#ff6464', opacity: 0.4 })]);
+    setSelection(['a']);
+    applyStyleToSelection({ opacity: 0.8 });
+    expect(state.board.elements[0]).toMatchObject({ opacity: 0.8, fillOpacity: 0.4 });
+    applyStyleToSelection({ fillOpacity: 1 });
+    expect(state.board.elements[0]).toMatchObject({ opacity: 0.8, fillOpacity: 1 });
+    undo();
+    expect(state.board.elements[0]).toMatchObject({ opacity: 0.8, fillOpacity: 0.4 });
+  });
+
   it('прозрачность: 1 не хранится, у стикеров её нет', () => {
     replaceElements([rect('a'), { id: 'n', type: 'note', x: 0, y: 0, w: 10, h: 10, text: 'x', color: '#ffe066' }]);
     setSelection(['a', 'n']);
@@ -462,6 +485,17 @@ describe('инструменты и живые объекты', () => {
     setTool('rect'); // тот же инструмент — без уведомления
     off();
     expect(fn).not.toHaveBeenCalled();
+  });
+
+  it('переключение на перо или маркер снимает выделение', () => {
+    replaceElements([rect('a')]);
+    for (const tool of ['pen', 'highlighter'] as const) {
+      setTool('select');
+      setSelection(['a']);
+      setTool(tool);
+      expect(state.selection.size).toBe(0);
+      expect(state.board.elements).toHaveLength(1);
+    }
   });
 
   it('штрих пера: сглаживание и слияние близких точек', () => {
