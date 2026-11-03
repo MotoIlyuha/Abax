@@ -36,7 +36,7 @@ import { experimentalHeadIcon, experimentsShown, renderExperimental, setExperime
 import { renderToolbarEditor } from './toolbar-editor';
 import { renderHotkeysSettings } from './hotkeys-settings';
 import { DEFAULT_NEW_PAGE_KEY, comboLabel, macKeys, newPageKeyProblem } from './hotkeys';
-import { renderAbout } from './about';
+import { renderAbout, showToast } from './about';
 import { closeIconPicker, openIconPicker } from './icon-picker';
 import { capitalize, dayLabel, pagesLabel } from './format';
 import { buildCustomColorPicker } from './color-picker';
@@ -1806,6 +1806,13 @@ function updateQuickMenu(): void {
     ug.addEventListener('click', () => { ungroupSelected(); });
     qm.appendChild(ug);
   }
+  const copyImage = document.createElement('button');
+  copyImage.className = 'qm-btn';
+  copyImage.title = macKeys('Копировать как изображение (Ctrl+Shift+C)');
+  copyImage.setAttribute('aria-label', copyImage.title);
+  copyImage.innerHTML = svg('<rect x="3" y="3" width="14" height="14" rx="2"/><path d="m5 14 4-4 3 3 2-2 3 3M14 7h.01M7 21h12a2 2 0 0 0 2-2V7"/>');
+  copyImage.addEventListener('click', () => { void copySelectionAsImage(); });
+  qm.appendChild(copyImage);
   // дублирование
   const dup = document.createElement('button');
   dup.className = 'qm-btn';
@@ -2241,6 +2248,38 @@ function pagesAtTop(): boolean {
 }
 
 // ----- Экспорт PNG -----
+
+export async function copySelectionAsImage(): Promise<void> {
+  const els = state.board.elements.filter(el => state.selection.has(el.id));
+  if (!els.length) return;
+  showToast('Копирование...');
+  try {
+    const bb = contentBBox(els), pad = 8;
+    const w = Math.max(1, bb.w + pad * 2), h = Math.max(1, bb.h + pad * 2);
+    const scale = Math.min(2, 8000 / Math.max(w, h));
+    const cv = document.createElement('canvas');
+    cv.width = Math.ceil(w * scale); cv.height = Math.ceil(h * scale);
+    const ctx = cv.getContext('2d');
+    if (!ctx) throw new Error('Не удалось создать изображение');
+    const api = window.doskaAPI as { copyImage?: (data: string) => Promise<void> } | undefined;
+    const makeImage = async (): Promise<Blob> => {
+      await imagesLoaded(els);
+      renderScene(ctx, els, { x: bb.x0 - pad, y: bb.y0 - pad, zoom: 1 }, w, h, scale, 'none', undefined, true);
+      return new Promise((resolve, reject) => cv.toBlob(blob => blob ? resolve(blob) : reject(new Error('Не удалось создать изображение')), 'image/png'));
+    };
+    if (api?.copyImage) {
+      const blob = await makeImage();
+      const data = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(reader.error); reader.readAsDataURL(blob); });
+      await api.copyImage(data);
+    } else {
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': makeImage() })]);
+    }
+    showToast('Скопировано в буфер обмена');
+  } catch (err) {
+    showToast('Не удалось скопировать изображение');
+    console.error(err);
+  }
+}
 
 export async function exportPng(): Promise<void> {
   const els = state.selection.size

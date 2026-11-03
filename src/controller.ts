@@ -14,7 +14,7 @@ import { collabActive, noteCursor, readOnly } from './collab';
 import { partEraseRadius, presenting, requestRender, renderScene } from './renderer';
 import { fitSolid, SOLID_CLICK_SIZE, solidKeepsAspect } from './solid';
 import {
-  addPageFromKey, beginTextEdit, canEditBoard, closeEditor, duplicateSelection, exportPng, fitContent, openAllSettings, openPageLink,
+  addPageFromKey, beginTextEdit, canEditBoard, closeEditor, copySelectionAsImage, duplicateSelection, exportPng, fitContent, openAllSettings, openPageLink,
   saveNow, selectedTextShape, switchToPage, switchPageForDrag, toggleTextFlag, togglePages,
 } from './app';
 import { comboFromEvent, pageNumberFromEvent } from './hotkeys';
@@ -1035,6 +1035,9 @@ export function initController(canvas: HTMLCanvasElement): void {
           if (e.shiftKey) ungroupSelected(); else groupSelected();
           return;
         case 'KeyE': e.preventDefault(); void exportPng(); return;
+        case 'KeyC':
+          if (e.shiftKey && state.selection.size) { e.preventDefault(); void copySelectionAsImage(); }
+          return;
         // начертание выделенного текста и надписей фигур (в редакторе текста — там же, см. app.ts)
         case 'KeyB':
         case 'KeyI':

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, nativeImage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, nativeImage, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs/promises');
 const fss = require('fs');
@@ -128,6 +128,13 @@ ipcMain.handle('boards:list', async () => {
   return out;
 });
 
+
+ipcMain.handle('clipboard:image', (_e, dataUrl) => {
+  if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:image/png;base64,')) throw new Error('Invalid image');
+  const image = nativeImage.createFromDataURL(dataUrl);
+  if (image.isEmpty()) throw new Error('Invalid image');
+  clipboard.writeImage(image);
+});
 
 ipcMain.handle('pdf:pick', async () => {
   const r = await dialog.showOpenDialog({

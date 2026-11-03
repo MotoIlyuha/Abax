@@ -369,7 +369,7 @@ describe('preload', () => {
     const [name, api] = fakeElectron.contextBridge.exposeInMainWorld.mock.calls[0];
     expect(name).toBe('doskaAPI');
     expect(Object.keys(api).sort()).toEqual([
-      'appInfo', 'exportPng', 'list', 'load', 'pickImage', 'pickPdf', 'remove', 'save', 'setAppIcon',
+      'appInfo', 'copyImage', 'exportPng', 'list', 'load', 'pickImage', 'pickPdf', 'remove', 'save', 'setAppIcon',
       'shareOpenTestWindow', 'shareSetRights', 'shareStart', 'shareStatus', 'shareStop',
     ]);
     api.save({ id: 'x' });

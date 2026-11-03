@@ -628,12 +628,15 @@ const seenScenes = new WeakSet<Element[]>();
 export function renderScene(
   ctx: CanvasRenderingContext2D, elements: Element[],
   cam: Camera, wCss: number, hCss: number, dpr: number, grid: GridMode,
-  exclude?: Set<string>,
+  exclude?: Set<string>, transparent = false,
 ): void {
   drawDpr = dpr;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, wCss, hCss);
+  if (transparent) ctx.clearRect(0, 0, wCss, hCss);
+  else {
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, wCss, hCss);
+  }
   if (grid !== 'none') drawGrid(ctx, cam, wCss, hCss, grid);
 
   const zx = dpr * cam.zoom;
@@ -1142,13 +1145,16 @@ function draw(): void {
   if (state.selection.size > 0) {
     ctx.strokeStyle = '#3273f5';
     ctx.lineWidth = 1.5;
+    const selected = state.board.elements.filter(el => state.selection.has(el.id) && el.id !== state.hideElId);
+    if (selected.length > 1) {
+      const bb = contentBBox(selected);
+      ctx.setLineDash([]);
+      ctx.strokeRect((bb.x0 - cam.x) * cam.zoom - 4, (bb.y0 - cam.y) * cam.zoom - 4, bb.w * cam.zoom + 8, bb.h * cam.zoom + 8);
+    }
     ctx.setLineDash([5, 4]);
-    for (const el of state.board.elements) {
-      if (!state.selection.has(el.id) || el.id === state.hideElId) continue;
+    for (const el of selected) {
       const a = cacheOf(el).aabb;
-      const x = (a.x0 - cam.x) * cam.zoom - 4;
-      const y = (a.y0 - cam.y) * cam.zoom - 4;
-      ctx.strokeRect(x, y, (a.x1 - a.x0) * cam.zoom + 8, (a.y1 - a.y0) * cam.zoom + 8);
+      ctx.strokeRect((a.x0 - cam.x) * cam.zoom - 4, (a.y0 - cam.y) * cam.zoom - 4, (a.x1 - a.x0) * cam.zoom + 8, (a.y1 - a.y0) * cam.zoom + 8);
     }
     ctx.setLineDash([]);
     if (state.selection.size === 1) drawHandles(ctx, cam);
