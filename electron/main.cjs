@@ -29,7 +29,7 @@ async function createWindow() {
     autoHideMenuBar: true,
     ...(process.platform !== 'darwin' ? {
       titleBarStyle: 'hidden',
-      titleBarOverlay: { color: '#ffffff', symbolColor: '#20242b', height: 46 },
+      titleBarOverlay: { color: '#00000000', symbolColor: '#20242b', height: 46 },
     } : {}),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),

@@ -166,6 +166,7 @@ export interface Page {
   id: string;
   name: string;
   grid: GridMode;
+  backgroundColor?: string;
   elements: Element[];
 }
 

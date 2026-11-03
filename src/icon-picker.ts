@@ -269,9 +269,12 @@ function place(el: HTMLElement, anchor: HTMLElement): void {
   const a = anchor.getBoundingClientRect();
   const w = el.offsetWidth, h = el.offsetHeight;
   const m = 8;
-  let left = a.left;
-  let top = a.bottom + 6;
-  if (top + h > window.innerHeight - m && a.top - 6 - h >= m) top = a.top - 6 - h;
+  // В шапке выравниваем панель по внешнему краю группы проекта.
+  const group = anchor.closest('.project-group');
+  const bounds = group ? group.getBoundingClientRect() : a;
+  let left = bounds.left;
+  let top = bounds.bottom + 6;
+  if (top + h > window.innerHeight - m && bounds.top - 6 - h >= m) top = bounds.top - 6 - h;
   left = Math.max(m, Math.min(left, window.innerWidth - w - m));
   top = Math.max(m, Math.min(top, window.innerHeight - h - m));
   el.style.left = `${left}px`;

@@ -1892,6 +1892,7 @@ function gridMenu(): HTMLElement {
 function renderGridButton(): void {
   const btn = gridButton();
   const g = state.board.grid;
+  document.getElementById('view-grid-icon')!.innerHTML = GRID_ICONS[g];
   if (btn.dataset.value === g) return;
   btn.dataset.value = g;
   btn.innerHTML = GRID_ICONS[g];
@@ -1983,11 +1984,13 @@ function settingsPopover(): HTMLElement {
 }
 
 function closeSettings(): void {
+  document.body.classList.remove('settings-popover-open');
   settingsPopover().hidden = true;
 }
 
 function openSettings(): void {
   const pop = settingsPopover();
+  document.body.classList.add('settings-popover-open');
   pop.hidden = false;
   pop.textContent = '';
   const title = document.createElement('div');
@@ -2006,9 +2009,9 @@ function openSettings(): void {
   all.addEventListener('click', () => openAllSettings());
   pop.appendChild(all);
   const btn = document.getElementById('btn-settings')!;
-  const br = btn.getBoundingClientRect();
-  pop.style.left = `${Math.max(8, br.right - 260)}px`;
-  pop.style.top = `${br.bottom + 8}px`;
+  const br = (btn.closest('.topbar-group') ?? btn).getBoundingClientRect();
+  pop.style.left = `${Math.max(8, br.right - pop.offsetWidth)}px`;
+  pop.style.top = `${br.bottom + 6}px`;
 }
 
 /** Окно «Все настройки»; section — раздел, с которого открыть (по умолчанию — последний открытый). */
@@ -2855,7 +2858,7 @@ function renderPageThumb(page: Page, cv: HTMLCanvasElement, view: AABB | null = 
   const content = page.elements.length > 0 ? contentBBox(page.elements) : null;
   const cam = thumbCamera(thumbFrame(content, view));
   const c = cv.getContext('2d');
-  if (c) renderScene(c, page.elements, cam, THUMB_W, THUMB_H, 2, page.grid === 'coord' ? 'none' : page.grid);
+  if (c) renderScene(c, page.elements, cam, THUMB_W, THUMB_H, 2, page.grid === 'coord' ? 'none' : page.grid, undefined, false, page.backgroundColor);
   return { cam, content };
 }
 
@@ -3487,6 +3490,13 @@ function renderHome(): void {
   home.dataset.view = view;
   const head = document.createElement('div');
   head.className = 'home-head';
+  const logo = document.createElement('button');
+  logo.className = 'home-logo';
+  logo.type = 'button';
+  logo.title = 'Вернуться к доске';
+  logo.setAttribute('aria-label', 'Вернуться к доске');
+  logo.innerHTML = `<span class="home-logo-image"><img src="logo.svg" alt="" /></span><span class="home-logo-back" aria-hidden="true">${svg('<path d="M19 12H5M11 6l-6 6 6 6"/>')}</span>`;
+  logo.addEventListener('click', () => setView('board'));
   const h = document.createElement('h1');
   h.textContent = 'Проекты';
   const tools = document.createElement('div');
@@ -3511,7 +3521,7 @@ function renderHome(): void {
   newBtn.append('Новый проект');
   newBtn.addEventListener('click', () => { void newProjectHandler(); });
   tools.append(views, newBtn);
-  head.append(h, tools);
+  head.append(logo, h, tools);
   home.appendChild(head);
   const pinned = state.projects.filter(m => m.pinned);
   const rest = state.projects.filter(m => !m.pinned);
@@ -3999,7 +4009,6 @@ function makeVsep(): HTMLElement {
 function wireTopbar(): void {
   // подсказки шапки из index.html: на macOS — Cmd вместо Ctrl
   for (const b of document.querySelectorAll<HTMLElement>('#topbar [title]')) b.title = macKeys(b.title);
-  document.getElementById('btn-home')!.innerHTML = ICONS.home;
   document.getElementById('btn-undo')!.innerHTML = ICONS.undo;
   document.getElementById('btn-redo')!.innerHTML = ICONS.redo;
   document.getElementById('btn-fit')!.innerHTML = ICONS.fit;
@@ -4027,16 +4036,111 @@ function wireTopbar(): void {
   // окно демонстрации — второе окно браузера, в приложении для Android его не открыть
   if (isNativeApp()) document.getElementById('btn-present')!.style.display = 'none';
 
-  document.getElementById('btn-home')!.addEventListener('click', () => {
-    void (async () => {
+  const menuButton = document.getElementById('btn-home') as HTMLButtonElement;
+  menuButton.title = 'Меню';
+  menuButton.setAttribute('aria-label', 'Меню');
+  menuButton.setAttribute('aria-expanded', 'false');
+  menuButton.innerHTML = `<span class="logo-mark"><img src="logo.svg" alt="Abax" /></span><span class="logo-menu-mark" aria-hidden="true">${svg('<path d="M4 7h16M4 12h16M4 17h16"/>')}</span>`;
+  const menu = document.createElement('div');
+  menu.id = 'main-menu';
+  menu.hidden = true;
+  const menuIcon = (icon = '') => `<span class="main-menu-icon" aria-hidden="true">${icon}</span>`;
+  const menuItem = (action: string, label: string, icon = '', extra = '') =>
+    `<button data-action="${action}">${menuIcon(icon)}<span class="main-menu-text">${label}</span>${extra}</button>`;
+  const section = (id: string, label: string, icon: string, content: string) =>
+    `<button class="main-menu-section" data-section="${id}" aria-expanded="false" aria-controls="menu-${id}">${menuIcon(icon)}<span class="main-menu-text">${label}</span><span class="main-menu-chevron" aria-hidden="true">›</span></button><div class="main-submenu" id="menu-${id}" hidden>${content}</div>`;
+  const checkItem = (action: string, label: string) =>
+    `<button data-action="${action}" role="menuitemcheckbox" aria-checked="false">${menuIcon()}<span class="main-menu-text">${label}</span><span class="main-menu-check" aria-hidden="true"></span></button>`;
+  menu.innerHTML = `${menuItem('home', 'Домой', ICONS.home)}<hr>
+    ${section('import', 'Импорт', ICONS.pdf,
+      menuItem('import', 'Импорт документа', ICONS.pdf) + menuItem('image', 'Вставить изображение', ICONS.image, '<kbd>Ctrl+V</kbd>'))}
+    ${section('export', 'Экспорт', ICONS.export,
+      menuItem('project', 'Скачать проект как файл', ICONS.export) + '<hr>' + menuItem('pdf', 'Экспорт в PDF', ICONS.pdf) + menuItem('png', 'Экспорт в PNG', ICONS.image))}<hr>
+    ${section('hide', 'Скрыть', svg('<path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M9.9 5.2A10 10 0 0 1 12 5c5 0 8.5 5 9 7a13 13 0 0 1-2.4 3.6M6.3 6.3A13 13 0 0 0 3 12c.5 2 4 7 9 7a10 10 0 0 0 4-.8"/>'),
+      checkItem('undo', 'Кнопки отмены и повтора') + checkItem('imports', 'Кнопки импорта'))}
+    ${menuItem('settings', 'Настройки', ICONS.settings)}<hr>
+    ${!doskaApi && !isNativeApp() ? menuItem('app', 'Открыть в приложении', svg('<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 17h6M12 6v7m-3-3 3 3 3-3"/>')) : ''}`;
+  document.body.append(menu);
+  const setMenuOpen = (open: boolean) => {
+    menu.hidden = !open;
+    if (!open) {
+      menu.querySelectorAll<HTMLButtonElement>('[data-section]').forEach(button => button.setAttribute('aria-expanded', 'false'));
+      menu.querySelectorAll<HTMLElement>('.main-submenu').forEach(submenu => { submenu.hidden = true; });
+    }
+    menuButton.setAttribute('aria-expanded', String(open));
+    document.body.classList.toggle('main-menu-open', open);
+    menu.querySelector('[data-action="undo"]')!.setAttribute('aria-checked', String(state.settings.hideUndoRedo));
+    menu.querySelector('[data-action="imports"]')!.setAttribute('aria-checked', String(document.body.classList.contains('hide-import-buttons')));
+  };
+  document.body.classList.toggle('hide-import-buttons', localStorage.getItem('abax.hideImports') === 'true');
+  menuButton.addEventListener('click', () => setMenuOpen(menu.hidden));
+  menu.addEventListener('click', e => {
+    const target = e.target as HTMLElement;
+    const sectionButton = target.closest<HTMLButtonElement>('button[data-section]');
+    if (sectionButton) {
+      const opening = sectionButton.getAttribute('aria-expanded') !== 'true';
+      menu.querySelectorAll<HTMLButtonElement>('[data-section]').forEach(button => {
+        const expanded = button === sectionButton && opening;
+        button.setAttribute('aria-expanded', String(expanded));
+        const panel = document.getElementById(button.getAttribute('aria-controls')!);
+        if (panel) panel.hidden = !expanded;
+      });
+      return;
+    }
+    const action = target.closest<HTMLButtonElement>('button[data-action]')?.dataset.action;
+    if (!action) return;
+    if (action === 'undo') { setSettings({ hideUndoRedo: !state.settings.hideUndoRedo }); persistSettings(); applyUndoRedoVisibility(); setMenuOpen(true); return; }
+    if (action === 'imports') {
+      const hidden = document.body.classList.toggle('hide-import-buttons');
+      localStorage.setItem('abax.hideImports', String(hidden)); setMenuOpen(true); return;
+    }
+    setMenuOpen(false);
+    if (action === 'home') void (async () => { await saveNow(); setView('home'); })();
+    if (action === 'import') void importDocument();
+    if (action === 'image') void insertImage();
+    if (action === 'png') void exportPng();
+    if (action === 'settings') openAllSettings();
+    if (action === 'project') void (async () => {
       await saveNow();
-      setView(state.view === 'home' ? 'board' : 'home');
+      const url = URL.createObjectURL(new Blob([JSON.stringify(state.project, null, 2)], { type: 'application/json' }));
+      const a = document.createElement('a'); a.href = url; a.download = `${state.project.name || 'Abax'}.json`; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
     })();
+    if (action === 'pdf') showToast('Экспорт в PDF пока недоступен');
+    if (action === 'app') { showToast('Скачайте приложение Abax со страницы релизов'); window.open('https://github.com/MotoIlyuha/Abax/releases/latest', '_blank', 'noopener'); }
   });
+  document.addEventListener('pointerdown', e => { if (!menu.hidden && !menu.contains(e.target as Node) && !menuButton.contains(e.target as Node)) setMenuOpen(false); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !menu.hidden) { setMenuOpen(false); menuButton.focus(); } });
   document.getElementById('btn-undo')!.addEventListener('click', () => undo());
   document.getElementById('btn-redo')!.addEventListener('click', () => redo());
   document.getElementById('btn-fit')!.addEventListener('click', () => fitContent());
-  document.getElementById('btn-export')!.addEventListener('click', () => { void exportPng(); });
+  const exportButton = document.getElementById('btn-export')!;
+  exportButton.title = 'Экспорт';
+  exportButton.setAttribute('aria-expanded', 'false');
+  const exportMenu = document.createElement('div');
+  exportMenu.id = 'export-menu';
+  exportMenu.hidden = true;
+  exportMenu.innerHTML = menu.querySelector<HTMLElement>('#menu-export')!.innerHTML;
+  document.body.append(exportMenu);
+  const closeExportMenu = () => { exportMenu.hidden = true; exportButton.setAttribute('aria-expanded', 'false'); };
+  exportButton.addEventListener('click', () => {
+    if (!exportMenu.hidden) { closeExportMenu(); return; }
+    setMenuOpen(false);
+    const group = exportButton.closest('.topbar-group')!;
+    const bounds = group.getBoundingClientRect();
+    exportMenu.hidden = false;
+    exportMenu.style.left = `${Math.max(8, bounds.right - exportMenu.offsetWidth)}px`;
+    exportMenu.style.top = `${bounds.bottom + 6}px`;
+    exportButton.setAttribute('aria-expanded', 'true');
+  });
+  exportMenu.addEventListener('click', e => {
+    const action = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-action]')?.dataset.action;
+    if (!action) return;
+    closeExportMenu();
+    menu.querySelector<HTMLButtonElement>(`#menu-export [data-action="${action}"]`)?.click();
+  });
+  document.addEventListener('pointerdown', e => { if (!exportMenu.hidden && !exportMenu.contains(e.target as Node) && !exportButton.contains(e.target as Node)) closeExportMenu(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !exportMenu.hidden) { closeExportMenu(); exportButton.focus(); } });
   document.getElementById('btn-present')!.addEventListener('click', togglePresent);
   document.getElementById('btn-import')!.addEventListener('click', () => { void importDocument(); });
   document.getElementById('btn-settings')!.addEventListener('click', () => {
@@ -4084,7 +4188,80 @@ function wireTopbar(): void {
 
 function wireZoomInput(): void {
   const label = document.getElementById('zoom-label')!;
-  label.addEventListener('click', () => openZoomInput(label));
+  const menu = document.createElement('div');
+  menu.id = 'view-menu'; menu.hidden = true;
+  document.body.append(menu);
+  const close = () => { menu.hidden = true; label.setAttribute('aria-expanded', 'false'); };
+  const render = () => {
+    const zoomIcon = svg('<circle cx="10" cy="10" r="6"/><path d="M14.5 14.5L21 21M10 7v6M7 10h6"/>');
+    const row = (action: string, icon: string, label: string, arrow = '') => `<button ${action}><span class="view-icon">${icon}</span><span class="view-text">${label}</span>${arrow}</button>`;
+    menu.innerHTML = `${row('data-view="fullscreen"', svg('<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/>'), 'Полный экран')}<hr>
+      ${row('data-view="grid"', GRID_ICONS.square, 'Тип сетки', '›')}<div id="view-grid-options" hidden></div>
+      ${row('data-view="background"', svg('<path d="M12 3C9.5 6.4 5 10 5 14a7 7 0 0 0 14 0c0-4-4.5-7.6-7-11z"/><path d="M12 3v18a7 7 0 0 0 7-7c0-4-4.5-7.6-7-11z" fill="currentColor" stroke="none"/>'), 'Фон страницы', '›')}<div id="view-color-options" hidden></div>
+      ${row('data-view="fit"', ICONS.fit, 'Показать всё')}<hr>
+      ${[50, 70, 100, 200, 400, 800].map(n => row(`data-zoom="${n}"`, zoomIcon, `${n}%`)).join('')}
+      ${row('data-view="custom"', zoomIcon, 'Другой масштаб…')}`;
+    const options = menu.querySelector<HTMLElement>('#view-grid-options')!;
+    for (const g of Object.keys(GRID_LABELS) as GridMode[]) {
+      const b = document.createElement('button'); b.innerHTML = `${GRID_ICONS[g]}<span>${GRID_LABELS[g]}</span>${g === state.board.grid ? '✓' : ''}`;
+      b.addEventListener('click', () => { setGrid(g); void saveNow(); close(); }); options.append(b);
+    }
+  };
+  const group = document.querySelector<HTMLElement>('.view-group')!;
+  const positionMenu = () => {
+    const r = group.getBoundingClientRect();
+    menu.style.left = `${r.left}px`; menu.style.right = 'auto';
+    menu.style.width = `${r.width}px`; menu.style.top = `${r.bottom + 6}px`;
+  };
+  for (const [id, factor, icon] of [
+    ['zoom-out', 1 / 1.25, '<path d="M5 12h14"/>'],
+    ['zoom-in', 1.25, '<path d="M5 12h14M12 5v14"/>'],
+  ] as const) {
+    const button = document.getElementById(id)!;
+    button.innerHTML = svg(icon);
+    button.addEventListener('click', () => {
+      const r = canvas.getBoundingClientRect();
+      zoomAtPoint(state.camera.zoom * factor, r.width / 2, r.height / 2);
+    });
+  }
+  const gridTrigger = document.getElementById('view-grid-icon')!;
+  gridTrigger.addEventListener('click', () => {
+    if (!menu.hidden && !menu.querySelector('#view-grid-options')) { close(); return; }
+    render(); menu.hidden = false; label.setAttribute('aria-expanded', 'true');
+    positionMenu();
+    const options = menu.querySelector<HTMLElement>('#view-grid-options')!;
+    options.hidden = false;
+    menu.replaceChildren(...Array.from(options.children));
+  });
+  label.addEventListener('click', () => {
+    if (!menu.hidden) { close(); return; }
+    render(); menu.hidden = false; label.setAttribute('aria-expanded', 'true');
+    positionMenu();
+  });
+  menu.addEventListener('click', e => {
+    const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button'); if (!b) return;
+    if (b.dataset.view === 'background') {
+      const options = menu.querySelector<HTMLElement>('#view-color-options')!;
+      const opening = options.hidden;
+      menu.querySelector<HTMLElement>('#view-grid-options')!.hidden = true;
+      options.hidden = !opening;
+      options.innerHTML = '';
+      for (const [name, color] of [['Белый','#ffffff'], ['Светло-серый','#f1f1f1'], ['Серый','#aaaaaa'], ['Тёмно-серый','#444444'], ['Чёрный','#000000'], ['Голубой','#e7f7ff'], ['Сиреневый','#eeeaff'], ['Розовый','#fdebef'], ['Жёлтый','#fff8db'], ['Зелёный','#edf8e5']]) {
+        const item = document.createElement('button'); const swatch = document.createElement('span'); swatch.className = 'view-swatch'; swatch.style.background = color;
+        item.append(swatch, document.createTextNode(name), document.createTextNode((state.board.backgroundColor ?? '#ffffff') === color ? ' ✓' : ''));
+        item.addEventListener('click', event => { event.stopPropagation(); state.board.backgroundColor = color; state.board.elements = [...state.board.elements]; update(true); void saveNow(); close(); }); options.append(item);
+      }
+      return;
+    }
+    if (b.dataset.view === 'grid') { const options = menu.querySelector<HTMLElement>('#view-grid-options')!; const opening = options.hidden; menu.querySelector<HTMLElement>('#view-color-options')!.hidden = true; options.hidden = !opening; return; }
+    if (b.dataset.view === 'fullscreen') { if (document.fullscreenElement) void document.exitFullscreen(); else void document.documentElement.requestFullscreen(); }
+    if (b.dataset.view === 'fit') fitContent();
+    if (b.dataset.zoom) { const r = canvas.getBoundingClientRect(); zoomAtPoint(Number(b.dataset.zoom) / 100, r.width / 2, r.height / 2); }
+    if (b.dataset.view === 'custom') { close(); openZoomInput(label); return; }
+    close();
+  });
+  document.addEventListener('pointerdown', e => { if (!menu.hidden && !menu.contains(e.target as Node) && !label.contains(e.target as Node) && !gridTrigger.contains(e.target as Node)) close(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !menu.hidden) { close(); label.focus(); } });
 }
 
 /** Поле вместо подписи масштаба: Enter применяет (ошибку объясняет подсказка), Esc и уход из поля с ошибкой — отмена. */

@@ -628,13 +628,13 @@ const seenScenes = new WeakSet<Element[]>();
 export function renderScene(
   ctx: CanvasRenderingContext2D, elements: Element[],
   cam: Camera, wCss: number, hCss: number, dpr: number, grid: GridMode,
-  exclude?: Set<string>, transparent = false,
+  exclude?: Set<string>, transparent = false, backgroundColor = '#ffffff',
 ): void {
   drawDpr = dpr;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   if (transparent) ctx.clearRect(0, 0, wCss, hCss);
   else {
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = backgroundColor;
     ctx.fillRect(0, 0, wCss, hCss);
   }
   if (grid !== 'none') drawGrid(ctx, cam, wCss, hCss, grid);
@@ -715,6 +715,7 @@ class SceneCache {
   private dpr = 1;
   private arr: Element[] | null = null;
   private grid: GridMode = 'none';
+  private backgroundColor = '';
   private coordLabels = true;
   private liveEdit = false;
   private hideId: string | null = null;
@@ -740,7 +741,7 @@ class SceneCache {
     if (!c || c.x !== cam.x || c.y !== cam.y || c.zoom !== cam.zoom || w !== this.w || h !== this.h || dpr !== this.dpr) {
       this.stale = true;
     }
-    if (state.board.grid !== this.grid || state.settings.coordLabels !== this.coordLabels || state.liveEdit !== this.liveEdit
+    if ((state.board.backgroundColor ?? '#ffffff') !== this.backgroundColor || state.board.grid !== this.grid || state.settings.coordLabels !== this.coordLabels || state.liveEdit !== this.liveEdit
       || this.recursionEpoch !== recursionEpoch || this.recursionEnabled !== state.settings.recursionEnabled || state.hideElId !== this.hideId || state.dragHidden !== this.dragHidden || state.pageId !== this.dragPage || state.hideTextId !== this.hideTextId || imgEpoch !== this.imgEpoch) this.stale = true;
     // страницы на холсте показывают другие страницы: те поменялись — перерисовать
     if (!sameStamp(linkStamp(state.board.elements), this.links)) this.stale = true;
@@ -763,13 +764,14 @@ class SceneCache {
     }
     if (state.hideElId) excl.add(state.hideElId);
     if (state.dragHidden?.pageId === state.pageId) for (const id of state.dragHidden.ids) excl.add(id);
-    renderScene(this.ctx!, state.board.elements, cam, w, h, dpr, state.board.grid, excl.size ? excl : undefined);
+    renderScene(this.ctx!, state.board.elements, cam, w, h, dpr, state.board.grid, excl.size ? excl : undefined, false, state.board.backgroundColor);
     this.cam = { ...cam };
     this.w = w;
     this.h = h;
     this.dpr = dpr;
     this.arr = state.board.elements;
     this.grid = state.board.grid;
+    this.backgroundColor = state.board.backgroundColor ?? '#ffffff';
     this.coordLabels = state.settings.coordLabels;
     this.liveEdit = state.liveEdit;
     this.hideId = state.hideElId;
@@ -813,7 +815,7 @@ class SceneCache {
     const dw = (this.w / c.zoom) * cam.zoom;
     const dh = (this.h / c.zoom) * cam.zoom;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = state.board.backgroundColor ?? '#ffffff';
     ctx.fillRect(0, 0, w, h);
     ctx.drawImage(this.canvas, 0, 0, this.canvas.width, this.canvas.height, dx, dy, dw, dh);
 
@@ -835,7 +837,7 @@ class SceneCache {
       }
       if (state.hideElId) exclude.add(state.hideElId);
       if (state.dragHidden?.pageId === state.pageId) for (const id of state.dragHidden.ids) exclude.add(id);
-      renderScene(ctx, state.board.elements, cam, w, h, dpr, state.board.grid, exclude.size ? exclude : undefined);
+      renderScene(ctx, state.board.elements, cam, w, h, dpr, state.board.grid, exclude.size ? exclude : undefined, false, state.board.backgroundColor);
       ctx.restore();
     }
   }
