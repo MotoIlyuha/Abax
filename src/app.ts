@@ -2290,6 +2290,96 @@ function pickPdfViaInput(): Promise<string | null> {
   return promise;
 }
 
+// Форматы Office и OpenDocument представляют собой ZIP-архивы с XML.
+async function documentXmlFiles(data: ArrayBuffer): Promise<Map<string, string>> {
+  const view = new DataView(data);
+  const bytes = new Uint8Array(data);
+  let end = bytes.length - 22;
+  while (end >= Math.max(0, bytes.length - 65557) && view.getUint32(end, true) !== 0x06054b50) end--;
+  if (end < 0) throw new Error('Некорректный архив документа');
+  let offset = view.getUint32(end + 16, true);
+  const count = view.getUint16(end + 10, true);
+  const files = new Map<string, string>();
+  for (let i = 0; i < count; i++) {
+    if (view.getUint32(offset, true) !== 0x02014b50) throw new Error('Некорректный архив документа');
+    const method = view.getUint16(offset + 10, true), size = view.getUint32(offset + 20, true);
+    const nameLen = view.getUint16(offset + 28, true), extra = view.getUint16(offset + 30, true), comment = view.getUint16(offset + 32, true);
+    const name = new TextDecoder().decode(bytes.slice(offset + 46, offset + 46 + nameLen));
+    const local = view.getUint32(offset + 42, true);
+    const start = local + 30 + view.getUint16(local + 26, true) + view.getUint16(local + 28, true);
+    if (name.endsWith('.xml')) {
+      const chunk = bytes.slice(start, start + size);
+      let content: ArrayBuffer;
+      if (method === 0) content = chunk.buffer;
+      else if (method === 8) content = await new Response(new Blob([chunk]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer();
+      else throw new Error('Неподдерживаемое сжатие документа');
+      files.set(name, new TextDecoder().decode(content));
+    }
+    offset += 46 + nameLen + extra + comment;
+  }
+  return files;
+}
+
+function xmlDocument(xml: string): Document {
+  const doc = new DOMParser().parseFromString(xml, 'application/xml');
+  if (doc.querySelector('parsererror')) throw new Error('Некорректное содержимое документа');
+  return doc;
+}
+
+async function documentText(file: File): Promise<string> {
+  const ext = file.name.split('.').pop()?.toLowerCase();
+  if (['txt', 'csv', 'tsv', 'md'].includes(ext || '')) return file.text();
+  const files = await documentXmlFiles(await file.arrayBuffer());
+  if (ext === 'docx') {
+    const xml = files.get('word/document.xml');
+    if (!xml) throw new Error('Не найден текст документа');
+    return Array.from(xmlDocument(xml).getElementsByTagNameNS('*', 'p')).map(p => Array.from(p.getElementsByTagNameNS('*', 't')).map(t => t.textContent).join('')).join('\n');
+  }
+  if (ext === 'odt' || ext === 'ods') {
+    const xml = files.get('content.xml');
+    if (!xml) throw new Error('Не найдено содержимое документа');
+    const doc = xmlDocument(xml);
+    return Array.from(doc.getElementsByTagNameNS('*', 'p')).map(p => p.textContent || '').join('\n');
+  }
+  if (ext === 'xlsx') {
+    const shared = files.get('xl/sharedStrings.xml');
+    const strings = shared ? Array.from(xmlDocument(shared).getElementsByTagNameNS('*', 'si')).map(si => si.textContent || '') : [];
+    return Array.from(files.entries()).filter(([name]) => /^xl\/worksheets\/sheet\d+\.xml$/.test(name)).sort(([a], [b]) => a.localeCompare(b, undefined, { numeric: true })).map(([name, xml]) => {
+      const rows = Array.from(xmlDocument(xml).getElementsByTagNameNS('*', 'row')).map(row => Array.from(row.getElementsByTagNameNS('*', 'c')).map(cell => {
+        const value = cell.getElementsByTagNameNS('*', 'v')[0]?.textContent || cell.getElementsByTagNameNS('*', 'is')[0]?.textContent || '';
+        return cell.getAttribute('t') === 's' ? (strings[Number(value)] || '') : value;
+      }).join('\t'));
+      return name.match(/sheet(\d+)/)?.[1] ? `Лист ${name.match(/sheet(\d+)/)![1]}\n${rows.join('\n')}` : rows.join('\n');
+    }).join('\n\n');
+  }
+  throw new Error('Формат не поддерживается');
+}
+
+export async function importDocument(): Promise<void> {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.pdf,.docx,.xlsx,.odt,.ods,.txt,.csv,.tsv,.md';
+  input.onchange = async () => {
+    const file = input.files?.[0];
+    if (!file) return;
+    try {
+      if (/\.pdf$/i.test(file.name)) {
+        const dataUrl = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(reader.error); reader.readAsDataURL(file); });
+        await importPdfFromDataUrl(dataUrl);
+      } else {
+        const text = (await documentText(file)).trim();
+        if (!text) throw new Error('Документ не содержит текста');
+        const el: TextEl = { id: uid(), type: 'text', text, x: state.camera.x + 40, y: state.camera.y + 40, size: 20, color: '#222222' };
+        pushHistory(state.board.elements);
+        replaceElements([...state.board.elements, el]);
+        selectInserted(el.id);
+        fitContent();
+      }
+    } catch (err) { alert('Не удалось открыть документ: ' + (err instanceof Error ? err.message : String(err))); }
+  };
+  input.click();
+}
+
 const PDF_PAGE_W = 900; // юниты сцены
 const PDF_PAGE_GAP = 48;
 const PDF_MAX_PAGES = 30;
@@ -3894,7 +3984,7 @@ function wireTopbar(): void {
   document.getElementById('btn-fit')!.addEventListener('click', () => fitContent());
   document.getElementById('btn-export')!.addEventListener('click', () => { void exportPng(); });
   document.getElementById('btn-present')!.addEventListener('click', togglePresent);
-  document.getElementById('btn-import')!.addEventListener('click', () => { void importPdf(); });
+  document.getElementById('btn-import')!.addEventListener('click', () => { void importDocument(); });
   document.getElementById('btn-settings')!.addEventListener('click', () => {
     if (settingsPopover().hidden) openSettings();
     else closeSettings();
