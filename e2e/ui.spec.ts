@@ -192,6 +192,19 @@ test.describe('панель цвета и толщины', () => {
     await expect(panel).toHaveCount(0);
   });
 
+  test('клик по группе выбирает показанный инструмент и запоминает выбор', async ({ board, page }) => {
+    await page.locator('#btn-shapes').click();
+    const panel = page.locator('.ctx-panel[data-kind="shapes"]');
+    await expect(panel).toBeVisible();
+    expect((await board.state()).tool).toBe('rect');
+    await panel.locator('[data-shape="ellipse"]').click();
+    await board.tool('p');
+    await page.locator('#btn-shapes').click();
+    await expect(panel).toBeVisible();
+    expect((await board.state()).tool).toBe('ellipse');
+    await expect(panel.locator('[data-shape="ellipse"]')).toHaveClass(/active/);
+  });
+
   test('выбор инструмента из группы удержанием и отпусканием', async ({ board, page }) => {
     await page.evaluate(() => {
       (window as unknown as { vibrations: number[] }).vibrations = [];

@@ -3838,13 +3838,19 @@ function buildToolbar(): void {
     b.className = 'tool';
     if (item.type === 'group') {
       if (item.tools.length === 0) continue;
-      // группа инструментов: клик открывает панель выбора по центру этой кнопки
+      // Клик выбирает показанный инструмент и открывает панель группы.
       const groupId = item.id;
       b.id = `btn-${groupId}`;
       b.dataset.ctx = groupId;
       b.dataset.tools = item.tools.join(' ');
       b.classList.add('tool-shapes');
       b.title = item.name;
+      const selectShownTool = () => {
+        const group = toolbarGroup(groupId);
+        if (!group) return;
+        const last = lastGroupTool[groupId];
+        setTool(group.tools.includes(last) ? last : group.tools[0]);
+      };
       let suppressClick = false;
       b.addEventListener('pointerdown', e => {
         if (!e.isPrimary || e.button !== 0) return;
@@ -3896,6 +3902,7 @@ function buildToolbar(): void {
           } else if (!existing) {
             // Первый короткий клик оставляет только что открытую группу открытой.
             suppressClick = true;
+            selectShownTool();
           }
         };
         window.addEventListener('pointermove', move);
@@ -3905,6 +3912,7 @@ function buildToolbar(): void {
       b.addEventListener('click', () => {
         if (suppressClick) { suppressClick = false; return; }
         toggleCtxPanel(groupId, 'toolbar');
+        selectShownTool();
       });
     } else {
       const id = item.id;
