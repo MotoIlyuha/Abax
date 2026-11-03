@@ -124,6 +124,21 @@ test.describe('панель цвета и толщины', () => {
     expect((await board.elements())[0]).toMatchObject({ color: '#1f2329', width: 4 * 1.3 });
   });
 
+  test('дорожка прозрачности показывает цвет выбранной вкладки', async ({ board, page }) => {
+    await board.rect(400, 300, 500, 400);
+    await board.tool('v');
+    await board.click({ x: 450, y: 350 });
+    await board.quickMenu.locator('[data-ctx="style"]').click();
+    const panel = page.locator('.ctx-panel[data-kind="style"]');
+    await panel.locator('.ctx-swatches:not(.custom) [data-c="#2dc75c"]').click();
+    await panel.getByRole('button', { name: 'Заливка' }).click();
+    await expect(panel).toHaveCSS('--ink', 'transparent');
+    await panel.locator('.ctx-swatches:not(.custom) [data-c="#ff6464"]').click();
+    await expect(panel).toHaveCSS('--ink', '#ff6464');
+    await panel.getByRole('button', { name: 'Рамка' }).click();
+    await expect(panel).toHaveCSS('--ink', '#2dc75c');
+  });
+
   test('у текста в быстром меню только цвет, без толщины', async ({ board, page }) => {
     await board.tool('t');
     await board.click({ x: 400, y: 300 });

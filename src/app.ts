@@ -1050,7 +1050,7 @@ function buildStylePanel(cp: CtxPanel): void {
   const selected = selectedForStyle();
   const hasFill = selected.some(e => e.type === 'shape' && e.shape !== 'line' && e.shape !== 'arrow');
   if (!hasFill) styleColorTab = 'border';
-  p.style.setProperty('--ink', state.style.color);
+  p.style.setProperty('--ink', currentPanelColor() || 'transparent');
   if (styleNeedsWidth(cp.source)) {
     // как у прозрачности и скругления: иконка — «капля» — значение
     const row = document.createElement('div');
@@ -4109,6 +4109,7 @@ function refresh(): void {
     rebuildPanel(stylePanel);
   } else if (stylePanel) {
     updateSwatchActive(stylePanel.el, currentPanelColor());
+    stylePanel.el.style.setProperty('--ink', currentPanelColor() || 'transparent');
     stylePanel.el.querySelector('.ctx-fill-clear')?.classList.toggle('active', !currentPanelColor());
   }
   syncShapeCaret();
