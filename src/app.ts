@@ -445,8 +445,13 @@ function positionEditor(): void {
     ta.style.lineHeight = '1.25';
     ta.style.color = t.color;
     ta.style.opacity = String(t.opacity ?? 1);
-    ta.style.width = '10px';
-    ta.style.width = `${Math.max(60, ta.scrollWidth + 12)}px`;
+    ta.style.whiteSpace = t.w !== undefined ? 'pre-wrap' : 'pre';
+    ta.style.overflowWrap = t.w !== undefined ? 'anywhere' : 'normal';
+    if (t.w !== undefined) ta.style.width = `${t.w * z}px`;
+    else {
+      ta.style.width = '10px';
+      ta.style.width = `${Math.max(60, ta.scrollWidth + 12)}px`;
+    }
   }
   ta.style.height = 'auto';
   ta.style.height = `${ta.scrollHeight + 2}px`;

@@ -14,12 +14,34 @@ export const TEXT_FONT = (size: number, bold = false, italic = false) =>
   `${italic ? 'italic ' : ''}${bold ? '700 ' : ''}${size}px "Segoe UI", "Inter", system-ui, sans-serif`;
 
 export function textSize(el: TextEl): { w: number; h: number } {
-  const lines = el.text.split('\n');
+  const lines = textLines(el);
   const ctx = mctx();
   ctx.font = TEXT_FONT(el.size, el.bold, el.italic);
   let w = 0;
   for (const l of lines) w = Math.max(w, ctx.measureText(l || ' ').width);
-  return { w, h: lines.length * el.size * 1.25 };
+  return { w: el.w ?? w, h: lines.length * el.size * 1.25 };
+}
+
+export function textLines(el: TextEl): string[] {
+  if (el.w === undefined) return el.text.split('\n');
+  const ctx = mctx();
+  ctx.font = TEXT_FONT(el.size, el.bold, el.italic);
+  const result: string[] = [];
+  for (const paragraph of el.text.split('\n')) {
+    if (!paragraph) { result.push(''); continue; }
+    let line = '';
+    for (const part of paragraph.match(/\s+|\S+/g) || []) {
+      if (line && ctx.measureText(line + part).width > el.w && !/^\s+$/.test(part)) {
+        result.push(line.trimEnd()); line = '';
+      }
+      for (const char of part) {
+        if (line && ctx.measureText(line + char).width > el.w) { result.push(line.trimEnd()); line = ''; }
+        if (line || !/\s/.test(char)) line += char;
+      }
+    }
+    result.push(line);
+  }
+  return result;
 }
 
 export function wrapText(text: string, size: number, maxW: number, bold = false, italic = false): string[] {
@@ -441,6 +463,10 @@ export function elementHandles(el: Element, zoom: number): HandlePos[] {
       }
       return out;
     }
+    case 'text': {
+      const box = textSize(el);
+      return [-1, 1].map(dx => ({ h: { kind: 'resize' as const, dx: dx as -1 | 1, dy: 0 as const }, x: el.x + (dx > 0 ? box.w : 0), y: el.y + box.h / 2 }));
+    }
     case 'note': {
       // стикер масштабируется за края и углы, без поворота
       const out: HandlePos[] = [];
@@ -609,6 +635,11 @@ export function applyHandle(el: Element, h: Handle, pt: Pt, mods?: ResizeMods, r
     const ncx = cx + offx * ccos - offy * csin;
     const ncy = cy + offx * csin + offy * ccos;
     return { ...el, x: ncx - nw / 2, y: ncy - nh / 2, w: nw, h: nh };
+  }
+  if (el.type === 'text' && h.kind === 'resize' && h.dx) {
+    const right = el.x + textSize(el).w;
+    if (h.dx < 0) { const x = Math.min(pt.x, right - 24); return { ...el, x, w: right - x }; }
+    return { ...el, w: Math.max(24, pt.x - el.x) };
   }
   if (el.type === 'note' && h.kind === 'resize') {
     // приводим к центровой системе, чтобы модификаторы работали единообразно

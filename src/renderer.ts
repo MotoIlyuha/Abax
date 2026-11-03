@@ -2,7 +2,7 @@ import type { Camera, Element, GridMode, ImageEl, Page, ShapeEl, SolidEl } from 
 import { foreignSelections } from './collab';
 import {
   type AABB, type Caption, cornerRadius, elementAABB, elementHandles, imageFrame, pageLinkView, presentCamera, shapeCaption,
-  shapeHoldsText, wrapText, TEXT_FONT, NOTE_PAD, NOTE_FONT, NOTE_TEXT_COLOR,
+  shapeHoldsText, wrapText, textLines, TEXT_FONT, NOTE_PAD, NOTE_FONT, NOTE_TEXT_COLOR,
 } from './geom';
 import { ribbonPath } from './stroke';
 import { fitSolid, solidGeometry, type SolidPrim } from './solid';
@@ -382,7 +382,7 @@ function drawElementBody(ctx: CanvasRenderingContext2D, el: Element, c: ElCacheE
       ctx.fillStyle = el.color;
       ctx.textBaseline = 'alphabetic';
       const lh = el.size * 1.25;
-      const lines = el.text.split('\n');
+      const lines = textLines(el);
       for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], el.x, el.y + el.size + i * lh);
       break;
     }

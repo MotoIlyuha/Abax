@@ -80,6 +80,8 @@ export interface TextEl {
   /** x,y — левый верхний угол текстового блока. */
   x: number; y: number;
   text: string;
+  /** Заданная ширина текстового блока; без неё ширина определяется содержимым. */
+  w?: number;
   size: number;
   color: string;
   opacity?: number;
