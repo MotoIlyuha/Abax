@@ -5,8 +5,34 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Abax</title>
   <link rel="icon" type="image/svg+xml" href="logo.svg" />
+  <style>
+    html, body { margin: 0; background: #f4f5f7; }
+    #startup { position: fixed; inset: 0; z-index: 2147483647; display: grid; place-items: center; background: #f4f5f7; color: #596272; font: 14px/1.5 system-ui, sans-serif; }
+    #startup[hidden] { display: none; }
+    #startup-status { text-align: center; opacity: 0; animation: startup-show .2s 600ms forwards; }
+    #startup-status img { display: block; width: 56px; height: 56px; margin: 0 auto 14px; }
+    #startup-retry { margin-top: 12px; padding: 8px 14px; border: 1px solid #cbd1da; border-radius: 6px; background: white; color: #20242b; font: inherit; cursor: pointer; }
+    #startup-retry[hidden] { display: none; }
+    @keyframes startup-show { to { opacity: 1; } }
+    @media (prefers-reduced-motion: reduce) { #startup-status { animation-duration: 1ms; } }
+  </style>
 </head>
 <body>
+  <div id="startup" role="status" aria-live="polite">
+    <div id="startup-status">
+      <img src="logo.svg" alt="" />
+      <div id="startup-message">Загрузка…</div>
+      <button id="startup-retry" type="button" hidden onclick="location.reload()">Перезагрузить</button>
+    </div>
+  </div>
+  <script>
+    window.setTimeout(function () {
+      if (!document.getElementById('startup').hidden) {
+        document.getElementById('startup-message').textContent = 'Загрузка занимает больше времени, чем обычно.';
+        document.getElementById('startup-retry').hidden = false;
+      }
+    }, 15000);
+  </script>
   <div id="topbar">
     <button id="btn-home" class="icon" title="Проекты (домашняя страница)"></button>
     <button id="project-icon" class="project-icon top" title="Иконка проекта"></button>

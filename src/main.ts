@@ -60,4 +60,13 @@ async function boot(): Promise<void> {
   (window as unknown as Record<string, unknown>).__doska = { state, undo, redo, requestRender, importPdfFromDataUrl };
 }
 
-void boot();
+void boot().then(() => {
+  // Дождаться отрисовки холста, прежде чем открывать готовый интерфейс.
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    document.getElementById('startup')!.hidden = true;
+  }));
+}).catch((error: unknown) => {
+  console.error('Не удалось запустить приложение', error);
+  document.getElementById('startup-message')!.textContent = 'Не удалось загрузить приложение.';
+  document.getElementById('startup-retry')!.hidden = false;
+});
