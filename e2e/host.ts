@@ -13,11 +13,16 @@ const share = require('../electron/share.cjs');
 const { createShareServer } = share;
 export const MAX_EDITORS: number = share.MAX_EDITORS;
 const DIST = path.join(__dirname, '..', 'dist');
+const { createCloudLink, normalizeRelayUrl, cloudGuestUrl } = require('../electron/cloud-link.cjs');
+const { createRelay } = require('../relay/server.cjs');
+const WS = require('ws');
 
 type ShareServer = {
   port: number; code: string; hostKey: string; room: any;
   setRights(uid: number, patch: unknown): { ok: boolean; error?: string };
   users(): any[];
+  attach(sock: unknown, opts: unknown): number | null;
+  refresh(sock: unknown): boolean;
   close(): void;
 };
 
@@ -36,12 +41,58 @@ export class Host {
   appInfo = { platform: 'win32', portable: false };
   /** Иконки окна, которые поставило приложение (свои цвета логотипа). */
   readonly icons: string[] = [];
+  /** Облачный ретранслятор теста (relay/server.cjs) — поднимается при первом обращении. */
+  relay: any = null;
+  /** Подключение автора к ретранслятору (electron/cloud-link.cjs). */
+  cloud: any = null;
+  /** Адрес ретранслятора по умолчанию, как DOSKA_RELAY_URL в main.cjs: undefined — тестовый, '' — не задан. */
+  defaultRelay: string | undefined = undefined;
+  /** Сокеты автора к ретранслятору — чтобы оборвать связь, как при пропавшей сети. */
+  readonly cloudSockets: any[] = [];
 
   constructor(readonly page: Page) {
     this.board = new Board(page);
   }
 
   get dialog() { return this.page.locator('#share-dialog'); }
+
+  async relayUrl(): Promise<string> {
+    this.relay ??= await createRelay({ port: 0, host: '127.0.0.1', statsIntervalMs: 0, log: () => {} });
+    return `ws://127.0.0.1:${this.relay.port}`;
+  }
+
+  /** То же, что cloudInfo() в main.cjs; клиент гостя — эта же сборка на vite preview (вместо GitHub Pages). */
+  private cloudInfo() {
+    if (!this.cloud) return null;
+    const st = this.cloud.status();
+    const guestBase = new URL('/', this.page.url()).href;
+    return { state: st.state, url: st.room ? cloudGuestUrl(guestBase, st.relayUrl, st.room) : null, error: st.error, guests: st.guests, relayUrl: st.relayUrl };
+  }
+
+  /** То же, что share:cloudStart в main.cjs. */
+  private async cloudStart(input?: string) {
+    if (!this.server) return { ok: false, error: 'Совместная работа выключена' };
+    const state = this.cloud?.status().state;
+    if (this.cloud && state !== 'failed' && state !== 'stopped') return { ok: true, cloud: this.cloudInfo() };
+    this.cloud?.stop();
+    this.cloud = null;
+    const fallback = this.defaultRelay === undefined ? await this.relayUrl() : this.defaultRelay;
+    let relayUrl: string;
+    try { relayUrl = normalizeRelayUrl(input || fallback); } catch (e: any) {
+      return { ok: false, error: input || fallback ? e.message : 'Не указан адрес ретранслятора' };
+    }
+    const sockets = this.cloudSockets;
+    class Tracked extends WS { constructor(...a: any[]) { super(...a); sockets.push(this); } }
+    const link = createCloudLink({ relayUrl, attach: this.server.attach, refresh: this.server.refresh, WebSocketImpl: Tracked, backoffMs: [200] });
+    try { await link.start(); } catch (e: any) { link.stop(); return { ok: false, error: e.message }; }
+    this.cloud = link;
+    return { ok: true, cloud: this.cloudInfo() };
+  }
+
+  /** Оборвать связь автора с ретранслятором (подключение восстановится само). */
+  dropCloudConnection(): void {
+    this.cloudSockets.at(-1)?.terminate();
+  }
 
   async open(): Promise<void> {
     await this.page.exposeFunction('__pwStorage', async (op: string, arg: any) => {
@@ -68,6 +119,7 @@ export class Host {
       const info = () => ({
         port: this.server!.port, code: this.server!.code,
         url: `http://127.0.0.1:${this.server!.port}/?room=${this.server!.code}`, maxEditors: MAX_EDITORS,
+        cloud: this.cloudInfo(),
       });
       if (op === 'start') {
         if (!this.server) {
@@ -77,7 +129,9 @@ export class Host {
         return { ok: true, ...info(), hostKey: this.server!.hostKey, users: this.server!.users() };
       }
       if (op === 'status') return this.server ? { active: true, ...info(), users: this.server.users() } : { active: false };
-      if (op === 'stop') { this.server?.close(); this.server = null; return { ok: true }; }
+      if (op === 'stop') { this.cloud?.stop(); this.cloud = null; this.server?.close(); this.server = null; return { ok: true }; }
+      if (op === 'cloudStart') return this.cloudStart(arg?.relayUrl);
+      if (op === 'cloudStop') { this.cloud?.stop(); this.cloud = null; return { ok: true }; }
       if (op === 'setRights') return this.server ? this.server.setRights(arg.uid, arg.patch) : { ok: false };
       if (op === 'testWindow') { this.testWindows++; return { ok: true }; }
       throw new Error(op);
@@ -99,11 +153,21 @@ export class Host {
         shareStatus: () => sh('status'),
         shareSetRights: (uid: number, patch: unknown) => sh('setRights', { uid, patch }),
         shareOpenTestWindow: () => sh('testWindow'),
+        shareCloudStart: (opts?: { relayUrl?: string }) => sh('cloudStart', opts),
+        shareCloudStop: () => sh('cloudStop'),
         appInfo: () => w.__pwAppInfo(),
         setAppIcon: (png: string) => w.__pwSetIcon(png),
       };
     });
     await this.board.open();
+  }
+
+  /** Открывает доступ через интернет из диалога (совместная работа уже включена) и возвращает ссылку. */
+  async shareCloud(): Promise<string> {
+    await this.dialog.locator('button', { hasText: 'Пригласить через интернет' }).click();
+    const link = this.dialog.locator('.share-link-cloud');
+    await expect(link).toHaveText(/#relay=ws%3A%2F%2F127\.0\.0\.1%3A\d+&r=[\w-]{22}$/);
+    return (await link.textContent())!;
   }
 
   /** Включает совместную работу из диалога и возвращает ссылку-приглашение. */
@@ -141,7 +205,9 @@ export const test = base.extend<{ host: Host; join: (url: string, name: string) 
     const host = new Host(page);
     await host.open();
     await use(host);
+    host.cloud?.stop();
     host.server?.close();
+    await host.relay?.close();
     expect(errors, 'ошибки JS у автора').toEqual([]);
   },
   join: async ({ browser }, use) => {

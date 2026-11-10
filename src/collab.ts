@@ -1,10 +1,13 @@
 import type { Project, ProjectMeta } from './types';
 import { state, openProject, setSelection } from './state';
 import { setStorage, storage, type BoardsStorage } from './storage';
-import { CLOSE_PROTOCOL_MISMATCH, wsTransport, type CollabTransport } from './collab-transport';
+import {
+  CLOSE_BAD_CODE, CLOSE_BAD_REQUEST, CLOSE_HOST_OFFLINE, CLOSE_PROTOCOL_MISMATCH, CLOSE_RATE_LIMITED,
+  CLOSE_ROOM_CLOSED, CLOSE_ROOM_FULL, CLOSE_ROOM_NOT_FOUND, CLOSE_TOO_SLOW, PROTO,
+  wsTransport, type CollabTransport, type RelayEvent,
+} from './collab-transport';
 
-/** Версия протокола сообщений; должна совпадать с PROTO в electron/room.cjs. */
-export const PROTO = 1;
+export { PROTO };
 
 /** Событие на document, когда соединение закрылось; detail — код и причина. */
 export interface CollabClosedDetail { code: number; reason: string }
@@ -60,7 +63,10 @@ export function startCollab(wsUrl: string, asHost: boolean, name: string): Promi
   return connectCollab(wsTransport(url.toString()), asHost);
 }
 
-/** Подключение через любой транспорт; промис выполняется, когда канал открыт. */
+/**
+ * Подключение через любой транспорт. Промис выполняется, когда канал открыт, — или когда он
+ * закрылся, так и не открывшись (тогда collabActive() === false, а причину сообщит doska:collab-closed).
+ */
 export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void> {
   role = asHost ? 'host' : 'guest';
   transport = t;
@@ -99,6 +105,7 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
       connected = false;
       renderRemoteCursors();
       notifyClosed(code, reason);
+      resolve(); // не открылся вовсе — не держим запуск приложения
     };
   });
 }
@@ -195,15 +202,62 @@ export function showCollabNotice(title: string, text: string): void {
   document.body.appendChild(card);
 }
 
-/** Текст для гостя, если сервер закрыл соединение по известной причине; иначе null. */
-export function closedNotice(code: number): { title: string; text: string } | null {
-  if (code === CLOSE_PROTOCOL_MISMATCH) {
-    return {
-      title: 'Версии доски не совпадают',
-      text: 'У автора установлена другая версия Abax. Попросите автора обновить приложение и прислать ссылку заново.',
-    };
+export function hideCollabNotice(): void {
+  document.getElementById('collab-notice')?.remove();
+}
+
+const CLOSED_NOTICES: Record<number, { title: string; text: string }> = {
+  [CLOSE_PROTOCOL_MISMATCH]: {
+    title: 'Версии доски не совпадают',
+    text: 'У автора установлена другая версия Abax. Попросите автора обновить приложение и прислать ссылку заново.',
+  },
+  [CLOSE_ROOM_NOT_FOUND]: {
+    title: 'Доска не найдена',
+    text: 'Ссылка устарела или автор уже закрыл доступ. Попросите автора прислать новую ссылку.',
+  },
+  [CLOSE_BAD_CODE]: {
+    title: 'Неверная ссылка',
+    text: 'Проверьте ссылку или попросите автора прислать её заново.',
+  },
+  [CLOSE_ROOM_CLOSED]: {
+    title: 'Совместная работа завершена',
+    text: 'Автор закрыл доступ к доске.',
+  },
+  [CLOSE_ROOM_FULL]: {
+    title: 'Нет свободных мест',
+    text: 'К доске подключено максимальное число участников. Попробуйте позже.',
+  },
+  [CLOSE_HOST_OFFLINE]: {
+    title: 'Автор сейчас не в сети',
+    text: 'Откройте ссылку ещё раз через минуту.',
+  },
+  [CLOSE_RATE_LIMITED]: {
+    title: 'Слишком много подключений',
+    text: 'Подождите минуту и откройте ссылку снова.',
+  },
+  [CLOSE_TOO_SLOW]: {
+    title: 'Соединение слишком медленное',
+    text: 'Доска не успевала загружаться. Проверьте интернет и откройте ссылку снова.',
+  },
+};
+const CLOSED_GENERIC = {
+  title: 'Соединение с автором прервано',
+  text: 'Обновите страницу, чтобы подключиться снова.',
+};
+
+/** Текст для гостя, когда соединение закрылось: по известной причине — её объяснение, иначе общий. */
+export function closedNotice(code: number): { title: string; text: string } {
+  if (code === CLOSE_BAD_REQUEST) return CLOSED_GENERIC;
+  return CLOSED_NOTICES[code] ?? CLOSED_GENERIC;
+}
+
+/** Уведомления ретранслятора: пока автора нет, гость видит, что доска не зависла, а ждёт автора. */
+export function relayNotice(ev: RelayEvent): void {
+  if (ev === 'host-away') {
+    showCollabNotice('Автор переподключается…', 'Связь автора с сервером прервалась. Доска обновится, когда он вернётся.');
+  } else {
+    hideCollabNotice();
   }
-  return null;
 }
 
 // ----- DOM-курсоры удалённых пользователей -----
@@ -228,7 +282,14 @@ export function renderRemoteCursors(): void {
     el.className = 'remote-cursor' + (u.away ? ' away' : '');
     el.style.left = `${sx}px`;
     el.style.top = `${sy}px`;
-    el.innerHTML = `<i style="background:${color};border-color:${color}"></i><span style="background:${color}">${u.name}${u.away ? ' · Отошёл' : ''}</span>`;
+    // имя и цвет приходят от других участников — только textContent и свойства style, без разметки
+    const dot = document.createElement('i');
+    dot.style.background = color;
+    dot.style.borderColor = color;
+    const label = document.createElement('span');
+    label.style.background = color;
+    label.textContent = String(u.name ?? '') + (u.away ? ' · Отошёл' : '');
+    el.append(dot, label);
     cursorsRoot.appendChild(el);
   }
 }

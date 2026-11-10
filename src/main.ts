@@ -4,7 +4,8 @@ import { initController } from './controller';
 import { initApp, importPdfFromDataUrl } from './app';
 import { state, openProject, blankProject, projectMeta, onChange, undo, redo } from './state';
 import { storage, setStorage } from './storage';
-import { startCollab, netStorage, closedNotice, showCollabNotice, type CollabClosedDetail } from './collab';
+import { startCollab, connectCollab, netStorage, closedNotice, showCollabNotice, relayNotice, type CollabClosedDetail } from './collab';
+import { cloudTransport, parseCloudInvite } from './collab-transport';
 import { initTooltips } from './tooltip';
 import { startUpdateChecks } from './update-notice';
 import { initAppIcon } from './app-icon';
@@ -14,19 +15,22 @@ async function boot(): Promise<void> {
   initAppIcon();
   const canvas = document.getElementById('board') as HTMLCanvasElement;
 
-  // guest-режим: открыта ссылка совместной работы (?room=CODE)
+  // guest-режим: ссылка совместной работы — в локальной сети (?room=CODE, клиент раздаёт компьютер
+  // автора) или через интернет (#relay=…&r=…, клиент на GitHub Pages, сообщения через ретранслятор)
   const q = new URLSearchParams(location.search);
   const roomCode = q.get('room');
-  if (roomCode) {
+  const invite = roomCode ? null : parseCloudInvite(location.hash);
+  if (roomCode || invite) {
     // имя из URL (тестовое окно) или автогенерация — БЕЗ window.prompt,
     // который блокирует boot в Electron BrowserWindow
-    const name = q.get('name') || `Гость ${Math.floor(Math.random() * 90 + 10)}`;
+    const name = q.get('name') || invite?.name || `Гость ${Math.floor(Math.random() * 90 + 10)}`;
     // подписка до подключения: отказ может прийти сразу после открытия канала
     document.addEventListener('doska:collab-closed', ev => {
       const notice = closedNotice((ev as CustomEvent<CollabClosedDetail>).detail.code);
-      if (notice) showCollabNotice(notice.title, notice.text);
+      showCollabNotice(notice.title, notice.text);
     });
-    await startCollab(`ws://${location.host}/ws?code=${encodeURIComponent(roomCode)}`, false, name);
+    if (invite) await connectCollab(cloudTransport(invite.relayUrl, invite.room, name, relayNotice), false);
+    else await startCollab(`ws://${location.host}/ws?code=${encodeURIComponent(roomCode!)}`, false, name);
     setStorage(netStorage);
     initRenderer(canvas);
     initApp(canvas);

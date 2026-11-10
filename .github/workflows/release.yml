@@ -6,6 +6,7 @@ name: release
 # и, если в секретах репозитория есть ключ подписи, APK для Android; публикует релиз
 # v<версия> с контрольными суммами. Приложение проверяет обновления по этим релизам
 # и ищет файлы по именам: Abax.Setup.X.exe, Abax.X.exe, Abax-X.apk (см. src/updates.ts).
+# Гостевой клиент совместной работы через интернет публикуется на GitHub Pages (pages.yml).
 #
 # Ключ подписи Android — тот же, что в ~/.abax/keystore.properties: иначе APK не встанет
 # поверх прежней версии. Секреты: ABAX_KEYSTORE_BASE64 (файл ключа в base64),
@@ -145,8 +146,13 @@ jobs:
           path: out/
           if-no-files-found: error
 
+  # гостевой клиент совместной работы через интернет — до релиза: ссылки новой версии сразу работают
+  pages:
+    needs: version
+    uses: ./.github/workflows/pages.yml
+
   release:
-    needs: [version, windows, web, android]
+    needs: [version, windows, web, android, pages]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
