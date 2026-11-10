@@ -20,6 +20,8 @@ async function boot(): Promise<void> {
   const q = new URLSearchParams(location.search);
   const roomCode = q.get('room');
   const invite = roomCode ? null : parseCloudInvite(location.hash);
+  // приглашение есть, но испорчено или неполное (например, без ключа) — объясняем, а не открываем молча пустую доску
+  const brokenInvite = !roomCode && !invite && /(^#|&)relay=/.test(location.hash);
   if (roomCode || invite) {
     // имя из URL (тестовое окно) или автогенерация — БЕЗ window.prompt,
     // который блокирует boot в Electron BrowserWindow
@@ -29,7 +31,7 @@ async function boot(): Promise<void> {
       const notice = closedNotice((ev as CustomEvent<CollabClosedDetail>).detail.code);
       showCollabNotice(notice.title, notice.text);
     });
-    if (invite) await connectCollab(cloudTransport(invite.relayUrl, invite.room, name, relayNotice), false);
+    if (invite) await connectCollab(cloudTransport(invite.relayUrl, invite.room, invite.key, name, relayNotice), false);
     else await startCollab(`ws://${location.host}/ws?code=${encodeURIComponent(roomCode!)}`, false, name);
     setStorage(netStorage);
     initRenderer(canvas);
@@ -39,6 +41,10 @@ async function boot(): Promise<void> {
     document.body.classList.add('collab-guest');
     (window as unknown as Record<string, unknown>).__doska = { state, undo, redo, requestRender };
     return;
+  }
+
+  if (brokenInvite) {
+    showCollabNotice('Неверная ссылка', 'Ссылка-приглашение повреждена или скопирована не полностью. Попросите автора прислать её заново.');
   }
 
   let metas = await storage.list();

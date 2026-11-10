@@ -77,9 +77,24 @@ test.describe('совместная работа через интернет', (
     await host.share();
     await host.shareCloud();
     const relay = await host.relayUrl();
-    const guest = await join(`${new URL('/', host.page.url()).href}#relay=${encodeURIComponent(relay)}&r=${'A'.repeat(22)}`, 'Опоздавший');
+    const key = Buffer.alloc(32, 7).toString('base64url');
+    const guest = await join(`${new URL('/', host.page.url()).href}#relay=${encodeURIComponent(relay)}&r=${'A'.repeat(22)}&k=${key}`, 'Опоздавший');
     await expect(guest.page.locator('#collab-notice')).toContainText('Доска не найдена');
     await expect(guest.page.locator('#startup')).toBeHidden();
+  });
+
+  test('ссылка с чужим ключом или без ключа — «Неверная ссылка», доска автора не видна', async ({ host, join }) => {
+    await host.board.rect(400, 300, 500, 400);
+    await host.share();
+    const url = await host.shareCloud();
+    const wrongKey = url.replace(/k=[\w-]{43}/, `k=${Buffer.alloc(32, 9).toString('base64url')}`);
+    const forged = await join(wrongKey, 'С чужим ключом');
+    await expect(forged.page.locator('#collab-notice')).toContainText('Неверная ссылка');
+    expect(await forged.board.count()).toBe(0);
+    const cut = await join(url.replace(/&k=[\w-]{43}/, ''), 'Без ключа');
+    await expect(cut.page.locator('#collab-notice')).toContainText('Неверная ссылка');
+    expect(await cut.page.evaluate(() => document.body.classList.contains('collab-guest'))).toBe(false);
+    await expect(host.userRow('С чужим ключом')).toHaveCount(0);
   });
 
   test('адрес ретранслятора не задан — поле для адреса, после ввода ссылка готова', async ({ host }) => {

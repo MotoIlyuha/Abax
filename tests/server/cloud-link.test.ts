@@ -11,9 +11,15 @@ const { CLOSE } = require('../../relay/protocol.cjs');
 const { createShareServer } = require('../../electron/share.cjs');
 const { PROTO } = require('../../electron/room.cjs');
 const { createCloudLink, normalizeRelayUrl, cloudGuestUrl, KICK } = require('../../electron/cloud-link.cjs');
+const rc = require('../../electron/room-crypto.cjs');
+const crypto = require('node:crypto');
 
 type Msg = Record<string, any>;
-interface Peer { ws: any; inbox: Msg[]; closed: Promise<{ code: number; reason: string }> }
+interface Peer {
+  ws: any; inbox: Msg[]; closed: Promise<{ code: number; reason: string }>;
+  /** У гостя ретранслятора — отправка с шифрованием. */
+  send?: (m: unknown) => void;
+}
 
 const demo = () => ({
   id: 'demo', name: 'Демо', createdAt: 1, updatedAt: 2,
@@ -58,7 +64,7 @@ function peer(url: string): Promise<Peer> {
   });
 }
 const last = (p: Peer, t: string) => [...p.inbox].reverse().find(m => m.t === t);
-const send = (p: Peer, m: unknown) => p.ws.send(JSON.stringify(m));
+const send = (p: Peer, m: unknown) => (p.send ? p.send(m) : p.ws.send(JSON.stringify(m)));
 
 /** Ретранслятор, сервер с автором (по локальному WebSocket, как окно приложения) и облачное подключение. */
 async function setup(opts: { relay?: Record<string, unknown>; link?: Record<string, unknown> } = {}) {
@@ -78,10 +84,31 @@ async function setup(opts: { relay?: Record<string, unknown>; link?: Record<stri
   return { host, changes };
 }
 
-/** Гость через ретранслятор: подключается и представляется. */
-async function cloudGuest(name = 'Маша', hello: unknown = { t: 'hello', proto: PROTO, name }): Promise<Peer> {
-  const g = await peer(`${relayUrl}/g/${link.status().room}`);
-  if (hello !== null) send(g, hello);
+/**
+ * Гость через ретранслятор, как src/collab-transport.ts: всё шифрует ключом комнаты.
+ * hello: объект (sid подставляется сам), null — не представляться; key — свой ключ вместо ключа комнаты.
+ */
+async function cloudGuest(name = 'Маша', hello: Msg | null = { t: 'hello', proto: PROTO, name }, key?: Buffer): Promise<Peer> {
+  const k: Buffer = key ?? Buffer.from(link.status().key, 'base64url');
+  const sid = crypto.randomBytes(16);
+  const g = await new Promise<Peer>((resolve, reject) => {
+    const ws = new WebSocket(`${relayUrl}/g/${link.status().room}`);
+    const inbox: Msg[] = [];
+    const closed = new Promise<{ code: number; reason: string }>(r => ws.on('close', (code: number, reason: Buffer) => r({ code, reason: reason.toString() })));
+    let outSeq = 0;
+    ws.on('message', (d: Buffer, isBinary: boolean) => {
+      if (!isBinary) { try { inbox.push(JSON.parse(d.toString())); } catch { /* не JSON */ } return; }
+      const opened = rc.open(k, 'h2g', sid, d);
+      if (opened) inbox.push(JSON.parse(opened.text));
+    });
+    ws.on('open', () => {
+      const p: Peer = { ws, inbox, closed, send: m => ws.send(rc.seal(k, 'g2h', sid, ++outSeq, JSON.stringify(m))) };
+      peers.push(p);
+      resolve(p);
+    });
+    ws.on('error', reject);
+  });
+  if (hello !== null) g.ws.send(rc.seal(k, 'hello', rc.ZERO_SID, 0, JSON.stringify({ sid: sid.toString('base64url'), ...hello })));
   return g;
 }
 
@@ -175,14 +202,83 @@ describe('hello', () => {
     expect(share.users()).toHaveLength(1);
   });
 
-  it('не JSON и двоичные данные вместо hello не роняют подключение автора', async () => {
+  it('открытый текст вместо зашифрованного hello игнорируется; молчание — 4400', async () => {
     await setup({ link: { helloTimeoutMs: 80 } });
     const g = await peer(`${relayUrl}/g/${link.status().room}`);
-    g.ws.send(Buffer.from([1, 2, 3])); // двоичное без шифрования не читается — ждём hello дальше
+    g.ws.send(JSON.stringify({ t: 'hello', proto: PROTO, name: 'без ключа' }));
     g.ws.send('не json');
     expect((await g.closed).code).toBe(KICK.HELLO_EXPECTED);
+    expect(share.users()).toHaveLength(1);
     const ok = await cloudGuest();
     await until(() => last(ok, 'init'));
+  });
+
+  it('чужой ключ (испорченная ссылка) — 4403, в комнату не попадает', async () => {
+    await setup();
+    const g = await cloudGuest('Чужой', { t: 'hello', proto: PROTO, name: 'Чужой' }, rc.newKey());
+    expect(await g.closed).toEqual({ code: KICK.BAD_KEY, reason: 'bad key' });
+    expect(share.users()).toHaveLength(1);
+  });
+
+  it('hello без sid или с повтором уже занятого сеанса — 4400', async () => {
+    await setup();
+    const a = await cloudGuest('Без sid', { t: 'hello', proto: PROTO, name: 'x', sid: 'короткий' });
+    expect((await a.closed).code).toBe(KICK.HELLO_EXPECTED);
+    // ретранслятор повторяет hello настоящего гостя в новом подключении
+    const k = Buffer.from(link.status().key, 'base64url');
+    const sid = crypto.randomBytes(16);
+    const hello = rc.seal(k, 'hello', rc.ZERO_SID, 0, JSON.stringify({ t: 'hello', proto: PROTO, name: 'Настоящий', sid: sid.toString('base64url') }));
+    const real = await peer(`${relayUrl}/g/${link.status().room}`);
+    real.ws.send(hello);
+    await until(() => share.users().some((u: Msg) => u.name === 'Настоящий'));
+    const replay = await peer(`${relayUrl}/g/${link.status().room}`);
+    replay.ws.send(hello);
+    expect((await replay.closed).code).toBe(KICK.HELLO_EXPECTED);
+    expect(share.users().filter((u: Msg) => u.name === 'Настоящий')).toHaveLength(1);
+  });
+});
+
+describe('шифрование', () => {
+  it('ретранслятор видит только шифротекст: ни проекта, ни имени в открытом виде', async () => {
+    const seen: Buffer[] = [];
+    const { host } = await setup();
+    // подслушиваем все кадры, которые идут через ретранслятор к автору и от него
+    const sock = hostSockets.at(-1);
+    sock.on('message', (d: Buffer) => seen.push(Buffer.from(d)));
+    const origSend = sock.send.bind(sock);
+    sock.send = (d: any, ...rest: any[]) => { seen.push(Buffer.from(d)); return origSend(d, ...rest); };
+    const g = await cloudGuest('Секретное Имя');
+    await until(() => last(g, 'init'));
+    const p = demo();
+    p.pages[0].elements = [rect('секретный-прямоугольник')];
+    send(host, { t: 'project', project: p });
+    await until(() => g.inbox.some(m => m.t === 'project'));
+    const all = Buffer.concat(seen).toString('utf8');
+    for (const secret of ['Секретное Имя', 'секретный-прямоугольник', 'Первая', '"t":"init"', '"t":"project"', '"t":"hello"']) {
+      expect(all.includes(secret), secret).toBe(false);
+    }
+  });
+
+  it('повтор и подмена сообщений гостя отбрасываются', async () => {
+    await setup();
+    const g = await cloudGuest('Гость');
+    const init = await until(() => last(g, 'init'));
+    share.setRights(init.userId, { all: 'edit' });
+    await until(() => last(g, 'rights')?.rights.default === 'edit');
+    // перехватываем кадры гостя
+    const frames: Buffer[] = [];
+    const orig = g.ws.send.bind(g.ws);
+    g.ws.send = (d: Buffer) => { frames.push(Buffer.from(d)); orig(d); };
+    send(g, { t: 'cursor', x: 1, y: 1, pageId: 'pg1' });
+    await until(() => share.users().find((u: Msg) => u.userId === init.userId)?.cursor?.x === 1);
+    send(g, { t: 'cursor', x: 2, y: 2, pageId: 'pg1' });
+    await until(() => share.users().find((u: Msg) => u.userId === init.userId)?.cursor?.x === 2);
+    orig(frames[0]); // ретранслятор повторяет старый кадр
+    const flipped = Buffer.from(frames[1]); flipped[flipped.length - 1] ^= 1;
+    orig(flipped); // и подделывает
+    await new Promise(r => setTimeout(r, 150));
+    expect(share.users().find((u: Msg) => u.userId === init.userId).cursor).toEqual({ x: 2, y: 2 });
+    expect(g.ws.readyState).toBe(WebSocket.OPEN);
   });
 });
 
@@ -279,11 +375,28 @@ describe('адреса', () => {
     expect(() => normalizeRelayUrl('')).toThrow('Неверный');
   });
 
-  it('ссылка гостя: клиент доски и, в якоре, ретранслятор с комнатой', () => {
-    const url = cloudGuestUrl('https://motoilyuha.github.io/Abax/v/2.5.0', 'wss://relay.example.com', 'AbC_dEf-123');
-    expect(url).toBe('https://motoilyuha.github.io/Abax/v/2.5.0/#relay=wss%3A%2F%2Frelay.example.com&r=AbC_dEf-123');
+  it('ссылка гостя: клиент доски и, в якоре, ретранслятор, комната и ключ', () => {
+    const url = cloudGuestUrl('https://motoilyuha.github.io/Abax/v/2.5.0', 'wss://relay.example.com', 'AbC_dEf-123', 'KEY_b64');
+    expect(url).toBe('https://motoilyuha.github.io/Abax/v/2.5.0/#relay=wss%3A%2F%2Frelay.example.com&r=AbC_dEf-123&k=KEY_b64');
     const hash = new URLSearchParams(new URL(url).hash.slice(1));
     expect(hash.get('relay')).toBe('wss://relay.example.com');
     expect(hash.get('r')).toBe('AbC_dEf-123');
+    expect(hash.get('k')).toBe('KEY_b64');
+  });
+
+  it('ключ: 32 байта в base64url; при возвращении в ту же комнату прежний, в новой — новый', async () => {
+    await setup();
+    const k1 = link.status().key;
+    expect(Buffer.from(k1, 'base64url')).toHaveLength(32);
+    dropHostConnection();
+    await until(() => link.status().state === 'reconnecting');
+    await until(() => link.status().state === 'online');
+    expect(link.status().key).toBe(k1);
+    const oldRoom = link.status().room;
+    const port = relay.port;
+    await relay.close();
+    relay = await createRelay({ port, host: '127.0.0.1', statsIntervalMs: 0, log: () => {} });
+    await until(() => link.status().state === 'online' && link.status().room !== oldRoom, 5000);
+    expect(link.status().key).not.toBe(k1);
   });
 });

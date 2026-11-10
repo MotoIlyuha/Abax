@@ -421,23 +421,28 @@ describe('приглашение через интернет', () => {
   let tr: Transport;
   beforeEach(async () => { tr = await import('../../src/collab-transport'); });
   const ROOM = 'AbCdEfGhIjKlMnOpQrStUv';
+  const KEY = new Uint8Array(32).map((_, i) => i);
+  const K = Buffer.from(KEY).toString('base64url');
 
-  it('parseCloudInvite: ретранслятор, комната и имя из якоря', () => {
-    expect(tr.parseCloudInvite(`#relay=${encodeURIComponent('wss://relay.example.com/')}&r=${ROOM}`))
-      .toEqual({ relayUrl: 'wss://relay.example.com', room: ROOM, name: null });
-    expect(tr.parseCloudInvite(`#relay=wss%3A%2F%2Fexample.com%2Frelay&r=${ROOM}&name=%D0%9C%D0%B0%D1%88%D0%B0`))
-      .toEqual({ relayUrl: 'wss://example.com/relay', room: ROOM, name: 'Маша' });
-    expect(tr.parseCloudInvite(`#relay=ws%3A%2F%2F127.0.0.1%3A8080&r=${ROOM}`)!.relayUrl).toBe('ws://127.0.0.1:8080');
+  it('parseCloudInvite: ретранслятор, комната, ключ и имя из якоря', () => {
+    expect(tr.parseCloudInvite(`#relay=${encodeURIComponent('wss://relay.example.com/')}&r=${ROOM}&k=${K}`))
+      .toEqual({ relayUrl: 'wss://relay.example.com', room: ROOM, key: KEY, name: null });
+    expect(tr.parseCloudInvite(`#relay=wss%3A%2F%2Fexample.com%2Frelay&r=${ROOM}&k=${K}&name=%D0%9C%D0%B0%D1%88%D0%B0`))
+      .toMatchObject({ relayUrl: 'wss://example.com/relay', room: ROOM, name: 'Маша' });
+    expect(tr.parseCloudInvite(`#relay=ws%3A%2F%2F127.0.0.1%3A8080&r=${ROOM}&k=${K}`)!.relayUrl).toBe('ws://127.0.0.1:8080');
   });
 
   it('parseCloudInvite: испорченные и чужие ссылки отклоняются', () => {
     for (const hash of [
-      '', '#', `#r=${ROOM}`, '#relay=wss%3A%2F%2Fa.example',
-      `#relay=wss%3A%2F%2Fa.example&r=short`, `#relay=wss%3A%2F%2Fa.example&r=${ROOM}x`,
-      `#relay=ws%3A%2F%2Frelay.example.com&r=${ROOM}`, // ws:// не на своей машине
-      `#relay=https%3A%2F%2Fa.example&r=${ROOM}`, `#relay=javascript%3Aalert(1)&r=${ROOM}`,
-      `#relay=wss%3A%2F%2Fu%3Ap%40a.example&r=${ROOM}`, `#relay=wss%3A%2F%2Fa.example%3Fx%3D1&r=${ROOM}`,
-      `#relay=не-адрес&r=${ROOM}`,
+      '', '#', `#r=${ROOM}&k=${K}`, `#relay=wss%3A%2F%2Fa.example&k=${K}`,
+      `#relay=wss%3A%2F%2Fa.example&r=short&k=${K}`, `#relay=wss%3A%2F%2Fa.example&r=${ROOM}x&k=${K}`,
+      `#relay=ws%3A%2F%2Frelay.example.com&r=${ROOM}&k=${K}`, // ws:// не на своей машине
+      `#relay=https%3A%2F%2Fa.example&r=${ROOM}&k=${K}`, `#relay=javascript%3Aalert(1)&r=${ROOM}&k=${K}`,
+      `#relay=wss%3A%2F%2Fu%3Ap%40a.example&r=${ROOM}&k=${K}`, `#relay=wss%3A%2F%2Fa.example%3Fx%3D1&r=${ROOM}&k=${K}`,
+      `#relay=не-адрес&r=${ROOM}&k=${K}`,
+      // без ключа или с испорченным ключом
+      `#relay=wss%3A%2F%2Fa.example&r=${ROOM}`, `#relay=wss%3A%2F%2Fa.example&r=${ROOM}&k=${K.slice(1)}`,
+      `#relay=wss%3A%2F%2Fa.example&r=${ROOM}&k=${K}AA`, `#relay=wss%3A%2F%2Fa.example&r=${ROOM}&k=не+ключ`,
     ]) expect(tr.parseCloudInvite(hash), hash).toBeNull();
   });
 
@@ -455,7 +460,8 @@ describe('приглашение через интернет', () => {
     try {
       await link.start();
       const events: string[] = [];
-      await collab.connectCollab(tr.cloudTransport(`ws://127.0.0.1:${relay.port}`, link.status().room, 'Из облака', ev => events.push(ev)), false);
+      const key = new Uint8Array(Buffer.from(link.status().key, 'base64url'));
+      await collab.connectCollab(tr.cloudTransport(`ws://127.0.0.1:${relay.port}`, link.status().room, key, 'Из облака', ev => events.push(ev)), false);
       await until(() => st.state.project.id === 'proj');
       await until(() => collab.myName() === 'Из облака');
       expect(collab.readOnly()).toBe(true);
@@ -464,6 +470,40 @@ describe('приглашение через интернет', () => {
       await until(() => events.includes('host-away'));
       await until(() => events.includes('host-back'), 4000);
       expect(collab.collabActive()).toBe(true);
+    } finally {
+      link.stop();
+      await relay.close();
+    }
+  });
+});
+
+describe('шифрованный транспорт гостя', () => {
+  it('чужой ключ — автор отключает с 4403, гость видит «Неверная ссылка»; правки с верным ключом проходят', async () => {
+    const tr = await import('../../src/collab-transport');
+    const { createRelay } = require('../../relay/server.cjs');
+    const { createCloudLink } = require('../../electron/cloud-link.cjs');
+    const relay = await createRelay({ port: 0, host: '127.0.0.1', statsIntervalMs: 0, log: () => {} });
+    const link = createCloudLink({ relayUrl: `ws://127.0.0.1:${relay.port}`, attach: server.attach, refresh: server.refresh });
+    try {
+      await link.start();
+      const events: Msg[] = [];
+      document.addEventListener('doska:collab-closed', e => events.push((e as CustomEvent).detail));
+      const wrong = crypto.getRandomValues(new Uint8Array(32));
+      await collab.connectCollab(tr.cloudTransport(`ws://127.0.0.1:${relay.port}`, link.status().room, wrong, 'Чужой'), false);
+      await until(() => events.length > 0);
+      expect(events[0].code).toBe(4403);
+      expect(collab.closedNotice(events[0].code).title).toBe('Неверная ссылка');
+
+      await freshModules();
+      const tr2 = await import('../../src/collab-transport');
+      const key = new Uint8Array(Buffer.from(link.status().key, 'base64url'));
+      await collab.connectCollab(tr2.cloudTransport(`ws://127.0.0.1:${relay.port}`, link.status().room, key, 'Свой'), false);
+      await until(() => st.state.project.id === 'proj');
+      const uid = [...server.room.clients.values()].find(c => (c as any).name === 'Свой')!.uid;
+      server.setRights(uid, { all: 'edit' });
+      await until(() => !collab.readOnly('pg1'));
+      collab.noteSelection(['через-шифр']);
+      await until(() => [...server.room.clients.values()].some(c => c.selection.includes('через-шифр')));
     } finally {
       link.stop();
       await relay.close();

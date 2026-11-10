@@ -222,7 +222,7 @@ let cloudStarting = null;
 function cloudInfo() {
   if (!cloud) return null;
   const s = cloud.status();
-  return { state: s.state, url: s.room ? cloudGuestUrl(GUEST_BASE, s.relayUrl, s.room) : null, error: s.error, guests: s.guests, relayUrl: s.relayUrl };
+  return { state: s.state, url: s.room ? cloudGuestUrl(GUEST_BASE, s.relayUrl, s.room, s.key) : null, error: s.error, guests: s.guests, relayUrl: s.relayUrl };
 }
 
 function stopCloud() {
