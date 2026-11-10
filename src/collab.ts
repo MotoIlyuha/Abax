@@ -1,6 +1,13 @@
 import type { Project, ProjectMeta } from './types';
 import { state, openProject, setSelection } from './state';
 import { setStorage, storage, type BoardsStorage } from './storage';
+import { CLOSE_PROTOCOL_MISMATCH, wsTransport, type CollabTransport } from './collab-transport';
+
+/** Версия протокола сообщений; должна совпадать с PROTO в electron/room.cjs. */
+export const PROTO = 1;
+
+/** Событие на document, когда соединение закрылось; detail — код и причина. */
+export interface CollabClosedDetail { code: number; reason: string }
 
 export interface CollabUser {
   userId: number;
@@ -14,7 +21,7 @@ export interface CollabUser {
   rights: { default: string; pages: Record<string, string> };
 }
 
-let ws: WebSocket | null = null;
+let transport: CollabTransport | null = null;
 let myUserId = -1;
 let users: CollabUser[] = [];
 let myRights: { default: string; pages: Record<string, string> } = { default: 'view', pages: {} };
@@ -41,21 +48,36 @@ export function readOnly(pageId?: string): boolean {
 }
 
 function send(obj: unknown): void {
-  if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj));
+  transport?.send(JSON.stringify(obj));
 }
 
+/** Подключение к комнате по WebSocket (локальная сеть): имя, роль и версия протокола — в параметрах URL. */
 export function startCollab(wsUrl: string, asHost: boolean, name: string): Promise<void> {
-  role = asHost ? 'host' : 'guest';
   const url = new URL(wsUrl);
   url.searchParams.set('name', encodeURIComponent(name || ''));
+  url.searchParams.set('proto', String(PROTO));
   if (asHost) url.searchParams.set('host', '1');
+  return connectCollab(wsTransport(url.toString()), asHost);
+}
+
+/** Подключение через любой транспорт; промис выполняется, когда канал открыт. */
+export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void> {
+  role = asHost ? 'host' : 'guest';
+  transport = t;
+  // события от прежнего, уже заменённого канала не должны трогать текущее состояние
+  const current = () => transport === t;
   return new Promise(resolve => {
-    ws = new WebSocket(url.toString());
-    ws.onopen = () => { connected = true; resolve(); };
-    ws.onmessage = ev => {
+    t.onopen = () => { if (!current()) return; connected = true; resolve(); };
+    t.onmessage = data => {
+      if (!current()) return;
       let m: Record<string, unknown>;
-      try { m = JSON.parse(String(ev.data)); } catch { return; }
+      try { m = JSON.parse(data); } catch { return; }
       if (m.t === 'init') {
+        // сервер другой версии: дальнейшие сообщения могут значить не то, что мы думаем
+        if (typeof m.proto === 'number' && m.proto !== PROTO) {
+          closeWith(CLOSE_PROTOCOL_MISMATCH, 'protocol mismatch');
+          return;
+        }
         myUserId = m.userId as number;
         myRights = (m.rights as typeof myRights) || myRights;
         if (Array.isArray(m.users)) users = m.users as CollabUser[];
@@ -72,9 +94,27 @@ export function startCollab(wsUrl: string, asHost: boolean, name: string): Promi
         if ((m.by as number) !== myUserId) applyRemoteProject(m.project as Project);
       }
     };
-    ws.onclose = () => { connected = false; renderRemoteCursors(); };
-    ws.onerror = () => { connected = false; };
+    t.onclose = (code, reason) => {
+      if (!current()) return;
+      connected = false;
+      renderRemoteCursors();
+      notifyClosed(code, reason);
+    };
   });
+}
+
+function notifyClosed(code: number, reason: string): void {
+  document.dispatchEvent(new CustomEvent<CollabClosedDetail>('doska:collab-closed', { detail: { code, reason } }));
+}
+
+/** Закрыть канал по своей причине (например, несовпадение версий) и сообщить об этом как о закрытии сервером. */
+function closeWith(code: number, reason: string): void {
+  const t = transport;
+  transport = null;
+  connected = false;
+  t?.close();
+  renderRemoteCursors();
+  notifyClosed(code, reason);
 }
 
 function applyRemoteProject(project: Project): void {
@@ -139,6 +179,33 @@ export const netStorage = {
   async remove(): Promise<void> { /* в совместном режиме удаление недоступно */ },
 };
 
+/** Карточка с сообщением о совместной работе (справа под шапкой, как «Вышла новая версия»). */
+export function showCollabNotice(title: string, text: string): void {
+  document.getElementById('collab-notice')?.remove();
+  const card = document.createElement('div');
+  card.id = 'collab-notice';
+  card.setAttribute('role', 'alert');
+  const h = document.createElement('div');
+  h.className = 'cn-title';
+  h.textContent = title;
+  const p = document.createElement('p');
+  p.className = 'cn-text';
+  p.textContent = text;
+  card.append(h, p);
+  document.body.appendChild(card);
+}
+
+/** Текст для гостя, если сервер закрыл соединение по известной причине; иначе null. */
+export function closedNotice(code: number): { title: string; text: string } | null {
+  if (code === CLOSE_PROTOCOL_MISMATCH) {
+    return {
+      title: 'Версии доски не совпадают',
+      text: 'У автора установлена другая версия Abax. Попросите автора обновить приложение и прислать ссылку заново.',
+    };
+  }
+  return null;
+}
+
 // ----- DOM-курсоры удалённых пользователей -----
 let cursorsRoot: HTMLElement | null = null;
 
@@ -192,8 +259,9 @@ export async function startHostConnection(port: number, code: string, hostKey: s
 
 export function stopCollab(): void {
   if (hostLocalStorage) { setStorage(hostLocalStorage); hostLocalStorage = null; }
-  if (ws) { try { ws.close(); } catch { /* уже закрыт */ } }
-  ws = null;
+  const t = transport;
+  transport = null;
+  t?.close();
   connected = false;
   users = [];
   renderRemoteCursors();

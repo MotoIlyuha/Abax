@@ -161,9 +161,52 @@ describe('share server: room code', () => {
     const g = await connect(guestQuery);
     await waitInit(g);
     const hacked = structuredClone(project);
-    hacked.pages[0].elements = [{ id: 'x' }] as never[];
+    // элемент корректный — отказ именно из-за прав, а не из-за проверки формата
+    hacked.pages[0].elements = [{ id: 'x', type: 'shape' }] as never[];
     g.ws.send(JSON.stringify({ t: 'project', project: hacked }));
     await wait(100);
     expect(server.room.project.pages[0].elements).toHaveLength(0);
+  });
+});
+
+describe('share server: версия протокола', () => {
+  it('клиент другой версии отклоняется с кодом 4426', async () => {
+    const g = await connect(`${guestQuery}&proto=999`);
+    const { code, reason } = await g.closed;
+    expect(code).toBe(4426);
+    expect(reason).toBe('protocol mismatch');
+    expect(g.inbox).toEqual([]);
+  });
+
+  it('клиент той же версии и клиент без параметра пускаются, init сообщает версию', async () => {
+    const { PROTO } = require('../../electron/share.cjs');
+    const a = await connect(`${guestQuery}&proto=${PROTO}`);
+    const b = await connect(guestQuery);
+    expect((await waitInit(a)).proto).toBe(PROTO);
+    expect((await waitInit(b)).proto).toBe(PROTO);
+  });
+});
+
+describe('share server: участник от другого транспорта', () => {
+  it('attach подключает «виртуальный» сокет в ту же комнату, что и WebSocket', async () => {
+    const { EventEmitter } = require('node:events');
+    const sent: Msg[] = [];
+    const sock = new EventEmitter() as InstanceType<typeof EventEmitter> & { readyState: number; send(t: string): void; close(): void };
+    sock.readyState = 1;
+    sock.send = (t: string) => { sent.push(JSON.parse(t)); };
+    sock.close = () => { sock.readyState = 3; sock.emit('close'); };
+    const host = await connectHost();
+    const uid = server.attach(sock, { name: 'Из облака' });
+    expect(sent[0]).toMatchObject({ t: 'init', userId: uid, name: 'Из облака' });
+    // автор по WebSocket видит облачного гостя
+    await waitFor(() => host.inbox.find(m => m.t === 'users' && m.users.some((u: Msg) => u.name === 'Из облака')), 'гость в списке');
+    // правки автора доходят до облачного гостя
+    const p = structuredClone(project);
+    p.pages[0].elements = [{ id: 'r', type: 'shape' }] as never[];
+    host.ws.send(JSON.stringify({ t: 'project', project: p }));
+    const msg = await waitFor(() => sent.find(m => m.t === 'project'), 'проект облачному гостю');
+    expect(msg.project.pages[0].elements[0].id).toBe('r');
+    sock.close();
+    expect(server.users().some((u: Msg) => u.name === 'Из облака')).toBe(false);
   });
 });

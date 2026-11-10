@@ -4,7 +4,7 @@ import { initController } from './controller';
 import { initApp, importPdfFromDataUrl } from './app';
 import { state, openProject, blankProject, projectMeta, onChange, undo, redo } from './state';
 import { storage, setStorage } from './storage';
-import { startCollab, netStorage } from './collab';
+import { startCollab, netStorage, closedNotice, showCollabNotice, type CollabClosedDetail } from './collab';
 import { initTooltips } from './tooltip';
 import { startUpdateChecks } from './update-notice';
 import { initAppIcon } from './app-icon';
@@ -21,6 +21,11 @@ async function boot(): Promise<void> {
     // имя из URL (тестовое окно) или автогенерация — БЕЗ window.prompt,
     // который блокирует boot в Electron BrowserWindow
     const name = q.get('name') || `Гость ${Math.floor(Math.random() * 90 + 10)}`;
+    // подписка до подключения: отказ может прийти сразу после открытия канала
+    document.addEventListener('doska:collab-closed', ev => {
+      const notice = closedNotice((ev as CustomEvent<CollabClosedDetail>).detail.code);
+      if (notice) showCollabNotice(notice.title, notice.text);
+    });
     await startCollab(`ws://${location.host}/ws?code=${encodeURIComponent(roomCode)}`, false, name);
     setStorage(netStorage);
     initRenderer(canvas);

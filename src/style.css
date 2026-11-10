@@ -1208,7 +1208,8 @@ body.no-ui-anim #toast.show { animation: none; }
 .sd-updates-download:hover { background: #2160dd; color: #fff; }
 
 /* ----- Карточка «Вышла новая версия» (справа под шапкой) ----- */
-#update-card {
+/* сообщение совместной работы (#collab-notice) выглядит так же */
+#update-card, #collab-notice {
   position: fixed;
   top: 58px;
   right: 16px;
@@ -1226,8 +1227,10 @@ body.no-ui-anim #toast.show { animation: none; }
   --pop-y: -8px;
   transform-origin: top right;
 }
-body.no-ui-anim #update-card { animation: none; }
-@media (prefers-reduced-motion: reduce) { #update-card { animation: none; } }
+body.no-ui-anim #update-card, body.no-ui-anim #collab-notice { animation: none; }
+@media (prefers-reduced-motion: reduce) { #update-card, #collab-notice { animation: none; } }
+.cn-title { font-size: 15px; font-weight: 700; }
+.cn-text { margin: 6px 0 0; line-height: 1.5; }
 .uc-head { display: flex; align-items: center; gap: 10px; }
 .uc-icon { flex: none; width: 30px; height: 30px; border-radius: 9px; background: var(--accent-soft); color: var(--accent); display: flex; align-items: center; justify-content: center; }
 .uc-icon svg { width: 19px; height: 19px; }

@@ -266,3 +266,103 @@ describe('автор', () => {
     expect(storageMod.storage).toBe(local);
   });
 });
+
+/** Транспорт-заглушка: тест сам открывает канал, присылает сообщения и закрывает его. */
+function fakeTransport() {
+  const t = {
+    sent: [] as Msg[],
+    closedByClient: false,
+    send(data: string) { t.sent.push(JSON.parse(data)); return true; },
+    close() { t.closedByClient = true; },
+    onopen: null as (() => void) | null,
+    onmessage: null as ((data: string) => void) | null,
+    onclose: null as ((code: number, reason: string) => void) | null,
+    deliver(m: unknown) { t.onmessage?.(JSON.stringify(m)); },
+  };
+  return t;
+}
+const initMsg = (over: Msg = {}) => ({ t: 'init', proto: 1, userId: 7, color: '#1971c2', name: 'Ученик', project: demo(), rights: { default: 'view', pages: {} }, users: [], ...over });
+
+describe('транспорт и версия протокола', () => {
+  it('connectCollab работает через любой транспорт', async () => {
+    const t = fakeTransport();
+    const ready = collab.connectCollab(t, false);
+    t.onopen!();
+    await ready;
+    expect(collab.collabActive()).toBe(true);
+    t.deliver(initMsg());
+    expect(st.state.project.id).toBe('proj');
+    collab.noteSelection(['a']);
+    expect(t.sent).toContainEqual({ t: 'selection', ids: ['a'], pageId: st.state.pageId });
+  });
+
+  it('startCollab сообщает серверу версию протокола', async () => {
+    await collab.startCollab(base, false, 'Ученик');
+    await until(() => server.room.clients.size === 1);
+    // сервер пустил клиента (не 4426) и прислал ту же версию
+    expect(collab.collabActive()).toBe(true);
+    expect(collab.PROTO).toBe(require('../../electron/share.cjs').PROTO);
+  });
+
+  it('сервер другой версии: соединение закрывается, гость получает событие 4426', async () => {
+    const events: Msg[] = [];
+    document.addEventListener('doska:collab-closed', e => events.push((e as CustomEvent).detail));
+    const t = fakeTransport();
+    const ready = collab.connectCollab(t, false);
+    t.onopen!();
+    await ready;
+    t.deliver(initMsg({ proto: 2, project: { ...demo(), id: 'чужой' } }));
+    expect(t.closedByClient).toBe(true);
+    expect(collab.collabActive()).toBe(false);
+    expect(st.state.project.id).not.toBe('чужой'); // проект от несовместимого сервера не применён
+    expect(events).toEqual([{ code: 4426, reason: 'protocol mismatch' }]);
+  });
+
+  it('отказ сервера приходит событием с кодом', async () => {
+    const events: Msg[] = [];
+    document.addEventListener('doska:collab-closed', e => events.push((e as CustomEvent).detail));
+    await collab.startCollab(`ws://127.0.0.1:${server.port}/ws?code=WRONG`, false, 'Ученик');
+    await until(() => events.length > 0);
+    expect(events[0].code).toBe(4403);
+    expect(collab.collabActive()).toBe(false);
+  });
+
+  it('stopCollab закрывает канал без события об обрыве', async () => {
+    const events: Msg[] = [];
+    document.addEventListener('doska:collab-closed', e => events.push((e as CustomEvent).detail));
+    const t = fakeTransport();
+    const ready = collab.connectCollab(t, false);
+    t.onopen!();
+    await ready;
+    collab.stopCollab();
+    t.onclose!(1000, ''); // запоздалый close от закрытого нами канала
+    expect(t.closedByClient).toBe(true);
+    expect(events).toEqual([]);
+  });
+
+  it('события прежнего канала после переподключения игнорируются', async () => {
+    const old = fakeTransport();
+    void collab.connectCollab(old, false);
+    const t = fakeTransport();
+    const ready = collab.connectCollab(t, false);
+    t.onopen!();
+    await ready;
+    old.deliver(initMsg({ project: { ...demo(), id: 'старый' } }));
+    old.onclose!(1006, '');
+    expect(st.state.project.id).not.toBe('старый');
+    expect(collab.collabActive()).toBe(true);
+  });
+
+  it('сообщение гостю: текст для 4426, для прочих кодов — нет; разметка не исполняется', () => {
+    expect(collab.closedNotice(4426)?.title).toBe('Версии доски не совпадают');
+    expect(collab.closedNotice(1006)).toBeNull();
+    collab.showCollabNotice('<b>заголовок</b>', '<img src=x onerror=alert(1)>');
+    collab.showCollabNotice('Второй', 'текст');
+    const cards = document.querySelectorAll('#collab-notice');
+    expect(cards).toHaveLength(1); // новое сообщение заменяет прежнее
+    collab.showCollabNotice('<b>заголовок</b>', '<img src=x onerror=alert(1)>');
+    const card = document.getElementById('collab-notice')!;
+    expect(card.querySelector('img, b')).toBeNull();
+    expect(card.textContent).toContain('<img src=x onerror=alert(1)>');
+  });
+});
