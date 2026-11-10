@@ -15,11 +15,15 @@ async function makePng(page: Page, w: number, h: number): Promise<Buffer> {
 }
 
 test.describe('масштаб в шапке', () => {
-  test('клик по подписи — ввод точного значения с проверкой', async ({ board, page }) => {
+  test('«Другой масштаб…» в меню подписи — ввод точного значения с проверкой', async ({ board, page }) => {
     const label = page.locator('#zoom-label');
     const input = page.locator('#zoom-input');
     const hint = page.locator('.zoom-hint');
-    await label.click();
+    const openInput = async () => {
+      await label.click();
+      await page.locator('#view-menu [data-view="custom"]').click();
+    };
+    await openInput();
     await expect(input).toBeFocused();
     await expect(input).toHaveValue('100');
     await expect(label).toBeHidden();
@@ -44,13 +48,13 @@ test.describe('масштаб в шапке', () => {
     expect((await board.state()).camera.zoom).toBe(2.5);
 
     // Esc — отмена; уход из поля с ошибкой — тоже без изменений
-    await label.click();
+    await openInput();
     await input.fill('80');
     await input.press('Escape');
     await expect(label).toHaveText('250%');
-    await label.click();
+    await openInput();
     await input.fill('99999');
-    await page.locator('#topbar').click({ position: { x: 400, y: 20 } });
+    await input.blur();
     await expect(input).toHaveCount(0);
     expect((await board.state()).camera.zoom).toBe(2.5);
 
@@ -58,7 +62,7 @@ test.describe('масштаб в шапке', () => {
     const before = await board.state();
     const box = (await board.canvas.boundingBox())!;
     const cx = before.camera.x + box.width / 2 / before.camera.zoom;
-    await label.click();
+    await openInput();
     await input.fill('87,5');
     await input.press('Enter');
     const after = (await board.state()).camera;

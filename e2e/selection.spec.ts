@@ -93,18 +93,22 @@ test.describe('выделение и перемещение', () => {
     const b = await board.rect(450, 350, 550, 450);
     await board.rect(800, 300, 850, 350);
     await board.tool('v');
+    const up = byTip(board.quickMenu, 'Выше на слой; двойной клик — наверх; удержание — закрепить наверху');
+    const down = byTip(board.quickMenu, 'Ниже на слой; двойной клик — вниз; удержание — закрепить внизу');
+    const order = async () => (await board.elements()).slice(0, 2).map(e => e.id);
     await board.click({ x: 420, y: 320 });
-    await expect(byTip(board.quickMenu, 'Выше (слой)')).toBeVisible();
-    await expect(byTip(board.quickMenu, 'Ниже (слой)')).toHaveCount(0);
-    await byTip(board.quickMenu, 'Выше (слой)').click();
-    expect((await board.elements()).slice(0, 2).map(e => e.id)).toEqual([b.id, a.id]);
-    await expect(byTip(board.quickMenu, 'Ниже (слой)')).toBeVisible();
-    await byTip(board.quickMenu, 'Ниже (слой)').click();
-    expect((await board.elements()).slice(0, 2).map(e => e.id)).toEqual([a.id, b.id]);
+    await expect(up).toBeVisible();
+    await expect(down).toHaveCount(0);
+    // одиночный клик срабатывает с задержкой: ждёт, не будет ли двойного
+    await up.click();
+    await expect.poll(order).toEqual([b.id, a.id]);
+    await expect(down).toBeVisible();
+    await down.click();
+    await expect.poll(order).toEqual([a.id, b.id]);
 
-    await board.click({ x: 820, y: 320 }); // одиночный элемент — без слоёв
-    await expect(byTip(board.quickMenu, 'Выше (слой)')).toHaveCount(0);
-    await expect(byTip(board.quickMenu, 'Ниже (слой)')).toHaveCount(0);
+    await board.click({ x: 820, y: 320 }); // одиночный элемент — без стрелок слоёв
+    await expect(up).toHaveCount(0);
+    await expect(down).toHaveCount(0);
   });
 
   test('текст: полужирный и курсив из быстрого меню', async ({ board, page }) => {

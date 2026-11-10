@@ -140,11 +140,31 @@ export class Board {
     await expect.poll(async () => (await this.state()).tool).toBe(id);
   }
 
-  /** Фон страницы — через выпадающий список в шапке. */
+  /** Тип сетки — кнопкой с иконкой сетки в группе масштаба. */
   async grid(mode: string): Promise<void> {
-    await this.page.locator('#grid-mode').click();
-    await this.page.locator(`#grid-menu [data-grid="${mode}"]`).click();
-    await expect(this.page.locator('#grid-menu')).toBeHidden();
+    await this.page.locator('#view-grid-icon').click();
+    await this.page.locator('#view-menu button', { hasText: GRID_LABELS[mode] }).click();
+    await expect(this.page.locator('#view-menu')).toBeHidden();
+    await expect.poll(async () => (await this.state()).grid).toBe(mode);
+  }
+
+  /** Домашняя страница проектов — пункт «Домой» в меню логотипа. */
+  async home(): Promise<void> {
+    await this.page.locator('#btn-home').click();
+    await this.page.locator('#main-menu [data-action="home"]').click();
+    await expect(this.page.locator('#home')).toBeVisible();
+  }
+
+  /** С домашней страницы обратно к доске — логотип в её шапке. */
+  async back(): Promise<void> {
+    await this.page.locator('#home .home-logo').click();
+    await expect(this.page.locator('#home')).toBeHidden();
+  }
+
+  /** «Экспорт в PNG» из меню кнопки экспорта в шапке. */
+  async exportPng(): Promise<void> {
+    await this.page.locator('#btn-export').click();
+    await this.page.locator('#export-menu [data-action="png"]').click();
   }
 
   async rect(x0: number, y0: number, x1: number, y1: number): Promise<El> {
@@ -180,6 +200,8 @@ export class Board {
     await expect.poll(async () => (await this.state()).dirty).toBe(false);
   }
 }
+
+const GRID_LABELS: Record<string, string> = { none: 'Без фона', dots: 'Точки', square: 'Клетка', coord: 'Координатная плоскость' };
 
 /** Кнопка по подсказке: title переносится в data-tip при первом наведении. */
 export function byTip(scope: Page | Locator, tip: string): Locator {
