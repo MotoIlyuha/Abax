@@ -6,6 +6,8 @@ directories:
 files:
   - dist/**
   - electron/**
+  # протокол облачного ретранслятора — общий с сервером relay/, нужен electron/cloud-link.cjs
+  - relay/protocol.cjs
   - package.json
 win:
   target:

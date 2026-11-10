@@ -11,6 +11,21 @@ const AWAY_MS = Number(process.env.DOSKA_AWAY_MS || 45000);
 const MAX_ID = 128;
 /** Сколько элементов можно выделить в одном сообщении. */
 const MAX_SELECTION = 10000;
+/** Длина имени участника в символах. */
+const MAX_NAME = 40;
+
+/**
+ * Имя участника приходит от него самого и уходит всем остальным: управляющие символы и
+ * переключатели направления текста заменяются пробелами, пробелы схлопываются, длина — до MAX_NAME
+ * символов (суррогатные пары не рвутся). Декодирование из URL — забота транспорта.
+ */
+function normalizeName(raw) {
+  const s = String(raw ?? '')
+    .replace(/[\p{Cc}\u2028\u2029\u202A-\u202E\u2066-\u2069]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return Array.from(s).slice(0, MAX_NAME).join('').trim();
+}
 
 /**
  * Сокет участника — всё, что комнате нужно от транспорта:
@@ -135,6 +150,8 @@ function createRoomHub({ code, openEdit = false }) {
     return { default: r?.default || 'view', pages };
   }
 
+  const initFor = info => ({ t: 'init', proto: PROTO, userId: info.uid, color: info.color, name: info.name, project: projectFor(info), rights: rightsOf(info.uid), users: room.usersSnapshot() });
+
   /**
    * Подключить участника. Проверку доступа (код комнаты, ключ автора) делает транспорт до вызова.
    * @param {RoomSocket} sock
@@ -146,7 +163,7 @@ function createRoomHub({ code, openEdit = false }) {
     const uid = isHost ? 0 : room.nextUid++;
     const info = {
       sock, uid, host: isHost,
-      name: name || (isHost ? 'Автор' : `Гость ${uid}`),
+      name: normalizeName(name) || (isHost ? 'Автор' : `Гость ${uid}`),
       color: isHost ? '#e03131' : COLORS[uid % COLORS.length],
       last: Date.now(), cursor: null, pageId: null, selection: [],
     };
@@ -154,7 +171,7 @@ function createRoomHub({ code, openEdit = false }) {
     if (isHost) room.rights.set(0, { default: 'edit', pages: {} });
     else room.rights.set(uid, { default: openEdit ? 'edit' : 'view', pages: {} });
 
-    sendTo(sock, { t: 'init', proto: PROTO, userId: uid, color: info.color, name: info.name, project: projectFor(info), rights: rightsOf(uid), users: room.usersSnapshot() });
+    sendTo(sock, initFor(info));
     broadcastUsers(); // остальные сразу видят нового участника
 
     sock.on('message', raw => {
@@ -213,9 +230,23 @@ function createRoomHub({ code, openEdit = false }) {
     if (room.project) sendTo(c.sock, { t: 'project', project: { ...room.project, pages: room.visiblePages(uid) }, by: -1 });
   }
 
+  /**
+   * Заново отправить участнику init — полное текущее состояние. Транспорт вызывает это, когда
+   * участник мог пропустить сообщения (обрыв связи автора с ретранслятором). Клиент принимает
+   * повторный init как обычный: проект, права и участники заменяются, страница и камера остаются.
+   * @returns {boolean} false — такого участника нет
+   */
+  function refresh(sock) {
+    const info = room.clients.get(sock);
+    if (!info) return false;
+    sendTo(sock, initFor(info));
+    return true;
+  }
+
   return {
     room,
     attach,
+    refresh,
     setRights: (uid, patch) => { const r = room.setRights(uid, patch); broadcastUsers(); pushRights(uid); return r; },
     pushProject: project => { room.project = project; for (const c of room.clients.values()) sendTo(c.sock, { t: 'project', project, by: -1 }); },
     users: () => room.usersSnapshot(),
@@ -223,4 +254,4 @@ function createRoomHub({ code, openEdit = false }) {
   };
 }
 
-module.exports = { createRoomHub, Room, PROTO, MAX_EDITORS, MAX_ID, MAX_SELECTION };
+module.exports = { createRoomHub, Room, PROTO, MAX_EDITORS, MAX_ID, MAX_SELECTION, MAX_NAME, normalizeName };

@@ -11,6 +11,7 @@ services:
       RELAY_MAX_MESSAGE: ${RELAY_MAX_MESSAGE:-}
       RELAY_MAX_GUESTS: ${RELAY_MAX_GUESTS:-}
       RELAY_MAX_ROOMS: ${RELAY_MAX_ROOMS:-}
+      RELAY_MAX_BUFFER: ${RELAY_MAX_BUFFER:-}
     expose:
       - "8080"
 

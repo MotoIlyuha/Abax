@@ -63,6 +63,8 @@ function createShareServer({ port, code, hostKey = newHostKey(), openEdit = proc
       setDistDir(d) { distDir = d; },
       /** Подключить участника от другого транспорта (облачный ретранслятор); доступ проверяет вызывающий. */
       attach: hub.attach,
+      /** Заново отправить участнику полное состояние (после обрыва связи транспорта). */
+      refresh: hub.refresh,
       setRights: hub.setRights,
       pushProject: hub.pushProject,
       users: hub.users,

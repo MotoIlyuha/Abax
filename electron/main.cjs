@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs/promises');
 const fss = require('fs');
 const { createShareServer, MAX_EDITORS } = require('./share.cjs');
+const { createCloudLink, normalizeRelayUrl, cloudGuestUrl } = require('./cloud-link.cjs');
 
 const isDev = !app.isPackaged;
 
@@ -206,7 +207,45 @@ function lanIp() {
 
 function shareInfo() {
   const ip = lanIp();
-  return { port: share.port, code: share.code, url: `http://${ip}:${share.port}/?room=${share.code}`, maxEditors: MAX_EDITORS };
+  return { port: share.port, code: share.code, url: `http://${ip}:${share.port}/?room=${share.code}`, maxEditors: MAX_EDITORS, cloud: cloudInfo() };
+}
+
+// ----- Совместная работа через интернет (облачный ретранслятор relay/) -----
+/** Ретранслятор по умолчанию; пусто — адрес нужно передать в share:cloudStart. */
+const DEFAULT_RELAY_URL = process.env.DOSKA_RELAY_URL || '';
+/** Клиент доски для гостей из интернета: сборка этой же версии на GitHub Pages. */
+const GUEST_BASE = process.env.DOSKA_GUEST_URL || `https://motoilyuha.github.io/Abax/v/${require('../package.json').version}/`;
+let cloud = null;
+/** Запуск в процессе: повторные вызовы ждут его, а не открывают вторую комнату. */
+let cloudStarting = null;
+
+function cloudInfo() {
+  if (!cloud) return null;
+  const s = cloud.status();
+  return { state: s.state, url: s.room ? cloudGuestUrl(GUEST_BASE, s.relayUrl, s.room) : null, error: s.error, guests: s.guests, relayUrl: s.relayUrl };
+}
+
+function stopCloud() {
+  if (cloud) { cloud.stop(); cloud = null; }
+}
+
+async function startCloud(relayInput) {
+  let relayUrl;
+  try {
+    relayUrl = normalizeRelayUrl(relayInput || DEFAULT_RELAY_URL);
+  } catch (e) {
+    return { ok: false, error: relayInput || DEFAULT_RELAY_URL ? e.message : 'Не указан адрес ретранслятора' };
+  }
+  const link = createCloudLink({ relayUrl, attach: share.attach, refresh: share.refresh });
+  try {
+    await link.start();
+  } catch (e) {
+    link.stop();
+    return { ok: false, error: e.message };
+  }
+  if (!share) { link.stop(); return { ok: false, error: 'Совместная работа выключена' }; }
+  cloud = link;
+  return { ok: true, cloud: cloudInfo() };
 }
 
 // hostKey отдаём только в ответ share:start — это секрет автора для host-подключения
@@ -228,7 +267,23 @@ ipcMain.handle('share:start', async () => {
 });
 
 ipcMain.handle('share:stop', async () => {
+  stopCloud();
   if (share) { share.close(); share = null; }
+  return { ok: true };
+});
+
+// гости из интернета — в ту же комнату; сервер совместной работы должен быть уже запущен
+ipcMain.handle('share:cloudStart', async (_e, opts = {}) => {
+  if (!share) return { ok: false, error: 'Совместная работа выключена' };
+  const st = cloud?.status().state;
+  if (cloud && st !== 'failed' && st !== 'stopped') return { ok: true, cloud: cloudInfo() };
+  stopCloud();
+  if (!cloudStarting) cloudStarting = startCloud(opts && opts.relayUrl).finally(() => { cloudStarting = null; });
+  return cloudStarting;
+});
+
+ipcMain.handle('share:cloudStop', async () => {
+  stopCloud();
   return { ok: true };
 });
 

@@ -4333,13 +4333,25 @@ export function togglePresent(): void {
 // ----- Совместная работа: диалог автора -----
 
 interface ShareUser { userId: number; name: string; color: string; host?: boolean; away?: boolean; rights?: { default?: string; pages?: Record<string, string> } }
-interface ShareStatus { active: boolean; url?: string; code?: string; port?: number; maxEditors?: number; users?: ShareUser[] }
+/** Комната на облачном ретрансляторе (electron/cloud-link.cjs): гости из интернета. */
+interface ShareCloudStatus {
+  state: 'connecting' | 'online' | 'reconnecting' | 'failed' | 'stopped';
+  /** Ссылка для гостей; null — комнаты пока нет. */
+  url: string | null;
+  error: string | null;
+  guests: number;
+  relayUrl: string;
+}
+interface ShareStatus { active: boolean; url?: string; code?: string; port?: number; maxEditors?: number; users?: ShareUser[]; cloud?: ShareCloudStatus | null }
 interface ShareApi {
   shareStart(): Promise<{ ok: boolean; port?: number; code?: string; hostKey?: string }>;
   shareStop(): Promise<{ ok: boolean }>;
   shareStatus(): Promise<ShareStatus>;
   shareSetRights(uid: number, patch: { pages?: Record<string, string>; default?: string; all?: string }): Promise<{ ok: boolean; error?: string }>;
   shareOpenTestWindow(): Promise<{ ok: boolean }>;
+  /** Только в Electron; без relayUrl — ретранслятор по умолчанию. */
+  shareCloudStart?(opts?: { relayUrl?: string }): Promise<{ ok: boolean; error?: string; cloud?: ShareCloudStatus | null }>;
+  shareCloudStop?(): Promise<{ ok: boolean }>;
 }
 
 async function collabApi(): Promise<ShareApi> {
