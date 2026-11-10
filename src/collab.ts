@@ -161,7 +161,14 @@ export function renderRemoteCursors(): void {
     el.className = 'remote-cursor' + (u.away ? ' away' : '');
     el.style.left = `${sx}px`;
     el.style.top = `${sy}px`;
-    el.innerHTML = `<i style="background:${color};border-color:${color}"></i><span style="background:${color}">${u.name}${u.away ? ' · Отошёл' : ''}</span>`;
+    // имя и цвет приходят от других участников — только textContent и свойства style, без разметки
+    const dot = document.createElement('i');
+    dot.style.background = color;
+    dot.style.borderColor = color;
+    const label = document.createElement('span');
+    label.style.background = color;
+    label.textContent = String(u.name ?? '') + (u.away ? ' · Отошёл' : '');
+    el.append(dot, label);
     cursorsRoot.appendChild(el);
   }
 }

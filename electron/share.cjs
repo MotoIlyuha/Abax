@@ -12,6 +12,22 @@ const AWAY_MS = Number(process.env.DOSKA_AWAY_MS || 45000);
 
 let distDir = path.join(__dirname, '..', 'dist');
 
+const MAX_NAME = 40;
+/**
+ * Имя участника из параметра URL: его присылает гость, и оно уходит всем остальным.
+ * Декодируем (клиент кодирует имя дважды), убираем управляющие символы и переключатели
+ * направления текста, схлопываем пробелы и обрезаем до MAX_NAME символов (не рвём суррогатные пары).
+ */
+function cleanName(raw) {
+  let s = String(raw || '');
+  try { s = decodeURIComponent(s); } catch { /* битая %-последовательность — берём как есть */ }
+  s = s
+    .replace(/[\p{Cc}\u2028\u2029\u202A-\u202E\u2066-\u2069]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return Array.from(s).slice(0, MAX_NAME).join('').trim();
+}
+
 class Room {
   constructor(code) {
     this.code = code;
@@ -116,7 +132,7 @@ function createShareServer({ port, code, hostKey = newHostKey(), openEdit = proc
     const uid = isHost ? 0 : room.nextUid++;
     const info = {
       ws, uid, host: isHost,
-      name: decodeURIComponent(u.searchParams.get('name') || '') || (isHost ? 'Автор' : `Гость ${uid}`),
+      name: cleanName(u.searchParams.get('name')) || (isHost ? 'Автор' : `Гость ${uid}`),
       color: isHost ? '#e03131' : COLORS[uid % COLORS.length],
       last: Date.now(), cursor: null, pageId: null, selection: [],
     };
@@ -193,4 +209,4 @@ function createShareServer({ port, code, hostKey = newHostKey(), openEdit = proc
   });
 }
 
-module.exports = { createShareServer, MAX_EDITORS };
+module.exports = { createShareServer, MAX_EDITORS, MAX_NAME, cleanName };
