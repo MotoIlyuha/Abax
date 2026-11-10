@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- script-src без 'unsafe-inline': даже если чужие данные попадут в разметку, скрипт не выполнится.
+       worker-src blob: — воркер pdf.js встроен в сборку (?worker&inline); ws: — сервер совместной работы
+       (автор в Electron открыт с file://); api.github.com — проверка обновлений;
+       'unsafe-inline' в style-src — стили через style и <style> окна демонстрации. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ws: wss: https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <title>Abax</title>
+  <link rel="icon" type="image/svg+xml" href="logo.svg" />
+  <style>
+    html, body { margin: 0; background: #f4f5f7; }
+    #startup { position: fixed; inset: 0; z-index: 2147483647; display: grid; place-items: center; background: #f4f5f7; color: #596272; font: 14px/1.5 system-ui, sans-serif; }
+    #startup[hidden] { display: none; }
+    #startup-status { text-align: center; opacity: 0; animation: startup-show .2s 600ms forwards; }
+    #startup-status img { display: block; width: 56px; height: 56px; margin: 0 auto 14px; }
+    #startup-retry { margin-top: 12px; padding: 8px 14px; border: 1px solid #cbd1da; border-radius: 6px; background: white; color: #20242b; font: inherit; cursor: pointer; }
+    #startup-retry[hidden] { display: none; }
+    @keyframes startup-show { to { opacity: 1; } }
+    @media (prefers-reduced-motion: reduce) { #startup-status { animation-duration: 1ms; } }
+  </style>
+  <script type="module" crossorigin src="./assets/index-VSKvH_JW.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-D174Euwz.css">
+</head>
+<body>
+  <div id="startup" role="status" aria-live="polite">
+    <div id="startup-status">
+      <img src="logo.svg" alt="" />
+      <div id="startup-message">Загрузка…</div>
+      <button id="startup-retry" type="button" hidden>Перезагрузить</button>
+    </div>
+  </div>
+  <script src="startup.js"></script>
+  <div id="topbar">
+    <div class="topbar-side topbar-right">
+      <div class="topbar-group import-group">
+        <button id="btn-import" class="icon" title="Импорт документа"></button>
+        <button id="btn-image" class="icon" title="Вставить изображение (или Ctrl+V / перетащить файл)"></button>
+      </div>
+      <div class="topbar-group undo-group">
+        <button id="btn-undo" class="icon" title="Отменить (Ctrl+Z)"></button>
+        <button id="btn-redo" class="icon" title="Повторить (Ctrl+Y)"></button>
+      </div>
+      <div class="topbar-group project-group">
+        <button id="project-icon" class="project-icon top" title="Иконка проекта"></button>
+        <span id="project-name" title="Текущий проект">Проект</span>
+        <span class="crumb-sep" aria-hidden="true">/</span>
+        <input id="page-name" title="Название страницы" spellcheck="false" />
+      </div>
+      <button id="btn-home" class="topbar-logo" title="Проекты (домашняя страница)" aria-label="Проекты (домашняя страница)"><img src="logo.svg" alt="Abax" /></button>
+    </div>
+    <div class="topbar-side topbar-left">
+      <div class="topbar-group"><button id="btn-settings" class="icon" title="Настройки доски"></button></div>
+      <div class="topbar-group">
+        <button id="btn-present" class="icon" title="Окно для демонстрации экрана: только холст, без интерфейса"></button>
+        <button id="btn-share" class="icon" title="Поделиться доской"></button>
+        <button id="btn-export" class="icon" title="Экспорт в PNG (Ctrl+E)"></button>
+      </div>
+      <div class="topbar-group view-group"><button id="view-grid-icon" class="icon" title="Тип сетки" aria-label="Тип сетки" aria-expanded="false"></button><button id="zoom-out" class="icon" title="Уменьшить масштаб" aria-label="Уменьшить масштаб"></button><button id="zoom-label" title="Масштаб и вид" aria-expanded="false">100%</button><button id="zoom-in" class="icon" title="Увеличить масштаб" aria-label="Увеличить масштаб"></button><button id="btn-fit" class="icon" title="Сбросить вид"></button></div>
+    </div>
+    <button id="grid-mode" title="Фон страницы" aria-haspopup="listbox" aria-expanded="false" hidden></button>
+  </div>
+  <div id="main">
+    <div id="canvas-wrap">
+      <div id="toolbar"></div>
+      <canvas id="board"></canvas>
+      <div id="overlay"></div>
+      <div id="draft-badge" role="status" hidden><span>Черновик</span> · виден только вам: ни гостям, ни в демонстрации</div>
+      <div id="pages-dock" data-tip-side="top">
+        <div id="pages-tray"><div id="pages-list"></div></div>
+        <button id="btn-pages"></button>
+      </div>
+      <div id="ctx-layer"></div>
+      <div id="quick-menu" hidden></div>
+    </div>
+  </div>
+  <div id="settings-popover" hidden></div>
+  <div id="grid-menu" role="listbox" hidden></div>
+  <div id="home" hidden></div>
+</body>
+</html>
