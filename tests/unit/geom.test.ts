@@ -357,7 +357,7 @@ describe('elementHandles', () => {
   it('тело и текст имеют ручки, штрих — без ручек', () => {
     expect(elementHandles(cube, 1)).toEqual([expect.objectContaining({ h: { kind: 'param', key: 'a' } })]);
     expect(elementHandles(text(), 1)).toHaveLength(2);
-    const resized = applyHandle(text(), { kind: 'resize', dx: 1, dy: 0 }, { x: 30, y: 0 });
+    const resized = applyHandle(text(), { kind: 'resize', dx: 1, dy: 0 }, { x: 30, y: 0, p: 0.5 });
     expect(resized).toMatchObject({ w: 24 });
     expect(elementAABB(resized).x1 - elementAABB(resized).x0).toBe(24);
     expect(elementHandles(stroke(), 1)).toEqual([]);
