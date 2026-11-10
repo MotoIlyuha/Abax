@@ -7,6 +7,8 @@
 import type { BoardSettings, PageKeyMod } from './types';
 
 export const DEFAULT_NEW_PAGE_KEY = 'Alt+KeyN';
+/** Новый черновик — страница, которую видит только автор (см. state.drafts). */
+export const DRAFT_KEY = 'Alt+Shift+KeyN';
 
 const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
 
@@ -111,11 +113,14 @@ export const FIXED_SHORTCUTS: ShortcutGroup[] = [
   },
   {
     title: 'Доска',
+    note: 'Черновик видите только вы — ни гости, ни окно демонстрации, — а при выходе из вкладки или приложения он пропадает. '
+      + 'Создать его можно и мышью: нажмите кнопку новой страницы с зажатым Alt, а на планшете — задержите на ней палец.',
     items: [
       { keys: ['Ctrl+KeyS'], what: 'Сохранить' },
       { keys: ['Ctrl+KeyE'], what: 'Экспорт в PNG' },
       { keys: ['Ctrl+Comma'], what: 'Все настройки' },
       { keys: ['KeyB'], what: 'Показать или скрыть список страниц' },
+      { keys: [DRAFT_KEY], what: 'Новый черновик: страница, которую видите только вы' },
       { keys: ['Digit0'], what: 'Показать всё содержимое' },
       { keys: ['Equal', 'Minus'], what: 'Крупнее / мельче' },
       { keys: ['Space'], what: 'Двигать доску, пока клавиша нажата' },

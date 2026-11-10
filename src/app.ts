@@ -10,6 +10,7 @@ import {
   openProject, blankProject, blankPage, projectMeta, groupSelected, ungroupSelected, movePage,
   bringForward, sendBackward, moveSelectionLayer, selectionLayerOrder, pinSelectionLayer, deleteSelected, setSolidSides, duplicateSelected, removeImageFrames, selectInserted,
   clampOpacity, opacityField, OPACITY_MIN, parseZoomPercent, zoomAtPoint,
+  addDraft, deleteDraft, onDraft, realPageId,
 } from './state';
 import type { PresetKind, StylePatch, StyleValue } from './state';
 import { doskaApi, storage } from './storage';
@@ -35,7 +36,7 @@ import {
 import { experimentalHeadIcon, experimentsShown, renderExperimental, setExperimentsShown, setRecursionDiscovered } from './experimental';
 import { renderToolbarEditor } from './toolbar-editor';
 import { renderHotkeysSettings } from './hotkeys-settings';
-import { DEFAULT_NEW_PAGE_KEY, comboLabel, macKeys, newPageKeyProblem } from './hotkeys';
+import { DEFAULT_NEW_PAGE_KEY, DRAFT_KEY, comboLabel, macKeys, newPageKeyProblem } from './hotkeys';
 import { renderAbout, showToast } from './about';
 import { closeIconPicker, openIconPicker } from './icon-picker';
 import { capitalize, dayLabel, pagesLabel } from './format';
@@ -49,6 +50,7 @@ const ICONS = {
   home: svg('<path d="M3 11l9-8 9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/>'),
   pages: svg('<rect x="8" y="3" width="12" height="15" rx="2"/><path d="M4.5 7v11.5A2.5 2.5 0 0 0 7 21h9"/>'),
   plus: svg('<path d="M12 5v14M5 12h14"/>'),
+  draft: svg('<path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L8 19z"/><path d="M14.5 6.5l3 3"/>'),
   chevronUp: svg('<path d="M6 15l6-6 6 6"/>'),
   chevronDown: svg('<path d="M6 9l6 6 6-6"/>'),
   keyboard: svg('<rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M18 14h.01M9 14h6"/>'),
@@ -2625,13 +2627,24 @@ function cameraKey(projectId: string, pageId: string): string {
   return `doska.camera.${encodeURIComponent(projectId)}.${encodeURIComponent(pageId)}`;
 }
 
+/** Камеры черновиков — только в памяти: на диске им не место. */
+const draftCameras = new Map<string, Camera>();
+
 function saveCamera(): void {
   if (linkTransit) return;
+  if (onDraft()) { draftCameras.set(state.pageId, { ...state.camera }); return; }
   try { localStorage.setItem(cameraKey(state.project.id, state.pageId), JSON.stringify(state.camera)); }
   catch { /* просмотр продолжает работать, даже если хранилище недоступно */ }
 }
 
 function restoreCamera(): boolean {
+  if (onDraft()) {
+    const camera = draftCameras.get(state.pageId);
+    if (!camera) return false;
+    state.camera = { ...camera };
+    update();
+    return true;
+  }
   try {
     const camera = JSON.parse(localStorage.getItem(cameraKey(state.project.id, state.pageId)) || 'null') as Camera | null;
     if (!camera || !Number.isFinite(camera.x) || !Number.isFinite(camera.y) ||
@@ -2651,7 +2664,7 @@ export async function saveNow(): Promise<void> {
   await storage.save(state.project);
   const meta = projectMeta(state.project);
   state.projects = [meta, ...state.projects.filter(m => m.id !== meta.id)];
-  localStorage.setItem('doska.last', JSON.stringify({ pid: state.project.id, pageId: state.pageId }));
+  localStorage.setItem('doska.last', JSON.stringify({ pid: state.project.id, pageId: realPageId() }));
   renderPages();
 }
 
@@ -2676,8 +2689,12 @@ function transitionCanvases(): HTMLCanvasElement[] {
   return pc ? [canvas, pc] : [canvas];
 }
 
+/** Номер страницы в списке; черновики стоят правее всех страниц. */
 function pageIndex(pageId: string): number {
-  return state.project.pages.findIndex(p => p.id === pageId);
+  const i = state.project.pages.findIndex(p => p.id === pageId);
+  if (i >= 0) return i;
+  const d = state.drafts.findIndex(p => p.id === pageId);
+  return d >= 0 ? state.project.pages.length + d : -1;
 }
 
 /** Смена активной страницы (переключение, новая, удаление) — с анимацией перехода из настроек. */
@@ -2685,16 +2702,24 @@ function changePage(change: () => void): void {
   const fromId = state.pageId;
   saveCamera();
   const from = pageIndex(fromId);
-  const play = state.view === 'board' ? capturePageTransition(state.settings.pageTransition, transitionCanvases()) : null;
+  const board = state.view === 'board';
+  const mode = state.settings.pageTransition;
+  const play = board ? capturePageTransition(mode, [canvas]) : null;
+  // окну демонстрации страница меняется, только если зрители увидят другую (черновик им не показывают)
+  const pc = presentCanvas();
+  const playPresent = board && pc ? capturePageTransition(mode, [pc]) : null;
+  const shownBefore = realPageId();
   change();
   refresh();
   if (state.pageId !== fromId) {
     if (!restoreCamera()) fitContent();
-    localStorage.setItem('doska.last', JSON.stringify({ pid: state.project.id, pageId: state.pageId }));
+    localStorage.setItem('doska.last', JSON.stringify({ pid: state.project.id, pageId: realPageId() }));
   }
   // кадр новой страницы — сразу и начисто, не дожидаясь покоя камеры
   renderNow();
-  if (play && state.pageId !== fromId) play(pageIndex(state.pageId) >= from ? 1 : -1);
+  const dir = pageIndex(state.pageId) >= from ? 1 : -1;
+  if (play && state.pageId !== fromId) play(dir);
+  if (playPresent && realPageId() !== shownBefore) playPresent(dir);
 }
 
 // ----- Страницы на холсте (раздел «Экспериментальные», см. page-links.ts) -----
@@ -2737,7 +2762,7 @@ export async function openPageLink(el: ImageEl, duringDrag = false): Promise<voi
         const play = capturePageTransition('fade', transitionCanvases());
         switchPage(page.id);
         if (!restoreCamera()) { state.camera = target; update(); }
-        localStorage.setItem('doska.last', JSON.stringify({ pid: state.project.id, pageId: state.pageId }));
+        localStorage.setItem('doska.last', JSON.stringify({ pid: state.project.id, pageId: realPageId() }));
         refresh();
         renderNow();
         play?.(1);
@@ -2804,6 +2829,22 @@ export function addPageFromKey(): void {
   void newPageHandler();
 }
 
+/** Новый черновик по горячей клавише. */
+export function addDraftFromKey(): void {
+  if (state.view !== 'board' || !canEditPages()) return;
+  void newDraftHandler();
+}
+
+/** Подсказка «Создать черновик (Alt+Shift+N)». */
+function newDraftTip(): string {
+  return `Создать черновик (${comboLabel(DRAFT_KEY)})`;
+}
+
+async function newDraftHandler(): Promise<void> {
+  await saveNow();
+  changePage(() => addDraft());
+}
+
 /** Подсказка «Новая страница (Ctrl+N)» — с сочетанием из настроек, если оно есть. */
 function newPageTip(): string {
   const k = state.settings.newPageKey;
@@ -2816,6 +2857,14 @@ async function newPageHandler(): Promise<void> {
 }
 
 async function deletePageHandler(pageId: string): Promise<void> {
+  const draft = state.drafts.find(d => d.id === pageId);
+  if (draft) {
+    // пустой черновик убираем сразу: терять в нём нечего
+    if (draft.elements.length > 0 && !confirm(`Удалить черновик «${draft.name}»?`)) return;
+    changePage(() => deleteDraft(pageId));
+    draftCameras.delete(pageId);
+    return;
+  }
   const page = state.project.pages.find(p => p.id === pageId);
   if (!page || !confirm(`Удалить страницу «${page.name}»?`)) return;
   await saveNow();
@@ -2870,6 +2919,8 @@ function pagesKey(): string {
     state.projects.length,
     state.project.updatedAt,
     state.project.pages.map(p => `${p.id}:${p.name}:${p.grid}:${p.elements.length}`).join('|'),
+    state.drafts.map(p => `${p.id}:${p.name}:${p.grid}:${p.elements.length}`).join('|'),
+    state.draftRev,
   ].join('#');
 }
 
@@ -2895,7 +2946,6 @@ interface PageCard {
   shot: { elements: Element[]; grid: GridMode; epoch: number; recursion: boolean } | null;
 }
 const pageCards = new Map<string, PageCard>();
-let addPageTile: HTMLButtonElement | null = null;
 let revealedPageId = '';
 
 /** Гость совместной работы страниц не добавляет и не удаляет. */
@@ -2903,9 +2953,9 @@ function canEditPages(): boolean {
   return !(collabActive() && !isHost());
 }
 
-function makePageCard(pageId: string): PageCard {
+function makePageCard(pageId: string, draft = false): PageCard {
   const el = document.createElement('div');
-  el.className = 'page-item';
+  el.className = draft ? 'page-item draft' : 'page-item';
   el.dataset.pageId = pageId;
   const thumbBox = document.createElement('div');
   thumbBox.className = 'page-thumb';
@@ -2930,7 +2980,7 @@ function makePageCard(pageId: string): PageCard {
   row.append(grid, name);
   const del = document.createElement('button');
   del.className = 'page-del';
-  del.title = 'Удалить страницу';
+  del.title = draft ? 'Удалить черновик' : 'Удалить страницу';
   del.innerHTML = ICONS.del;
   el.append(thumbBox, row, del);
   const card: PageCard = { el, thumb, view, cam: null, content: null, num, grid, name, gridMode: null, shot: null };
@@ -2953,9 +3003,98 @@ function makeAddPageTile(): HTMLButtonElement {
   const b = document.createElement('button');
   b.className = 'page-add';
   b.title = 'Новая страница';
-  b.innerHTML = ICONS.plus;
-  b.addEventListener('click', () => { void newPageHandler(); });
+  // два вида: «+» и, пока зажат Alt или палец, «Создать черновик»
+  b.innerHTML = `<span class="add-new">${ICONS.plus}</span>`
+    + `<span class="add-draft">${ICONS.draft}<span>Создать черновик</span></span>`;
+  wireCreate(b, () => canEditPages(), () => { void newPageHandler(); });
   return b;
+}
+
+/** Разделитель между страницами и черновиками. */
+function makeDraftDivider(): HTMLElement {
+  const d = document.createElement('div');
+  d.className = 'page-divider';
+  d.setAttribute('role', 'separator');
+  d.title = 'Справа — черновики: их видите только вы';
+  return d;
+}
+
+// ----- Черновик вместо страницы: Alt, долгое нажатие -----
+
+/** Задержка долгого нажатия, после которой вместо страницы создаётся черновик (планшеты без Alt). */
+const DRAFT_HOLD_MS = 550;
+/** Раньше этого срока кнопка уже «переодевается» в «Создать черновик»: видно, что происходит. */
+const DRAFT_HINT_MS = 220;
+let altHeld = false;
+/** Палец или кнопка мыши удерживаются на кнопке создания страницы. */
+let pressDraft = false;
+let addPageTile: HTMLButtonElement | null = null;
+let addDraftDivider: HTMLElement | null = null;
+
+/** Кнопка создаёт черновик, а не страницу: зажат Alt или идёт долгое нажатие. */
+function draftMode(): boolean {
+  return altHeld || pressDraft;
+}
+
+/** Кнопки «новая страница» показывают то, что нажатие сделает сейчас. */
+function syncDraftMode(): void {
+  const on = draftMode();
+  if (addPageTile) {
+    addPageTile.classList.toggle('draft-mode', on);
+    const tip = on ? newDraftTip() : newPageTip();
+    if ((addPageTile.getAttribute('title') ?? addPageTile.dataset.tip) !== tip) addPageTile.title = tip;
+  }
+  syncPagesButton();
+}
+
+function setAltHeld(on: boolean): void {
+  if (altHeld === on) return;
+  altHeld = on;
+  syncDraftMode();
+}
+
+/**
+ * Кнопка создания страницы: клик — страница; клик с Alt или долгое нажатие — черновик.
+ * enabled — можно ли сейчас (гость совместной работы страниц не добавляет).
+ */
+function wireCreate(el: HTMLElement, enabled: () => boolean, createPage: () => void): void {
+  let hint = 0;
+  let hold = 0;
+  let fired = false;
+  let start = { x: 0, y: 0 };
+  const cancel = () => {
+    clearTimeout(hint);
+    clearTimeout(hold);
+    hint = hold = 0;
+    if (pressDraft) { pressDraft = false; syncDraftMode(); }
+  };
+  el.addEventListener('pointerdown', e => {
+    if (e.button !== 0 || !enabled()) return;
+    fired = false;
+    start = { x: e.clientX, y: e.clientY };
+    cancel();
+    hint = window.setTimeout(() => { pressDraft = true; syncDraftMode(); }, DRAFT_HINT_MS);
+    hold = window.setTimeout(() => {
+      fired = true;
+      cancel();
+      void newDraftHandler();
+    }, DRAFT_HOLD_MS);
+  });
+  el.addEventListener('pointermove', e => {
+    if ((hint || hold) && Math.hypot(e.clientX - start.x, e.clientY - start.y) > 10) cancel();
+  });
+  for (const type of ['pointerup', 'pointercancel', 'pointerleave']) el.addEventListener(type, cancel);
+  // долгое нажатие на сенсорном экране не должно открывать контекстное меню
+  el.addEventListener('contextmenu', e => { if (hint || hold || fired) e.preventDefault(); });
+  // клик, которым закончилось долгое нажатие, — не «новая страница»
+  el.addEventListener('click', e => {
+    if (fired) { fired = false; e.stopImmediatePropagation(); e.preventDefault(); return; }
+    if (!e.altKey || !enabled()) return;
+    e.stopImmediatePropagation();
+    e.preventDefault();
+    void newDraftHandler();
+  }, true);
+  el.addEventListener('click', () => { if (enabled()) createPage(); });
 }
 
 /** Видимая область, которую вписывает превью страницы: только у текущей и при включённой настройке. */
@@ -3042,22 +3181,48 @@ function renderPages(): void {
       // переставляем, только если не на месте: перенос узла сбросил бы фокус переименования
       if (list.children[i] !== card.el) list.insertBefore(card.el, list.children[i] ?? null);
     });
+    // черновики — правее всех страниц, за разделителем
+    state.drafts.forEach((draft, i) => {
+      seen.add(draft.id);
+      const card = pageCards.get(draft.id) ?? makePageCard(draft.id, true);
+      card.el.classList.toggle('active', draft.id === state.pageId);
+      card.el.style.setProperty('--i', String(pages.length + 1 + i));
+      card.num.textContent = 'Ч';
+      card.num.title = 'Черновик';
+      if (card.name.textContent !== draft.name) card.name.textContent = draft.name;
+      if (card.gridMode !== draft.grid) {
+        card.gridMode = draft.grid;
+        card.grid.innerHTML = GRID_ICONS[draft.grid];
+      }
+      if (pagesOpen) syncPageThumb(card, draft);
+    });
     for (const [id, card] of pageCards) {
       if (seen.has(id)) continue;
       card.el.remove();
       pageCards.delete(id);
     }
+    // за страницами: плитка «новая страница», разделитель и черновики
+    const tail: HTMLElement[] = [];
     if (canEditPages()) {
       addPageTile ??= makeAddPageTile();
       addPageTile.style.setProperty('--i', String(pages.length));
-      // подсказка уже могла переехать в data-tip (см. tooltip.ts) — обновляем, только если сочетание сменилось
-      const tip = newPageTip();
-      if ((addPageTile.getAttribute('title') ?? addPageTile.dataset.tip) !== tip) addPageTile.title = tip;
-      if (list.lastElementChild !== addPageTile) list.appendChild(addPageTile);
+      tail.push(addPageTile);
     } else {
       addPageTile?.remove();
     }
-    syncPagesButton();
+    if (state.drafts.length > 0) {
+      addDraftDivider ??= makeDraftDivider();
+      tail.push(addDraftDivider);
+      for (const draft of state.drafts) tail.push(pageCards.get(draft.id)!.el);
+    } else {
+      addDraftDivider?.remove();
+    }
+    tail.forEach((node, k) => {
+      const at = pages.length + k;
+      if (list.children[at] !== node) list.insertBefore(node, list.children[at] ?? null);
+    });
+    // подсказка плитки уже могла переехать в data-tip (см. tooltip.ts): syncDraftMode обновляет её, только если она сменилась
+    syncDraftMode();
     const tray = document.getElementById('pages-tray')!;
     document.getElementById('pages-dock')!.style.setProperty('--tray-h', `${tray.offsetHeight}px`);
     if (pagesOpen && revealedPageId !== state.pageId) {
@@ -3071,17 +3236,18 @@ function renderPages(): void {
 function syncPagesButton(): void {
   const btn = document.getElementById('btn-pages')!;
   const n = state.project.pages.length;
-  const add = n === 1 && !pagesOpen && canEditPages();
-  const key = `${add}:${n}:${pagesOpen}:${state.settings.newPageKey}`;
+  const add = n === 1 && state.drafts.length === 0 && !pagesOpen && canEditPages();
+  const draft = add && draftMode();
+  const key = `${add}:${draft}:${n}:${pagesOpen}:${state.settings.newPageKey}`;
   if (btn.dataset.key === key) return;
   btn.dataset.key = key;
   btn.classList.toggle('add', add);
   btn.setAttribute('aria-expanded', String(pagesOpen));
   btn.innerHTML = add
-    ? `${ICONS.pages}<span class="pages-label">Страница</span> <span class="pages-plus">${ICONS.plus}</span>`
+    ? `${draft ? ICONS.draft : ICONS.pages}<span class="pages-label">${draft ? 'Черновик' : 'Страница'}</span> <span class="pages-plus">${ICONS.plus}</span>`
     : `${ICONS.pages}<span class="pages-label">Страницы</span> <span class="pages-count">${n}</span>`
       + `<span class="pages-chev">${ICONS.chevronUp}</span>`;
-  btn.title = add ? newPageTip() : pagesOpen ? 'Скрыть страницы (B)' : 'Показать страницы (B)';
+  btn.title = add ? (draft ? newDraftTip() : newPageTip()) : pagesOpen ? 'Скрыть страницы (B)' : 'Показать страницы (B)';
 }
 
 /** Прокручивает список так, чтобы активная страница была видна. */
@@ -3118,18 +3284,31 @@ export function togglePages(): void {
   setPagesOpen(!pagesOpen);
 }
 
+/** Кнопка страниц работает как «Страница +»: пока страница одна, нажатие добавляет вторую. */
+function pagesButtonAdds(): boolean {
+  return !pagesOpen && state.project.pages.length === 1 && state.drafts.length === 0 && canEditPages();
+}
+
 function wirePagesDock(): void {
-  document.getElementById('btn-pages')!.addEventListener('click', () => {
-    if (!pagesOpen && state.project.pages.length === 1 && canEditPages()) {
+  // Alt и долгое нажатие на «Страница +» создают черновик
+  const pagesBtn = document.getElementById('btn-pages')!;
+  wireCreate(pagesBtn, pagesButtonAdds, () => {});
+  pagesBtn.addEventListener('click', () => {
+    if (pagesButtonAdds()) {
       // «Страница +»: добавляет вторую страницу и показывает обе
       void newPageHandler().then(() => setPagesOpen(true));
       return;
     }
     togglePages();
   });
+  // пока зажат Alt, кнопки «новая страница» превращаются в «Создать черновик»
+  window.addEventListener('keydown', e => setAltHeld(e.altKey));
+  window.addEventListener('keyup', e => setAltHeld(e.altKey));
+  window.addEventListener('blur', () => setAltHeld(false));
   const list = document.getElementById('pages-list')!;
   makeSortable(list, {
-    items: () => [...list.querySelectorAll<HTMLElement>(':scope > .page-item')],
+    // черновики не переставляются и не выносятся на холст: они не часть проекта
+    items: () => [...list.querySelectorAll<HTMLElement>(':scope > .page-item:not(.draft)')],
     enabled: canEditPages,
     scroller: list,
     // «Страницы на холсте»: карточку можно вынести на холст
@@ -3149,7 +3328,7 @@ function wirePagesDock(): void {
 
 function startPageRename(card: PageCard, pageId: string): void {
   if (card.el.querySelector('input')) return;
-  const oldName = state.project.pages.find(p => p.id === pageId)?.name;
+  const oldName = (state.project.pages.find(p => p.id === pageId) ?? state.drafts.find(p => p.id === pageId))?.name;
   if (oldName === undefined) return;
   const input = document.createElement('input');
   input.value = oldName;
@@ -3233,7 +3412,7 @@ async function openProjectHandler(project: Project, pageId?: string): Promise<vo
   saveCamera();
   if (project.id !== state.project.id) rememberOpenProject();
   openProject(project, pageId);
-  localStorage.setItem('doska.last', JSON.stringify({ pid: project.id, pageId: state.pageId }));
+  localStorage.setItem('doska.last', JSON.stringify({ pid: project.id, pageId: realPageId() }));
   refresh();
   if (!restoreCamera()) fitContent();
 }
@@ -3435,13 +3614,13 @@ function saveOpened(): void {
 function noteOpened(): void {
   // у гостя совместной работы проект чужой — не его история
   if (state.view !== 'board' || (collabActive() && !isHost())) { openedKey = ''; return; }
-  const key = `${state.project.id}:${state.pageId}`;
+  const key = `${state.project.id}:${realPageId()}`;
   if (key === openedKey) return;
   openedKey = key;
-  openedMap()[state.project.id] = { at: Date.now(), page: state.pageId };
+  openedMap()[state.project.id] = { at: Date.now(), page: realPageId() };
   saveOpened();
   try {
-    localStorage.setItem('doska.last', JSON.stringify({ pid: state.project.id, pageId: state.pageId }));
+    localStorage.setItem('doska.last', JSON.stringify({ pid: state.project.id, pageId: realPageId() }));
   } catch { /* хранилище недоступно — запустимся с последнего сохранённого */ }
 }
 
@@ -4500,6 +4679,10 @@ function refresh(): void {
   ctxLayerEl().hidden = state.view !== 'board';
 
   document.getElementById('btn-present')!.classList.toggle('active', presentOpen());
+  // черновик не виден никому, кроме автора, — пометка на холсте, чтобы его не принять за обычную страницу
+  const draftBadge = document.getElementById('draft-badge')!;
+  draftBadge.hidden = !onDraft() || state.view !== 'board';
+  document.body.classList.toggle('on-draft', onDraft());
   (document.getElementById('btn-undo') as HTMLButtonElement).disabled = !canUndo();
   (document.getElementById('btn-redo') as HTMLButtonElement).disabled = !canRedo();
   document.getElementById('zoom-label')!.textContent = `${Math.round(state.camera.zoom * 100)}%`;
@@ -4602,11 +4785,12 @@ export function initApp(c: HTMLCanvasElement): void {
     refresh();
     positionCtxPanels(true);
   });
-  let cameraIdentity = cameraKey(state.project.id, state.pageId);
+  const cameraId = () => (onDraft() ? `draft:${state.pageId}` : cameraKey(state.project.id, state.pageId));
+  let cameraIdentity = cameraId();
   let observedCamera = state.camera;
   let cameraTimer = 0;
   onChange(() => {
-    const identity = cameraKey(state.project.id, state.pageId);
+    const identity = cameraId();
     if (identity !== cameraIdentity) {
       clearTimeout(cameraTimer);
       cameraIdentity = identity;
@@ -4619,6 +4803,7 @@ export function initApp(c: HTMLCanvasElement): void {
       clearTimeout(cameraTimer);
       const camera = JSON.stringify(state.camera);
       cameraTimer = window.setTimeout(() => {
+        if (identity.startsWith('draft:')) return;
         try { localStorage.setItem(identity, camera); } catch { /* хранилище недоступно */ }
       }, 200);
     }

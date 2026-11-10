@@ -1,5 +1,5 @@
 import type {
-  BoardSettings, Element, FadeStroke, Flash, GridMode, Guide, LaserPt, NoteEl, Page, Project, ProjectMeta, Pt, ShapeEl, SolidKind,
+  BoardSettings, Camera, Element, FadeStroke, Flash, GridMode, Guide, LaserPt, NoteEl, Page, Project, ProjectMeta, Pt, ShapeEl, SolidKind,
   TextAlign, TextEl, TextVAlign, ToolId,
 } from './types';
 import { hasBaseSides, SIDES_MAX, SIDES_MIN, solidSides } from './solid';
@@ -119,6 +119,18 @@ export interface AppState {
   flashes: Flash[];
   /** Есть несохранённые изменения содержимого доски. */
   dirty: boolean;
+  /**
+   * Черновики: страницы только в памяти. Их нет ни в проекте, ни на диске, ни у гостей совместной работы,
+   * ни в окне демонстрации; закрыли вкладку или приложение — пропали.
+   */
+  drafts: Page[];
+  /**
+   * Пока открыт черновик, окно демонстрации не меняется: оно держит последнюю настоящую страницу
+   * и камеру, какой её видели до входа в черновик.
+   */
+  hold: { pageId: string; camera: Camera } | null;
+  /** Счётчик правок черновиков: сами они проект не меняют, а список страниц должен перерисовать превью. */
+  draftRev: number;
 }
 
 let seq = 1;
@@ -175,7 +187,26 @@ export const state: AppState = {
   fadeStrokes: [],
   flashes: [],
   dirty: false,
+  drafts: [],
+  hold: null,
+  draftRev: 0,
 };
+
+// ----- Черновики -----
+
+export function isDraftId(pageId: string): boolean {
+  return state.drafts.some(d => d.id === pageId);
+}
+
+/** Сейчас открыт черновик. */
+export function onDraft(): boolean {
+  return isDraftId(state.pageId);
+}
+
+/** Настоящая страница проекта, на которой доска «стоит»: при открытом черновике — та, с которой в него ушли. */
+export function realPageId(): string {
+  return state.hold ? state.hold.pageId : state.pageId;
+}
 
 const listeners = new Set<() => void>();
 export function onChange(fn: () => void): () => void {
@@ -190,10 +221,17 @@ function notify(): void {
 /** Уведомляет подписчиков; markDirty — изменилось содержимое доски (нужно автосохранение). */
 export function update(markDirty = false): void {
   if (markDirty) {
-    state.dirty = true;
-    state.project.updatedAt = Date.now();
+    // правка черновика проект не меняет: сохранять нечего
+    if (onDraft()) state.draftRev++;
+    else touchProject();
   }
   notify();
+}
+
+/** Содержимое проекта изменилось: нужно сохранение. */
+export function touchProject(): void {
+  state.dirty = true;
+  state.project.updatedAt = Date.now();
 }
 
 // ----- Масштаб -----
@@ -583,9 +621,19 @@ export function moveItem<T>(list: readonly T[], from: number, to: number): T[] {
 
 /** Открывает проект на заданной (или первой) странице. */
 export function openProject(project: Project, pageId?: string, view: 'home' | 'board' = 'board'): void {
+  const sameProject = project.id === state.project.id;
+  // черновики принадлежат открытому проекту: в другом их нет
+  if (!sameProject) { state.drafts = []; state.hold = null; }
   state.project = project;
-  state.pageId = pageId && project.pages.some(p => p.id === pageId) ? pageId : project.pages[0].id;
-  state.board = project.pages.find(p => p.id === state.pageId) ?? project.pages[0];
+  const draft = sameProject && pageId ? state.drafts.find(d => d.id === pageId) : undefined;
+  if (draft) {
+    state.pageId = draft.id;
+    state.board = draft;
+  } else {
+    state.pageId = pageId && project.pages.some(p => p.id === pageId) ? pageId : project.pages[0].id;
+    state.board = project.pages.find(p => p.id === state.pageId) ?? project.pages[0];
+    state.hold = null;
+  }
   state.selection = new Set();
   state.liveStroke = null;
   state.liveShape = null;
@@ -607,9 +655,16 @@ export function setView(view: 'home' | 'board'): void {
   update();
 }
 
+/** Окно демонстрации остаётся на прежней настоящей странице, пока автор уходит в черновик, и отпускается при возврате. */
+function holdOrRelease(toDraft: boolean): void {
+  if (!toDraft) state.hold = null;
+  else if (!state.hold) state.hold = { pageId: state.pageId, camera: { ...state.camera } };
+}
+
 export function switchPage(pageId: string): void {
-  const page = state.project.pages.find(p => p.id === pageId);
+  const page = state.project.pages.find(p => p.id === pageId) ?? state.drafts.find(d => d.id === pageId);
   if (!page || pageId === state.pageId) return;
+  holdOrRelease(isDraftId(pageId));
   state.pageId = pageId;
   state.board = page;
   state.selection = new Set();
@@ -638,10 +693,48 @@ export function addPage(): Page {
   return page;
 }
 
+/** Новый пустой черновик: открывается сразу, в проект не попадает. */
+export function addDraft(): Page {
+  draftSeq++;
+  const page = blankPage(draftSeq === 1 ? 'Черновик' : `Черновик ${draftSeq}`);
+  holdOrRelease(true);
+  state.drafts = [...state.drafts, page];
+  state.pageId = page.id;
+  state.board = page;
+  state.selection = new Set();
+  state.liveEdit = false;
+  state.spread = null;
+  undoStack = [];
+  redoStack = [];
+  update();
+  return page;
+}
+let draftSeq = 0;
+
+/** Удаляет черновик; если он был открыт — возвращает на страницу, с которой в него ушли. */
+export function deleteDraft(pageId: string): void {
+  if (!isDraftId(pageId)) return;
+  state.drafts = state.drafts.filter(d => d.id !== pageId);
+  if (state.drafts.length === 0) draftSeq = 0;
+  if (state.pageId === pageId) {
+    const back = state.project.pages.find(p => p.id === state.hold?.pageId) ?? state.project.pages[0];
+    state.pageId = back.id;
+    state.board = back;
+    state.hold = null;
+    state.selection = new Set();
+    state.liveEdit = false;
+    state.spread = null;
+    undoStack = [];
+    redoStack = [];
+  }
+  update();
+}
+
 export function deletePage(pageId: string): void {
   let pages = state.project.pages.filter(p => p.id !== pageId);
   if (pages.length === 0) pages = [blankPage('Страница 1')];
   state.project = { ...state.project, pages };
+  if (state.hold?.pageId === pageId) state.hold = { ...state.hold, pageId: pages[0].id };
   if (state.pageId === pageId) {
     state.pageId = pages[0].id;
     state.board = pages[0];
@@ -652,6 +745,12 @@ export function deletePage(pageId: string): void {
 }
 
 export function renamePage(pageId: string, name: string): void {
+  if (isDraftId(pageId)) {
+    state.drafts = state.drafts.map(d => (d.id === pageId ? { ...d, name } : d));
+    if (pageId === state.pageId) state.board = state.drafts.find(d => d.id === pageId)!;
+    update();
+    return;
+  }
   state.project = {
     ...state.project,
     pages: state.project.pages.map(p => (p.id === pageId ? { ...p, name } : p)),

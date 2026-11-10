@@ -1,5 +1,5 @@
 import type { Project, ProjectMeta } from './types';
-import { state, openProject, setSelection } from './state';
+import { state, openProject, setSelection, isDraftId, onDraft } from './state';
 import { setStorage, storage, type BoardsStorage } from './storage';
 
 export interface CollabUser {
@@ -31,7 +31,7 @@ const projectThrottle: { timer: number } = { timer: 0 };
 
 /** Право на активной странице: edit / view / hidden. */
 export function pageRight(pageId: string): 'edit' | 'view' | 'hidden' {
-  if (role === 'host') return 'edit';
+  if (role === 'host' || isDraftId(pageId)) return 'edit';
   const r: string = myRights.pages[pageId] ?? myRights.default ?? 'view';
   return r === 'edit' || r === 'hidden' ? r : 'view';
 }
@@ -105,13 +105,14 @@ export function noteCursor(x: number, y: number): void {
 function flushCursor(): void {
   if (!cursorThrottle.pending) return;
   cursorThrottle.last = Date.now();
-  send({ t: 'cursor', x: cursorThrottle.pending.x, y: cursorThrottle.pending.y, pageId: state.pageId });
+  // черновик виден только автору: остальным курсор «не на странице» (пустой id не совпадает ни с одной)
+  send({ t: 'cursor', x: cursorThrottle.pending.x, y: cursorThrottle.pending.y, pageId: onDraft() ? '' : state.pageId });
   cursorThrottle.pending = null;
 }
 
 export function noteSelection(ids: string[]): void {
   if (!connected) return;
-  send({ t: 'selection', ids, pageId: state.pageId });
+  send({ t: 'selection', ids: onDraft() ? [] : ids, pageId: onDraft() ? '' : state.pageId });
 }
 
 /** Отправка проекта (дебаунс 250мс) — вызывается из storage.save сетевого режима. */
