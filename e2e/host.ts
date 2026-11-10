@@ -66,7 +66,7 @@ export class Host {
     if (!this.cloud) return null;
     const st = this.cloud.status();
     const guestBase = new URL('/', this.page.url()).href;
-    return { state: st.state, url: st.room ? cloudGuestUrl(guestBase, st.relayUrl, st.room) : null, error: st.error, guests: st.guests, relayUrl: st.relayUrl };
+    return { state: st.state, url: st.room ? cloudGuestUrl(guestBase, st.relayUrl, st.room, st.key) : null, error: st.error, guests: st.guests, relayUrl: st.relayUrl };
   }
 
   /** То же, что share:cloudStart в main.cjs. */
@@ -166,7 +166,7 @@ export class Host {
   async shareCloud(): Promise<string> {
     await this.dialog.locator('button', { hasText: 'Пригласить через интернет' }).click();
     const link = this.dialog.locator('.share-link-cloud');
-    await expect(link).toHaveText(/#relay=ws%3A%2F%2F127\.0\.0\.1%3A\d+&r=[\w-]{22}$/);
+    await expect(link).toHaveText(/#relay=ws%3A%2F%2F127\.0\.0\.1%3A\d+&r=[\w-]{22}&k=[\w-]{43}$/);
     return (await link.textContent())!;
   }
 

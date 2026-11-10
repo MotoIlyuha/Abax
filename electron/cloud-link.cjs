@@ -2,17 +2,22 @@
 // комнату (electron/room.cjs), что и гости из локальной сети. Каждый гость ретранслятора —
 // «виртуальный» сокет, который передаётся в hub.attach. Протокол ретранслятора — relay/protocol.cjs.
 //
-// Гость после подключения первым сообщением присылает { t: 'hello', proto, name }: имя и версию
-// протокола комнаты, которые в локальной сети приходят в параметрах URL.
+// Все сообщения между автором и гостями зашифрованы ключом комнаты (electron/room-crypto.cjs):
+// ключ живёт в якоре ссылки и ретранслятору недоступен. Гость после подключения первым
+// сообщением присылает зашифрованное { t: 'hello', proto, name, sid }: имя и версию протокола
+// комнаты (в локальной сети они в параметрах URL) и идентификатор своего сеанса шифрования.
 const { EventEmitter } = require('events');
 const WebSocket = require('ws');
 const { RELAY_PROTO, CLOSE, encodeFrame, decodeFrame } = require('../relay/protocol.cjs');
 const { PROTO } = require('./room.cjs');
+const roomCrypto = require('./room-crypto.cjs');
 
 /** Коды, с которыми автор отключает гостя ретранслятора (диапазон 4000–4999 — см. relay/protocol.cjs). */
 const KICK = {
   /** Гость не прислал hello вовремя или прислал не то. */
   HELLO_EXPECTED: 4400,
+  /** hello не расшифровывается: у гостя другой ключ (испорченная или чужая ссылка). */
+  BAD_KEY: 4403,
   /** Версия протокола комнаты у гостя другая — тот же код, что у локального сервера (share.cjs). */
   PROTOCOL_MISMATCH: 4426,
   /** Автор переподключился, а гость ещё не представился — пусть подключится заново. */
@@ -28,13 +33,6 @@ const DEFAULTS = {
   deadMs: 50_000,
   /** Сколько ждать установления соединения. */
   handshakeTimeoutMs: 10_000,
-};
-
-/** Без шифрования: текст гостя — как есть. Этап шифрования подставит сюда AES-GCM. */
-const plainCodec = {
-  /** @returns {string | null} текст сообщения или null, если его не удалось прочитать */
-  decode: (payload, isBinary) => (isBinary ? null : payload.toString('utf8')),
-  encode: text => ({ payload: text, isBinary: false }),
 };
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
@@ -55,23 +53,27 @@ function normalizeRelayUrl(input) {
 
 /**
  * Ссылка для гостя: клиент доски (GitHub Pages) и, в якоре (на серверы не уходит), адрес
- * ретранслятора и комната.
+ * ретранслятора, комната и ключ шифрования.
  */
-function cloudGuestUrl(guestBase, relayUrl, room) {
+function cloudGuestUrl(guestBase, relayUrl, room, key) {
   const base = guestBase.endsWith('/') ? guestBase : guestBase + '/';
-  return `${base}#${new URLSearchParams({ relay: relayUrl, r: room })}`;
+  return `${base}#${new URLSearchParams({ relay: relayUrl, r: room, k: key })}`;
 }
 
 /** Сокет гостя ретранслятора для hub.attach (контракт RoomSocket из electron/room.cjs). */
 class GuestSocket extends EventEmitter {
-  constructor(link, conn) {
+  constructor(link, conn, sid) {
     super();
     this.link = link;
     this.conn = conn;
     this.readyState = 1;
+    /** Сеанс шифрования гостя и счётчики сообщений: от гостя — последний принятый, к гостю — последний отправленный. */
+    this.sid = sid;
+    this.inSeq = 0;
+    this.outSeq = 0;
   }
   send(text) {
-    if (this.readyState === 1) this.link.sendData(this.conn, text);
+    if (this.readyState === 1) this.link.sendData(this, text);
   }
   /** Закрывает комната (например, closeAll): отключить гостя на ретрансляторе. */
   close(code = 4000, reason = '') {
@@ -94,12 +96,11 @@ class GuestSocket extends EventEmitter {
  *   attach: (sock: GuestSocket, opts: { isHost?: boolean, name?: string }) => number | null,
  *   refresh: (sock: GuestSocket) => boolean,
  *   onChange?: () => void,
- *   codec?: typeof plainCodec,
  *   WebSocketImpl?: typeof WebSocket,
  * } & Partial<typeof DEFAULTS>} options
  */
 function createCloudLink(options) {
-  const o = { ...DEFAULTS, codec: plainCodec, WebSocketImpl: WebSocket, onChange: () => {}, ...options };
+  const o = { ...DEFAULTS, WebSocketImpl: WebSocket, onChange: () => {}, ...options };
   const relayUrl = normalizeRelayUrl(o.relayUrl);
 
   /** @type {WebSocket | null} */
@@ -108,6 +109,8 @@ function createCloudLink(options) {
   let room = null;
   /** @type {string | null} */
   let token = null;
+  /** Ключ комнаты: новый для каждой новой комнаты, при возвращении в ту же — прежний. */
+  let key = roomCrypto.newKey();
   /** connecting → online ⇄ reconnecting; stopped; failed (без повторов) */
   let state = 'idle';
   /** @type {string | null} */
@@ -138,10 +141,12 @@ function createCloudLink(options) {
   }
 
   const link = {
-    sendData(conn, text) {
+    /** @param {GuestSocket} sock */
+    sendData(sock, text) {
       if (!ws || ws.readyState !== ws.OPEN) return; // переподключаемся — сообщение потеряется, после возвращения будет refresh
-      const { payload, isBinary } = o.codec.encode(text);
-      ws.send(encodeFrame(conn, payload, isBinary));
+      if (sock.outSeq >= roomCrypto.MAX_SEQ) return;
+      sock.outSeq++;
+      ws.send(encodeFrame(sock.conn, roomCrypto.seal(key, 'h2g', sock.sid, sock.outSeq, text), true));
     },
     kick(conn, code, reason) {
       const c = Number.isInteger(code) && code >= 4000 && code <= 4999 ? code : 4000;
@@ -167,14 +172,19 @@ function createCloudLink(options) {
     pending.set(conn, setTimeout(() => kickPending(conn, KICK.HELLO_EXPECTED, 'hello expected'), o.helloTimeoutMs));
   }
 
-  function onHello(conn, text) {
+  function onHello(conn, frame) {
+    const opened = roomCrypto.open(key, 'hello', roomCrypto.ZERO_SID, frame);
+    if (!opened) { kickPending(conn, KICK.BAD_KEY, 'bad key'); return; }
     let m = null;
-    try { m = JSON.parse(text); } catch { /* ниже — отказ */ }
+    try { m = JSON.parse(opened.text); } catch { /* ниже — отказ */ }
     if (!m || typeof m !== 'object' || m.t !== 'hello') { kickPending(conn, KICK.HELLO_EXPECTED, 'hello expected'); return; }
     if (m.proto !== PROTO) { kickPending(conn, KICK.PROTOCOL_MISMATCH, 'protocol mismatch'); return; }
+    const sid = roomCrypto.parseSid(m.sid);
+    // тот же сеанс уже в комнате — это повтор чужого hello, а не новый гость
+    if (!sid || [...guests.values()].some(g => g.sid.equals(sid))) { kickPending(conn, KICK.HELLO_EXPECTED, 'hello expected'); return; }
     clearTimeout(pending.get(conn));
     pending.delete(conn);
-    const sock = new GuestSocket(link, conn);
+    const sock = new GuestSocket(link, conn, sid);
     guests.set(conn, sock);
     sock.once('close', () => { if (guests.get(conn) === sock) guests.delete(conn); });
     o.attach(sock, { isHost: false, name: typeof m.name === 'string' ? m.name : '' });
@@ -182,12 +192,17 @@ function createCloudLink(options) {
 
   function onData(data) {
     const f = decodeFrame(data);
-    if (!f) return;
-    const text = o.codec.decode(f.payload, f.isBinary);
-    if (text === null) return; // не прочитали (на этапе шифрования — чужой ключ); гость пропустит сообщение
+    if (!f || !f.isBinary) return; // без шифрования гость ничего не присылает
     const sock = guests.get(f.conn);
-    if (sock) { sock.emit('message', text); return; }
-    if (pending.has(f.conn)) onHello(f.conn, text);
+    if (sock) {
+      const opened = roomCrypto.open(key, 'g2h', sock.sid, f.payload);
+      // не расшифровалось или повтор (seq не вырос) — отбрасываем: подделка или повтор ретранслятором
+      if (!opened || opened.seq <= sock.inSeq) return;
+      sock.inSeq = opened.seq;
+      sock.emit('message', opened.text);
+      return;
+    }
+    if (pending.has(f.conn)) onHello(f.conn, f.payload);
   }
 
   /** Возвращение в комнату: кто остался — получает полное состояние заново, кто ушёл — отключается. */
@@ -272,10 +287,12 @@ function createCloudLink(options) {
     if (code === CLOSE.REPLACED) { fail('Комнату перехватило другое подключение'); return; }
     if (code === CLOSE.BAD_REQUEST) { fail('Ретранслятор отклонил подключение'); return; }
     if (code === CLOSE.ROOM_NOT_FOUND || code === CLOSE.BAD_TOKEN || code === CLOSE.ROOM_CLOSED) {
-      // комната пропала (ретранслятор перезапускался или мы не успели вернуться) — откроем новую
+      // комната пропала (ретранслятор перезапускался или мы не успели вернуться) — откроем новую,
+      // с новым ключом: ключ живёт столько же, сколько комната
       dropGuests();
       room = null;
       token = null;
+      key = roomCrypto.newKey();
       attempt = 0;
     }
     scheduleReconnect();
@@ -325,10 +342,11 @@ function createCloudLink(options) {
       if (firstOpen) { firstOpen.reject(new Error('Остановлено')); firstOpen = null; }
       setState('stopped');
     },
+    /** key — ключ комнаты в base64url для ссылки гостя; только для автора. */
     status() {
-      return { state, room, error, guests: guests.size, relayUrl };
+      return { state, room, error, guests: guests.size, relayUrl, key: key.toString('base64url') };
     },
   };
 }
 
-module.exports = { createCloudLink, normalizeRelayUrl, cloudGuestUrl, plainCodec, KICK, DEFAULTS };
+module.exports = { createCloudLink, normalizeRelayUrl, cloudGuestUrl, KICK, DEFAULTS };

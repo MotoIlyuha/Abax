@@ -400,6 +400,7 @@ describe('совместная работа через интернет', () => 
     expect(r.cloud.url.startsWith('https://pages.example/Abax/v/9.9.9/#')).toBe(true);
     expect(hash.get('relay')).toBe(`ws://127.0.0.1:${relay.port}`);
     expect(hash.get('r')).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    expect(Buffer.from(hash.get('k')!, 'base64url')).toHaveLength(32); // ключ шифрования — только в якоре
     expect(relay.stats().rooms).toBe(1);
 
     // повторный запуск не открывает вторую комнату
