@@ -32,6 +32,12 @@ describe('настройка по умолчанию', () => {
     expect(cfg.keys.pen).toBe('KeyP');
     expect(cfg.keys.cube).toBeUndefined();
   });
+
+  it('«Раздвинуть» — за стикером, с клавишей S', () => {
+    const cfg = defaultToolbar();
+    expect(layout(cfg).indexOf('spread')).toBe(layout(cfg).indexOf('note') + 1);
+    expect(cfg.keys.spread).toBe('KeyS');
+  });
 });
 
 describe('toolUsesColor', () => {
@@ -39,7 +45,7 @@ describe('toolUsesColor', () => {
     for (const id of ['pen', 'highlighter', 'text', 'rect', 'line', 'poly', 'cube', 'fadePen'] as ToolId[]) {
       expect(toolUsesColor(id), id).toBe(true);
     }
-    for (const id of ['select', 'pan', 'eraser', 'partEraser', 'note', 'laser', 'flash'] as ToolId[]) {
+    for (const id of ['select', 'pan', 'eraser', 'partEraser', 'note', 'spread', 'laser', 'flash'] as ToolId[]) {
       expect(toolUsesColor(id), id).toBe(false);
     }
   });

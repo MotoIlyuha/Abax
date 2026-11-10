@@ -15,6 +15,7 @@ import { isNativeApp } from './native';
 import { settingsDialogOpen } from './settings-dialog';
 import { partEraseRadius, presenting, requestRender, renderScene } from './renderer';
 import { fitSolid, SOLID_CLICK_SIZE, solidKeepsAspect } from './solid';
+import { spreadElements, spreadTargets } from './spread';
 import {
   addPageFromKey, beginTextEdit, canEditBoard, closeEditor, copySelectionAsImage, duplicateSelection, exportPng, fitContent, openAllSettings, openPageLink,
   saveNow, selectedTextShape, switchToPage, switchPageForDrag, toggleTextFlag, togglePages,
@@ -38,7 +39,7 @@ const ERASER_CURSOR = (() => {
 })();
 const CURSORS: Record<ToolId, string> = {
   select: 'default', pen: 'crosshair', highlighter: 'crosshair', eraser: ERASER_CURSOR, partEraser: 'none',
-  pan: 'grab', text: 'text', note: 'crosshair', rect: 'crosshair',
+  pan: 'grab', text: 'text', note: 'crosshair', spread: 'row-resize', rect: 'crosshair',
   ellipse: 'crosshair', triangle: 'crosshair', line: 'crosshair', arrow: 'crosshair', poly: 'crosshair',
   laser: 'none', fadePen: 'crosshair', flash: 'default',
   cube: 'crosshair', box: 'crosshair', prism: 'crosshair', pyramid: 'crosshair', truncPyramid: 'crosshair',
@@ -75,6 +76,8 @@ type Action = { pid: number } & (
   | { kind: 'marquee'; flash?: boolean }
   | { kind: 'fade'; stroke: FadeStroke }
   | { kind: 'pan'; sx: number; sy: number; cam: Camera }
+  /** Раздвигание: ids сдвигаются вниз на dy от линии y (координаты сцены). */
+  | { kind: 'spread'; pre: Element[]; ids: Set<string>; y: number; dy: number }
   | { kind: 'click'; x: number; y: number; target: 'text' | 'note' }
 );
 
@@ -188,7 +191,7 @@ export function initController(canvas: HTMLCanvasElement): void {
     autoPan = { event: e, raf: 0, last: performance.now() };
     const tick = (time: number) => {
       const pan = autoPan;
-      if (!pan || action?.kind !== 'move' || transfer) { stopAutoPan(); return; }
+      if (!pan || (action?.kind !== 'move' && action?.kind !== 'spread') || transfer) { stopAutoPan(); return; }
       const pos = localPos(pan.event);
       const rect = canvas.getBoundingClientRect();
       const dt = Math.min((time - pan.last) / 1000, 0.05);
@@ -415,6 +418,11 @@ export function initController(canvas: HTMLCanvasElement): void {
         update();
         break;
       case 'click': beginTextEdit({ at: { x: a.x, y: a.y }, target: a.target }); break;
+      case 'spread':
+        state.spread = null;
+        if (a.dy > 0 && a.ids.size) pushHistory(a.pre);
+        update();
+        break;
       case 'pan':
         canvas.style.cursor = CURSORS[activeTool()];
         update();
@@ -448,6 +456,7 @@ export function initController(canvas: HTMLCanvasElement): void {
       if (action?.kind === 'draw') { action = null; state.liveStroke = null; }
       else if (action?.kind === 'shape') { action = null; state.liveShape = null; }
       else if (action?.kind === 'solid') { action = null; state.liveSolid = null; }
+      else if (action?.kind === 'spread') { replaceElements(action.pre); action = null; state.spread = null; }
       finishAction();
       const [a, b] = touches;
       gesture = {
@@ -592,6 +601,12 @@ export function initController(canvas: HTMLCanvasElement): void {
         }
         break;
       }
+      case 'spread':
+        // что поедет вниз, решаем один раз — по линии нажатия
+        action = { pid: e.pointerId, kind: 'spread', pre: state.board.elements, ids: spreadTargets(state.board.elements, s.y), y: s.y, dy: 0 };
+        state.spread = { y: s.y, dy: 0 };
+        update();
+        break;
       case 'text':
         action = { pid: e.pointerId, kind: 'click', x: s.x, y: s.y, target: 'text' };
         break;
@@ -671,7 +686,7 @@ export function initController(canvas: HTMLCanvasElement): void {
     state.hover = { x: lp.x, y: lp.y };
     if (collabActive()) noteCursor(lp.x / state.camera.zoom + state.camera.x, lp.y / state.camera.zoom + state.camera.y);
     if (state.tool === 'partEraser') update(); // кружок ластика под курсором
-    else if (presenting()) requestRender(); // курсор в окне демонстрации
+    else if (state.tool === 'spread' || presenting()) requestRender(); // линия разреза под курсором, курсор в окне демонстрации
 
     if (gesture) { applyGesture(); return; }
     if (touchBlocked && e.pointerType === 'touch') return;
@@ -869,6 +884,19 @@ export function initController(canvas: HTMLCanvasElement): void {
         if (state.marquee) { state.marquee.x1 = lp.x; state.marquee.y1 = lp.y; }
         update();
         break;
+      case 'spread': {
+        // только вниз: место освобождают, а не сжимают
+        const step = snapStepNow();
+        const dy = snapValue(Math.max(0, toScene(lp.x, lp.y).y - a.y), step);
+        if (dy !== a.dy) {
+          a.dy = dy;
+          state.spread = { y: a.y, dy };
+          if (a.ids.size) replaceElements(spreadElements(a.pre, a.ids, dy));
+          else update();
+        }
+        updateAutoPan(e);
+        break;
+      }
     }
   }
 
@@ -915,7 +943,7 @@ export function initController(canvas: HTMLCanvasElement): void {
 
   function onPointerLeave(): void {
     state.hover = null;
-    if (state.tool === 'partEraser' || state.tool === 'laser') update();
+    if (state.tool === 'partEraser' || state.tool === 'laser' || state.tool === 'spread') update();
     else if (presenting()) requestRender();
   }
 

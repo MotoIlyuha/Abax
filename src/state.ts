@@ -107,6 +107,8 @@ export interface AppState {
   marquee: { x0: number; y0: number; x1: number; y1: number } | null;
   /** Направляющие выравнивания, пока объект тянут (координаты сцены). */
   guides: Guide[];
+  /** Инструмент «Раздвинуть»: линия разреза y и на сколько раздвинули dy (координаты сцены). */
+  spread: { y: number; dy: number } | null;
   /** Позиция курсора в экранных координатах (для ластика). */
   hover: { x: number; y: number } | null;
   /** След лазерной указки (экранные координаты + метка времени). */
@@ -167,6 +169,7 @@ export const state: AppState = {
   liveEdit: false,
   marquee: null,
   guides: [],
+  spread: null,
   hover: null,
   laserPts: [],
   fadeStrokes: [],
@@ -354,6 +357,7 @@ export function setTool(tool: ToolId): void {
   state.liveSolid = null;
   state.livePoly = null;
   state.liveEdit = false;
+  state.spread = null;
   update();
 }
 
@@ -590,6 +594,7 @@ export function openProject(project: Project, pageId?: string, view: 'home' | 'b
   state.liveNote = null;
   state.liveEdit = false;
   state.marquee = null;
+  state.spread = null;
   undoStack = [];
   redoStack = [];
   state.dirty = false;
@@ -615,6 +620,7 @@ export function switchPage(pageId: string): void {
   state.liveNote = null;
   state.liveEdit = false;
   state.marquee = null;
+  state.spread = null;
   undoStack = [];
   redoStack = [];
   update();

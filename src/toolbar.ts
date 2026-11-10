@@ -10,7 +10,11 @@ export const svg = (paths: string) =>
 /** Невидимые линии на иконках тел — пунктиром, как на холсте. */
 const hid = (d: string) => `<path d="${d}" stroke-dasharray="2.2 2" stroke-width="1.4"/>`;
 
-export interface ToolDef { id: ToolId; title: string; icon: string }
+export interface ToolDef {
+  id: ToolId; title: string; icon: string;
+  /** Как пользоваться — дописывается к подсказке кнопки на панели. */
+  hint?: string;
+}
 
 /** Контуры иконки ластика (24×24): из них же курсор объектного ластика на холсте. */
 export const ERASER_PATHS = ['M20 20H8.5L3.6 15.1a2 2 0 0 1 0-2.8l8.6-8.6a2 2 0 0 1 2.8 0l6 6a2 2 0 0 1 0 2.8L13.5 19', 'M7 10.5l6.5 6.5'];
@@ -28,6 +32,12 @@ export const TOOL_DEFS: ToolDef[] = [
   { id: 'partEraser', title: 'Ластик для пера и маркера', icon: svg('<path d="M10 12.5l5.6-5.6a1.6 1.6 0 0 1 2.3 0l1.6 1.6a1.6 1.6 0 0 1 0 2.3L14.5 15.8H11.6l-1.6-1.6a1.2 1.2 0 0 1 0-1.7z"/><path d="M2.5 19.5c1.5-1.5 2.8-1.5 4.2 0"/><path d="M16.8 19.5c1.5 1.5 3 1.5 4.7 0"/>') },
   { id: 'text', title: 'Текст', icon: svg('<path d="M5 7V5h14v2"/><path d="M12 5v14"/><path d="M9 19h6"/>') },
   { id: 'note', title: 'Стикер', icon: svg('<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M8 9.5h8"/><path d="M8 13h5"/>') },
+  // раздвинуть: всё, что ниже линии, уезжает вниз
+  {
+    id: 'spread', title: 'Раздвинуть',
+    hint: 'нажмите на лист там, где не хватает места, и потяните вниз — всё, что ниже, сдвинется',
+    icon: svg('<path d="M3 4h18"/><path d="M3 20h18" stroke-dasharray="2.5 2.5"/><path d="M12 7.5v9"/><path d="M8.5 13L12 16.5 15.5 13"/>'),
+  },
   // фигуры
   { id: 'rect', title: 'Прямоугольник', icon: svg('<rect x="4" y="6" width="16" height="12" rx="1.5"/>') },
   { id: 'ellipse', title: 'Эллипс', icon: svg('<ellipse cx="12" cy="12" rx="8.5" ry="6.5"/>') },
@@ -54,7 +64,7 @@ export const TOOL_DEFS: ToolDef[] = [
 const DEF_BY_ID = new Map(TOOL_DEFS.map(t => [t.id, t]));
 
 /** Инструменты без цвета: у стикеров своя палитра, указка и подсветка — фиксированного цвета. */
-const COLORLESS_TOOLS = new Set<ToolId>(['select', 'pan', 'eraser', 'partEraser', 'note', 'laser', 'flash']);
+const COLORLESS_TOOLS = new Set<ToolId>(['select', 'pan', 'eraser', 'partEraser', 'note', 'spread', 'laser', 'flash']);
 
 /** Нужен ли инструменту выбор цвета и толщины на панели инструментов. */
 export function toolUsesColor(id: ToolId): boolean {
@@ -73,7 +83,7 @@ function isTool(v: unknown): v is ToolId {
 
 /** Клавиши по KeyboardEvent.code: работают при любой раскладке. */
 const DEFAULT_KEYS: Partial<Record<ToolId, string>> = {
-  select: 'KeyV', pan: 'KeyH', pen: 'KeyP', highlighter: 'KeyM', eraser: 'KeyE', partEraser: 'KeyX', text: 'KeyT', note: 'KeyN',
+  select: 'KeyV', pan: 'KeyH', pen: 'KeyP', highlighter: 'KeyM', eraser: 'KeyE', partEraser: 'KeyX', text: 'KeyT', note: 'KeyN', spread: 'KeyS',
   rect: 'KeyR', ellipse: 'KeyO', triangle: 'KeyY', line: 'KeyL', arrow: 'KeyA', poly: 'KeyK', laser: 'KeyI',
 };
 
@@ -119,7 +129,7 @@ export function defaultToolbar(): ToolbarConfig {
   const tool = (id: ToolId): ToolbarItem => ({ type: 'tool', id });
   return {
     items: [
-      tool('select'), tool('pan'), tool('pen'), tool('highlighter'), tool('eraser'), tool('partEraser'), tool('text'), tool('note'),
+      tool('select'), tool('pan'), tool('pen'), tool('highlighter'), tool('eraser'), tool('partEraser'), tool('text'), tool('note'), tool('spread'),
       { type: 'group', id: 'shapes', name: 'Фигуры', tools: ['rect', 'ellipse', 'triangle', 'line', 'arrow', 'poly'] },
       { type: 'group', id: 'solids', name: 'Стереометрия', tools: ['cube', 'box', 'prism', 'pyramid', 'truncPyramid', 'cylinder', 'cone', 'truncCone', 'sphere'] },
       { type: 'group', id: 'pointer', name: 'Указка', tools: ['laser', 'fadePen', 'flash'] },
@@ -377,8 +387,10 @@ export function toolByKey(code: string): ToolId | null {
   return null;
 }
 
-/** Подсказка кнопки: «Перо (P)» или просто «Куб». */
+/** Подсказка кнопки: «Перо (P)» или просто «Куб»; с пояснением — «Раздвинуть: нажмите… (S)». */
 export function toolTip(id: ToolId): string {
+  const { title, hint } = toolDef(id);
+  const text = hint ? `${title}: ${hint}` : title;
   const k = current.keys[id];
-  return k ? `${toolDef(id).title} (${keyLabel(k)})` : toolDef(id).title;
+  return k ? `${text} (${keyLabel(k)})` : text;
 }
