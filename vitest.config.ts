@@ -23,11 +23,13 @@ export default defineConfig({
     ],
     coverage: {
       provider: 'v8',
-      include: ['src/**/*.ts', 'electron/**/*.cjs'],
+      include: ['src/**/*.ts', 'electron/**/*.cjs', 'relay/**/*.cjs'],
       // интерфейс (DOM, canvas, события) проверяют сквозные тесты Playwright в e2e/
       exclude: [
         'src/app.ts', 'src/controller.ts', 'src/renderer.ts', 'src/main.ts', 'src/types.ts',
         'src/settings-dialog.ts', 'src/toolbar-editor.ts', 'src/page-transition.ts', 'src/hotkeys-settings.ts',
+        // запуск ретранслятора из окружения проверяет CI-задача relay-image (контейнер и /health)
+        'relay/index.cjs',
       ],
       reporter: ['text', 'html'],
     },

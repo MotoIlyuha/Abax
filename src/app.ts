@@ -2450,7 +2450,8 @@ export async function importPdfFromDataUrl(dataUrl: string): Promise<void> {
     const bin = atob(base64);
     const u8 = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
-    const pdf = await pdfjsLib.getDocument({ data: u8 }).promise;
+    // без eval: CSP запрещает его, а pdf.js иначе пробует new Function для шрифтов
+    const pdf = await pdfjsLib.getDocument({ data: u8, isEvalSupported: false }).promise;
     const x = state.camera.x + 40;
     let y = state.camera.y + 40;
     const imgs: ImageEl[] = [];
@@ -4512,13 +4513,25 @@ export function togglePresent(): void {
 // ----- Совместная работа: диалог автора -----
 
 interface ShareUser { userId: number; name: string; color: string; host?: boolean; away?: boolean; rights?: { default?: string; pages?: Record<string, string> } }
-interface ShareStatus { active: boolean; url?: string; code?: string; port?: number; maxEditors?: number; users?: ShareUser[] }
+/** Комната на облачном ретрансляторе (electron/cloud-link.cjs): гости из интернета. */
+interface ShareCloudStatus {
+  state: 'connecting' | 'online' | 'reconnecting' | 'failed' | 'stopped';
+  /** Ссылка для гостей; null — комнаты пока нет. */
+  url: string | null;
+  error: string | null;
+  guests: number;
+  relayUrl: string;
+}
+interface ShareStatus { active: boolean; url?: string; code?: string; port?: number; maxEditors?: number; users?: ShareUser[]; cloud?: ShareCloudStatus | null }
 interface ShareApi {
   shareStart(): Promise<{ ok: boolean; port?: number; code?: string; hostKey?: string }>;
   shareStop(): Promise<{ ok: boolean }>;
   shareStatus(): Promise<ShareStatus>;
   shareSetRights(uid: number, patch: { pages?: Record<string, string>; default?: string; all?: string }): Promise<{ ok: boolean; error?: string }>;
   shareOpenTestWindow(): Promise<{ ok: boolean }>;
+  /** Только в Electron; без relayUrl — ретранслятор по умолчанию. */
+  shareCloudStart?(opts?: { relayUrl?: string }): Promise<{ ok: boolean; error?: string; cloud?: ShareCloudStatus | null }>;
+  shareCloudStop?(): Promise<{ ok: boolean }>;
 }
 
 async function collabApi(): Promise<ShareApi> {
@@ -4526,6 +4539,109 @@ async function collabApi(): Promise<ShareApi> {
 }
 
 let shareInfo: ShareStatus = { active: false };
+
+/** Свой адрес ретранслятора (сервер не по умолчанию); хранится только у автора. */
+const RELAY_KEY = 'doska.relayUrl';
+function savedRelayUrl(): string {
+  try { return localStorage.getItem(RELAY_KEY) || ''; } catch { return ''; }
+}
+/** Состояние раздела «Через интернет» между перерисовками диалога (раз в 2 с). */
+const cloudUi = { starting: false, error: null as string | null, askRelay: false };
+/** Ошибки, при которых стоит предложить ввести адрес ретранслятора. */
+const RELAY_ADDRESS_ERRORS = /адрес ретранслятора|подключиться к ретранслятору/i;
+
+async function startCloudShare(api: ShareApi, relayUrl: string, rerender: () => Promise<void>): Promise<void> {
+  cloudUi.starting = true;
+  cloudUi.error = null;
+  await rerender();
+  const r = await api.shareCloudStart!(relayUrl ? { relayUrl } : undefined);
+  cloudUi.starting = false;
+  if (r.ok) {
+    cloudUi.askRelay = false;
+    if (relayUrl) try { localStorage.setItem(RELAY_KEY, relayUrl); } catch { /* не запомним — введут снова */ }
+  } else {
+    cloudUi.error = r.error || 'Не удалось подключиться к ретранслятору';
+    if (RELAY_ADDRESS_ERRORS.test(cloudUi.error)) cloudUi.askRelay = true;
+  }
+  await rerender();
+}
+
+/** Раздел «Через интернет»: комната на облачном ретрансляторе для гостей из любой сети. */
+function renderCloudShare(api: ShareApi, status: ShareStatus, rerender: () => Promise<void>): HTMLElement | null {
+  if (!api.shareCloudStart) return null; // только в приложении: облачное подключение держит main-процесс
+  const box = document.createElement('div');
+  box.className = 'share-cloud';
+  const h = document.createElement('div');
+  h.className = 'share-cloud-title';
+  h.textContent = 'Через интернет';
+  box.appendChild(h);
+  const cloud = status.cloud;
+  const running = !!cloud && (cloud.state === 'online' || cloud.state === 'reconnecting' || cloud.state === 'connecting');
+
+  if (running) {
+    if (cloud!.url) {
+      const url = cloud!.url;
+      const link = document.createElement('div');
+      link.className = 'share-link share-link-cloud';
+      link.textContent = url;
+      link.title = 'Клик — скопировать ссылку';
+      link.addEventListener('click', () => {
+        void navigator.clipboard.writeText(url);
+        link.textContent = 'Ссылка скопирована';
+        setTimeout(() => { link.textContent = url; }, 1200);
+      });
+      box.appendChild(link);
+    }
+    const note = document.createElement('div');
+    note.className = 'share-cloud-status';
+    if (cloud!.state === 'reconnecting') {
+      note.classList.add('warn');
+      note.textContent = 'Связь с сервером прервалась — переподключаемся. Гости подождут.';
+    } else {
+      note.textContent = 'Ссылка откроется на любом устройстве с интернетом.';
+    }
+    box.appendChild(note);
+    const stop = document.createElement('button');
+    stop.className = 'ctx-custom-btn danger';
+    stop.textContent = 'Закрыть доступ через интернет';
+    stop.addEventListener('click', async () => {
+      await api.shareCloudStop?.();
+      cloudUi.error = null;
+      await rerender();
+    });
+    box.appendChild(stop);
+    return box;
+  }
+
+  const error = cloudUi.error || (cloud?.state === 'failed' ? cloud.error : null);
+  if (error) {
+    const e = document.createElement('div');
+    e.className = 'share-cloud-error';
+    e.textContent = error;
+    box.appendChild(e);
+  }
+  let input: HTMLInputElement | null = null;
+  if (cloudUi.askRelay) {
+    input = document.createElement('input');
+    input.className = 'share-relay-input';
+    input.type = 'url';
+    input.placeholder = 'wss://relay.example.com';
+    input.value = savedRelayUrl();
+    input.setAttribute('aria-label', 'Адрес сервера-ретранслятора');
+    box.appendChild(input);
+  }
+  const start = document.createElement('button');
+  start.className = 'ctx-custom-btn';
+  start.disabled = cloudUi.starting;
+  start.textContent = cloudUi.starting ? 'Подключение…' : error ? 'Подключиться снова' : 'Пригласить через интернет';
+  start.addEventListener('click', () => {
+    const relay = input ? input.value.trim() : savedRelayUrl();
+    void startCloudShare(api, relay, rerender);
+  });
+  input?.addEventListener('keydown', ev => { if (ev.key === 'Enter') start.click(); });
+  box.appendChild(start);
+  return box;
+}
 
 async function openShareDialog(): Promise<void> {
   const api = await collabApi();
@@ -4575,10 +4691,17 @@ async function openShareDialog(): Promise<void> {
       testBtn.textContent = '+ Тестовое окно гостя';
       testBtn.addEventListener('click', () => { void api.shareOpenTestWindow(); });
       dlg!.appendChild(testBtn);
+      const cloudBox = renderCloudShare(api, status, render);
+      if (cloudBox) dlg!.appendChild(cloudBox);
       const stopBtn = document.createElement('button');
       stopBtn.className = 'ctx-custom-btn danger';
-      stopBtn.textContent = 'Выключить';
-      stopBtn.addEventListener('click', async () => { await api.shareStop(); stopCollab(); await render(); });
+      stopBtn.textContent = 'Выключить совместную работу';
+      stopBtn.addEventListener('click', async () => {
+        await api.shareStop();
+        stopCollab();
+        Object.assign(cloudUi, { starting: false, error: null, askRelay: false });
+        await render();
+      });
       dlg!.appendChild(stopBtn);
       if (users.length > 0) {
         const h = document.createElement('div');
@@ -4638,6 +4761,9 @@ async function openShareDialog(): Promise<void> {
   // периодическое обновление списка участников, пока диалог открыт
   const timer = window.setInterval(() => {
     if (!document.getElementById('share-dialog')) { clearInterval(timer); return; }
+    // перерисовка пересоздаёт поля: не мешаем вводу адреса и выбору прав
+    const active = document.activeElement;
+    if (active && dlg!.contains(active) && (active.tagName === 'INPUT' || active.tagName === 'SELECT')) return;
     void render();
   }, 2000);
 }

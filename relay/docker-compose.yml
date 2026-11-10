@@ -1,0 +1,35 @@
+# Ретранслятор за Caddy (HTTPS). Настройки — в .env рядом (образец: .env.example).
+# Запуск: docker compose up -d --build
+services:
+  relay:
+    build: .
+    restart: unless-stopped
+    environment:
+      # адрес клиента берётся из X-Forwarded-For, который выставляет Caddy
+      RELAY_TRUST_PROXY: "1"
+      RELAY_ALLOWED_ORIGINS: ${RELAY_ALLOWED_ORIGINS:-}
+      RELAY_MAX_MESSAGE: ${RELAY_MAX_MESSAGE:-}
+      RELAY_MAX_GUESTS: ${RELAY_MAX_GUESTS:-}
+      RELAY_MAX_ROOMS: ${RELAY_MAX_ROOMS:-}
+      RELAY_MAX_BUFFER: ${RELAY_MAX_BUFFER:-}
+    expose:
+      - "8080"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      RELAY_DOMAIN: ${RELAY_DOMAIN:?укажите RELAY_DOMAIN в .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - relay
+
+volumes:
+  caddy_data:
+  caddy_config:

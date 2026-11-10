@@ -3,6 +3,11 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- script-src без 'unsafe-inline': даже если чужие данные попадут в разметку, скрипт не выполнится.
+       worker-src blob: — воркер pdf.js встроен в сборку (?worker&inline); ws: — сервер совместной работы
+       (автор в Electron открыт с file://); api.github.com — проверка обновлений;
+       'unsafe-inline' в style-src — стили через style и <style> окна демонстрации. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ws: wss: https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'none'" />
   <title>Abax</title>
   <link rel="icon" type="image/svg+xml" href="logo.svg" />
   <style>
@@ -22,17 +27,10 @@
     <div id="startup-status">
       <img src="logo.svg" alt="" />
       <div id="startup-message">Загрузка…</div>
-      <button id="startup-retry" type="button" hidden onclick="location.reload()">Перезагрузить</button>
+      <button id="startup-retry" type="button" hidden>Перезагрузить</button>
     </div>
   </div>
-  <script>
-    window.setTimeout(function () {
-      if (!document.getElementById('startup').hidden) {
-        document.getElementById('startup-message').textContent = 'Загрузка занимает больше времени, чем обычно.';
-        document.getElementById('startup-retry').hidden = false;
-      }
-    }, 15000);
-  </script>
+  <script src="startup.js"></script>
   <div id="topbar">
     <div class="topbar-side topbar-right">
       <div class="topbar-group import-group">

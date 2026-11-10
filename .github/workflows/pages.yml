@@ -1,0 +1,42 @@
+name: pages
+
+# Гостевой клиент совместной работы через интернет: сборка публикуется на GitHub Pages в папку
+# v/<версия>/ ветки gh-pages (scripts/pages-deploy.sh); прежние версии остаются. Ссылка автора
+# ведёт на клиент его версии: https://<владелец>.github.io/Abax/v/<версия>/#relay=…&r=…
+# Запускается из release.yml при выпуске и вручную (Actions → pages → Run workflow), например
+# чтобы проверить ветку до релиза.
+#
+# Один раз в настройках репозитория: Settings → Pages → Build and deployment →
+# Source: Deploy from a branch, Branch: gh-pages, папка / (root).
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # публикации по очереди: две одновременные разошлись бы при push в gh-pages
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Публикация в gh-pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          scripts/pages-deploy.sh "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          v=$(node -p "require('./package.json').version")
+          echo "::notice::Гостевой клиент: https://${GITHUB_REPOSITORY_OWNER,,}.github.io/${GITHUB_REPOSITORY#*/}/v/$v/"

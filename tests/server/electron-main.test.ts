@@ -362,6 +362,74 @@ describe('совместная работа', () => {
   });
 });
 
+describe('совместная работа через интернет', () => {
+  const { createRelay } = require('../../relay/server.cjs');
+  let relay: any;
+
+  beforeEach(async () => {
+    await handlers.get('share:stop')?.({});
+    delete process.env.DOSKA_RELAY_URL;
+    delete process.env.DOSKA_GUEST_URL;
+    await loadMain();
+  });
+  afterAll(async () => { await relay?.close(); });
+
+  it('без запущенной совместной работы и без адреса ретранслятора — понятные ошибки', async () => {
+    expect(await invoke('share:cloudStart')).toEqual({ ok: false, error: 'Совместная работа выключена' });
+    await invoke('share:start');
+    expect(await invoke('share:cloudStart')).toEqual({ ok: false, error: 'Не указан адрес ретранслятора' });
+    expect(await invoke('share:cloudStart', { relayUrl: 'ws://relay.example.com' })).toEqual({ ok: false, error: 'Адрес ретранслятора должен начинаться с wss://' });
+    expect((await invoke('share:status')).cloud).toBeNull();
+  });
+
+  it('ретранслятор недоступен — ошибка, облако не запущено', async () => {
+    await invoke('share:start');
+    expect(await invoke('share:cloudStart', { relayUrl: 'ws://127.0.0.1:1' })).toEqual({ ok: false, error: 'Не удалось подключиться к ретранслятору' });
+    expect((await invoke('share:status')).cloud).toBeNull();
+  });
+
+  it('запуск: ссылка для гостей, статус, повторный запуск, остановка вместе с совместной работой', async () => {
+    relay ??= await createRelay({ port: 0, host: '127.0.0.1', statsIntervalMs: 0, log: () => {} });
+    process.env.DOSKA_GUEST_URL = 'https://pages.example/Abax/v/9.9.9/';
+    await loadMain();
+    await invoke('share:start');
+    const r = await invoke('share:cloudStart', { relayUrl: `ws://127.0.0.1:${relay.port}/` });
+    expect(r.ok).toBe(true);
+    expect(r.cloud).toMatchObject({ state: 'online', guests: 0, error: null, relayUrl: `ws://127.0.0.1:${relay.port}` });
+    const hash = new URLSearchParams(r.cloud.url.split('#')[1]);
+    expect(r.cloud.url.startsWith('https://pages.example/Abax/v/9.9.9/#')).toBe(true);
+    expect(hash.get('relay')).toBe(`ws://127.0.0.1:${relay.port}`);
+    expect(hash.get('r')).toMatch(/^[A-Za-z0-9_-]{22}$/);
+    expect(relay.stats().rooms).toBe(1);
+
+    // повторный запуск не открывает вторую комнату
+    expect((await invoke('share:cloudStart')).cloud.url).toBe(r.cloud.url);
+    expect((await invoke('share:status')).cloud.url).toBe(r.cloud.url);
+    expect(relay.stats().rooms).toBe(1);
+
+    await invoke('share:stop');
+    expect(await invoke('share:status')).toEqual({ active: false });
+    await new Promise<void>(res => { const t = setInterval(() => { if (relay.stats().rooms === 0) { clearInterval(t); res(); } }, 10); });
+  });
+
+  it('адрес по умолчанию — из DOSKA_RELAY_URL; share:cloudStop закрывает только облачную комнату', async () => {
+    relay ??= await createRelay({ port: 0, host: '127.0.0.1', statsIntervalMs: 0, log: () => {} });
+    process.env.DOSKA_RELAY_URL = `ws://127.0.0.1:${relay.port}`;
+    await loadMain();
+    await invoke('share:start');
+    const r = await invoke('share:cloudStart');
+    expect(r.ok).toBe(true);
+    // ссылка по умолчанию ведёт на сборку этой версии на GitHub Pages
+    const version = require('../../package.json').version;
+    expect(r.cloud.url.startsWith(`https://motoilyuha.github.io/Abax/v/${version}/#`)).toBe(true);
+    expect(await invoke('share:cloudStop')).toEqual({ ok: true });
+    const status = await invoke('share:status');
+    expect(status.active).toBe(true);
+    expect(status.cloud).toBeNull();
+    await invoke('share:stop');
+  });
+});
+
 describe('preload', () => {
   it('пробрасывает API в окно через contextBridge', () => {
     delete require.cache[PRELOAD];
@@ -370,19 +438,23 @@ describe('preload', () => {
     expect(name).toBe('doskaAPI');
     expect(Object.keys(api).sort()).toEqual([
       'appInfo', 'copyImage', 'exportPng', 'list', 'load', 'pickImage', 'pickPdf', 'remove', 'save', 'setAppIcon',
-      'shareOpenTestWindow', 'shareSetRights', 'shareStart', 'shareStatus', 'shareStop',
+      'shareCloudStart', 'shareCloudStop', 'shareOpenTestWindow', 'shareSetRights', 'shareStart', 'shareStatus', 'shareStop',
     ]);
     api.save({ id: 'x' });
     api.exportPng('data:', 'a.png');
     api.shareSetRights(3, { all: 'edit' });
     api.appInfo();
     api.setAppIcon('data:image/png;base64,AA');
+    api.shareCloudStart({ relayUrl: 'wss://r.example' });
+    api.shareCloudStop();
     expect(fakeElectron.ipcRenderer.invoke.mock.calls).toEqual([
       ['boards:save', { id: 'x' }],
       ['export:png', { dataUrl: 'data:', name: 'a.png' }],
       ['share:setRights', { uid: 3, patch: { all: 'edit' } }],
       ['app:info'],
       ['app:setIcon', 'data:image/png;base64,AA'],
+      ['share:cloudStart', { relayUrl: 'wss://r.example' }],
+      ['share:cloudStop'],
     ]);
   });
 });

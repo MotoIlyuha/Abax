@@ -19,6 +19,8 @@ interface ShareServer {
   hostKey: string;
   room: { project: Project | null; clients: Map<unknown, { uid: number; selection: string[]; cursor: unknown; pageId: string | null }> };
   setRights(uid: number, patch: unknown): { ok: boolean; error?: string };
+  attach(sock: unknown, opts: { isHost?: boolean; name?: string }): number | null;
+  refresh(sock: unknown): boolean;
   close(): void;
 }
 
@@ -156,6 +158,24 @@ describe('гость', () => {
     await until(() => !document.querySelector('#remote-cursors .remote-cursor'));
   });
 
+  it('имя участника с разметкой показывается как текст, а не HTML', async () => {
+    await collab.startCollab(base, false, 'Ученик');
+    await until(() => st.state.project.id === 'proj');
+    const evil = '<img src=x onerror="window.__pwned=1">';
+    const other = await peer(`${base}&name=${encodeURIComponent(encodeURIComponent(evil))}`);
+    peers.push(other);
+    other.ws.send(JSON.stringify({ t: 'cursor', x: 10, y: 10, pageId: 'pg1' }));
+    const label = await until(() => document.querySelector<HTMLElement>('#remote-cursors .remote-cursor'));
+    expect(label.textContent).toBe(evil);
+    expect(label.querySelector('img')).toBeNull();
+    expect(document.querySelector('#remote-cursors img, #remote-cursors [onerror]')).toBeNull();
+    expect((window as unknown as { __pwned?: number }).__pwned).toBeUndefined();
+    // цвет — свойство style, а не подстановка в разметку
+    const span = label.querySelector('span')!;
+    expect(span.style.background).not.toBe('');
+    expect(label.querySelector('i')!.style.borderColor).not.toBe('');
+  });
+
   it('метка «Отошёл» у бездействующего участника', async () => {
     await collab.startCollab(base, false, 'Ученик');
     await until(() => st.state.project.id === 'proj');
@@ -264,5 +284,189 @@ describe('автор', () => {
     // после выключения хранилище снова чисто локальное
     collab.stopCollab();
     expect(storageMod.storage).toBe(local);
+  });
+});
+
+/** Транспорт-заглушка: тест сам открывает канал, присылает сообщения и закрывает его. */
+function fakeTransport() {
+  const t = {
+    sent: [] as Msg[],
+    closedByClient: false,
+    send(data: string) { t.sent.push(JSON.parse(data)); return true; },
+    close() { t.closedByClient = true; },
+    onopen: null as (() => void) | null,
+    onmessage: null as ((data: string) => void) | null,
+    onclose: null as ((code: number, reason: string) => void) | null,
+    deliver(m: unknown) { t.onmessage?.(JSON.stringify(m)); },
+  };
+  return t;
+}
+const initMsg = (over: Msg = {}) => ({ t: 'init', proto: 1, userId: 7, color: '#1971c2', name: 'Ученик', project: demo(), rights: { default: 'view', pages: {} }, users: [], ...over });
+
+describe('транспорт и версия протокола', () => {
+  it('connectCollab работает через любой транспорт', async () => {
+    const t = fakeTransport();
+    const ready = collab.connectCollab(t, false);
+    t.onopen!();
+    await ready;
+    expect(collab.collabActive()).toBe(true);
+    t.deliver(initMsg());
+    expect(st.state.project.id).toBe('proj');
+    collab.noteSelection(['a']);
+    expect(t.sent).toContainEqual({ t: 'selection', ids: ['a'], pageId: st.state.pageId });
+  });
+
+  it('startCollab сообщает серверу версию протокола', async () => {
+    await collab.startCollab(base, false, 'Ученик');
+    await until(() => server.room.clients.size === 1);
+    // сервер пустил клиента (не 4426) и прислал ту же версию
+    expect(collab.collabActive()).toBe(true);
+    expect(collab.PROTO).toBe(require('../../electron/share.cjs').PROTO);
+  });
+
+  it('сервер другой версии: соединение закрывается, гость получает событие 4426', async () => {
+    const events: Msg[] = [];
+    document.addEventListener('doska:collab-closed', e => events.push((e as CustomEvent).detail));
+    const t = fakeTransport();
+    const ready = collab.connectCollab(t, false);
+    t.onopen!();
+    await ready;
+    t.deliver(initMsg({ proto: 2, project: { ...demo(), id: 'чужой' } }));
+    expect(t.closedByClient).toBe(true);
+    expect(collab.collabActive()).toBe(false);
+    expect(st.state.project.id).not.toBe('чужой'); // проект от несовместимого сервера не применён
+    expect(events).toEqual([{ code: 4426, reason: 'protocol mismatch' }]);
+  });
+
+  it('отказ сервера приходит событием с кодом', async () => {
+    const events: Msg[] = [];
+    document.addEventListener('doska:collab-closed', e => events.push((e as CustomEvent).detail));
+    await collab.startCollab(`ws://127.0.0.1:${server.port}/ws?code=WRONG`, false, 'Ученик');
+    await until(() => events.length > 0);
+    expect(events[0].code).toBe(4403);
+    expect(collab.collabActive()).toBe(false);
+  });
+
+  it('stopCollab закрывает канал без события об обрыве', async () => {
+    const events: Msg[] = [];
+    document.addEventListener('doska:collab-closed', e => events.push((e as CustomEvent).detail));
+    const t = fakeTransport();
+    const ready = collab.connectCollab(t, false);
+    t.onopen!();
+    await ready;
+    collab.stopCollab();
+    t.onclose!(1000, ''); // запоздалый close от закрытого нами канала
+    expect(t.closedByClient).toBe(true);
+    expect(events).toEqual([]);
+  });
+
+  it('события прежнего канала после переподключения игнорируются', async () => {
+    const old = fakeTransport();
+    void collab.connectCollab(old, false);
+    const t = fakeTransport();
+    const ready = collab.connectCollab(t, false);
+    t.onopen!();
+    await ready;
+    old.deliver(initMsg({ project: { ...demo(), id: 'старый' } }));
+    old.onclose!(1006, '');
+    expect(st.state.project.id).not.toBe('старый');
+    expect(collab.collabActive()).toBe(true);
+  });
+
+  it('сообщение гостю: своё для известных кодов, общее для прочих; разметка не исполняется', () => {
+    expect(collab.closedNotice(4426).title).toBe('Версии доски не совпадают');
+    expect(collab.closedNotice(4404).title).toBe('Доска не найдена');
+    expect(collab.closedNotice(4410).title).toBe('Совместная работа завершена');
+    expect(collab.closedNotice(4430).title).toBe('Нет свободных мест');
+    expect(collab.closedNotice(4503).title).toBe('Автор сейчас не в сети');
+    expect(collab.closedNotice(4429).title).toBe('Слишком много подключений');
+    expect(collab.closedNotice(4408).title).toBe('Соединение слишком медленное');
+    expect(collab.closedNotice(4403).title).toBe('Неверная ссылка');
+    for (const code of [1006, 1001, 4400, 4000, 4999]) expect(collab.closedNotice(code).title).toBe('Соединение с автором прервано');
+    collab.showCollabNotice('<b>заголовок</b>', '<img src=x onerror=alert(1)>');
+    collab.showCollabNotice('Второй', 'текст');
+    const cards = document.querySelectorAll('#collab-notice');
+    expect(cards).toHaveLength(1); // новое сообщение заменяет прежнее
+    collab.showCollabNotice('<b>заголовок</b>', '<img src=x onerror=alert(1)>');
+    const card = document.getElementById('collab-notice')!;
+    expect(card.querySelector('img, b')).toBeNull();
+    expect(card.textContent).toContain('<img src=x onerror=alert(1)>');
+  });
+});
+
+describe('канал, который не открылся', () => {
+  it('connectCollab не зависает: промис выполняется, collabActive() === false, событие с кодом', async () => {
+    const events: Msg[] = [];
+    document.addEventListener('doska:collab-closed', e => events.push((e as CustomEvent).detail));
+    const t = fakeTransport();
+    const ready = collab.connectCollab(t, false);
+    t.onclose!(1006, '');
+    await ready;
+    expect(collab.collabActive()).toBe(false);
+    expect(events.at(-1)).toEqual({ code: 1006, reason: '' });
+  });
+});
+
+describe('уведомления ретранслятора', () => {
+  it('host-away показывает «Автор переподключается…», host-back убирает', () => {
+    collab.relayNotice('host-away');
+    expect(document.getElementById('collab-notice')!.textContent).toContain('Автор переподключается…');
+    collab.relayNotice('host-back');
+    expect(document.getElementById('collab-notice')).toBeNull();
+  });
+});
+
+describe('приглашение через интернет', () => {
+  type Transport = typeof import('../../src/collab-transport');
+  let tr: Transport;
+  beforeEach(async () => { tr = await import('../../src/collab-transport'); });
+  const ROOM = 'AbCdEfGhIjKlMnOpQrStUv';
+
+  it('parseCloudInvite: ретранслятор, комната и имя из якоря', () => {
+    expect(tr.parseCloudInvite(`#relay=${encodeURIComponent('wss://relay.example.com/')}&r=${ROOM}`))
+      .toEqual({ relayUrl: 'wss://relay.example.com', room: ROOM, name: null });
+    expect(tr.parseCloudInvite(`#relay=wss%3A%2F%2Fexample.com%2Frelay&r=${ROOM}&name=%D0%9C%D0%B0%D1%88%D0%B0`))
+      .toEqual({ relayUrl: 'wss://example.com/relay', room: ROOM, name: 'Маша' });
+    expect(tr.parseCloudInvite(`#relay=ws%3A%2F%2F127.0.0.1%3A8080&r=${ROOM}`)!.relayUrl).toBe('ws://127.0.0.1:8080');
+  });
+
+  it('parseCloudInvite: испорченные и чужие ссылки отклоняются', () => {
+    for (const hash of [
+      '', '#', `#r=${ROOM}`, '#relay=wss%3A%2F%2Fa.example',
+      `#relay=wss%3A%2F%2Fa.example&r=short`, `#relay=wss%3A%2F%2Fa.example&r=${ROOM}x`,
+      `#relay=ws%3A%2F%2Frelay.example.com&r=${ROOM}`, // ws:// не на своей машине
+      `#relay=https%3A%2F%2Fa.example&r=${ROOM}`, `#relay=javascript%3Aalert(1)&r=${ROOM}`,
+      `#relay=wss%3A%2F%2Fu%3Ap%40a.example&r=${ROOM}`, `#relay=wss%3A%2F%2Fa.example%3Fx%3D1&r=${ROOM}`,
+      `#relay=не-адрес&r=${ROOM}`,
+    ]) expect(tr.parseCloudInvite(hash), hash).toBeNull();
+  });
+
+  it('гость через настоящий ретранслятор: hello, проект, имя; уведомление о переподключении автора', async () => {
+    const { createRelay } = require('../../relay/server.cjs');
+    const { createCloudLink } = require('../../electron/cloud-link.cjs');
+    const WS = require('ws');
+    const hostSockets: any[] = [];
+    class Tracked extends WS { constructor(...a: any[]) { super(...a); hostSockets.push(this); } }
+    const relay = await createRelay({ port: 0, host: '127.0.0.1', statsIntervalMs: 0, log: () => {} });
+    const link = createCloudLink({
+      relayUrl: `ws://127.0.0.1:${relay.port}`, attach: server.attach, refresh: server.refresh,
+      WebSocketImpl: Tracked, backoffMs: [30],
+    });
+    try {
+      await link.start();
+      const events: string[] = [];
+      await collab.connectCollab(tr.cloudTransport(`ws://127.0.0.1:${relay.port}`, link.status().room, 'Из облака', ev => events.push(ev)), false);
+      await until(() => st.state.project.id === 'proj');
+      await until(() => collab.myName() === 'Из облака');
+      expect(collab.readOnly()).toBe(true);
+      // автор пропал — гость получает уведомление ретранслятора, а не сообщение комнаты
+      hostSockets.at(-1).terminate();
+      await until(() => events.includes('host-away'));
+      await until(() => events.includes('host-back'), 4000);
+      expect(collab.collabActive()).toBe(true);
+    } finally {
+      link.stop();
+      await relay.close();
+    }
   });
 });

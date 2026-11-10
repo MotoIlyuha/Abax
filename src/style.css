@@ -1249,7 +1249,8 @@ body.no-ui-anim #toast.show { animation: none; }
 .sd-updates-download:hover { background: #2160dd; color: #fff; }
 
 /* ----- Карточка «Вышла новая версия» (справа под шапкой) ----- */
-#update-card {
+/* сообщение совместной работы (#collab-notice) выглядит так же */
+#update-card, #collab-notice {
   position: fixed;
   top: 58px;
   right: 16px;
@@ -1267,8 +1268,10 @@ body.no-ui-anim #toast.show { animation: none; }
   --pop-y: -8px;
   transform-origin: top right;
 }
-body.no-ui-anim #update-card { animation: none; }
-@media (prefers-reduced-motion: reduce) { #update-card { animation: none; } }
+body.no-ui-anim #update-card, body.no-ui-anim #collab-notice { animation: none; }
+@media (prefers-reduced-motion: reduce) { #update-card, #collab-notice { animation: none; } }
+.cn-title { font-size: 15px; font-weight: 700; }
+.cn-text { margin: 6px 0 0; line-height: 1.5; }
 .uc-head { display: flex; align-items: center; gap: 10px; }
 .uc-icon { flex: none; width: 30px; height: 30px; border-radius: 9px; background: var(--accent-soft); color: var(--accent); display: flex; align-items: center; justify-content: center; }
 .uc-icon svg { width: 19px; height: 19px; }
@@ -2064,6 +2067,22 @@ body.no-ui-anim #icon-picker { animation: none; }
   margin-bottom: 8px;
 }
 .share-link:hover { border-color: var(--accent); color: var(--accent); }
+.share-cloud { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
+.share-cloud-title { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.share-cloud-status { font-size: 12px; color: var(--muted); line-height: 1.4; }
+.share-cloud-status.warn { color: #b35c00; }
+.share-cloud-error { font-size: 12px; color: var(--danger); line-height: 1.4; margin-bottom: 6px; }
+.share-relay-input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+.share-relay-input:focus { outline: none; border-color: var(--accent); }
+.ctx-custom-btn:disabled { opacity: 0.6; cursor: default; }
 .ctx-custom-btn.danger { color: var(--danger); border-color: #f3c1c1; }
 .share-table { display: flex; flex-direction: column; gap: 10px; }
 .share-user { display: flex; flex-direction: column; gap: 5px; }

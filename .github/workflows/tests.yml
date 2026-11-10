@@ -29,3 +29,19 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 7
+
+  # образ облачного ретранслятора собирается и отвечает на /health (сам код проверяет npm test)
+  relay-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t abax-relay relay
+      - name: Контейнер запускается и отвечает
+        run: |
+          docker run -d --name relay -p 8080:8080 abax-relay
+          for i in $(seq 1 20); do
+            if curl -fs http://127.0.0.1:8080/health; then exit 0; fi
+            sleep 1
+          done
+          docker logs relay
+          exit 1
