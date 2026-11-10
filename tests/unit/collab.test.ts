@@ -158,6 +158,24 @@ describe('гость', () => {
     await until(() => !document.querySelector('#remote-cursors .remote-cursor'));
   });
 
+  it('имя участника с разметкой показывается как текст, а не HTML', async () => {
+    await collab.startCollab(base, false, 'Ученик');
+    await until(() => st.state.project.id === 'proj');
+    const evil = '<img src=x onerror="window.__pwned=1">';
+    const other = await peer(`${base}&name=${encodeURIComponent(encodeURIComponent(evil))}`);
+    peers.push(other);
+    other.ws.send(JSON.stringify({ t: 'cursor', x: 10, y: 10, pageId: 'pg1' }));
+    const label = await until(() => document.querySelector<HTMLElement>('#remote-cursors .remote-cursor'));
+    expect(label.textContent).toBe(evil);
+    expect(label.querySelector('img')).toBeNull();
+    expect(document.querySelector('#remote-cursors img, #remote-cursors [onerror]')).toBeNull();
+    expect((window as unknown as { __pwned?: number }).__pwned).toBeUndefined();
+    // цвет — свойство style, а не подстановка в разметку
+    const span = label.querySelector('span')!;
+    expect(span.style.background).not.toBe('');
+    expect(label.querySelector('i')!.style.borderColor).not.toBe('');
+  });
+
   it('метка «Отошёл» у бездействующего участника', async () => {
     await collab.startCollab(base, false, 'Ученик');
     await until(() => st.state.project.id === 'proj');

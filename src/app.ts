@@ -2448,7 +2448,8 @@ export async function importPdfFromDataUrl(dataUrl: string): Promise<void> {
     const bin = atob(base64);
     const u8 = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
-    const pdf = await pdfjsLib.getDocument({ data: u8 }).promise;
+    // без eval: CSP запрещает его, а pdf.js иначе пробует new Function для шрифтов
+    const pdf = await pdfjsLib.getDocument({ data: u8, isEvalSupported: false }).promise;
     const x = state.camera.x + 40;
     let y = state.camera.y + 40;
     const imgs: ImageEl[] = [];

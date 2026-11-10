@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 const require = createRequire(import.meta.url);
-const { createShareServer, MAX_EDITORS } = require('../../electron/share.cjs');
+const { createShareServer, MAX_EDITORS, MAX_NAME, cleanName } = require('../../electron/share.cjs');
 
 type Msg = Record<string, any>;
 interface Peer { ws: WebSocket; inbox: Msg[]; closed: Promise<void> }
@@ -134,6 +134,32 @@ describe('WebSocket: подключение', () => {
     await start();
     const p = await connect('?name=' + encodeURIComponent(encodeURIComponent('Маша К.')));
     expect((await init(p)).name).toBe('Маша К.');
+  });
+
+  it(`имя обрезается до ${MAX_NAME} символов, управляющие символы убираются`, async () => {
+    await start();
+    const long = 'Я'.repeat(200);
+    const p = await connect('?name=' + encodeURIComponent(encodeURIComponent(long)));
+    const me = await init(p);
+    expect(me.name).toBe('Я'.repeat(MAX_NAME));
+    const other = await connect('?name=' + encodeURIComponent(encodeURIComponent('Ма\u0000ша\n\u202Eevil\u0007')));
+    expect((await init(other)).name).toBe('Ма ша evil');
+    // остальные участники получают уже очищенное имя
+    const snap = await until(() => last(p, 'users')?.users.find((u: Msg) => u.userId === 2));
+    expect(snap.name).toBe('Ма ша evil');
+  });
+
+  it('пустое имя или имя из одних управляющих символов — имя по умолчанию', async () => {
+    await start();
+    const p = await connect('?name=' + encodeURIComponent('\u0001\u0002  '));
+    expect((await init(p)).name).toBe('Гость 1');
+  });
+
+  it('cleanName: битое кодирование не роняет сервер, эмодзи не разрезаются', () => {
+    expect(cleanName('%E0%A4%A')).toBe('%E0%A4%A');
+    expect(cleanName(null)).toBe('');
+    expect(Array.from(cleanName('😀'.repeat(100)))).toHaveLength(MAX_NAME);
+    expect(cleanName('😀'.repeat(100))).toBe('😀'.repeat(MAX_NAME));
   });
 
   it('openEdit: гости сразу редакторы', async () => {

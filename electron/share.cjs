@@ -6,7 +6,7 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
-const { createRoomHub, PROTO, MAX_EDITORS } = require('./room.cjs');
+const { createRoomHub, PROTO, MAX_EDITORS, MAX_NAME, normalizeName } = require('./room.cjs');
 
 /**
  * Максимальный размер одного сообщения. Совпадает с прежним значением по умолчанию у ws (100 МиБ):
@@ -15,6 +15,16 @@ const { createRoomHub, PROTO, MAX_EDITORS } = require('./room.cjs');
 const MAX_MESSAGE = 100 * 1024 * 1024;
 
 let distDir = path.join(__dirname, '..', 'dist');
+
+/**
+ * Имя участника из параметра URL: клиент кодирует его дважды. Битая %-последовательность не должна
+ * ронять сервер — берём строку как есть. Дальше — та же очистка, что для любого транспорта (room.cjs).
+ */
+function cleanName(raw) {
+  let s = String(raw || '');
+  try { s = decodeURIComponent(s); } catch { /* битая %-последовательность — берём как есть */ }
+  return normalizeName(s);
+}
 
 // Секрет автора: только у него, в гостевую ссылку не попадает.
 function newHostKey() { return crypto.randomBytes(24).toString('base64url'); }
@@ -53,7 +63,7 @@ function createShareServer({ port, code, hostKey = newHostKey(), openEdit = proc
     if (proto !== null && proto !== String(PROTO)) { ws.close(4426, 'protocol mismatch'); return; }
     const isHost = u.searchParams.get('host') === '1';
     if (isHost && !safeEqual(u.searchParams.get('key'), hostKey)) { ws.close(4401, 'bad host key'); return; }
-    hub.attach(ws, { isHost, name: decodeURIComponent(u.searchParams.get('name') || '') });
+    hub.attach(ws, { isHost, name: cleanName(u.searchParams.get('name')) });
   });
 
   return new Promise((resolve, reject) => {
@@ -73,4 +83,4 @@ function createShareServer({ port, code, hostKey = newHostKey(), openEdit = proc
   });
 }
 
-module.exports = { createShareServer, MAX_EDITORS, MAX_MESSAGE, PROTO };
+module.exports = { createShareServer, MAX_EDITORS, MAX_MESSAGE, MAX_NAME, PROTO, cleanName };
