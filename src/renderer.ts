@@ -984,6 +984,41 @@ function drawHandles(ctx: CanvasRenderingContext2D, cam: Camera): void {
   }
 }
 
+/**
+ * Инструмент «Раздвинуть»: пунктир линии разреза под курсором, а пока тянут — освобождаемая
+ * полоса между линией и её новым местом, со стрелкой вниз (экранные координаты).
+ */
+function drawSpread(ctx: CanvasRenderingContext2D, cam: Camera, w: number): void {
+  const sp = state.spread;
+  if (!sp && (state.tool !== 'spread' || !state.hover)) return;
+  const y0 = sp ? Math.round((sp.y - cam.y) * cam.zoom) + 0.5 : Math.round(state.hover!.y) + 0.5;
+  const y1 = sp ? Math.round((sp.y + sp.dy - cam.y) * cam.zoom) + 0.5 : y0;
+  ctx.save();
+  if (y1 > y0) {
+    ctx.fillStyle = 'rgba(50,115,245,0.08)';
+    ctx.fillRect(0, y0, w, y1 - y0);
+  }
+  ctx.strokeStyle = '#3273f5';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([6, 4]);
+  ctx.beginPath();
+  ctx.moveTo(0, y0); ctx.lineTo(w, y0);
+  if (y1 > y0) { ctx.moveTo(0, y1); ctx.lineTo(w, y1); }
+  ctx.stroke();
+  ctx.setLineDash([]);
+  // стрелка вниз у курсора: куда поедет всё, что ниже линии
+  const x = state.hover ? state.hover.x : w / 2;
+  const tip = Math.max(y1, y0 + 14);
+  ctx.lineWidth = 1.5;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x, y0 + 3); ctx.lineTo(x, tip - 1);
+  ctx.moveTo(x - 4, tip - 5); ctx.lineTo(x, tip - 1); ctx.lineTo(x + 4, tip - 5);
+  ctx.stroke();
+  ctx.restore();
+}
+
 /** Направляющие выравнивания: пунктир по линии совпадения краёв или центров (экранные координаты). */
 function drawGuides(ctx: CanvasRenderingContext2D, cam: Camera): void {
   ctx.strokeStyle = GUIDE_COLOR;
@@ -1194,6 +1229,7 @@ function draw(): void {
     ctx.arc(state.hover.x, state.hover.y, PART_ERASE_R, 0, Math.PI * 2);
     ctx.stroke();
   }
+  drawSpread(ctx, cam, cssW);
   drawLaser(ctx);
   if (present) drawPresent(camSettled);
 }

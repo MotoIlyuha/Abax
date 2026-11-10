@@ -158,10 +158,12 @@ test.describe('раздел «Горячие клавиши»: справка', 
 
     const row = (what: string) => page.locator('.hk-row', { has: page.locator('.hk-what', { hasText: what }) });
     await expect(row('Удалить выделенное').locator('kbd')).toHaveText(['Delete', 'Backspace']);
-    await expect(row('Сдвинуть выделенное').locator('kbd')).toHaveText(['←', '→', '↑', '↓']);
+    // стрелки — крестом, как на клавиатуре: ↑ над ← ↓ →
+    await expect(row('Сдвинуть выделенное').locator('kbd')).toHaveText(['↑', '←', '↓', '→']);
     await expect(row('Выделить всё').locator('kbd')).toHaveText(['Ctrl', 'A']);
     await expect(row('Отменить').first().locator('kbd')).toHaveText(['Ctrl', 'Z']);
-    await expect(row('Копировать').locator('kbd')).toHaveText(['Ctrl', 'C']);
+    await expect(row('Копировать').first().locator('kbd')).toHaveText(['Ctrl', 'C']);
+    await expect(row('Копировать как изображение').locator('kbd')).toHaveText(['Ctrl', 'Shift', 'C']);
     await expect(row('Вырезать').locator('kbd')).toHaveText(['Ctrl', 'X']);
     await expect(row('Вставить').locator('kbd')).toHaveText(['Ctrl', 'V']);
     await expect(row('Сохранить пропорции фигуры').locator('kbd')).toHaveText(['Shift', 'Ctrl']);
@@ -199,7 +201,11 @@ test.describe('раздел «Горячие клавиши»: справка', 
     await board.ready();
     const tip = (sel: string) => page.locator(sel).evaluate(e => e.getAttribute('title') ?? e.getAttribute('data-tip'));
     expect(await tip('#btn-undo')).toBe('Отменить (Cmd+Z)');
-    expect(await tip('#btn-export')).toBe('Экспорт в PNG (Cmd+E)');
+    expect(await tip('#btn-image')).toBe('Вставить изображение (или Cmd+V / перетащить файл)');
+    await page.locator('#btn-home').click();
+    await page.locator('#main-menu [data-section="import"]').click();
+    await expect(page.locator('#main-menu [data-action="image"] kbd')).toHaveText('Cmd+V');
+    await page.keyboard.press('Escape');
 
     await openHotkeys(board);
     const row = (what: string) => page.locator('.hk-row', { has: page.locator('.hk-what', { hasText: what }) });

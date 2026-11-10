@@ -4053,7 +4053,7 @@ function wireTopbar(): void {
     `<button data-action="${action}" role="menuitemcheckbox" aria-checked="false">${menuIcon()}<span class="main-menu-text">${label}</span><span class="main-menu-check" aria-hidden="true"></span></button>`;
   menu.innerHTML = `${menuItem('home', 'Домой', ICONS.home)}<hr>
     ${section('import', 'Импорт', ICONS.pdf,
-      menuItem('import', 'Импорт документа', ICONS.pdf) + menuItem('image', 'Вставить изображение', ICONS.image, '<kbd>Ctrl+V</kbd>'))}
+      menuItem('import', 'Импорт документа', ICONS.pdf) + menuItem('image', 'Вставить изображение', ICONS.image, `<kbd>${macKeys('Ctrl+V')}</kbd>`))}
     ${section('export', 'Экспорт', ICONS.export,
       menuItem('project', 'Скачать проект как файл', ICONS.export) + '<hr>' + menuItem('pdf', 'Экспорт в PDF', ICONS.pdf) + menuItem('png', 'Экспорт в PNG', ICONS.image))}<hr>
     ${section('hide', 'Скрыть', svg('<path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M9.9 5.2A10 10 0 0 1 12 5c5 0 8.5 5 9 7a13 13 0 0 1-2.4 3.6M6.3 6.3A13 13 0 0 0 3 12c.5 2 4 7 9 7a10 10 0 0 0 4-.8"/>'),

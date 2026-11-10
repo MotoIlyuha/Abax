@@ -431,7 +431,7 @@ test.describe('страницы проекта', () => {
 
 test.describe('домашняя страница: проекты', () => {
   test('переход на домашнюю и обратно', async ({ board, page }) => {
-    await page.locator('#btn-home').click();
+    await board.home();
     const home = page.locator('#home');
     await expect(home).toBeVisible();
     await expect(home.locator('h1')).toHaveText('Проекты');
@@ -439,19 +439,19 @@ test.describe('домашняя страница: проекты', () => {
     await expect(home.locator('.project-name')).toHaveText('Проект 1');
     await expect(home.locator('.project-info')).toHaveText('1 страница · изменён сегодня');
     expect((await board.state()).view).toBe('home');
-    await page.locator('#btn-home').click();
-    await expect(home).toBeHidden();
+    await board.back();
+    expect((await board.state()).view).toBe('board');
   });
 
   test('новый проект открывается на доске, старый остаётся в списке', async ({ board, page }) => {
     await board.rect(400, 300, 500, 400);
-    await page.locator('#btn-home').click();
+    await board.home();
     await page.locator('#home .new-project').click();
     await expect(page.locator('#home')).toBeHidden();
     const s = await board.state();
     expect(s.project.name).toBe('Проект 2');
     expect(await board.count()).toBe(0);
-    await page.locator('#btn-home').click();
+    await board.home();
     await expect(page.locator('#home .project-name')).toHaveText(['Проект 2', 'Проект 1']);
 
     // открыть первый проект кликом по карточке — его содержимое на месте
@@ -462,7 +462,7 @@ test.describe('домашняя страница: проекты', () => {
   });
 
   test('переименование проекта', async ({ board, page }) => {
-    await page.locator('#btn-home').click();
+    await board.home();
     await page.locator('#home .project-name').dblclick();
     const input = page.locator('#home .project-title input');
     await input.fill('Алгебра 7Б');
@@ -477,9 +477,9 @@ test.describe('домашняя страница: проекты', () => {
   });
 
   test('переименование неоткрытого проекта', async ({ board, page }) => {
-    await page.locator('#btn-home').click();
+    await board.home();
     await page.locator('#home .new-project').click();
-    await page.locator('#btn-home').click();
+    await board.home();
     const other = page.locator('#home .project-card').nth(1);
     await other.locator('.project-name').dblclick();
     await other.locator('input').fill('Геометрия');
@@ -491,9 +491,9 @@ test.describe('домашняя страница: проекты', () => {
   });
 
   test('удаление проектов', async ({ board, page }) => {
-    await page.locator('#btn-home').click();
+    await board.home();
     await page.locator('#home .new-project').click();
-    await page.locator('#btn-home').click();
+    await board.home();
     await expect(page.locator('#home .project-card')).toHaveCount(2);
 
     let msg = onConfirm(page, false);
@@ -520,7 +520,7 @@ test.describe('домашняя страница: проекты', () => {
   });
 
   test('карусель открытого проекта: добавить, переименовать и удалить страницу', async ({ board, page }) => {
-    await page.locator('#btn-home').click();
+    await board.home();
     const card = page.locator('#home .project-card');
     const name = card.locator('.carousel-name');
     await expect(name).toHaveText('Страница 1');
@@ -554,9 +554,9 @@ test.describe('домашняя страница: проекты', () => {
   });
 
   test('добавление страницы в неоткрытый проект', async ({ board, page }) => {
-    await page.locator('#btn-home').click();
+    await board.home();
     await page.locator('#home .new-project').click();
-    await page.locator('#btn-home').click();
+    await board.home();
     const other = page.locator('#home .project-card').nth(1);
     // страницы неоткрытого проекта видны с превью
     await expect(other.locator('.carousel-slide canvas')).toHaveCount(1);
@@ -571,9 +571,9 @@ test.describe('домашняя страница: проекты', () => {
   });
 
   test('список проектов переживает перезагрузку', async ({ board, page }) => {
-    await page.locator('#btn-home').click();
+    await board.home();
     await page.locator('#home .new-project').click();
-    await page.locator('#btn-home').click();
+    await board.home();
     await page.locator('#home .new-project').click();
     await page.reload();
     await board.ready();
@@ -585,7 +585,7 @@ test.describe('домашняя страница: проекты', () => {
   test('карусель: превью страниц, стрелки и точки, начинает с текущей страницы', async ({ board, page }) => {
     await board.rect(400, 300, 500, 400);
     await board.addPage();
-    await page.locator('#btn-home').click();
+    await board.home();
     const card = page.locator('#home .project-card');
     await expect(card.locator('.carousel-slide')).toHaveCount(2);
     // открыта вторая страница — с неё карусель и начинается
@@ -620,9 +620,9 @@ test.describe('домашняя страница: проекты', () => {
     await board.addPage();
     await page.locator('#pages-list .page-item').nth(1).click();
     await expect(page.locator('#page-name')).toHaveValue('Страница 2');
-    await page.locator('#btn-home').click();
+    await board.home();
     await page.locator('#home .new-project').click();
-    await page.locator('#btn-home').click();
+    await board.home();
     const other = page.locator('#home .project-card', { hasText: 'Проект 1' });
     await expect(other.locator('.carousel-name')).toHaveText('Страница 2');
 
@@ -631,22 +631,22 @@ test.describe('домашняя страница: проекты', () => {
     await expect(other.locator('.carousel-name')).toHaveText('Страница 3');
     await page.reload();
     await board.ready();
-    await page.locator('#btn-home').click();
+    await board.home();
     await expect(other.locator('.carousel-name')).toHaveText('Страница 2');
 
     // открыли третью — теперь карусель с неё
     await other.locator('.carousel-next').click();
     await other.locator('.project-preview').click();
     await expect(page.locator('#page-name')).toHaveValue('Страница 3');
-    await page.locator('#btn-home').click();
+    await board.home();
     await expect(other.locator('.carousel-name')).toHaveText('Страница 3');
   });
 
   test('вид списком: колонки, открытие, переименование; вид запоминается', async ({ board, page }) => {
     await board.addPage();
-    await page.locator('#btn-home').click();
+    await board.home();
     await page.locator('#home .new-project').click();
-    await page.locator('#btn-home').click();
+    await board.home();
     const home = page.locator('#home');
     const grid = home.locator('.home-view[data-view="grid"]');
     const list = home.locator('.home-view[data-view="list"]');
@@ -678,11 +678,11 @@ test.describe('домашняя страница: проекты', () => {
     await expect(page.locator('#page-name')).toHaveValue('Страница 2');
 
     // вид запоминается; проект, который на этом устройстве не открывали, — без даты
-    await page.locator('#btn-home').click();
+    await board.home();
     await page.evaluate(() => localStorage.removeItem('doska.opened'));
     await page.reload();
     await board.ready();
-    await page.locator('#btn-home').click();
+    await board.home();
     await expect(home.locator('.home-list')).toBeVisible();
     await expect(home.locator('.project-row', { hasText: 'Проект 2' }).locator('.project-opened')).toHaveText('—');
     await expect(home.locator('.project-row', { hasText: 'Геометрия' }).locator('.project-opened')).toHaveText('Сегодня');
@@ -698,8 +698,8 @@ test.describe('домашняя страница: проекты', () => {
     await expect(home.locator('.home-list')).toHaveCount(0);
   });
 
-  test('иконка проекта: эмодзи из разделов и поиска, своя картинка, убрать', async ({ page }) => {
-    await page.locator('#btn-home').click();
+  test('иконка проекта: эмодзи из разделов и поиска, своя картинка, убрать', async ({ board, page }) => {
+    await board.home();
     const card = page.locator('#home .project-card');
     const badge = card.locator('.project-icon.badge');
     await expect(badge).toHaveClass(/empty/);
@@ -775,9 +775,9 @@ test.describe('домашняя страница: проекты', () => {
   });
 
   test('иконка неоткрытого проекта сохраняется; в шапке доски — у открытого', async ({ board, page }) => {
-    await page.locator('#btn-home').click();
+    await board.home();
     await page.locator('#home .new-project').click();
-    await page.locator('#btn-home').click();
+    await board.home();
     const other = page.locator('#home .project-card', { hasText: 'Проект 1' });
     await other.locator('.project-icon.badge').click();
     const picker = page.locator('#icon-picker');
@@ -788,7 +788,7 @@ test.describe('домашняя страница: проекты', () => {
     await board.ready();
     // открыт «Проект 2» — у него иконки нет, в шапке приглашение её поставить
     await expect(page.locator('#project-icon')).toHaveClass(/empty/);
-    await page.locator('#btn-home').click();
+    await board.home();
     await expect(other.locator('.project-icon.badge')).toHaveText('😀');
     await page.locator('#home .home-view[data-view="list"]').click();
     await expect(page.locator('#home .project-row', { hasText: 'Проект 1' }).locator('.project-icon.row')).toHaveText('😀');
@@ -798,6 +798,8 @@ test.describe('домашняя страница: проекты', () => {
     await expect(page.locator('#project-icon')).toHaveText('😀');
     await page.locator('#project-icon').click();
     await picker.locator('.ip-search').fill('кот');
+    // эмодзи подгружаются отдельно: Enter — когда результаты уже видны
+    await expect(picker.locator('.ip-results .ip-emoji').first()).toBeVisible();
     await picker.locator('.ip-search').press('Enter');
     await expect(picker).toHaveCount(0);
     const icon = await page.evaluate(() => (window as any).__doska.state.project.icon);
@@ -806,9 +808,9 @@ test.describe('домашняя страница: проекты', () => {
   });
 
   test('закрепление проектов в избранном', async ({ board, page }) => {
-    await page.locator('#btn-home').click();
+    await board.home();
     await page.locator('#home .new-project').click();
-    await page.locator('#btn-home').click();
+    await board.home();
     const home = page.locator('#home');
     await expect(home.locator('.home-section-title')).toHaveCount(0); // пока избранного нет — без разделов
     await expect(home.locator('.project-name')).toHaveText(['Проект 2', 'Проект 1']);
@@ -833,7 +835,7 @@ test.describe('домашняя страница: проекты', () => {
     // избранное переживает перезагрузку
     await page.reload();
     await board.ready();
-    await page.locator('#btn-home').click();
+    await board.home();
     await expect(home.locator('.home-section').first().locator('.project-name')).toHaveText(['Проект 2', 'Проект 1']);
 
     // открепляем

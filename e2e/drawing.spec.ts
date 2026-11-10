@@ -79,7 +79,7 @@ test.describe('перо и маркер', () => {
   test('горячие клавиши инструментов', async ({ board }) => {
     const map: Record<string, string> = {
       v: 'select', p: 'pen', m: 'highlighter', e: 'eraser', x: 'partEraser', h: 'pan', t: 'text', r: 'rect', o: 'ellipse',
-      y: 'triangle', l: 'line', a: 'arrow', i: 'laser', k: 'poly', n: 'note',
+      y: 'triangle', l: 'line', a: 'arrow', i: 'laser', k: 'poly', n: 'note', s: 'spread',
     };
     for (const [key, tool] of Object.entries(map)) {
       await board.tool(key);
@@ -212,6 +212,30 @@ test.describe('ломаная', () => {
     await page.keyboard.press('Escape');
     expect((await board.state()).livePoly).toBeNull();
     expect(await board.count('poly')).toBe(2);
+  });
+});
+
+test.describe('раздвинуть', () => {
+  test('всё, что ниже линии нажатия, сдвигается вниз одним шагом истории', async ({ board, page }) => {
+    await board.drag([{ x: 400, y: 300 }, { x: 600, y: 300 }]);
+    await board.drag([{ x: 400, y: 450 }, { x: 600, y: 450 }]);
+    await board.drag([{ x: 400, y: 600 }, { x: 600, y: 600 }]);
+    await board.tool('s');
+    await expect(page.locator('.tool[data-tool="spread"]')).toHaveClass(/active/);
+    await expect(board.canvas).toHaveCSS('cursor', 'row-resize');
+    await board.drag([{ x: 300, y: 400 }, { x: 300, y: 520 }]);
+    const ys = (await board.elements()).map(e => Math.round((e as any).pts[0].y));
+    expect(ys).toEqual([300, 570, 720]);
+    await page.keyboard.press('Control+z');
+    const back = (await board.elements()).map(e => Math.round((e as any).pts[0].y));
+    expect(back).toEqual([300, 450, 600]);
+  });
+
+  test('вверх не сжимает', async ({ board }) => {
+    await board.drag([{ x: 400, y: 450 }, { x: 600, y: 450 }]);
+    await board.tool('s');
+    await board.drag([{ x: 300, y: 400 }, { x: 300, y: 250 }]);
+    expect(Math.round(((await board.elements())[0] as any).pts[0].y)).toBe(450);
   });
 });
 

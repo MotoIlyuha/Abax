@@ -398,10 +398,9 @@ test.describe('настройки доски', () => {
   });
 
   test('кнопки отмены и повтора можно скрыть', async ({ board, page }) => {
-    const seps = page.locator('#topbar > .sep:visible');
+    const group = page.locator('#topbar .undo-group');
     await expect(page.locator('#btn-undo')).toBeVisible();
     await expect(page.locator('#btn-redo')).toBeVisible();
-    const sepsBefore = await seps.count();
 
     await page.locator('#btn-settings').click();
     const cb = page.locator('#settings-popover label', { hasText: 'Скрыть кнопки отмены и повтора' }).locator('input');
@@ -410,8 +409,8 @@ test.describe('настройки доски', () => {
     expect((await board.state()).settings.hideUndoRedo).toBe(true);
     await expect(page.locator('#btn-undo')).toBeHidden();
     await expect(page.locator('#btn-redo')).toBeHidden();
-    // оба разделителя вокруг кнопок уходят вместе с ними
-    await expect(seps).toHaveCount(sepsBefore - 2);
+    // плашка кнопок уходит вместе с ними, пустой рамки не остаётся
+    await expect(group).toBeHidden();
     await page.keyboard.press('Escape');
 
     // отмена с клавиатуры работает и без кнопки
@@ -426,7 +425,7 @@ test.describe('настройки доски', () => {
     await page.keyboard.press('Control+Comma');
     await page.locator('.sd-general label', { hasText: 'Скрыть кнопки отмены и повтора' }).locator('input').uncheck();
     await expect(page.locator('#btn-undo')).toBeVisible();
-    await expect(seps).toHaveCount(sepsBefore);
+    await expect(group).toBeVisible();
   });
 
   test('битые настройки в localStorage не ломают загрузку', async ({ board, page }) => {
@@ -453,25 +452,25 @@ test.describe('страница', () => {
     await board.saved();
     await page.reload();
     await board.ready();
-    await expect(page.locator('#grid-mode')).toHaveAttribute('data-value', 'dots');
+    expect((await board.state()).grid).toBe('dots');
   });
 
-  test('список фонов: иконки и клавиатура', async ({ board, page }) => {
-    await page.locator('#grid-mode').click();
-    const options = page.locator('#grid-menu .grid-option');
-    await expect(options).toHaveCount(4);
+  test('список сеток: иконки, отметка текущей, Esc закрывает', async ({ board, page }) => {
+    const trigger = page.locator('#view-grid-icon');
+    const menu = page.locator('#view-menu');
+    await trigger.click();
+    const options = menu.locator('button');
+    await expect(options).toHaveText(['Без фона', 'Точки', 'Клетка✓', 'Координатная плоскость']);
     for (const o of await options.all()) await expect(o.locator('svg')).toHaveCount(1);
-    await expect(page.locator('#grid-menu [aria-selected="true"]')).toBeFocused();
-    // стрелка вниз с «Клетки» — «Координатная плоскость»; хоткеи холста при этом не срабатывают
-    await page.keyboard.press('ArrowDown');
-    await page.keyboard.press('Enter');
-    await expect(page.locator('#grid-menu')).toBeHidden();
+    await options.filter({ hasText: 'Координатная плоскость' }).click();
+    await expect(menu).toBeHidden();
     expect((await board.state()).grid).toBe('coord');
-    await page.keyboard.press('ArrowDown');
-    await expect(page.locator('#grid-menu')).toBeVisible();
+    // на кнопке в шапке — иконка выбранной сетки
+    expect(await trigger.innerHTML()).toBe(await options.last().locator('svg').evaluate(e => e.outerHTML));
+    await trigger.click();
+    await expect(options.last()).toHaveText('Координатная плоскость✓');
     await page.keyboard.press('Escape');
-    await expect(page.locator('#grid-menu')).toBeHidden();
-    await expect(page.locator('#grid-mode')).toBeFocused();
+    await expect(menu).toBeHidden();
   });
 
   test('у всех кнопок шапки есть иконки', async ({ board, page }) => {
@@ -550,7 +549,7 @@ test.describe('экспорт PNG', () => {
         click.call(this);
       };
     });
-    const [dl] = await Promise.all([page.waitForEvent('download'), page.locator('#btn-export').click()]);
+    const [dl] = await Promise.all([page.waitForEvent('download'), board.exportPng()]);
     expect(await page.evaluate(() => (window as any).__downloads)).toEqual(['Проект 1 - Страница 1.png']);
     const buf = await (await dl.createReadStream()).toArray();
     const png = Buffer.concat(buf);
@@ -565,9 +564,9 @@ test.describe('экспорт PNG', () => {
     expect(await page.evaluate(() => (window as any).__downloads)).toHaveLength(2);
   });
 
-  test('пустая страница — предупреждение', async ({ page }) => {
+  test('пустая страница — предупреждение', async ({ board, page }) => {
     const msg = new Promise<string>(resolve => page.once('dialog', d => { resolve(d.message()); void d.dismiss(); }));
-    await page.locator('#btn-export').click();
+    await board.exportPng();
     expect(await msg).toBe('Страница пуста — нечего экспортировать');
   });
 });

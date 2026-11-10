@@ -17,8 +17,9 @@ test.describe('сенсорный экран', () => {
     for (let i = 1; i <= 5; i++) await send('touchMove', [at(500 - i * 20, 400, 0), at(600 + i * 20, 400, 1)]);
     // первый палец успел начать штрих — жест его отменяет, точка на доске не остаётся
     expect(await board.count()).toBe(0);
+    // движения пальцев Chromium доставляет по кадрам: ждём, пока дойдёт последнее
+    await expect.poll(async () => (await board.state()).camera.zoom).toBeCloseTo(3, 1); // расстояние 100 → 300
     const cam = (await board.state()).camera;
-    expect(cam.zoom).toBeCloseTo(3, 1); // расстояние 100 → 300
     // середина жеста осталась на месте сцены
     expect((550) / cam.zoom + cam.x).toBeCloseTo(550, 0);
 
@@ -40,7 +41,7 @@ test.describe('сенсорный экран', () => {
   test('карусель страниц на домашней листают пальцем, касание открывает показанную страницу', async ({ board, page }) => {
     await board.addPage();
     await board.addPage();
-    await page.locator('#btn-home').click();
+    await board.home();
     const card = page.locator('#home .project-card');
     const name = card.locator('.carousel-name');
     await expect(name).toHaveText('Страница 3');

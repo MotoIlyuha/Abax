@@ -58,12 +58,14 @@ test.describe('режим Electron (doskaAPI)', () => {
     expect((await host.board.elements())[0]).toMatchObject({ w: 120, h: 80 });
   });
 
-  test('PDF из диалога открытия', async ({ host, page, browser }) => {
+  test('PDF через «Импорт документа»', async ({ host, page, browser }) => {
     const gen = await browser.newPage();
     await gen.setContent('<p>Контрольная</p>');
-    host.nextPdf = 'data:application/pdf;base64,' + (await gen.pdf({ format: 'A6' })).toString('base64');
+    const pdf = await gen.pdf({ format: 'A6' });
     await gen.close();
-    await page.locator('#btn-import').click();
+    // импорт документа — выбор файла, в Electron это системный диалог открытия
+    const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.locator('#btn-import').click()]);
+    await chooser.setFiles({ name: 'test.pdf', mimeType: 'application/pdf', buffer: pdf });
     await expect.poll(() => host.board.count('image'), { timeout: 15_000 }).toBe(1);
     // после импорта камера показывает всё содержимое
     expect((await host.board.state()).camera.zoom).toBeLessThan(1.5);

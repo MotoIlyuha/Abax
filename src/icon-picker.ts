@@ -199,6 +199,8 @@ export function openIconPicker(anchor: HTMLElement, current: string | null, onPi
       body.appendChild(s);
     }
     body.appendChild(results);
+    // запрос набрали, пока эмодзи грузились, — ищем по нему теперь
+    if (search.value.trim()) search.dispatchEvent(new Event('input'));
   });
 
   // подсветка вкладки — по прокрутке; докрутили до конца — последний раздел (он короче окна).
