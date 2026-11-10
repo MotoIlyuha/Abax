@@ -727,6 +727,11 @@ class SceneCache {
   private recursionEnabled = false;
   private links: unknown[] = [];
   private stale = false;
+  /** Страница, которую рисует кэш: обычно активная, а у окна демонстрации при черновике — «замороженная». */
+  private board: Page = state.board;
+  private pageId = state.pageId;
+  /** Кэш показывает не ту страницу, что правят: выделение и перенос на ней ни при чём. */
+  private held = false;
 
   resize(wPx: number, hPx: number): void {
     this.canvas.width = wPx;
@@ -735,17 +740,21 @@ class SceneCache {
   }
 
   /** Приводит кэш к текущей сцене; пока камера движется, резкая перерисовка откладывается. */
-  sync(cam: Camera, w: number, h: number, dpr: number, camSettled: boolean): void {
+  sync(cam: Camera, w: number, h: number, dpr: number, camSettled: boolean, board: Page = state.board, pageId: string = state.pageId, held = false): void {
+    if (board !== this.board || pageId !== this.pageId || held !== this.held) this.stale = true;
+    this.board = board;
+    this.pageId = pageId;
+    this.held = held;
     if (!this.ctx || (!this.cam && (w === 0 || h === 0))) return;
     const c = this.cam;
     if (!c || c.x !== cam.x || c.y !== cam.y || c.zoom !== cam.zoom || w !== this.w || h !== this.h || dpr !== this.dpr) {
       this.stale = true;
     }
-    if ((state.board.backgroundColor ?? '#ffffff') !== this.backgroundColor || state.board.grid !== this.grid || state.settings.coordLabels !== this.coordLabels || state.liveEdit !== this.liveEdit
-      || this.recursionEpoch !== recursionEpoch || this.recursionEnabled !== state.settings.recursionEnabled || state.hideElId !== this.hideId || state.dragHidden !== this.dragHidden || state.pageId !== this.dragPage || state.hideTextId !== this.hideTextId || imgEpoch !== this.imgEpoch) this.stale = true;
+    if ((this.board.backgroundColor ?? '#ffffff') !== this.backgroundColor || this.board.grid !== this.grid || state.settings.coordLabels !== this.coordLabels || state.liveEdit !== this.liveEdit
+      || this.recursionEpoch !== recursionEpoch || this.recursionEnabled !== state.settings.recursionEnabled || state.hideElId !== this.hideId || state.dragHidden !== this.dragHidden || this.pageId !== this.dragPage || state.hideTextId !== this.hideTextId || imgEpoch !== this.imgEpoch) this.stale = true;
     // страницы на холсте показывают другие страницы: те поменялись — перерисовать
-    if (!sameStamp(linkStamp(state.board.elements), this.links)) this.stale = true;
-    const arr = state.board.elements;
+    if (!sameStamp(linkStamp(this.board.elements), this.links)) this.stale = true;
+    const arr = this.board.elements;
     if (arr !== this.arr) {
       if (this.arr && !this.stale && isPrefixExtension(arr, this.arr)) this.append(this.arr.length);
       else this.stale = true;
@@ -759,29 +768,31 @@ class SceneCache {
     // выделение исключается из кэша только на очень больших досках,
     // где полная перерисовка каждый кадр переноса дорога; иначе честные слои
     const excl = new Set<string>();
-    if (state.liveEdit && state.board.elements.length > HEAVY_BOARD) {
-      for (const id of state.selection) excl.add(id);
+    if (!this.held) {
+      if (state.liveEdit && this.board.elements.length > HEAVY_BOARD) {
+        for (const id of state.selection) excl.add(id);
+      }
+      if (state.hideElId) excl.add(state.hideElId);
+      if (state.dragHidden?.pageId === this.pageId) for (const id of state.dragHidden.ids) excl.add(id);
     }
-    if (state.hideElId) excl.add(state.hideElId);
-    if (state.dragHidden?.pageId === state.pageId) for (const id of state.dragHidden.ids) excl.add(id);
-    renderScene(this.ctx!, state.board.elements, cam, w, h, dpr, state.board.grid, excl.size ? excl : undefined, false, state.board.backgroundColor);
+    renderScene(this.ctx!, this.board.elements, cam, w, h, dpr, this.board.grid, excl.size ? excl : undefined, false, this.board.backgroundColor);
     this.cam = { ...cam };
     this.w = w;
     this.h = h;
     this.dpr = dpr;
-    this.arr = state.board.elements;
-    this.grid = state.board.grid;
-    this.backgroundColor = state.board.backgroundColor ?? '#ffffff';
+    this.arr = this.board.elements;
+    this.grid = this.board.grid;
+    this.backgroundColor = this.board.backgroundColor ?? '#ffffff';
     this.coordLabels = state.settings.coordLabels;
     this.liveEdit = state.liveEdit;
     this.hideId = state.hideElId;
     this.dragHidden = state.dragHidden;
-    this.dragPage = state.pageId;
+    this.dragPage = this.pageId;
     this.hideTextId = state.hideTextId;
     this.imgEpoch = imgEpoch;
     this.recursionEpoch = recursionEpoch;
     this.recursionEnabled = state.settings.recursionEnabled;
-    this.links = linkStamp(state.board.elements);
+    this.links = linkStamp(this.board.elements);
     this.stale = false;
   }
 
@@ -793,7 +804,7 @@ class SceneCache {
     this.ctx!.setTransform(zx, 0, 0, zx, -cam.x * zx, -cam.y * zx);
     const vx1 = cam.x + this.w / cam.zoom;
     const vy1 = cam.y + this.h / cam.zoom;
-    const arr = state.board.elements;
+    const arr = this.board.elements;
     for (let i = from; i < arr.length; i++) {
       const el = arr[i];
       if ((el.type === 'stroke' && el.tool === 'highlighter') || el.type === 'image') {
@@ -815,7 +826,7 @@ class SceneCache {
     const dw = (this.w / c.zoom) * cam.zoom;
     const dh = (this.h / c.zoom) * cam.zoom;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.fillStyle = state.board.backgroundColor ?? '#ffffff';
+    ctx.fillStyle = this.board.backgroundColor ?? '#ffffff';
     ctx.fillRect(0, 0, w, h);
     ctx.drawImage(this.canvas, 0, 0, this.canvas.width, this.canvas.height, dx, dy, dw, dh);
 
@@ -832,12 +843,14 @@ class SceneCache {
       if (x1 > x0 && y1 > y0) ctx.rect(x0, y0, x1 - x0, y1 - y0);
       ctx.clip('evenodd');
       const exclude = new Set<string>();
-      if (state.liveEdit && state.board.elements.length > HEAVY_BOARD) {
-        for (const id of state.selection) exclude.add(id);
+      if (!this.held) {
+        if (state.liveEdit && this.board.elements.length > HEAVY_BOARD) {
+          for (const id of state.selection) exclude.add(id);
+        }
+        if (state.hideElId) exclude.add(state.hideElId);
+        if (state.dragHidden?.pageId === this.pageId) for (const id of state.dragHidden.ids) exclude.add(id);
       }
-      if (state.hideElId) exclude.add(state.hideElId);
-      if (state.dragHidden?.pageId === state.pageId) for (const id of state.dragHidden.ids) exclude.add(id);
-      renderScene(ctx, state.board.elements, cam, w, h, dpr, state.board.grid, exclude.size ? exclude : undefined, false, state.board.backgroundColor);
+      renderScene(ctx, this.board.elements, cam, w, h, dpr, this.board.grid, exclude.size ? exclude : undefined, false, this.board.backgroundColor);
       ctx.restore();
     }
   }
@@ -1290,9 +1303,18 @@ function drawPresent(camSettled: boolean): void {
     p.cache.resize(p.canvas.width, p.canvas.height);
   }
   if (w === 0 || h === 0 || cssW === 0 || cssH === 0) return;
+  const c = p.ctx;
+  const hold = state.hold;
+  if (hold) {
+    // автор в черновике: зрителям — та страница, с которой он ушёл, как её видели, и ничего живого
+    const page = state.project.pages.find(pg => pg.id === hold.pageId) ?? state.project.pages[0];
+    const hcam = presentCamera(hold.camera, cssW, cssH, w, h);
+    p.cache.sync(hcam, w, h, pdpr, camSettled, page, page.id, true);
+    if (p.cache.cam) p.cache.blit(c, hcam, w, h, pdpr);
+    return;
+  }
   const cam = state.camera;
   const pcam = presentCamera(cam, cssW, cssH, w, h);
-  const c = p.ctx;
   p.cache.sync(pcam, w, h, pdpr, camSettled);
   drawContent(c, p.cache, pcam, w, h, pdpr);
   if (state.liveText) {

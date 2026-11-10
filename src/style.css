@@ -506,9 +506,50 @@ body.reordering, body.reordering * { cursor: grabbing !important; user-select: n
 }
 .page-add:hover { transform: translateY(-3px); border-color: var(--accent); color: var(--accent); background: rgba(234, 240, 254, 0.9); }
 .page-add svg { width: 30px; height: 30px; }
+/* ----- Черновики: правее страниц, за разделителем; видны только автору ----- */
+.page-divider {
+  flex: none;
+  align-self: stretch;
+  width: 0;
+  margin: 6px 2px;
+  border-left: 2px dashed #c3c9d3;
+}
+.page-item.draft { border-style: dashed; background: #fbfaf4; }
+.page-item.draft .page-num { background: #f1e7b8; color: #6b5a14; box-shadow: none; }
+.page-item.draft.active .page-num { background: #e0b420; color: #3d3206; }
+/* кнопка «новая страница»: «+» или, при Alt / долгом нажатии, «Создать черновик» */
+.page-add .add-draft { display: none; flex-direction: column; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; text-align: center; padding: 0 8px; }
+.page-add .add-draft svg { width: 26px; height: 26px; }
+.page-add .add-new { display: inline-flex; }
+.page-add.draft-mode { border-color: #d6b73a; color: #8a6d00; background: rgba(255, 247, 214, 0.9); }
+.page-add.draft-mode .add-new { display: none; }
+.page-add.draft-mode .add-draft { display: flex; }
+/* плашка на холсте: открыт черновик */
+#draft-badge {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  max-width: calc(100% - 24px);
+  padding: 5px 12px;
+  border: 1px solid #e3cf7b;
+  border-radius: 99px;
+  background: rgba(255, 247, 214, 0.95);
+  color: #6b5a14;
+  font-size: 12px;
+  box-shadow: var(--shadow);
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#draft-badge[hidden] { display: none; }
+#draft-badge span { font-weight: 700; }
+#pages-dock[data-side="top"] .page-divider { width: auto; height: 0; margin: 2px 6px; border-left: 0; border-top: 2px dashed #c3c9d3; }
 /* карточки поднимаются вслед за кнопкой, по очереди */
 @keyframes page-in { from { opacity: 0; transform: translateY(var(--page-in-y, 18px)); } }
-#pages-dock.open .page-item, #pages-dock.open .page-add {
+#pages-dock.open .page-item, #pages-dock.open .page-add, #pages-dock.open .page-divider {
   animation: page-in 0.4s var(--dock-ease) backwards;
   animation-delay: calc(var(--i, 0) * 26ms + 40ms);
 }

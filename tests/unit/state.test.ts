@@ -5,7 +5,7 @@ import {
   moveItem, movePage, moveSelectionLayer, selectionLayerOrder, pinSelectionLayer, onChange, openProject, projectMeta, pushHistory, redo, renamePage, replaceElements, sendBackward, setGrid,
   presetKind, selectAll, selectPreset, setNoteColor, setSelection, setSettings, setSolidSides, setStyleColor, setStyleWidth, setTool, setView, state,
   switchPage, uid, undo, ungroupSelected, update, clampOpacity, opacityField, parseZoomPercent, removeImageFrames, setStyleOpacity,
-  zoomAtPoint, ZOOM_MAX, ZOOM_MIN,
+  zoomAtPoint, ZOOM_MAX, ZOOM_MIN, addDraft, deleteDraft, isDraftId, onDraft, realPageId,
 } from '../../src/state';
 import type { Element, ImageEl, ShapeEl, SolidEl, TextEl } from '../../src/types';
 
@@ -699,5 +699,94 @@ describe('слои и группы', () => {
     ungroupSelected(); // групп нет — без записи и уведомлений
     off();
     expect(fn).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('черновики', () => {
+  it('создаётся справа и открывается, но в проект не попадает', () => {
+    const first = state.pageId;
+    const draft = addDraft();
+    expect(draft.name).toBe('Черновик');
+    expect(onDraft()).toBe(true);
+    expect(state.board).toBe(draft);
+    expect(state.project.pages.map(p => p.id)).toEqual([first]);
+    expect(state.drafts).toEqual([draft]);
+    // вторая — со своим номером
+    expect(addDraft().name).toBe('Черновик 2');
+  });
+
+  it('правки черновика не помечают проект несохранённым', () => {
+    state.dirty = false;
+    addDraft();
+    addElement(rect('a'));
+    expect(state.dirty).toBe(false);
+    expect(state.project.pages[0].elements).toHaveLength(0);
+    expect(state.draftRev).toBeGreaterThan(0);
+    // а правка настоящей страницы — помечает
+    switchPage(state.project.pages[0].id);
+    addElement(rect('b'));
+    expect(state.dirty).toBe(true);
+  });
+
+  it('окно демонстрации держит страницу, с которой ушли в черновик, и отпускает при возврате', () => {
+    const real = state.pageId;
+    state.camera = { x: 5, y: 6, zoom: 2 };
+    const d1 = addDraft();
+    expect(state.hold).toEqual({ pageId: real, camera: { x: 5, y: 6, zoom: 2 } });
+    expect(realPageId()).toBe(real);
+    // между черновиками удержание не сбрасывается и камера остаётся прежней
+    state.camera = { x: 0, y: 0, zoom: 1 };
+    const d2 = addDraft();
+    switchPage(d1.id);
+    expect(state.hold?.camera).toEqual({ x: 5, y: 6, zoom: 2 });
+    switchPage(d2.id);
+    switchPage(real);
+    expect(state.hold).toBeNull();
+    expect(realPageId()).toBe(real);
+  });
+
+  it('закрытие открытого черновика возвращает на прежнюю страницу', () => {
+    const second = addPage();
+    const draft = addDraft();
+    expect(isDraftId(draft.id)).toBe(true);
+    deleteDraft(draft.id);
+    expect(state.drafts).toEqual([]);
+    expect(state.pageId).toBe(second.id);
+    expect(state.hold).toBeNull();
+    // нумерация начинается заново, когда черновиков не осталось
+    expect(addDraft().name).toBe('Черновик');
+  });
+
+  it('удаление другого черновика не трогает открытый', () => {
+    const d1 = addDraft();
+    const d2 = addDraft();
+    deleteDraft(d1.id);
+    expect(state.pageId).toBe(d2.id);
+    expect(state.hold).not.toBeNull();
+  });
+
+  it('переименовывается, не попадая в проект', () => {
+    const d = addDraft();
+    renamePage(d.id, 'Решение');
+    expect(state.drafts[0].name).toBe('Решение');
+    expect(state.board).toBe(state.drafts[0]);
+    expect(state.project.pages.every(p => p.name !== 'Решение')).toBe(true);
+  });
+
+  it('остаются при повторном открытии того же проекта и пропадают в другом', () => {
+    const d = addDraft();
+    openProject(state.project, d.id);
+    expect(state.board).toBe(d);
+    openProject(state.project);
+    expect(state.drafts).toEqual([d]);
+    expect(state.hold).toBeNull();
+    openProject(blankProject('Другой'));
+    expect(state.drafts).toEqual([]);
+  });
+
+  it('не считаются страницами проекта в метаданных', () => {
+    addDraft();
+    expect(projectMeta(state.project).pageCount).toBe(1);
   });
 });

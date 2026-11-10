@@ -4,7 +4,7 @@ import {
   state, update, onChange, beginStroke, extendStroke, endStroke, pushHistory, replaceElements,
   addElement, setSelection, deleteSelected, undo, redo, setTool, uid, commitPoly,
   bringForward, sendBackward, moveSelectionLayer, expandSelectionWithGroups, groupSelected, ungroupSelected, selectAll, selectInserted, opacityField,
-  zoomAtPoint, ZOOM_MAX, ZOOM_MIN, insertCopies,
+  zoomAtPoint, ZOOM_MAX, ZOOM_MIN, insertCopies, isDraftId, touchProject,
 } from './state';
 import {
   type AABB, hitTest, erasePart, aabbIntersects, aabbUnion, alignGuides, alignShift, boxAnchors, elementAABB, elementHandles,
@@ -17,10 +17,10 @@ import { partEraseRadius, presenting, requestRender, renderScene } from './rende
 import { fitSolid, SOLID_CLICK_SIZE, solidKeepsAspect } from './solid';
 import { spreadElements, spreadTargets } from './spread';
 import {
-  addPageFromKey, beginTextEdit, canEditBoard, closeEditor, copySelectionAsImage, duplicateSelection, exportPng, fitContent, openAllSettings, openPageLink,
+  addDraftFromKey, addPageFromKey, beginTextEdit, canEditBoard, closeEditor, copySelectionAsImage, duplicateSelection, exportPng, fitContent, openAllSettings, openPageLink,
   saveNow, selectedTextShape, switchToPage, switchPageForDrag, toggleTextFlag, togglePages,
 } from './app';
-import { comboFromEvent, pageNumberFromEvent } from './hotkeys';
+import { DRAFT_KEY, comboFromEvent, pageNumberFromEvent } from './hotkeys';
 import { ERASER_PATHS, ERASER_TIP, TOOL_DEFS, toolByKey } from './toolbar';
 import {
   arrowDirection, arrowStep, isArrowKey, NUDGE_FAST, NUDGE_HOLD_MS, NUDGE_SPEED, NUDGE_STEP, NUDGE_STEP_FAST,
@@ -930,6 +930,8 @@ export function initController(canvas: HTMLCanvasElement): void {
           if (!copy) {
             const ids=new Set(tr.source.map(el=>el.id));
             tr.sourcePage.elements=tr.original.filter(el=>!ids.has(el.id));
+            // из настоящей страницы в черновик: правка черновика проект не помечает, а страница потеряла объекты
+            if (!isDraftId(tr.sourceId)) touchProject();
           }
           insertCopies(tr.source,dx,dy);
         }
@@ -1103,6 +1105,11 @@ export function initController(canvas: HTMLCanvasElement): void {
     if (state.settings.newPageKey && comboFromEvent(e) === state.settings.newPageKey) {
       e.preventDefault();
       if (!e.repeat) addPageFromKey(); // зажатая клавиша не плодит страницы
+      return;
+    }
+    if (comboFromEvent(e) === DRAFT_KEY) {
+      e.preventDefault();
+      if (!e.repeat) addDraftFromKey();
       return;
     }
     if (e.ctrlKey || e.metaKey) {
