@@ -20,8 +20,9 @@ test.describe('черновик', () => {
     expect((await board.state()).project.pages).toHaveLength(1);
 
     // порядок в списке: страница, «+», разделитель, черновик
-    const kinds = await page.locator('#pages-list > *').evaluateAll(els => els.map(e => e.className.split(' ').filter(c => /^page-/.test(c) && c !== 'page-item').join('') || (e.classList.contains('page-item') ? 'item' : '')));
-    expect(kinds).toEqual(['item', 'page-add', 'page-divider', 'item']);
+    const kinds = await page.locator('#pages-list > *').evaluateAll(els => els.map(e =>
+      e.classList.contains('page-add') ? 'add' : e.classList.contains('page-divider') ? 'divider' : 'item'));
+    expect(kinds).toEqual(['item', 'add', 'divider', 'item']);
     await expect(page.locator('#pages-list .page-item.draft')).toHaveClass(/active/);
     const real = (await page.locator('#pages-list .page-item:not(.draft)').boundingBox())!;
     const draft = (await page.locator('#pages-list .page-item.draft').boundingBox())!;
