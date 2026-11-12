@@ -213,6 +213,30 @@ export function initController(canvas: HTMLCanvasElement): void {
     return null;
   };
 
+  /** Общая рамка выделения — та же, что рисуется вокруг нескольких объектов. */
+  function selectionBox(): AABB | null {
+    const boxes = state.board.elements
+      .filter(el => state.selection.has(el.id) && el.id !== state.hideElId)
+      .map(elementAABB);
+    return boxes.length ? boxes.reduce(aabbUnion) : null;
+  }
+
+  function startMove(e: PointerEvent, start: Pt, deselectOnUp: boolean, link: ImageEl | null): void {
+    const orig = new Map<string, Element>();
+    for (const id of withAttached(state.selection, state.board.elements)) {
+      const el = state.board.elements.find(x => x.id === id);
+      if (el) orig.set(id, el);
+    }
+    const others = guideTargets(new Set(orig.keys()));
+    const box = others && orig.size > 0 ? [...orig.values()].map(elementAABB).reduce(aabbUnion) : null;
+    action = {
+      pid: e.pointerId, kind: 'move', pre: state.board.elements, start, orig, moved: false,
+      deselectOnUp, box, others, link, duplicate: e.altKey, source: [...orig.values()],
+    };
+    // При невыделенных прикреплённых элементах нужен полный рендер всех слоёв.
+    state.liveEdit = orig.size === state.selection.size;
+  }
+
   function zoomAtScreen(sx: number, sy: number, factor: number): void {
     zoomAtPoint(state.camera.zoom * factor, sx, sy);
   }
@@ -578,22 +602,18 @@ export function initController(canvas: HTMLCanvasElement): void {
           } else if (!state.selection.has(hit.id)) {
             setSelection(groupIds);
           }
-          const orig = new Map<string, Element>();
-          for (const id of withAttached(state.selection, state.board.elements)) {
-            const el = state.board.elements.find(x => x.id === id);
-            if (el) orig.set(id, el);
-          }
-          const others = guideTargets(new Set(orig.keys()));
-          const box = others && orig.size > 0 ? [...orig.values()].map(elementAABB).reduce(aabbUnion) : null;
           // страница на холсте: клик переходит на неё, перетаскивание двигает (и выделяет — для ручек)
           const link = !e.shiftKey && hit.type === 'image' && hit.page ? hit : null;
-          action = {
-            pid: e.pointerId, kind: 'move', pre: state.board.elements, start: s, orig, moved: false,
-            deselectOnUp: wasSelected && !link, box, others, link, duplicate: e.altKey, source: [...orig.values()],
-          };
-          // При невыделенных прикреплённых элементах нужен полный рендер всех слоёв.
-          state.liveEdit = orig.size === state.selection.size;
+          startMove(e, s, wasSelected && !link, link);
         } else {
+          // У нескольких выделенных перенос начинается и с пустого места внутри общей рамки
+          // (в т. ч. между объектами): рамку берём как на экране — с тем же отступом в 4 px.
+          const box = !e.shiftKey && state.selection.size > 1 ? selectionBox() : null;
+          const pad = 4 / state.camera.zoom;
+          if (box && s.x >= box.x0 - pad && s.x <= box.x1 + pad && s.y >= box.y0 - pad && s.y <= box.y1 + pad) {
+            startMove(e, s, false, null);
+            break;
+          }
           if (!e.shiftKey) setSelection([]);
           action = { pid: e.pointerId, kind: 'marquee' };
           state.marquee = { x0: lp.x, y0: lp.y, x1: lp.x, y1: lp.y };

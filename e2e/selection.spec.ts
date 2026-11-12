@@ -12,6 +12,21 @@ test.describe('выделение и перемещение', () => {
     await expect(board.quickMenu).toBeHidden();
   });
 
+  test('несколько выделенных переносятся за пустое место общей рамки', async ({ board }) => {
+    const a = await board.rect(400, 300, 450, 350);
+    const b = await board.rect(500, 300, 550, 350);
+    await board.tool('v');
+    await board.drag([{ x: 380, y: 280 }, { x: 560, y: 360 }]);
+    expect((await board.state()).selection.sort()).toEqual([a.id, b.id].sort());
+    // между объектами пусто, но это внутри общей рамки: клик её не снимает,
+    await board.click({ x: 470, y: 325 });
+    expect((await board.state()).selection.sort()).toEqual([a.id, b.id].sort());
+    // а протягивание переносит выделение целиком
+    await board.drag([{ x: 470, y: 325 }, { x: 490, y: 345 }]);
+    expect((await board.elements()).map(e => e.x)).toEqual([420, 520]);
+    expect((await board.state()).selection.sort()).toEqual([a.id, b.id].sort());
+  });
+
   test('перетаскивание сдвигает элемент, отмена возвращает', async ({ board, page }) => {
     await board.rect(400, 300, 550, 400);
     await board.tool('v');
