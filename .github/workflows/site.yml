@@ -1,0 +1,79 @@
+name: site
+
+# Веб-версия на https://abax-board.website.yandexcloud.net/ — статический сайт в Yandex Object Storage
+# (хостинг сайта и публичное чтение включены в консоли Yandex Cloud). Запускается из release.yml
+# при выпуске и вручную (Actions → site → Run workflow), например чтобы проверить ветку до релиза.
+#
+# Секреты репозитория: YC_S3_ACCESS_KEY_ID и YC_S3_SECRET_ACCESS_KEY — статический ключ
+# сервисного аккаунта с правами на объекты бакета. Необязательные переменные репозитория:
+# ABAX_S3_BUCKET (по умолчанию abax-board) и ABAX_S3_ENDPOINT (по умолчанию storage.yandexcloud.net).
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    outputs:
+      deployed:
+        description: Сайт обновлён
+        value: ${{ jobs.deploy.outputs.deployed }}
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # публикации по очереди: две одновременные sync-команды разошлись бы в бакете
+    concurrency:
+      group: site
+      cancel-in-progress: false
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+      AWS_ACCESS_KEY_ID: ${{ secrets.YC_S3_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.YC_S3_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: ru-central1
+      AWS_EC2_METADATA_DISABLED: 'true'
+      BUCKET: ${{ vars.ABAX_S3_BUCKET || 'abax-board' }}
+      S3_ENDPOINT: ${{ vars.ABAX_S3_ENDPOINT || 'https://storage.yandexcloud.net' }}
+    outputs:
+      deployed: ${{ steps.key.outputs.ok }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - id: key
+        name: Ключ Object Storage
+        run: |
+          if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ]; then
+            echo "::warning::Нет секретов YC_S3_ACCESS_KEY_ID / YC_S3_SECRET_ACCESS_KEY — сайт не обновлён (см. начало site.yml)"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+      # Порядок важен: сперва заливаем новые хешированные файлы, потом обновляем index.html,
+      # и только затем удаляем старые — иначе открытая в этот момент прежняя версия сломается.
+      # Файлы в assets/ содержат хеш в имени — их можно кешировать навсегда. Остальное
+      # (index.html, startup.js, logo.svg) проверяем при каждом заходе, иначе новая версия
+      # не появится у тех, кто уже открывал сайт.
+      - if: steps.key.outputs.ok == 'true'
+        name: Публикация в Object Storage
+        run: |
+          aws --version
+          aws s3 sync dist/assets "s3://$BUCKET/assets" \
+            --endpoint-url "$S3_ENDPOINT" \
+            --cache-control "public, max-age=31536000, immutable"
+          aws s3 sync dist "s3://$BUCKET" \
+            --delete --endpoint-url "$S3_ENDPOINT" \
+            --exclude "assets/*" --exclude "index.html" \
+            --cache-control "no-cache"
+          aws s3 cp dist/index.html "s3://$BUCKET/index.html" \
+            --endpoint-url "$S3_ENDPOINT" \
+            --cache-control "no-cache" --content-type "text/html; charset=utf-8"
+          # устаревшие хешированные файлы — после того, как сайт уже ссылается на новые
+          aws s3 sync dist/assets "s3://$BUCKET/assets" \
+            --delete --endpoint-url "$S3_ENDPOINT" \
+            --cache-control "public, max-age=31536000, immutable"
+          echo "::notice::Сайт: https://abax-board.website.yandexcloud.net/"

@@ -6,7 +6,9 @@ name: release
 # и, если в секретах репозитория есть ключ подписи, APK для Android; публикует релиз
 # v<версия> с контрольными суммами. Приложение проверяет обновления по этим релизам
 # и ищет файлы по именам: Abax.Setup.X.exe, Abax.X.exe, Abax-X.apk (см. src/updates.ts).
-# Гостевой клиент совместной работы через интернет публикуется на GitHub Pages (pages.yml).
+# Гостевой клиент совместной работы через интернет публикуется на GitHub Pages (pages.yml),
+# веб-версия — на сайт https://abax-board.website.yandexcloud.net/ (site.yml; нужны секреты
+# YC_S3_ACCESS_KEY_ID и YC_S3_SECRET_ACCESS_KEY — см. начало site.yml).
 #
 # Ключ подписи Android — тот же, что в ~/.abax/keystore.properties: иначе APK не встанет
 # поверх прежней версии. Секреты: ABAX_KEYSTORE_BASE64 (файл ключа в base64),
@@ -151,8 +153,14 @@ jobs:
     needs: version
     uses: ./.github/workflows/pages.yml
 
+  # сайт на Yandex Object Storage — до релиза: новая веб-версия уже доступна по постоянной ссылке
+  site:
+    needs: version
+    uses: ./.github/workflows/site.yml
+    secrets: inherit
+
   release:
-    needs: [version, windows, web, android, pages]
+    needs: [version, windows, web, android, pages, site]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -175,6 +183,9 @@ jobs:
             row 'Веб-версия' "Abax-$v-web.zip"
           } > files.md
           FILES="$(cat files.md)" awk '{ if ($0 == "<!-- files -->") print ENVIRON["FILES"]; else print }' "release-notes/$v.md" > body.md
+          if [ "${{ needs.site.outputs.deployed }}" = "true" ]; then
+            { echo; echo 'Веб-версия: https://abax-board.website.yandexcloud.net/'; } >> body.md
+          fi
           prev=$(git tag -l 'v*' --sort=-v:refname | head -n 1)
           {
             echo
