@@ -7,6 +7,13 @@ const { createCloudLink, normalizeRelayUrl, cloudGuestUrl } = require('./cloud-l
 
 const isDev = !app.isPackaged;
 
+// Схема ссылки abax:// — кнопка «Открыть в приложении» на сайте запускает установленную
+// Abax (или поднимает уже открытое окно). Схему регистрирует установщик (electron-builder.yml)
+// и registerProtocol ниже; на Windows аргумент со ссылкой приходит в process.argv или
+// в событие second-instance, на macOS — в open-url.
+const PROTOCOL = 'abax';
+const PROTOCOL_PREFIX = `${PROTOCOL}://`;
+
 // Приложение называлось Doska, папка профиля по умолчанию идёт от названия (productName).
 // Проекты (boards/) и настройки (Local Storage) остаются в прежней папке, иначе после
 // обновления до Abax пользователь увидел бы пустой список проектов.
@@ -19,6 +26,15 @@ app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 
 /** Имя окна демонстрации (window.open в src/present.ts). */
 const PRESENT_FRAME = 'doska-present';
+
+/** Главное окно. Одно на процесс: запуск по ссылке поднимает его, а не открывает второе. */
+let mainWindow = null;
+/** Ссылка, пришедшая до готовности приложения (macOS присылает open-url раньше whenReady). */
+let pendingLink = null;
+/** Оставляем только ссылки нашей схемы: чужой протокол в argv ничего не должен запускать. */
+const protocolUrl = argv => argv.find(a => typeof a === 'string' && a.startsWith(PROTOCOL_PREFIX)) || null;
+// Запуск по ссылке с нуля (Windows/Linux): система передаёт её в argv.
+pendingLink = protocolUrl(process.argv);
 
 async function createWindow() {
   const win = new BrowserWindow({
@@ -39,6 +55,7 @@ async function createWindow() {
       sandbox: false,
     },
   });
+  mainWindow = win;
   if (isDev) {
     win.loadURL('http://localhost:5173');
   } else {
@@ -77,6 +94,65 @@ async function createWindow() {
   });
   win.webContents.on('console-message', (_e, level, message, line, sourceId) => {
     if (level >= 2) console.error(`[doska:renderer] ${message} (${sourceId}:${line})`);
+  });
+}
+
+/** Поднять главное окно поверх остальных; если его уже закрыли — создать заново. */
+function focusMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    if (app.isReady()) void createWindow();
+    return;
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  if (!mainWindow.isVisible()) mainWindow.show();
+  mainWindow.focus();
+}
+
+/** abax://open — открыть приложение. Пока других команд у схемы нет. */
+function handleProtocolUrl(url) {
+  if (!url || !url.startsWith(PROTOCOL_PREFIX)) return;
+  // Ссылка может прийти раньше whenReady (macOS open-url, второй экземпляр при запуске).
+  if (!app.isReady()) { pendingLink = url; return; }
+  pendingLink = null;
+  focusMainWindow();
+}
+
+/**
+ * Регистрирует схему abax://. Установщик делает это сам (protocols в electron-builder.yml),
+ * но при переносной сборке и запуске из исходников регистрируем вручную: иначе кнопка на
+ * сайте не нашла бы приложение.
+ */
+function registerProtocol() {
+  if (process.platform !== 'win32') {
+    app.setAsDefaultProtocolClient(PROTOCOL);
+    return;
+  }
+  // Переносной exe распаковывается во временную папку: регистрировать нужно сам файл,
+  // а не временную копию, которая исчезнет после закрытия.
+  const portable = process.env.PORTABLE_EXECUTABLE_FILE;
+  if (app.isPackaged && portable) {
+    app.setAsDefaultProtocolClient(PROTOCOL, portable);
+  } else if (!app.isPackaged && process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient(PROTOCOL, process.execPath, [path.resolve(process.argv[1])]);
+  } else {
+    app.setAsDefaultProtocolClient(PROTOCOL);
+  }
+}
+
+// Второй экземпляр не нужен: ссылка из браузера должна поднять уже запущенную доску.
+// Без блокировки система открыла бы ещё одно окно со своим хранилищем.
+const primaryInstance = app.requestSingleInstanceLock();
+if (!primaryInstance) app.quit();
+else {
+  app.on('second-instance', (_e, argv) => {
+    const link = protocolUrl(argv);
+    if (link) handleProtocolUrl(link);
+    else focusMainWindow();
+  });
+  // macOS: ссылка приходит событием, в том числе до whenReady.
+  app.on('open-url', (event, url) => {
+    event.preventDefault();
+    handleProtocolUrl(url);
   });
 }
 
@@ -188,7 +264,13 @@ ipcMain.handle('export:png', async (_e, { dataUrl, name }) => {
   return true;
 });
 
-app.whenReady().then(createWindow);
+if (primaryInstance) {
+  app.whenReady().then(async () => {
+    registerProtocol();
+    await createWindow();
+    if (pendingLink) handleProtocolUrl(pendingLink);
+  });
+}
 app.on('window-all-closed', () => app.quit());
 
 // ----- Совместная работа -----

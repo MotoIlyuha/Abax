@@ -31,6 +31,8 @@ function link(href: string, text: string): HTMLAnchorElement {
 
 const HOLD_MS = 800;
 const TOAST_MS = 4000;
+/** Тост со ссылкой живёт дольше: ссылку нужно успеть заметить и нажать. */
+const TOAST_ACTION_MS = 8000;
 const SECRET = 'Сделано для Инны с любовью от Ильи 💚';
 
 /** Пасхалка: логотип нажали и держат — внизу окна всплывает тост (и открывается раздел «Экспериментальные»). */
@@ -49,8 +51,13 @@ function holdToReveal(logo: HTMLElement, onHold?: () => void): void {
 
 let toastTimer = 0;
 
-/** Тост внизу окна на несколько секунд. */
-export function showToast(text: string): void {
+export interface ToastAction {
+  label: string;
+  href: string;
+}
+
+/** Тост внизу окна на несколько секунд; action — необязательная ссылка (например, «Скачать»). */
+export function showToast(text: string, action?: ToastAction): void {
   let t = document.getElementById('toast');
   if (!t) {
     t = el('div', '');
@@ -59,13 +66,21 @@ export function showToast(text: string): void {
     document.body.appendChild(t);
   }
   t.textContent = text;
+  t.classList.toggle('has-action', !!action);
+  if (action) {
+    const a = el('a', '', action.label);
+    a.href = action.href;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    t.append(' ', a);
+  }
   t.hidden = false;
   // перезапуск анимации появления, если тост уже на экране
   t.classList.remove('show');
   void t.offsetWidth;
   t.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => { t!.hidden = true; t!.classList.remove('show'); }, TOAST_MS);
+  toastTimer = window.setTimeout(() => { t!.hidden = true; t!.classList.remove('show'); }, action ? TOAST_ACTION_MS : TOAST_MS);
 }
 
 /** onLogoHold — логотип задержали (показать скрытый раздел настроек). */

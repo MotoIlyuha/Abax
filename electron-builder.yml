@@ -1,6 +1,12 @@
 # appId прежний: по нему установщик узнаёт уже установленную Doska и обновляет её на месте
 appId: ru.doska.app
 productName: Abax
+# Схема для кнопки «Открыть в приложении» на сайте: abax://open запускает установленную
+# Abax. Установщик прописывает её в системе (на macOS — CFBundleURLTypes в Info.plist).
+protocols:
+  - name: Abax
+    schemes:
+      - abax
 directories:
   output: release
 files:
@@ -18,3 +24,5 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   shortcutName: Abax
+  # схема abax:// для кнопки «Открыть в приложении» на сайте (Windows)
+  include: installer.nsh

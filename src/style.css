@@ -1225,6 +1225,9 @@ body.no-ui-anim #pages-dock.open :is(.page-item, .page-add) { animation: none; }
   pointer-events: none;
 }
 #toast[hidden] { display: none; }
+/* тост с действием («Скачать») должен принимать клики; обычный — не мешает холсту */
+#toast.has-action { pointer-events: auto; }
+#toast a { color: #9ed9ff; text-decoration: underline; text-underline-offset: 2px; }
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 8px); } }
 #toast.show { animation: toast-in 0.22s cubic-bezier(0.22, 0.8, 0.24, 1); }
 body.no-ui-anim #toast.show { animation: none; }

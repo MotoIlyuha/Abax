@@ -19,7 +19,17 @@ class FakeWindow {
   url = '';
   file = '';
   icon: unknown = null;
+  destroyed = false;
+  minimized = false;
+  visible = true;
+  focused = false;
   setIcon(img: unknown) { this.icon = img; }
+  isDestroyed() { return this.destroyed; }
+  isMinimized() { return this.minimized; }
+  restore() { this.minimized = false; }
+  isVisible() { return this.visible; }
+  show() { this.visible = true; }
+  focus() { this.focused = true; }
   listeners = new Map<string, (...a: unknown[]) => void>();
   openHandler: ((d: { url?: string; frameName: string }) => Record<string, any>) | null = null;
   webContents = {
@@ -32,7 +42,7 @@ class FakeWindow {
 }
 
 const handlers = new Map<string, Handler>();
-const appEvents = new Map<string, () => void>();
+const appEvents = new Map<string, (...args: any[]) => void>();
 const dialog = {
   showOpenDialog: vi.fn(),
   showSaveDialog: vi.fn(),
@@ -48,7 +58,10 @@ const fakeElectron = {
     getPath: (name: string) => (name === 'appData' ? appData : userData),
     setPath: vi.fn(),
     whenReady: () => ready,
-    on: (ev: string, fn: () => void) => { appEvents.set(ev, fn); },
+    isReady: () => true,
+    requestSingleInstanceLock: () => true,
+    setAsDefaultProtocolClient: vi.fn((..._args: unknown[]) => true),
+    on: (ev: string, fn: (...args: any[]) => void) => { appEvents.set(ev, fn); },
     quit: vi.fn(),
     commandLine: { appendSwitch: vi.fn() },
   },
@@ -97,6 +110,7 @@ beforeEach(async () => {
   dialog.showOpenDialog.mockReset();
   dialog.showSaveDialog.mockReset();
   dialog.showErrorBox.mockReset();
+  fakeElectron.app.setAsDefaultProtocolClient.mockClear();
   process.env.DOSKA_SHARE_PORT = String(await freePort());
 });
 afterAll(async () => {
@@ -122,6 +136,34 @@ describe('окно', () => {
     fakeElectron.app.setPath.mockClear();
     await loadMain({ packaged: true });
     expect(fakeElectron.app.setPath).toHaveBeenCalledWith('userData', path.join(appData, 'Doska'));
+  });
+
+  it('регистрирует схему abax:// для кнопки «Открыть в приложении»', async () => {
+    await loadMain({ packaged: true });
+    expect(fakeElectron.app.setAsDefaultProtocolClient).toHaveBeenCalled();
+    expect(fakeElectron.app.setAsDefaultProtocolClient.mock.calls[0][0]).toBe('abax');
+  });
+
+  it('ссылку abax:// из второго экземпляра открывает в уже запущенном окне', async () => {
+    await loadMain();
+    const w = FakeWindow.all[0];
+    w.minimized = true;
+    w.visible = false;
+    appEvents.get('second-instance')!({}, ['Abax.exe', 'abax://open']);
+    expect(w.minimized).toBe(false);
+    expect(w.visible).toBe(true);
+    expect(w.focused).toBe(true);
+  });
+
+  it('на macOS ссылка приходит событием open-url и тоже поднимает окно', async () => {
+    await loadMain();
+    const w = FakeWindow.all[0];
+    w.minimized = true;
+    const preventDefault = vi.fn();
+    appEvents.get('open-url')!({ preventDefault }, 'abax://open');
+    expect(preventDefault).toHaveBeenCalled();
+    expect(w.minimized).toBe(false);
+    expect(w.focused).toBe(true);
   });
 
   it('ошибки рендерера пишутся в консоль main-процесса', async () => {

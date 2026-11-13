@@ -9,6 +9,7 @@ const handlers = new Map<string, (...args: unknown[]) => unknown>();
 const electronStub = {
   app: {
     isPackaged: true, whenReady: () => new Promise(() => {}), on: () => {}, commandLine: { appendSwitch: () => {} },
+    isReady: () => true, requestSingleInstanceLock: () => true, setAsDefaultProtocolClient: () => true,
     getPath: () => require('node:os').tmpdir(), setPath: () => {},
   },
   BrowserWindow: class {},

@@ -15,6 +15,7 @@ import {
 import type { PresetKind, StylePatch, StyleValue } from './state';
 import { doskaApi, storage } from './storage';
 import { isNativeApp, sharePng } from './native';
+import { RELEASES_URL, openDesktopApp } from './desktop-app';
 import { renderScene, contentBBox, imageEpoch, imagesLoaded, linkView, presentCanvas, renderNow, requestRender, advanceRecursion } from './renderer';
 import { easeInOut, linkCameras, lockInput, newPageLink, zoomDuration, zoomPath } from './page-links';
 import { makeSortable, reordering } from './reorder';
@@ -4287,7 +4288,12 @@ function wireTopbar(): void {
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     })();
     if (action === 'pdf') showToast('Экспорт в PDF пока недоступен');
-    if (action === 'app') { showToast('Скачайте приложение Abax со страницы релизов'); window.open('https://github.com/MotoIlyuha/Abax/releases/latest', '_blank', 'noopener'); }
+    if (action === 'app') {
+      // установленная Abax зарегистрировала схему abax:// — запускаем её. Ссылка на скачивание
+      // остаётся в тосте: так пункт меню работает и там, где приложение ещё не установлено.
+      showToast('Открываем Abax…', { label: 'Скачать, если не открылось', href: RELEASES_URL });
+      openDesktopApp();
+    }
   });
   document.addEventListener('pointerdown', e => { if (!menu.hidden && !menu.contains(e.target as Node) && !menuButton.contains(e.target as Node)) setMenuOpen(false); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !menu.hidden) { setMenuOpen(false); menuButton.focus(); } });
