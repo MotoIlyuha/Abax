@@ -680,6 +680,42 @@ test.describe('изображения', () => {
     expect(await msg).toBe('Не удалось прочитать изображение');
     expect(await board.count()).toBe(0);
   });
+
+  test('перо вне картинки не прилипает, когда картинку проводят под ним', async ({ board, page }) => {
+    const png = await makePng(page, 400, 200);
+    const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.locator('#btn-image').click()]);
+    await chooser.setFiles({ name: 'pic.png', mimeType: 'image/png', buffer: png });
+    await expect.poll(() => board.count('image')).toBe(1);
+    const img = (await board.elements())[0];
+
+    // перо на картинке и перо вне её
+    await board.tool('p');
+    await board.drag([{ x: img.x + 60, y: img.y + 30 }, { x: img.x + img.w - 60, y: img.y + 30 }]);
+    const outsideX = img.x + img.w + 100;
+    await board.drag([{ x: outsideX, y: img.y + img.h / 2 }, { x: outsideX + 100, y: img.y + img.h / 2 }]);
+    const strokes = (await board.elements()).filter(e => e.type === 'stroke');
+    expect(strokes).toHaveLength(2);
+    expect(strokes[0].baseId).toBe(img.id);
+    expect(strokes[1].baseId).toBeNull();
+    const outside = strokes[1].pts.map((p: { x: number; y: number }) => ({ x: p.x, y: p.y }));
+
+    // картинку проводим под внешним пером, затем ещё раз — в другое место
+    await board.tool('v');
+    const grab = { x: img.x + 40, y: img.y + img.h - 30 };
+    await board.drag([{ ...grab }, { x: grab.x + 220, y: grab.y }]);
+    let els = await board.elements();
+    const moved = els.find(e => e.type === 'image')!;
+    expect(moved.x).toBeCloseTo(img.x + 220, 0);
+    // внешнее перо осталось на месте, хотя геометрически уже лежит на картинке
+    expect(els.filter(e => e.type === 'stroke')[1].pts.map((p: { x: number; y: number }) => ({ x: p.x, y: p.y }))).toEqual(outside);
+
+    const grab2 = { x: moved.x + 40, y: moved.y + moved.h - 30 };
+    await board.drag([{ ...grab2 }, { x: grab2.x - 100, y: grab2.y }]);
+    els = await board.elements();
+    expect(els.filter(e => e.type === 'stroke')[1].pts.map((p: { x: number; y: number }) => ({ x: p.x, y: p.y }))).toEqual(outside);
+    // а перо, нарисованное на картинке, уехало вместе с ней
+    expect(els.filter(e => e.type === 'stroke')[0].pts[0].x).toBeCloseTo(strokes[0].pts[0].x + 120, 0);
+  });
 });
 
 test.describe('импорт PDF', () => {

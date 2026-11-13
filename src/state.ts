@@ -5,6 +5,7 @@ import type {
 import { hasBaseSides, SIDES_MAX, SIDES_MIN, solidSides } from './solid';
 import { DEFAULT_NEW_PAGE_KEY } from './hotkeys';
 import { imageFrame, shapeHoldsText, translateElement } from './geom';
+import { attachNewElement, freezeAttachments, rebindAttachment } from './attachment';
 
 export interface LiveStroke {
   tool: 'pen' | 'highlighter';
@@ -305,7 +306,7 @@ export function replaceElements(next: Element[]): void {
 
 export function addElement(el: Element): void {
   pushHistory(state.board.elements);
-  replaceElements([...state.board.elements, el]);
+  replaceElements([...state.board.elements, attachNewElement(el, state.board.elements)]);
 }
 
 export function deleteSelected(): void {
@@ -329,13 +330,14 @@ export function selectedElements(): Element[] {
 export function insertCopies(els: Element[], dx: number, dy: number): Element[] {
   if (els.length === 0) return [];
   const gids = new Map<string, string>();
+  const ids = new Map(els.map(el => [el.id, uid()]));
   const copies = els.map(el => {
-    const copy = { ...translateElement(structuredClone(el), dx, dy), id: uid() };
+    const copy = { ...translateElement(structuredClone(el), dx, dy), id: ids.get(el.id)! };
     if (copy.groupId) {
       if (!gids.has(copy.groupId)) gids.set(copy.groupId, uid());
       copy.groupId = gids.get(copy.groupId)!;
     }
-    return copy;
+    return rebindAttachment(copy, ids);
   });
   pushHistory(state.board.elements);
   replaceElements([...state.board.elements, ...copies]);
@@ -624,6 +626,8 @@ export function openProject(project: Project, pageId?: string, view: 'home' | 'b
   const sameProject = project.id === state.project.id;
   // черновики принадлежат открытому проекту: в другом их нет
   if (!sameProject) { state.drafts = []; state.hold = null; }
+  // Старые проекты не хранили привязку штрихов и стикеров — фиксируем её по текущему положению.
+  for (const page of project.pages) page.elements = freezeAttachments(page.elements);
   state.project = project;
   const draft = sameProject && pageId ? state.drafts.find(d => d.id === pageId) : undefined;
   if (draft) {

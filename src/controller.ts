@@ -1,4 +1,4 @@
-import { foundationFor, withAttached } from './attachment';
+import { geometricFoundationFor, rebindAttachment, reattachMoved, withAttached } from './attachment';
 import type { Camera, Element, FadeStroke, Handle, ImageEl, Pt, ShapeEl, ToolId } from './types';
 import {
   state, update, onChange, beginStroke, extendStroke, endStroke, pushHistory, replaceElements,
@@ -444,8 +444,13 @@ export function initController(canvas: HTMLCanvasElement): void {
       case 'move':
         state.attachmentPreview = null;
         state.liveEdit = false;
-        if (a.moved) pushHistory(a.pre);
-        else if (a.deselectOnUp) setSelection([]);
+        if (a.moved) {
+          // Перенесли сам объект — его основа пересчитывается по новому месту.
+          // Привязанные к нему элементы ехали вместе с ним и связь сохраняют.
+          const next = reattachMoved(state.selection, state.board.elements, new Set(a.orig.keys()));
+          if (next !== state.board.elements) replaceElements(next);
+          pushHistory(a.pre);
+        } else if (a.deselectOnUp) setSelection([]);
         update();
         break;
       case 'handle':
@@ -916,14 +921,16 @@ export function initController(canvas: HTMLCanvasElement): void {
         let dy = s.y - a.start.y;
         if (!a.moved && Math.hypot(dx, dy) * state.camera.zoom < MOVE_THRESHOLD_PX) break;
         if (!a.moved && (a.duplicate || e.altKey)) {
+          const sources = a.pre.filter(el => a.orig.has(el.id));
+          const ids = new Map(sources.map(el => [el.id, uid()]));
           const groupIds = new Map<string, string>();
-          const copies = a.pre.filter(el => a.orig.has(el.id)).map(el => {
-            const copy = { ...structuredClone(el), id: uid() };
+          const copies = sources.map(el => {
+            const copy = { ...structuredClone(el), id: ids.get(el.id)! };
             if (copy.groupId) {
               if (!groupIds.has(copy.groupId)) groupIds.set(copy.groupId, uid());
               copy.groupId = groupIds.get(copy.groupId)!;
             }
-            return copy;
+            return rebindAttachment(copy, ids);
           });
           a.orig = new Map(copies.map(el => [el.id, el]));
           state.board.elements = [...a.pre, ...copies];
@@ -954,10 +961,13 @@ export function initController(canvas: HTMLCanvasElement): void {
           showGuides(box, boxAnchors(box, 'x'), boxAnchors(box, 'y'), a.others);
         }
         const moved = state.board.elements.map(el => (a.orig.has(el.id) ? translateElement(a.orig.get(el.id)!, dx, dy) : el));
+        // Основа, едущая вместе с элементом, связь сохраняет — новую не ищем.
+        const movingIds = new Set(a.orig.keys());
         const previews: { item: string; base: string }[] = [];
         for (const el of moved) {
           if (!state.selection.has(el.id)) continue;
-          const base = foundationFor(el, moved, new Set(a.orig.keys()));
+          if ((el.type !== 'stroke' && el.type !== 'note') || (el.baseId && movingIds.has(el.baseId))) continue;
+          const base = geometricFoundationFor(el, moved, movingIds);
           if (base) previews.push({ item: el.id, base: base.id });
         }
         state.attachmentPreview = previews;
@@ -1132,7 +1142,12 @@ export function initController(canvas: HTMLCanvasElement): void {
     heldArrows.clear();
     if (!n) return;
     cancelAnimationFrame(n.raf);
-    if (n.moved) pushHistory(n.pre);
+    if (n.moved) {
+      // Стрелки двигают объект так же, как мышь: основа пересчитывается по новому месту.
+      const next = reattachMoved(state.selection, state.board.elements, withAttached(state.selection, state.board.elements));
+      if (next !== state.board.elements) replaceElements(next);
+      pushHistory(n.pre);
+    }
     update();
   }
 

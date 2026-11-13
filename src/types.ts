@@ -25,6 +25,11 @@ export interface StrokeEl {
   /** Непрозрачность 0..1; нет поля — непрозрачный. */
   opacity?: number;
   pts: Pt[];
+  /**
+   * Основа, на которой нарисован штрих: id картинки, стикера или фигуры; null — вне основы.
+   * Нет поля у старых проектов — привязка фиксируется при открытии (см. attachment.ts).
+   */
+  baseId?: string | null;
   /** Идентификатор группы, если элемент сгруппирован. */
   groupId?: string;
 }
@@ -95,6 +100,11 @@ export interface NoteEl {
   x: number; y: number; w: number; h: number;
   text: string;
   color: string;
+  /**
+   * Основа, на которой поставлен стикер: id картинки; null — вне основы.
+   * Нет поля у старых проектов — привязка фиксируется при открытии (см. attachment.ts).
+   */
+  baseId?: string | null;
   groupId?: string;
 }
 

@@ -1,9 +1,19 @@
 import { hitTest } from './geom';
-import type { Element } from './types';
+import type { Element, NoteEl, StrokeEl } from './types';
 
-/** The uppermost eligible foundation containing at least two thirds of the object. */
-export function foundationFor(item: Element, elements: Element[], excluded = new Set<string>()): Element | undefined {
-  if (item.type !== 'stroke' && item.type !== 'note') return undefined;
+/** Элементы, которые могут быть прикреплены к основе. */
+type Attachable = StrokeEl | NoteEl;
+
+function isAttachable(item: Element): item is Attachable {
+  return item.type === 'stroke' || item.type === 'note';
+}
+
+/**
+ * Геометрически подходящая основа в текущем положении: верхняя из лежащих ниже
+ * по слоям, накрывающая не меньше двух третей объекта.
+ */
+export function geometricFoundationFor(item: Element, elements: Element[], excluded = new Set<string>()): Element | undefined {
+  if (!isAttachable(item)) return undefined;
   const itemIndex = elements.findIndex(e => e.id === item.id);
   // Only objects below the item in the layer stack can be foundations.
   const candidates = elements.slice(0, itemIndex < 0 ? elements.length : itemIndex).filter(e => !excluded.has(e.id) && e.id !== item.id &&
@@ -29,6 +39,70 @@ export function foundationFor(item: Element, elements: Element[], excluded = new
     }
     if (total > 0 && inside / total >= 2 / 3) return base;
   }
+}
+
+/**
+ * Основа элемента: сохранённая при создании/переносе (baseId). Поэтому картинка,
+ * подведённая под чужое перо, не становится его основой. У старых проектов поля
+ * ещё нет — тогда привязка определяется по геометрии (до миграции, см. freezeAttachments).
+ */
+export function foundationFor(item: Element, elements: Element[], excluded = new Set<string>()): Element | undefined {
+  if (!isAttachable(item)) return undefined;
+  if ('baseId' in item) {
+    const id = item.baseId;
+    if (!id || excluded.has(id)) return undefined;
+    return elements.find(e => e.id === id);
+  }
+  return geometricFoundationFor(item, elements, excluded);
+}
+
+/** Новый штрих или стикер запоминает основу, на которой он появился (null — вне основы). */
+export function attachNewElement(item: Element, elements: Element[]): Element {
+  if (!isAttachable(item)) return item;
+  const base = geometricFoundationFor(item, [...elements, item]);
+  return { ...item, baseId: base?.id ?? null };
+}
+
+/**
+ * Пересчитывает привязку элементов, которые пользователь передвинул сам:
+ * унесённое с картинки перо отцепляется, положенное на картинку — прикрепляется.
+ * Основа, ехавшая вместе с элементом, сохраняет связь.
+ */
+export function reattachMoved(ids: Set<string>, elements: Element[], moving: Set<string>): Element[] {
+  let changed = false;
+  const out = elements.map(el => {
+    if (!ids.has(el.id) || !isAttachable(el)) return el;
+    if (el.baseId && moving.has(el.baseId)) return el;
+    // Основы, едущие вместе с элементом, новую связь не образуют.
+    const base = geometricFoundationFor(el, elements, moving);
+    const baseId = base?.id ?? null;
+    if ('baseId' in el && el.baseId === baseId) return el;
+    changed = true;
+    return { ...el, baseId };
+  });
+  return changed ? out : elements;
+}
+
+/** Привязка копии: к копии основы, если её тоже копируют, иначе — вне основы. */
+export function rebindAttachment(el: Element, idMap: Map<string, string>): Element {
+  if (!isAttachable(el)) return el;
+  const baseId = el.baseId && idMap.has(el.baseId) ? idMap.get(el.baseId)! : null;
+  return { ...el, baseId };
+}
+
+/**
+ * Старые проекты не хранили привязку: фиксируем её по текущему положению один раз.
+ * Иначе штрих, под который подвели картинку, «прилипал» бы к ней при следующем переносе.
+ */
+export function freezeAttachments(elements: Element[]): Element[] {
+  if (!elements.some(el => isAttachable(el) && !('baseId' in el))) return elements;
+  const out = elements.slice();
+  for (let i = 0; i < out.length; i++) {
+    const el = out[i];
+    if (!isAttachable(el) || 'baseId' in el) continue;
+    out[i] = { ...el, baseId: geometricFoundationFor(el, out)?.id ?? null };
+  }
+  return out;
 }
 
 export function withAttached(ids: Set<string>, elements: Element[]): Set<string> {
