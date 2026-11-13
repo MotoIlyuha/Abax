@@ -536,7 +536,7 @@ function applyResizeMods(
       box.bottom = half;
     }
   }
-  if (mods.proportional && (h.dx !== 0 || h.dy !== 0)) {
+  if (mods.proportional && (h.dx !== 0 || h.dy !== 0) && origW > 1e-6 && origH > 1e-6) {
     // угловая ручка — по большему растяжению, боковая — по своей стороне
     const fX = (box.right - box.left) / origW;
     const fY = (box.bottom - box.top) / origH;
@@ -660,6 +660,99 @@ export function applyHandle(el: Element, h: Handle, pt: Pt, mods?: ResizeMods, r
     return { ...el, pts };
   }
   return el;
+}
+
+/** Отступ рамки выделения от габаритов, px экрана (как у одиночного элемента). */
+export const SELECTION_PAD_PX = 4;
+
+/** Ручки общего прямоугольника выделения: углы и середины сторон, без поворота. */
+export function boxHandles(box: AABB, zoom: number, padPx = SELECTION_PAD_PX): HandlePos[] {
+  const pad = padPx / zoom;
+  const x0 = box.x0 - pad, y0 = box.y0 - pad, x1 = box.x1 + pad, y1 = box.y1 + pad;
+  const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+  const dirs: [number, number][] = [[-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0]];
+  return dirs.map(([dx, dy]) => ({
+    h: { kind: 'resize' as const, dx: dx as -1 | 0 | 1, dy: dy as -1 | 0 | 1 },
+    x: dx < 0 ? x0 : dx > 0 ? x1 : cx,
+    y: dy < 0 ? y0 : dy > 0 ? y1 : cy,
+  }));
+}
+
+/** Новый прямоугольник выделения после перетаскивания ручки: края и модификаторы как у элемента. */
+export function resizeBox(
+  box: AABB,
+  h: Extract<Handle, { kind: 'resize' }>,
+  pt: Pt,
+  mods?: ResizeMods,
+  minSize = MIN_SHAPE_SIZE,
+): AABB {
+  const cx = (box.x0 + box.x1) / 2, cy = (box.y0 + box.y1) / 2;
+  const w = box.x1 - box.x0, hgt = box.y1 - box.y0;
+  const inner = { left: -w / 2, right: w / 2, top: -hgt / 2, bottom: hgt / 2 };
+  if (h.dx < 0) inner.left = Math.min(pt.x - cx, inner.right - minSize);
+  if (h.dx > 0) inner.right = Math.max(pt.x - cx, inner.left + minSize);
+  if (h.dy < 0) inner.top = Math.min(pt.y - cy, inner.bottom - minSize);
+  if (h.dy > 0) inner.bottom = Math.max(pt.y - cy, inner.top + minSize);
+  applyResizeMods(inner, h, mods, w, hgt, minSize);
+  return { x0: cx + inner.left, y0: cy + inner.top, x1: cx + inner.right, y1: cy + inner.bottom };
+}
+
+/**
+ * Масштабирует элемент из прямоугольника from в to. Толщины и кегли берут средний
+ * масштаб, чтобы сильное растяжение по одной оси не делало линии непомерно толстыми.
+ */
+export function scaleElement(el: Element, from: AABB, to: AABB): Element {
+  const fw = from.x1 - from.x0, fh = from.y1 - from.y0;
+  const sx = fw > 1e-6 ? (to.x1 - to.x0) / fw : 1;
+  const sy = fh > 1e-6 ? (to.y1 - to.y0) / fh : 1;
+  const mx = (x: number) => to.x0 + (x - from.x0) * sx;
+  const my = (y: number) => to.y0 + (y - from.y0) * sy;
+  const s = Math.sqrt(sx * sy) || 1;
+  switch (el.type) {
+    case 'stroke':
+      return { ...el, width: Math.max(0.25, el.width * s), pts: el.pts.map(p => ({ x: mx(p.x), y: my(p.y), p: p.p })) };
+    case 'poly':
+      return { ...el, width: Math.max(0.25, el.width * s), pts: el.pts.map(p => ({ x: mx(p.x), y: my(p.y), p: p.p })) };
+    case 'shape': {
+      const nw = el.w * sx, nh = el.h * sy;
+      const ncx = mx(el.x + el.w / 2), ncy = my(el.y + el.h / 2);
+      const next: ShapeEl = { ...el, x: ncx - nw / 2, y: ncy - nh / 2, w: nw, h: nh };
+      if (el.textSize) next.textSize = Math.max(1, el.textSize * sy);
+      if (el.radius) next.radius = el.radius * Math.min(sx, sy);
+      return next;
+    }
+    case 'text': {
+      const next: TextEl = { ...el, x: mx(el.x), y: my(el.y), size: Math.max(1, el.size * sy) };
+      if (el.w !== undefined) next.w = el.w * sx;
+      return next;
+    }
+    case 'note': {
+      const nw = el.w * sx, nh = el.h * sy;
+      const ncx = mx(el.x + el.w / 2), ncy = my(el.y + el.h / 2);
+      return { ...el, x: ncx - nw / 2, y: ncy - nh / 2, w: nw, h: nh };
+    }
+    case 'image': {
+      const nw = el.w * sx, nh = el.h * sy;
+      const ncx = mx(el.x + el.w / 2), ncy = my(el.y + el.h / 2);
+      const next: ImageEl = { ...el, x: ncx - nw / 2, y: ncy - nh / 2, w: nw, h: nh };
+      if (el.radius) next.radius = el.radius * Math.min(sx, sy);
+      return next;
+    }
+    case 'solid': {
+      // якорь у тел не совпадает с центром габаритов: двигаем к центру новой рамки
+      const old = elementAABB(el);
+      const ox = (old.x0 + old.x1) / 2, oy = (old.y0 + old.y1) / 2;
+      return {
+        ...el,
+        x: el.x + (mx(ox) - ox),
+        y: el.y + (my(oy) - oy),
+        w: el.w * sx,
+        d: el.d * s,
+        h: el.h * sy,
+        width: Math.max(0.25, el.width * s),
+      };
+    }
+  }
 }
 
 /** Вставляет узел в ребро i (перед i+1) ломаной; возвращает клон. */

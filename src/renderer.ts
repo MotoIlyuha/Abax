@@ -1,7 +1,7 @@
 import type { Camera, Element, GridMode, ImageEl, Page, ShapeEl, SolidEl } from './types';
 import { foreignSelections } from './collab';
 import {
-  type AABB, type Caption, cornerRadius, elementAABB, elementHandles, imageFrame, pageLinkView, presentCamera, shapeCaption,
+  type AABB, type Caption, boxHandles, cornerRadius, elementAABB, elementHandles, imageFrame, pageLinkView, presentCamera, shapeCaption,
   shapeHoldsText, wrapText, textLines, TEXT_FONT, NOTE_PAD, NOTE_FONT, NOTE_TEXT_COLOR,
 } from './geom';
 import { ribbonPath } from './stroke';
@@ -915,7 +915,8 @@ function drawHandles(ctx: CanvasRenderingContext2D, cam: Camera): void {
   const el = state.board.elements.find(e => state.selection.has(e.id));
   if (!el) return;
   const hs = elementHandles(el, cam.zoom);
-  if (hs.length === 0) return;
+  // у штриха собственных ручек нет — масштабируем за общую рамку
+  if (hs.length === 0) { drawBoxHandles(ctx, cam, elementAABB(el)); return; }
   // направляющие параметров (высота, радиус) — под ручками
   ctx.strokeStyle = '#3273f5';
   ctx.lineWidth = 1;
@@ -992,6 +993,21 @@ function drawHandles(ctx: CanvasRenderingContext2D, cam: Camera): void {
     // end/node
     ctx.beginPath();
     ctx.arc(sx, sy, 4.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+}
+
+/** Ручки общего прямоугольника выделения — квадратики по углам и серединам сторон. */
+function drawBoxHandles(ctx: CanvasRenderingContext2D, cam: Camera, box: AABB): void {
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = '#3273f5';
+  ctx.lineWidth = 1.5;
+  for (const { x, y } of boxHandles(box, cam.zoom)) {
+    const sx = (x - cam.x) * cam.zoom;
+    const sy = (y - cam.y) * cam.zoom;
+    ctx.beginPath();
+    ctx.rect(sx - 3.5, sy - 3.5, 7, 7);
     ctx.fill();
     ctx.stroke();
   }
@@ -1208,6 +1224,7 @@ function draw(): void {
     }
     ctx.setLineDash([]);
     if (state.selection.size === 1) drawHandles(ctx, cam);
+    else drawBoxHandles(ctx, cam, contentBBox(selected));
   }
   if (state.guides.length > 0) drawGuides(ctx, cam);
   if (state.marquee) {

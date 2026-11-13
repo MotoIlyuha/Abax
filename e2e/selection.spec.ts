@@ -442,3 +442,41 @@ test.describe('перенос выделенного стрелками', () => 
     expect(stillStopped.y).toBe(300);
   });
 });
+
+test.describe('размер выделения', () => {
+  test('несколько выделенных растягиваются за ручки общей рамки', async ({ board, page }) => {
+    const a = await board.rect(400, 300, 450, 350);
+    const b = await board.rect(500, 300, 550, 350);
+    await board.tool('v');
+    await board.drag([{ x: 380, y: 280 }, { x: 560, y: 360 }]);
+    expect((await board.state()).selection.sort()).toEqual([a.id, b.id].sort());
+
+    // общая рамка с отступом 4px: тянем правый нижний угол
+    await board.drag([{ x: 554, y: 354 }, { x: 654, y: 404 }]);
+    const els = await board.elements();
+    expect(els[0].w).toBeGreaterThan(50);
+    expect(els[0].h).toBeGreaterThan(50);
+    expect(els[1].x).toBeGreaterThan(500);
+    expect((await board.state()).selection.sort()).toEqual([a.id, b.id].sort());
+
+    await page.keyboard.press('Control+z');
+    expect((await board.elements())[0]).toMatchObject({ x: 400, y: 300, w: 50, h: 50 });
+  });
+
+  test('штрих без собственных ручек меняет размер за рамку', async ({ board, page }) => {
+    await board.drag([{ x: 400, y: 300 }, { x: 500, y: 300 }]);
+    await board.tool('v');
+    await board.click({ x: 450, y: 300 });
+    const before = (await board.elements())[0];
+    // правый нижний угол габаритов штриха: запас на толщину и 4px рамки
+    const x1 = before.pts[1].x + before.width * 0.8 + 4;
+    const y1 = before.pts[1].y + before.width * 0.8 + 4;
+    await board.drag([{ x: x1, y: y1 }, { x: x1 + 100, y: y1 + 100 }]);
+    const after = (await board.elements())[0];
+    expect(after.pts[1].x).toBeGreaterThan(before.pts[1].x);
+    expect(after.pts[1].y).toBeGreaterThan(before.pts[1].y);
+
+    await page.keyboard.press('Control+z');
+    expect((await board.elements())[0].pts[1]).toMatchObject({ x: before.pts[1].x, y: before.pts[1].y });
+  });
+});

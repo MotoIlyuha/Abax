@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  aabbIntersects, aabbUnion, alignGuides, alignShift, applyHandle, boxAnchors, cornerRadius, distToSeg, elementAABB, elementHandles, erasePart, fitShapeText,
-  gridStepFor, hitTest, imageFrame, insertPolyNode, parseTextSize, pointInPoly, presentCamera, removePolyNode, shapeCaption,
+  aabbIntersects, aabbUnion, alignGuides, alignShift, applyHandle, boxAnchors, boxHandles, cornerRadius, distToSeg, elementAABB, elementHandles, erasePart, fitShapeText,
+  gridStepFor, hitTest, imageFrame, insertPolyNode, parseTextSize, pointInPoly, presentCamera, removePolyNode, resizeBox, scaleElement, shapeCaption,
   shapeHoldsText, shapeTextBox, snapValue, stepTextSize, SHAPE_TEXT_LH, SHAPE_TEXT_MAX, SHAPE_TEXT_MIN, TEXT_FONT, TEXT_SIZES,
   textSize, wrapText,
 } from '../../src/geom';
@@ -562,5 +562,45 @@ describe('erasePart: ластик для пера и маркера', () => {
     const [left] = erasePart(ramp, 2, 50, 0, 5)!;
     const last = left[left.length - 1];
     expect(last.p).toBeCloseTo(last.x / 100, 5);
+  });
+});
+
+describe('изменение размера общего выделения', () => {
+  const box = { x0: 0, y0: 0, x1: 100, y1: 50 };
+
+  it('ручки общего прямоугольника — 8 штук, углы и середины сторон', () => {
+    const hs = boxHandles(box, 1);
+    expect(hs).toHaveLength(8);
+    expect(hs.find(h => h.h.kind === 'resize' && h.h.dx === -1 && h.h.dy === -1)).toMatchObject({ x: -4, y: -4 });
+    expect(hs.find(h => h.h.kind === 'resize' && h.h.dx === 0 && h.h.dy === 1)).toMatchObject({ x: 50, y: 54 });
+  });
+
+  it('resizeBox тянет угол и не даёт схлопнуть рамку', () => {
+    const h = { kind: 'resize' as const, dx: 1 as const, dy: 1 as const };
+    const next = resizeBox(box, h, { x: 200, y: 150, p: 0.5 });
+    expect(next).toEqual({ x0: 0, y0: 0, x1: 200, y1: 150 });
+    const tiny = resizeBox(box, h, { x: -200, y: -200, p: 0.5 });
+    expect(tiny.x1 - tiny.x0).toBeGreaterThan(0);
+    expect(tiny.y1 - tiny.y0).toBeGreaterThan(0);
+  });
+
+  it('Shift сохраняет пропорции, Alt масштабирует от центра', () => {
+    const h = { kind: 'resize' as const, dx: 1 as const, dy: 1 as const };
+    const proportional = resizeBox(box, h, { x: 200, y: 200, p: 0.5 }, { proportional: true });
+    expect((proportional.x1 - proportional.x0) / (proportional.y1 - proportional.y0)).toBeCloseTo(2);
+    const centered = resizeBox(box, h, { x: 200, y: 100, p: 0.5 }, { fromCenter: true });
+    expect(centered.x0).toBe(-100);
+    expect(centered.y0).toBe(-50);
+  });
+
+  it('scaleElement растягивает фигуры, штрихи и текст из общей рамки', () => {
+    const to = { x0: 100, y0: 100, x1: 300, y1: 150 };
+    const r = scaleElement(rect({ x: 0, y: 0, w: 100, h: 50 }), box, to) as ShapeEl;
+    expect(r).toMatchObject({ x: 100, y: 100, w: 200, h: 50 });
+    const s = scaleElement(stroke([pt(0, 0), pt(100, 50)], 4), box, to) as StrokeEl;
+    expect(s.pts[1]).toMatchObject({ x: 300, y: 150 });
+    expect(s.width).toBeCloseTo(4 * Math.SQRT2);
+    const t = scaleElement(text({ x: 10, y: 20, size: 20 }), box, to) as TextEl;
+    expect(t).toMatchObject({ x: 120, y: 120, size: 20 });
   });
 });

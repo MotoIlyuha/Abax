@@ -7,8 +7,8 @@ import {
   zoomAtPoint, ZOOM_MAX, ZOOM_MIN, insertCopies, isDraftId, touchProject,
 } from './state';
 import {
-  type AABB, hitTest, erasePart, aabbIntersects, aabbUnion, alignGuides, alignShift, boxAnchors, elementAABB, elementHandles,
-  applyHandle, insertPolyNode, removePolyNode, gridStepFor, shapeHoldsText, snapValue, translateElement,
+  type AABB, hitTest, erasePart, aabbIntersects, aabbUnion, alignGuides, alignShift, boxAnchors, boxHandles, elementAABB, elementHandles,
+  applyHandle, insertPolyNode, removePolyNode, gridStepFor, resizeBox, scaleElement, shapeHoldsText, snapValue, translateElement,
 } from './geom';
 import { collabActive, noteCursor, readOnly } from './collab';
 import { isNativeApp } from './native';
@@ -72,6 +72,11 @@ type Action = { pid: number } & (
   | {
     kind: 'handle'; el: Element; h: Handle; pre: Element[]; changed: boolean; rotBase?: { a0: number; rot0: number };
     others: AABB[] | null;
+  }
+  /** Общий размер выделения: тянем ручку рамки, все элементы масштабируются из исходной рамки. */
+  | {
+    kind: 'scale'; pre: Element[]; orig: Map<string, Element>; box: AABB; h: Extract<Handle, { kind: 'resize' }>;
+    changed: boolean; others: AABB[] | null;
   }
   | { kind: 'marquee'; flash?: boolean }
   | { kind: 'fade'; stroke: FadeStroke }
@@ -219,6 +224,18 @@ export function initController(canvas: HTMLCanvasElement): void {
       .filter(el => state.selection.has(el.id) && el.id !== state.hideElId)
       .map(elementAABB);
     return boxes.length ? boxes.reduce(aabbUnion) : null;
+  }
+
+  /**
+   * Ручки изменения размера общего выделения: у нескольких объектов — всегда,
+   * у одиночного — только если у него нет собственных ручек (например, штрих).
+   */
+  function selectionFrame(): { box: AABB; handles: ReturnType<typeof boxHandles> } | null {
+    const els = state.board.elements.filter(el => state.selection.has(el.id) && el.id !== state.hideElId);
+    if (els.length === 0) return null;
+    if (els.length === 1 && elementHandles(els[0], state.camera.zoom).length > 0) return null;
+    const box = els.map(elementAABB).reduce(aabbUnion);
+    return { box, handles: boxHandles(box, state.camera.zoom) };
   }
 
   function startMove(e: PointerEvent, start: Pt, deselectOnUp: boolean, link: ImageEl | null): void {
@@ -436,6 +453,11 @@ export function initController(canvas: HTMLCanvasElement): void {
         if (a.changed) pushHistory(a.pre);
         update();
         break;
+      case 'scale':
+        state.liveEdit = false;
+        if (a.changed) pushHistory(a.pre);
+        update();
+        break;
       case 'marquee': finishMarquee(!!a.flash); break;
       case 'fade':
         a.stroke.endT = performance.now(); // перо оторвано — след гаснет
@@ -552,6 +574,26 @@ export function initController(canvas: HTMLCanvasElement): void {
         update();
         break;
       case 'select': {
+        // общая рамка нескольких выделенных: тянем за её ручки — меняется размер всех
+        const frame = selectionFrame();
+        if (frame) {
+          const r = HANDLE_HIT_PX / state.camera.zoom;
+          for (const hp of frame.handles) {
+            if (hp.h.kind !== 'resize' || Math.hypot(hp.x - s.x, hp.y - s.y) > r) continue;
+            // прикреплённые к выделенному элементы меняются вместе с ним, как при переносе
+            const orig = new Map<string, Element>();
+            for (const id of withAttached(state.selection, state.board.elements)) {
+              const el = state.board.elements.find(x => x.id === id);
+              if (el) orig.set(id, el);
+            }
+            action = {
+              pid: e.pointerId, kind: 'scale', pre: state.board.elements, orig, box: frame.box, h: hp.h,
+              changed: false, others: guideTargets(new Set(orig.keys())),
+            };
+            state.liveEdit = true;
+            return;
+          }
+        }
         // сперва ручки редактирования у единственного выделенного
         if (state.selection.size === 1) {
           const sel = state.board.elements.find(e => state.selection.has(e.id));
@@ -841,6 +883,29 @@ export function initController(canvas: HTMLCanvasElement): void {
           showGuides(box, xs, ys, guided);
         }
         replaceElements(state.board.elements.map(x => (x.id === a.el.id ? next : x)));
+        a.changed = true;
+        break;
+      }
+      case 'scale': {
+        const s = toScene(lp.x, lp.y);
+        const step = snapStepNow();
+        let pt = { x: snapValue(s.x, step), y: snapValue(s.y, step), p: s.p };
+        const guided = a.others;
+        if (guided) {
+          // тянемый край рамки примагничиваем к опорным линиям соседей
+          const tol = GUIDE_SNAP_PX / state.camera.zoom;
+          const gx = a.h.dx !== 0 ? alignShift([pt.x], guided, 'x', tol) : null;
+          const gy = a.h.dy !== 0 ? alignShift([pt.y], guided, 'y', tol) : null;
+          if (gx !== null) pt = { ...pt, x: pt.x + gx };
+          if (gy !== null) pt = { ...pt, y: pt.y + gy };
+        }
+        const box = resizeBox(a.box, a.h, pt, { proportional: e.shiftKey || e.ctrlKey || e.metaKey, fromCenter: e.altKey });
+        if (guided) {
+          const xs = a.h.dx === 0 ? [] : e.altKey ? [box.x0, box.x1] : [a.h.dx > 0 ? box.x1 : box.x0];
+          const ys = a.h.dy === 0 ? [] : e.altKey ? [box.y0, box.y1] : [a.h.dy > 0 ? box.y1 : box.y0];
+          showGuides(box, xs, ys, guided);
+        }
+        replaceElements(state.board.elements.map(el => (a.orig.has(el.id) ? scaleElement(a.orig.get(el.id)!, a.box, box) : el)));
         a.changed = true;
         break;
       }
