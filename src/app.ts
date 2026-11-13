@@ -31,6 +31,7 @@ import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker&inline';
 import { collabActive, isHost, myColor, noteSelection, readOnly, startHostConnection, stopCollab } from './collab';
 import { closePresent, openPresent, presentOpen } from './present';
 import { type ToolbarGroup, onToolbarChange, restoreToolbar, svg, toolDef, toolTip, toolUsesColor, toolbarConfig } from './toolbar';
+import { canDropTool, toolDropElement } from './tool-drop';
 import {
   addSettingsSection, openSettingsDialog, removeSettingsSection, settingsDialogOpen, type SettingsSection,
 } from './settings-dialog';
@@ -916,7 +917,16 @@ function buildToolGroupPanel(cp: CtxPanel, groupId: string): void {
     b.title = toolTip(id);
     b.innerHTML = toolDef(id).icon;
     b.dataset.shape = id;
+    if (canDropTool(id)) {
+      b.classList.add('tool-drop');
+      b.addEventListener('pointerdown', e => {
+        if (e.button === 0 && e.isPrimary) {
+          startToolDrop(id, e, () => { if (!cp.detached) closePanel(cp); });
+        }
+      });
+    }
     b.addEventListener('click', () => {
+      if (dropClickBlocked()) return;
       // откреплённая панель работает как палитра — остаётся открытой, подсветку обновит refresh()
       if (!cp.detached) closePanel(cp);
       setTool(id);
@@ -4016,6 +4026,107 @@ function startCarouselRename(nameEl: HTMLElement, projectId: string, pageId: str
   });
 }
 
+// ----- Перетаскивание инструмента с панели на холст -----
+
+/** Указатель над холстом и можно менять доску — только туда бросают инструмент. */
+function overCanvas(e: PointerEvent): boolean {
+  if (state.view !== 'board' || !canEditBoard()) return false;
+  return document.elementFromPoint(e.clientX, e.clientY) === canvas;
+}
+
+interface ToolDrop {
+  tool: ToolId;
+  pointerId: number;
+  x0: number;
+  y0: number;
+  ghost: HTMLElement | null;
+  onStart?: () => void;
+}
+
+let toolDrop: ToolDrop | null = null;
+/** После броска клик по кнопке инструмента уже не нужен: он выбрал бы инструмент вместо создания. */
+let dropClickGuard = 0;
+
+function blockDropClick(): void { dropClickGuard = performance.now() + 300; }
+function dropClickBlocked(): boolean { return performance.now() < dropClickGuard; }
+
+function toolGhost(tool: ToolId): HTMLElement {
+  const ghost = document.createElement('div');
+  ghost.className = 'tool-ghost drag-ghost';
+  ghost.innerHTML = toolDef(tool).icon;
+  document.body.appendChild(ghost);
+  return ghost;
+}
+
+function moveToolGhost(ghost: HTMLElement, e: PointerEvent): void {
+  ghost.style.left = `${e.clientX}px`;
+  ghost.style.top = `${e.clientY}px`;
+}
+
+/**
+ * Возможное перетаскивание инструмента: объект «срывается» с кнопки, только когда указатель
+ * ушёл на холст (жест выбора из группы этим не ломается). activate — указатель уже на холсте.
+ */
+function startToolDrop(tool: ToolId, e: PointerEvent, onStart?: () => void, activate = false): void {
+  if (toolDrop || !canDropTool(tool)) return;
+  const d: ToolDrop = { tool, pointerId: e.pointerId, x0: e.clientX, y0: e.clientY, ghost: null, onStart };
+  toolDrop = d;
+  const begin = (ev: PointerEvent) => {
+    d.ghost = toolGhost(d.tool);
+    document.body.classList.add('tool-dragging');
+    moveToolGhost(d.ghost, ev);
+    d.onStart?.();
+  };
+  if (activate && overCanvas(e)) begin(e);
+  const move = (ev: PointerEvent) => {
+    if (ev.pointerId !== d.pointerId || toolDrop !== d) return;
+    if (!d.ghost) {
+      if (Math.hypot(ev.clientX - d.x0, ev.clientY - d.y0) < 6 || !overCanvas(ev)) return;
+      begin(ev);
+    }
+    moveToolGhost(d.ghost!, ev);
+  };
+  const finish = (ev: PointerEvent) => {
+    if (ev.pointerId !== d.pointerId) return;
+    window.removeEventListener('pointermove', move);
+    window.removeEventListener('pointerup', finish);
+    window.removeEventListener('pointercancel', finish);
+    if (toolDrop === d) toolDrop = null;
+    if (!d.ghost) return;
+    d.ghost.remove();
+    document.body.classList.remove('tool-dragging');
+    if (ev.type === 'pointerup' && overCanvas(ev)) {
+      dropToolOnCanvas(d.tool, ev.clientX, ev.clientY);
+      blockDropClick();
+    }
+  };
+  window.addEventListener('pointermove', move);
+  window.addEventListener('pointerup', finish);
+  window.addEventListener('pointercancel', finish);
+}
+
+/** Создаёт объект в точке экрана; он сразу выделен, а стикер — открыт для ввода. */
+function dropToolOnCanvas(tool: ToolId, x: number, y: number): void {
+  if (state.view !== 'board' || !canEditBoard()) return;
+  const r = canvas.getBoundingClientRect();
+  const cam = state.camera;
+  const el = toolDropElement(
+    tool, uid(),
+    { x: (x - r.left) / cam.zoom + cam.x, y: (y - r.top) / cam.zoom + cam.y },
+    cam.zoom,
+    { color: state.style.color, width: state.style.width, opacity: state.style.opacity },
+    state.noteColor,
+  );
+  if (!el) return;
+  addElement(el);
+  selectInserted(el.id);
+  if (el.type === 'note') {
+    // фон стикера рисуем поверх скрытого холстом элемента, пока идёт ввод
+    state.liveNote = { x: el.x, y: el.y, w: el.w, h: el.h, color: el.color };
+    beginTextEdit({ el });
+  }
+}
+
 // ----- Тулбар -----
 
 function buildToolbar(): void {
@@ -4048,7 +4159,11 @@ function buildToolbar(): void {
         suppressClick = false;
         const existing = panelOf(groupId);
         // Откреплённая палитра сохраняет обычное поведение кнопки.
-        if (existing?.detached) return;
+        if (existing?.detached) {
+          const shape = b.dataset.shape as ToolId | undefined;
+          if (e.button === 0 && e.isPrimary && shape) startToolDrop(shape, e);
+          return;
+        }
         if (!existing) openCtxPanel(groupId, 'toolbar');
         const panel = panelOf(groupId);
         if (!panel) return;
@@ -4074,6 +4189,9 @@ function buildToolbar(): void {
         const move = (event: PointerEvent) => {
           if (event.pointerId !== e.pointerId) return;
           if (Math.hypot(event.clientX - startX, event.clientY - startY) > 5) moved = true;
+          // потянули за кнопку группы на холст — это уже не выбор инструмента, а перенос объекта
+          const shape = b.dataset.shape as ToolId | undefined;
+          if (moved && shape) startToolDrop(shape, event, () => closePanel(panel), true);
           highlight(hitTool(event));
         };
         const finish = (event: PointerEvent) => {
@@ -4102,6 +4220,7 @@ function buildToolbar(): void {
       });
       b.addEventListener('click', () => {
         if (suppressClick) { suppressClick = false; return; }
+        if (dropClickBlocked()) return;
         toggleCtxPanel(groupId, 'toolbar');
         selectShownTool();
       });
@@ -4112,7 +4231,16 @@ function buildToolbar(): void {
       b.innerHTML = toolDef(id).icon;
       // панель стикеров открывается с этим инструментом и встаёт по центру его кнопки
       if (id === 'note') b.dataset.ctx = 'note';
-      b.addEventListener('click', () => setTool(id));
+      if (canDropTool(id)) {
+        b.classList.add('tool-drop');
+        b.addEventListener('pointerdown', e => {
+          if (e.button === 0 && e.isPrimary) startToolDrop(id, e);
+        });
+      }
+      b.addEventListener('click', () => {
+        if (dropClickBlocked()) return;
+        setTool(id);
+      });
     }
     tools.appendChild(b);
   }
