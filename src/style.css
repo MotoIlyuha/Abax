@@ -1250,6 +1250,8 @@ body.no-ui-anim #toast.show { animation: none; }
 .sd-updates-found[hidden] { display: none; }
 .sd-updates-download { border-color: var(--accent); background: var(--accent); color: #fff; }
 .sd-updates-download:hover { background: #2160dd; color: #fff; }
+/* «Обновить страницу…» — длинная подпись: переносим строки, а не обрезаем */
+.sd-updates-reload { white-space: normal; text-align: left; line-height: 1.35; }
 
 /* ----- Карточка «Вышла новая версия» (справа под шапкой) ----- */
 /* сообщение совместной работы (#collab-notice) выглядит так же */
@@ -1316,6 +1318,8 @@ body.no-ui-anim #update-card, body.no-ui-anim #collab-notice { animation: none; 
 }
 .uc-download { border: 1px solid var(--accent); background: var(--accent); color: #fff; }
 .uc-download:hover { background: #2160dd; }
+/* у сайта вместо «Скачать» — длинная подпись «Обновить страницу…» */
+.uc-reload { flex: 1 1 100%; white-space: normal; text-align: left; line-height: 1.35; }
 .uc-later { border: 1px solid var(--border); background: #fff; color: var(--fg); }
 .uc-later:hover { border-color: #c9ced8; }
 .uc-skip {

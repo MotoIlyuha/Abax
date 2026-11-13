@@ -84,6 +84,19 @@ function downloadLink(info: UpdateInfo, cls: string): HTMLAnchorElement {
   return a;
 }
 
+/**
+ * У сайта файла для установки нет: новая версия уже лежит на сервере, и её ставит
+ * обычная перезагрузка страницы. В Electron и на Android так не обновляются — там файл.
+ */
+function reloadPageButton(cls: string): HTMLButtonElement {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = cls;
+  b.textContent = 'Обновить страницу для установки новой версии';
+  b.addEventListener('click', () => location.reload());
+  return b;
+}
+
 export function closeUpdateCard(): void {
   document.getElementById('update-card')?.remove();
 }
@@ -144,16 +157,21 @@ export function showUpdateCard(info: UpdateInfo, platform: UpdatePlatform): void
 
   const actions = document.createElement('div');
   actions.className = 'uc-actions';
-  const download = downloadLink(info, 'uc-download');
-  download.addEventListener('click', () => {
-    const text = info.file ? AFTER_DOWNLOAD[platform] : undefined;
-    if (text) {
-      hint.textContent = text;
-      hint.hidden = false;
-    } else {
-      closeUpdateCard();
-    }
-  });
+  // на сайте новая версия уже развёрнута — предлагаем не скачивать файл, а перезагрузить страницу
+  const primary = platform === 'web'
+    ? reloadPageButton('uc-download uc-reload')
+    : downloadLink(info, 'uc-download');
+  if (platform !== 'web') {
+    primary.addEventListener('click', () => {
+      const text = info.file ? AFTER_DOWNLOAD[platform] : undefined;
+      if (text) {
+        hint.textContent = text;
+        hint.hidden = false;
+      } else {
+        closeUpdateCard();
+      }
+    });
+  }
   const later = document.createElement('button');
   later.className = 'uc-later';
   later.textContent = 'Позже';
@@ -167,7 +185,7 @@ export function showUpdateCard(info: UpdateInfo, platform: UpdatePlatform): void
     setUpdatePrefs({ skip: info.version });
     closeUpdateCard();
   });
-  actions.append(download, later, skip);
+  actions.append(primary, later, skip);
   card.append(hint, actions);
   document.body.appendChild(card);
 }
@@ -212,7 +230,12 @@ export function renderUpdateSettings(host: HTMLElement): void {
           page.target = '_blank';
           page.rel = 'noopener noreferrer';
           page.textContent = 'Что нового';
-          found.append(downloadLink(info, 'sd-btn sd-about-link sd-updates-download'), page);
+          found.append(
+            platform === 'web'
+              ? reloadPageButton('sd-btn sd-about-link sd-updates-download sd-updates-reload')
+              : downloadLink(info, 'sd-btn sd-about-link sd-updates-download'),
+            page,
+          );
           found.hidden = false;
         }
       } catch {

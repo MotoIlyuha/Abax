@@ -110,11 +110,11 @@ test.describe('обновления', () => {
     await expect(notes.locator('li').first().locator('strong')).toHaveText('Обновления');
     await expect(notes.locator('li b')).toHaveCount(0); // HTML из описания — только текстом
     await expect(card).not.toContainText('abc123');
-    // в браузере файла под платформу нет — ведём на страницу релиза
-    const open = card.locator('.uc-download');
-    await expect(open).toHaveText('Открыть релиз');
-    await expect(open).toHaveAttribute('href', `https://github.com/MotoIlyuha/Abax/releases/tag/v${NEXT}`);
-    await expect(open).toHaveAttribute('target', '_blank');
+    // в браузере новая версия уже развёрнута на сайте — вместо файла перезагружаем страницу
+    const reloadBtn = card.locator('.uc-download');
+    await expect(reloadBtn).toHaveText('Обновить страницу для установки новой версии');
+    await expect(reloadBtn).toHaveRole('button');
+    await expect(card.locator('.uc-hint')).toBeHidden();
 
     await card.locator('.uc-later').click();
     await expect(card).toHaveCount(0);
@@ -130,6 +130,22 @@ test.describe('обновления', () => {
     await expect(card).toBeVisible(SHOWN);
     expect(requests()).toBe(2);
     await card.locator('.uc-close').click();
+    await expect(card).toHaveCount(0);
+  });
+
+  test('кнопка на сайте перезагружает страницу — новая версия уже развёрнута', async ({ page }) => {
+    await startupDone(page);
+    await serveRelease(page, NEXT);
+    await dayPassed(page);
+    await reload(page);
+    const card = page.locator('#update-card');
+    await expect(card.locator('.uc-download')).toHaveText('Обновить страницу для установки новой версии');
+    await Promise.all([
+      page.waitForEvent('load'),
+      card.locator('.uc-download').click(),
+    ]);
+    await page.waitForFunction(() => !!(window as any).__doska);
+    // после перезагрузки версия уже считается проверенной — карточка не возвращается
     await expect(card).toHaveCount(0);
   });
 
@@ -198,8 +214,9 @@ test.describe('обновления', () => {
     await check.click();
     await expect(status).toHaveText(`Вышла версия ${NEXT}`);
     await expect(status).not.toHaveClass(/error/);
-    const found = box.locator('.sd-updates-found a');
-    await expect(found).toHaveText(['Открыть релиз', 'Что нового']);
+    const found = box.locator('.sd-updates-found :is(a, button)');
+    await expect(found).toHaveText(['Обновить страницу для установки новой версии', 'Что нового']);
+    await expect(found.nth(0)).toHaveRole('button');
     await expect(found.nth(1)).toHaveAttribute('href', `https://github.com/MotoIlyuha/Abax/releases/tag/v${NEXT}`);
 
     // автопроверку выключили — при запуске GitHub не спрашиваем
