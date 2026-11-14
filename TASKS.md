@@ -17,7 +17,7 @@
   - `parseBoardUrl`, `buildBoardUrl`, `computeFocusCamera`, `focusElementsOnBoard`; `Flash.ms?`.
   - Тесты `tests/unit/router.test.ts`.
 
-- [ ] **TASK-04: Дельта-синхронизация (`src/delta.ts`)**
+- [x] **TASK-04: Дельта-синхронизация (`src/delta.ts`)**
   - `ElementOp`, `BoardPatch`, `diffElements`, `applyBoardPatch`.
   - Тесты `tests/unit/delta.test.ts`.
 
