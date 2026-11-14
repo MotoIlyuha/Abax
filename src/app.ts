@@ -1,6 +1,6 @@
 import { startCrop } from './crop';
 import type {
-  BoardSettings, Camera, Element, GridMode, ImageEl, NoteEl, Page, PageTransition, Project, ProjectMeta, ShapeEl, TextAlign, TextEl, TextVAlign,
+  BoardSettings, Camera, Element, GridMode, ImageEl, NoteEl, Page, PageTransition, Project, ProjectMeta, ShapeEl, TaskEl, TextAlign, TextEl, TextVAlign,
   ToolId, ToolbarPos, WheelMode,
 } from './types';
 import {
@@ -48,6 +48,9 @@ import { copySelection, duplicateSelection as duplicateInPlace, pasteFromMemory,
 import { hideHeldTooltip, showHeldTooltip } from './tooltip';
 import { copyBoardLink, currentBoardLink, registerLinkViewHooks } from './link-view-ui';
 import { addGestureProbe } from './gesture';
+import { initTaskOverlay, isTeacher } from './task-overlay';
+import { openTaskDialog, taskDialogOpen, type TaskFormValues } from './task-dialog';
+import { TASK_H, TASK_W, createTaskElement } from './task-element';
 import {
   browserSetRights, browserShareStatus, startBrowserCloud, startBrowserHost, stopBrowserCloud, stopBrowserHost,
 } from './browser-host';
@@ -1732,14 +1735,27 @@ function updateQuickMenu(): void {
   qm.textContent = '';
   // цвет и толщина — одна кнопка и одна панель; толщина — только для «линейных» элементов и рамок картинок
   const hasInk = selEls.some(e => e.type === 'stroke' || e.type === 'shape' || e.type === 'poly' || e.type === 'solid' || e.type === 'image');
-  const sBtn = document.createElement('button');
-  sBtn.className = 'qm-btn qm-style' + (ctxOpenFrom('style', 'quick') ? ' active' : '');
-  sBtn.dataset.ctx = 'style';
-  sBtn.title = selEls.every(e => e.type === 'image') ? 'Рамка и скругление' : hasInk ? 'Цвет и толщина' : 'Цвет';
-  sBtn.appendChild(styleIndicator(hasInk));
-  sBtn.addEventListener('mousedown', e => e.preventDefault());
-  sBtn.addEventListener('click', () => toggleStylePanel('quick'));
-  qm.appendChild(sBtn);
+  // у задания нет ни цвета, ни толщины: кнопка «Цвет» ничего бы не делала
+  if (!selEls.every(e => e.type === 'task')) {
+    const sBtn = document.createElement('button');
+    sBtn.className = 'qm-btn qm-style' + (ctxOpenFrom('style', 'quick') ? ' active' : '');
+    sBtn.dataset.ctx = 'style';
+    sBtn.title = selEls.every(e => e.type === 'image') ? 'Рамка и скругление' : hasInk ? 'Цвет и толщина' : 'Цвет';
+    sBtn.appendChild(styleIndicator(hasInk));
+    sBtn.addEventListener('mousedown', e => e.preventDefault());
+    sBtn.addEventListener('click', () => toggleStylePanel('quick'));
+    qm.appendChild(sBtn);
+  }
+  if (selEls.length === 1 && selEls[0].type === 'task' && isTeacher() && canEditBoard()) {
+    const task = selEls[0];
+    const editBtn = document.createElement('button');
+    editBtn.className = 'qm-btn qm-task-edit';
+    editBtn.title = 'Редактировать задание';
+    editBtn.setAttribute('aria-label', editBtn.title);
+    editBtn.innerHTML = svg('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>');
+    editBtn.addEventListener('click', () => editTaskElement(task));
+    qm.appendChild(editBtn);
+  }
   if (selEls.length === 1 && selEls[0].type === 'image' && !selEls[0].page && canEditBoard()) {
     const image = selEls[0];
     const crop = document.createElement('button');
@@ -2578,6 +2594,67 @@ function boardClipboardEvent(e: ClipboardEvent): boolean {
 /** Можно менять содержимое активной страницы (в совместной работе — нужно право edit). */
 export function canEditBoard(): boolean {
   return state.linkMode === null && !(collabActive() && readOnly());
+}
+
+// ----- Задания -----
+
+let toolBeforeTask: ToolId = 'select';
+let taskToolPending = false;
+
+/**
+ * «Задание» на панели — не режим рисования, а кнопка: инструмент возвращается прежний, открывается форма.
+ * true — это было нажатие на неё (дальше onChange ничего не делает).
+ */
+function interceptTaskTool(): boolean {
+  if (state.tool !== 'task') { toolBeforeTask = state.tool; return false; }
+  if (!taskToolPending) {
+    taskToolPending = true;
+    queueMicrotask(() => {
+      taskToolPending = false;
+      if (state.tool === 'task') setTool(toolBeforeTask);
+      openTaskForm(null);
+    });
+  }
+  return true;
+}
+
+/** Форма задания: новое (el = null) или правка существующего. Задания добавляет и правит автор, не ученик. */
+export function openTaskForm(el: TaskEl | null): void {
+  if (state.view !== 'board' || !canEditBoard() || !isTeacher()) return;
+  openTaskDialog(el, values => (el ? applyTaskForm(el.id, values) : addTaskFromForm(values)));
+}
+
+export function editTaskElement(el: TaskEl): void {
+  openTaskForm(el);
+}
+
+function addTaskFromForm(v: TaskFormValues): void {
+  const r = canvas.getBoundingClientRect();
+  const cam = state.camera;
+  const el = createTaskElement({
+    ...v, taskId: uid(),
+    x: cam.x + r.width / (2 * cam.zoom) - TASK_W / 2,
+    y: cam.y + r.height / (2 * cam.zoom) - TASK_H / 2,
+  });
+  addElement(el);
+  selectInserted(el.id);
+}
+
+/** Правка формой: условие, ответ, решение и остальное; положение, размер, попытки и ввод ученика остаются. */
+function applyTaskForm(id: string, v: TaskFormValues): void {
+  const prev = state.board.elements;
+  const next = prev.map(e => {
+    if (e.id !== id || e.type !== 'task') return e;
+    const { answerUnit: _u, codeSnippet: _c, solutionMd: _s, ...rest } = e;
+    return {
+      ...rest, subject: v.subject, examType: v.examType, topic: v.topic, statementMd: v.statementMd, answer: v.answer,
+      ...(v.answerUnit !== undefined ? { answerUnit: v.answerUnit } : {}),
+      ...(v.codeSnippet !== undefined ? { codeSnippet: v.codeSnippet } : {}),
+      ...(v.solutionMd !== undefined ? { solutionMd: v.solutionMd } : {}),
+    } as Element;
+  });
+  pushHistory(prev);
+  replaceElements(next);
 }
 
 /** Видимая область холста в координатах сцены. */
@@ -4398,6 +4475,7 @@ function wireTopbar(): void {
         + '<hr>' + menuItem('link-project', 'Ссылка на проект (просмотр)', svg('<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>')) + menuItem('link-page', 'Ссылка на текущую страницу', svg('<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>')))}<hr>
     ${section('hide', 'Скрыть', svg('<path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M9.9 5.2A10 10 0 0 1 12 5c5 0 8.5 5 9 7a13 13 0 0 1-2.4 3.6M6.3 6.3A13 13 0 0 0 3 12c.5 2 4 7 9 7a10 10 0 0 0 4-.8"/>'),
       checkItem('undo', 'Кнопки отмены и повтора') + checkItem('imports', 'Кнопки импорта'))}
+    ${menuItem('task', 'Добавить задание…', svg('<rect x="4" y="3.5" width="16" height="17" rx="2"/><path d="M8 8.5h8M8 12h8"/><path d="M8 16l1.8 1.8L13 14.5"/>'))}
     ${menuItem('settings', 'Настройки', ICONS.settings)}<hr>
     ${!doskaApi && !isNativeApp() ? menuItem('app', 'Открыть в приложении', svg('<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 17h6M12 6v7m-3-3 3 3 3-3"/>')) : ''}`;
   document.body.append(menu);
@@ -4439,6 +4517,7 @@ function wireTopbar(): void {
     if (action === 'import') void importDocument();
     if (action === 'image') void insertImage();
     if (action === 'png') void exportPng();
+    if (action === 'task') openTaskForm(null);
     if (action === 'link-project') void copyBoardLink('project');
     if (action === 'link-page') void copyBoardLink('page');
     if (action === 'settings') openAllSettings();
@@ -5076,7 +5155,8 @@ export function initApp(c: HTMLCanvasElement): void {
   });
   canvas = c;
   registerLinkViewHooks({ fit: fitContent });
-  addGestureProbe(() => editing !== null || fontEdit !== null);
+  addGestureProbe(() => editing !== null || fontEdit !== null || taskDialogOpen());
+  initTaskOverlay(editTaskElement);
   restoreCamera();
   restoreStyle();
   restoreSettings();
@@ -5114,6 +5194,7 @@ export function initApp(c: HTMLCanvasElement): void {
   let observedCamera = state.camera;
   let cameraTimer = 0;
   onChange(() => {
+    if (interceptTaskTool()) return;
     const identity = cameraId();
     if (identity !== cameraIdentity) {
       clearTimeout(cameraTimer);

@@ -18,7 +18,7 @@ import { partEraseRadius, presenting, requestRender, renderScene } from './rende
 import { fitSolid, SOLID_CLICK_SIZE, solidKeepsAspect } from './solid';
 import { spreadElements, spreadTargets } from './spread';
 import {
-  addDraftFromKey, addPageFromKey, beginTextEdit, canEditBoard, closeEditor, copySelectionAsImage, duplicateSelection, exportPng, fitContent, openAllSettings, openPageLink,
+  addDraftFromKey, addPageFromKey, beginTextEdit, canEditBoard, closeEditor, copySelectionAsImage, duplicateSelection, editTaskElement, exportPng, fitContent, openAllSettings, openPageLink,
   saveNow, selectedTextShape, switchToPage, switchPageForDrag, toggleTextFlag, togglePages,
 } from './app';
 import { DRAFT_KEY, comboFromEvent, pageNumberFromEvent } from './hotkeys';
@@ -40,7 +40,7 @@ const ERASER_CURSOR = (() => {
 })();
 const CURSORS: Record<ToolId, string> = {
   select: 'default', pen: 'crosshair', highlighter: 'crosshair', eraser: ERASER_CURSOR, partEraser: 'none',
-  pan: 'grab', text: 'text', note: 'crosshair', spread: 'row-resize', rect: 'crosshair',
+  pan: 'grab', text: 'text', note: 'crosshair', task: 'default', spread: 'row-resize', rect: 'crosshair',
   ellipse: 'crosshair', triangle: 'crosshair', line: 'crosshair', arrow: 'crosshair', poly: 'crosshair',
   laser: 'none', fadePen: 'crosshair', flash: 'default',
   cube: 'crosshair', box: 'crosshair', prism: 'crosshair', pyramid: 'crosshair', truncPyramid: 'crosshair',
@@ -1073,6 +1073,7 @@ export function initController(canvas: HTMLCanvasElement): void {
       }
     }
     const hit = topHit(s.x, s.y);
+    if (hit && hit.type === 'task') { editTaskElement(hit); return; }
     if (hit && (hit.type === 'text' || hit.type === 'note')) beginTextEdit({ el: hit });
     // надпись фигуры: двойной клик (на планшете — двойное касание) сразу открывает редактор и клавиатуру
     else if (shapeHoldsText(hit) && canEditBoard()) {

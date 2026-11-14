@@ -32,6 +32,11 @@ export const TOOL_DEFS: ToolDef[] = [
   { id: 'partEraser', title: 'Ластик для пера и маркера', icon: svg('<path d="M10 12.5l5.6-5.6a1.6 1.6 0 0 1 2.3 0l1.6 1.6a1.6 1.6 0 0 1 0 2.3L14.5 15.8H11.6l-1.6-1.6a1.2 1.2 0 0 1 0-1.7z"/><path d="M2.5 19.5c1.5-1.5 2.8-1.5 4.2 0"/><path d="M16.8 19.5c1.5 1.5 3 1.5 4.7 0"/>') },
   { id: 'text', title: 'Текст', icon: svg('<path d="M5 7V5h14v2"/><path d="M12 5v14"/><path d="M9 19h6"/>') },
   { id: 'note', title: 'Стикер', icon: svg('<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M8 9.5h8"/><path d="M8 13h5"/>') },
+  // открывает форму задания; сам инструментом не остаётся
+  {
+    id: 'task', title: 'Задание', hint: 'откроется форма: условие, ответ, решение',
+    icon: svg('<rect x="4" y="3.5" width="16" height="17" rx="2"/><path d="M8 8.5h8M8 12h8"/><path d="M8 16l1.8 1.8L13 14.5"/>'),
+  },
   // раздвинуть: всё, что ниже линии, уезжает вниз
   {
     id: 'spread', title: 'Раздвинуть',
@@ -64,7 +69,7 @@ export const TOOL_DEFS: ToolDef[] = [
 const DEF_BY_ID = new Map(TOOL_DEFS.map(t => [t.id, t]));
 
 /** Инструменты без цвета: у стикеров своя палитра, указка и подсветка — фиксированного цвета. */
-const COLORLESS_TOOLS = new Set<ToolId>(['select', 'pan', 'eraser', 'partEraser', 'note', 'spread', 'laser', 'flash']);
+const COLORLESS_TOOLS = new Set<ToolId>(['select', 'pan', 'eraser', 'partEraser', 'note', 'task', 'spread', 'laser', 'flash']);
 
 /** Нужен ли инструменту выбор цвета и толщины на панели инструментов. */
 export function toolUsesColor(id: ToolId): boolean {
@@ -129,7 +134,7 @@ export function defaultToolbar(): ToolbarConfig {
   const tool = (id: ToolId): ToolbarItem => ({ type: 'tool', id });
   return {
     items: [
-      tool('select'), tool('pan'), tool('pen'), tool('highlighter'), tool('eraser'), tool('partEraser'), tool('text'), tool('note'), tool('spread'),
+      tool('select'), tool('pan'), tool('pen'), tool('highlighter'), tool('eraser'), tool('partEraser'), tool('text'), tool('note'), tool('spread'), tool('task'),
       { type: 'group', id: 'shapes', name: 'Фигуры', tools: ['rect', 'ellipse', 'triangle', 'line', 'arrow', 'poly'] },
       { type: 'group', id: 'solids', name: 'Стереометрия', tools: ['cube', 'box', 'prism', 'pyramid', 'truncPyramid', 'cylinder', 'cone', 'truncCone', 'sphere'] },
       { type: 'group', id: 'pointer', name: 'Указка', tools: ['laser', 'fadePen', 'flash'] },

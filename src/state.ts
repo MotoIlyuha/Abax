@@ -357,6 +357,11 @@ export function insertCopies(els: Element[], dx: number, dy: number): Element[] 
       if (!gids.has(copy.groupId)) gids.set(copy.groupId, uid());
       copy.groupId = gids.get(copy.groupId)!;
     }
+    // копия задания — новое задание: без попыток, ввода ученика и пометки «сложное»
+    if (copy.type === 'task') {
+      const { attempts: _a, studentDraft: _d, markedHard: _h, ...fresh } = copy;
+      return rebindAttachment({ ...fresh, taskId: uid() } as Element, ids);
+    }
     return rebindAttachment(copy, ids);
   });
   pushHistory(state.board.elements);

@@ -15,7 +15,7 @@
 - [x] **TASK-04: Учитель ↔ ученик по `TaskEl` (`src/room-host.ts`, `electron/room.cjs`, `src/collab.ts`)**
   - Сообщения `task-draft`, `task-submit`; защита полей хоста; маскировка ответов.
 
-- [ ] **TASK-05: DOM-оверлей заданий и создание заданий (`src/task-overlay.ts`, `src/app.ts`)**
+- [x] **TASK-05: DOM-оверлей заданий и создание заданий (`src/task-overlay.ts`, `src/app.ts`)**
 
 - [ ] **TASK-06: Реакции и комментарии: рендер и UI (`src/renderer.ts`, `src/comments-ui.ts`, `src/app.ts`)**
   - Сообщения `react`/`comment` в хабах.

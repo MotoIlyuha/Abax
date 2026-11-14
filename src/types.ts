@@ -5,7 +5,7 @@ export type SolidKind =
 
 export type ToolId =
   | 'select' | 'pen' | 'highlighter' | 'eraser' | 'partEraser' | 'pan'
-  | 'text' | 'note' | 'spread' | 'rect' | 'ellipse' | 'triangle' | 'line' | 'arrow' | 'poly'
+  | 'text' | 'note' | 'task' | 'spread' | 'rect' | 'ellipse' | 'triangle' | 'line' | 'arrow' | 'poly'
   | PointerKind
   | SolidKind;
 
