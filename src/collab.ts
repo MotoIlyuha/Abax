@@ -2,7 +2,7 @@ import type { Project, ProjectMeta } from './types';
 import { state, openProject, setSelection, isDraftId, onDraft } from './state';
 import { setStorage, storage, type BoardsStorage } from './storage';
 import {
-  CLOSE_BAD_CODE, CLOSE_BAD_REQUEST, CLOSE_HOST_OFFLINE, CLOSE_PROTOCOL_MISMATCH, CLOSE_RATE_LIMITED,
+  CLOSE_BAD_CODE, CLOSE_BAD_REQUEST, CLOSE_FREE_LIMIT, CLOSE_HOST_OFFLINE, CLOSE_PROTOCOL_MISMATCH, CLOSE_RATE_LIMITED,
   CLOSE_ROOM_CLOSED, CLOSE_ROOM_FULL, CLOSE_ROOM_NOT_FOUND, CLOSE_TOO_SLOW, PROTO,
   wsTransport, type CollabTransport, type RelayEvent,
 } from './collab-transport';
@@ -224,6 +224,10 @@ const CLOSED_NOTICES: Record<number, { title: string; text: string }> = {
   [CLOSE_ROOM_CLOSED]: {
     title: 'Совместная работа завершена',
     text: 'Автор закрыл доступ к доске.',
+  },
+  [CLOSE_FREE_LIMIT]: {
+    title: 'Бесплатная комната занята',
+    text: 'На бесплатном тарифе к доске может подключиться только один гость. Попросите автора освободить место или перейти на Pro.',
   },
   [CLOSE_ROOM_FULL]: {
     title: 'Нет свободных мест',

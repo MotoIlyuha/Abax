@@ -24,6 +24,8 @@ export const PROTO = 1;
  * к облаку (electron/cloud-link.cjs) и ретранслятор (relay/protocol.cjs) пользуются одними кодами.
  */
 export const CLOSE_BAD_REQUEST = 4400;
+/** Бесплатная комната: гость уже есть, второй не помещается. */
+export const CLOSE_FREE_LIMIT = 4402;
 export const CLOSE_BAD_CODE = 4403;
 export const CLOSE_ROOM_NOT_FOUND = 4404;
 export const CLOSE_TOO_SLOW = 4408;

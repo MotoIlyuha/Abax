@@ -21,7 +21,7 @@
   - `ElementOp`, `BoardPatch`, `diffElements`, `applyBoardPatch`.
   - Тесты `tests/unit/delta.test.ts`.
 
-- [ ] **TASK-05: Браузерный Room Host (`src/room-host.ts`)**
+- [x] **TASK-05: Браузерный Room Host (`src/room-host.ts`)**
   - Порт `electron/room.cjs` на TS: `maxGuests`, `maxEditors`, `allowCopy`, `patch`, `hidden`-страницы, `denied`.
   - Тесты `tests/unit/room-host.test.ts`.
 

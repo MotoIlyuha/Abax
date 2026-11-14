@@ -32,3 +32,13 @@
 - `diffElements`: del → put → order; `order` только если без него порядок получателя (оставшиеся на местах, новые сверху, с учётом `layerPin`) не совпал бы с `next`. Сравнение: по ссылке, затем по значению.
 - `applyBoardPatch`: иммутабельно, операции по порядку, `put` через `sanitizeElement`, равные по значению элементы остаются прежними объектами (кэш рендера), `layerPin` пересортировывается; если ничего не изменилось — тот же массив `elements`. `rev` не используется (решение 32).
 - Тесты: `tests/unit/delta.test.ts` (17). Всего 543.
+
+## TASK-05 — браузерный Room Host (готово)
+- `src/room-host.ts`: порт `electron/room.cjs` (`createRoomHub`, `Room`, `RoomSocket`, `normalizeName`); сокет принимает `string | Uint8Array | ArrayBuffer`, ни Node, ни ws.
+- Лимиты по тарифу: `plan` из опций или `ownerPlan` проекта (нет — free); `maxGuests` (free 1, pro/tutor ∞), `maxEditors` (free 4, pro/tutor ∞); считаются только открытые сокеты. Лишний гость получает `{t:'denied', reason:'free-limit-reached'}` и закрытие кодом 4402 (`CLOSE_FREE_LIMIT` в `collab-transport.ts`, текст в `collab.ts`).
+- `allowCopy` (из прав проекта с поправкой на тариф или опции) — в `init` и `rights`. Начальные права гостя — из `permissions.pageRights`. Скрытые (`hidden`) страницы не попадают гостю ни в проекте, ни в патчах.
+- Патчи: валидный `t:'patch'` от участника с `edit` на странице применяется через `applyBoardPatch`, `rev` ведёт хаб, рассылка — тем, у кого страница не скрыта; участникам без поддержки патчей (флаг `patches` при подключении или сообщение `caps`) уходит полный проект. `pushPatch` — патч от автора.
+- Гость не может менять `ownerPlan`/`permissions`/id проекта и на free не может добавлять страницы сверх лимита (`canCreatePage`).
+- `electron/room.cjs` и `share.cjs` не менялись (решение 41); к UI/транспорту хост пока не подключён.
+- В TASK-08 нужно доработать: проекция `TaskEl` для гостя (`projectFor`, `patch`) и слияние гостевых правок заданий.
+- Тесты: `tests/unit/room-host.test.ts` (30). Всего 573.
