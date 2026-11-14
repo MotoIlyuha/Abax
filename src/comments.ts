@@ -1,4 +1,4 @@
-import type { CommentMessage, CommentThread, Element, Page } from './types';
+import type { CommentMessage, CommentThread, Element, Page, TaskEl } from './types';
 import { elementAABB } from './geom';
 
 // Реакции на элементы и ветки комментариев на странице. Только данные: чистые функции без побочных эффектов,
@@ -37,6 +37,77 @@ export function toggleElementReaction(el: Element, emoji: string, userId: string
   else delete reactions[emoji];
   const { reactions: _old, ...rest } = el;
   return (Object.keys(reactions).length > 0 ? { ...rest, reactions } : rest) as Element;
+}
+
+function sameReactions(a: Record<string, string[]> | undefined, b: Record<string, string[]> | undefined): boolean {
+  if (a === b) return true;
+  const ka = Object.keys(a ?? {});
+  const kb = Object.keys(b ?? {});
+  if (ka.length !== kb.length) return false;
+  return ka.every(k => {
+    const x = a![k];
+    const y = b?.[k];
+    return !!y && x.length === y.length && x.every((u, i) => u === y[i]);
+  });
+}
+
+/** Для каждого id по всем элементам: что есть сейчас. */
+function byId(els: readonly Element[]): Map<string, Element> {
+  return new Map(els.map(e => [e.id, e]));
+}
+
+/** Поле reactions у el заменено на значение из from (нет значения — поля нет). */
+function withReactions(el: Element, from: Element): Element {
+  const { reactions: _old, ...rest } = el;
+  return (from.reactions ? { ...rest, reactions: from.reactions } : rest) as Element;
+}
+
+/**
+ * Снимок истории с текущими реакциями: Ctrl+Z откатывает рисунок, но не чужие реакции, которых в истории нет.
+ * Совпадение по id; элементы без пары (восстановленные удалённые) остаются как в снимке; нетронутые — те же объекты,
+ * а если менять нечего — тот же массив.
+ */
+export function preserveElementReactions(snapshotElements: readonly Element[], currentElements: readonly Element[]): Element[] {
+  const current = byId(currentElements);
+  let changed = false;
+  const out = snapshotElements.map(el => {
+    const now = current.get(el.id);
+    if (!now || sameReactions(el.reactions, now.reactions)) return el;
+    changed = true;
+    return withReactions(el, now);
+  });
+  return changed ? out : snapshotElements as Element[];
+}
+
+function sameAttempts(a: TaskEl['attempts'], b: TaskEl['attempts']): boolean {
+  if (a === b) return true;
+  const x = a ?? [];
+  const y = b ?? [];
+  return x.length === y.length && x.every((t, i) => t.value === y[i].value && t.timestamp === y[i].timestamp && t.isCorrect === y[i].isCorrect);
+}
+
+/**
+ * Снимок истории с тем, что в элементах меняется мимо истории: реакции и ввод ученика в задании
+ * (черновик и попытки). Остальное берётся из снимка.
+ */
+export function preserveLiveFields(snapshotElements: readonly Element[], currentElements: readonly Element[]): Element[] {
+  const withReacts = preserveElementReactions(snapshotElements, currentElements);
+  const current = byId(currentElements);
+  let changed = false;
+  const out = withReacts.map(el => {
+    if (el.type !== 'task') return el;
+    const now = current.get(el.id);
+    if (!now || now.type !== 'task') return el;
+    if (sameAttempts(el.attempts, now.attempts) && el.studentDraft === now.studentDraft) return el;
+    changed = true;
+    const { attempts: _a, studentDraft: _d, ...rest } = el;
+    return {
+      ...rest,
+      ...(now.attempts ? { attempts: now.attempts } : {}),
+      ...(now.studentDraft !== undefined ? { studentDraft: now.studentDraft } : {}),
+    } as Element;
+  });
+  return changed ? out : withReacts;
 }
 
 export interface CreateThreadParams {

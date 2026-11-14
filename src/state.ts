@@ -7,7 +7,7 @@ import { DEFAULT_NEW_PAGE_KEY } from './hotkeys';
 import { imageFrame, shapeHoldsText, translateElement } from './geom';
 import { attachNewElement, freezeAttachments, rebindAttachment } from './attachment';
 import { effectivePermissions } from './limits';
-import { syncCommentsWithMovedElements } from './comments';
+import { preserveLiveFields, syncCommentsWithMovedElements } from './comments';
 
 export interface LiveStroke {
   tool: 'pen' | 'highlighter';
@@ -293,7 +293,7 @@ export function undo(): void {
   if (!prev) return;
   redoStack.push(state.board.elements);
   const before = state.board.elements;
-  state.board.elements = prev;
+  state.board.elements = preserveLiveFields(prev, before);
   followComments(before);
   state.selection = new Set();
   update(true);
@@ -304,7 +304,7 @@ export function redo(): void {
   if (!next) return;
   undoStack.push(state.board.elements);
   const before = state.board.elements;
-  state.board.elements = next;
+  state.board.elements = preserveLiveFields(next, before);
   followComments(before);
   state.selection = new Set();
   update(true);

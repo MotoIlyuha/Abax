@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
-  addCommentReply, createCommentThread, resolveCommentThread, syncCommentsWithMovedElements, toggleElementReaction,
+  addCommentReply, createCommentThread, preserveElementReactions, preserveLiveFields, resolveCommentThread,
+  syncCommentsWithMovedElements, toggleElementReaction,
 } from '../../src/comments';
+import { createTaskElement, submitTaskAttempt, updateStudentDraft } from '../../src/task-element';
 import { parseProject, sanitizeComments, sanitizeElement } from '../../src/file';
 import { addElement, blankProject, openProject, replaceElements, state, undo, redo, pushHistory } from '../../src/state';
 import { translateElement } from '../../src/geom';
@@ -180,5 +182,61 @@ describe('привязка к состоянию доски', () => {
     delete state.board.comments;
     replaceElements(state.board.elements.map(e => translateElement(e, 1, 1)));
     expect(state.board).not.toHaveProperty('comments');
+  });
+});
+
+describe('preserveElementReactions / preserveLiveFields', () => {
+  it('переносит актуальные реакции на снимок, снимает старые, оставляет остальное из снимка', () => {
+    const snap = [rect('a', 1, 1), toggleElementReaction(rect('b', 2, 2), '👍', 'u1')];
+    const now = [toggleElementReaction(rect('a', 50, 50), '🔥', 'u2'), rect('b', 9, 9)];
+    const out = preserveElementReactions(snap, now);
+    expect(out[0]).toMatchObject({ x: 1, reactions: { '🔥': ['u2'] } });
+    expect(out[1]).toMatchObject({ x: 2 });
+    expect(out[1]).not.toHaveProperty('reactions');
+  });
+
+  it('нет изменений — тот же массив и те же объекты; элементы без пары не меняются', () => {
+    const a = toggleElementReaction(rect('a'), '👍', 'u1');
+    const snap = [a, rect('gone')];
+    expect(preserveElementReactions(snap, [toggleElementReaction(rect('a', 5, 5), '👍', 'u1')])).toBe(snap);
+    const x = rect('x');
+    const changed = preserveElementReactions([rect('a'), x], [toggleElementReaction(rect('a'), '❤️', 'u1')]);
+    expect(changed[1]).toBe(x);
+    expect(changed[0].reactions).toEqual({ '❤️': ['u1'] });
+  });
+
+  it('ввод ученика в задании переживает откат; остальные поля — из снимка', () => {
+    const base = createTaskElement({ x: 0, y: 0, taskId: 't', statementMd: 'Условие', answer: '5', id: 'k' });
+    const now = submitTaskAttempt(updateStudentDraft(base, '5'), '5', 100).updated;
+    const snap = { ...base, statementMd: 'Старое условие' };
+    const [out] = preserveLiveFields([snap], [{ ...now, statementMd: 'Новое' }]) as typeof base[];
+    expect(out.statementMd).toBe('Старое условие');
+    expect(out.attempts).toEqual(now.attempts);
+    expect(out.studentDraft).toBe('5');
+    // нет ввода — поля не появляются
+    const [clean] = preserveLiveFields([base], [base]) as typeof base[];
+    expect(clean).toBe(base);
+  });
+
+  it('реакции и ввод в задании переживают undo и redo', () => {
+    openProject(blankProject('Тест'));
+    addElement(rect('a', 0, 0));
+    addElement(createTaskElement({ x: 0, y: 100, taskId: 't', statementMd: 'У', answer: '1', id: 'task' }));
+    // реакция и ответ — мимо истории
+    state.board.elements = state.board.elements.map(e => (e.id === 'a' ? toggleElementReaction(e, '👍', 'u1') : e.id === 'task' ? submitTaskAttempt(e as never, '1', 5).updated : e));
+    addElement(rect('c', 200, 200));
+    undo();
+    expect(state.board.elements.map(e => e.id)).toEqual(['a', 'task']);
+    expect(state.board.elements[0].reactions).toEqual({ '👍': ['u1'] });
+    expect((state.board.elements[1] as never as { attempts: unknown[] }).attempts).toHaveLength(1);
+    undo();
+    undo();
+    expect(state.board.elements).toEqual([]);
+    redo();
+    redo();
+    expect(state.board.elements[0].reactions).toEqual({ '👍': ['u1'] });
+    redo();
+    expect(state.board.elements.map(e => e.id)).toEqual(['a', 'task', 'c']);
+    expect(state.board.elements[0].reactions).toEqual({ '👍': ['u1'] });
   });
 });

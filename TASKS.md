@@ -2,7 +2,7 @@
 
 Выполняй строго по порядку. После каждой задачи: `npm run typecheck && npm run typecheck:tests && npm test` — зелёные. Решения — в `Locked Decisions` в `SPEC_NIGHT2.md`.
 
-- [ ] **TASK-01: Реакции и живые поля при Undo/Redo (`src/comments.ts`, `src/state.ts`)**
+- [x] **TASK-01: Реакции и живые поля при Undo/Redo (`src/comments.ts`, `src/state.ts`)**
   - `preserveElementReactions`, `preserveLiveFields` (attempts, studentDraft); вызов в `undo()`/`redo()`.
   - Тесты `tests/unit/comments.test.ts`, `tests/unit/state.test.ts`.
 
