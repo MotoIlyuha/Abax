@@ -33,7 +33,7 @@
   - `reactions` в `BaseEl`, `comments` в `Page`; функции `src/comments.ts`; обновить `file.ts`; синхронизация в `state.ts`.
   - Тесты `tests/unit/comments.test.ts`.
 
-- [ ] **TASK-08: TaskEl (`src/types.ts`, `src/task-element.ts`, `src/geom.ts`, `src/file.ts`, `src/renderer.ts`)**
+- [x] **TASK-08: TaskEl (`src/types.ts`, `src/task-element.ts`, `src/geom.ts`, `src/file.ts`, `src/renderer.ts`)**
   - `TaskEl` (+ `subject`, `answerUnit`, `codeSnippet`), поддержка в geom/file/renderer.
   - `src/task-element.ts`: `createTaskElement`, `submitTaskAttempt`, `updateStudentDraft`, `toggleTaskHardFlag`, `projectTaskForRole`.
   - Тесты `tests/unit/task-element.test.ts`.

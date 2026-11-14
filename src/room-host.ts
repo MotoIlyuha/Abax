@@ -2,11 +2,12 @@
 // Порт electron/room.cjs на TypeScript: без Node.js и ws — сокет участника задаёт интерфейс RoomSocket,
 // сообщения приходят строкой или байтами UTF-8 (Uint8Array).
 
-import type { Page, PageRight, PlanTier, Project } from './types';
+import type { Element, Page, PageRight, PlanTier, Project, TaskEl } from './types';
 import { PLAN_LIMITS, canCreatePage, canGuestJoinRoom, effectivePermissions, isPageRight, planOf } from './limits';
 import { applyBoardPatch, isBoardPatch, type BoardPatch, type ElementOp } from './delta';
 import { sanitizeElement } from './file';
 import { CLOSE_FREE_LIMIT, PROTO } from './collab-transport';
+import { mergeGuestTask, projectTaskForRole } from './task-element';
 
 export { PROTO };
 
@@ -119,6 +120,30 @@ function validPage(pg: unknown): pg is Page {
 function validProject(p: unknown): p is Project {
   if (!isObj(p) || !isId(p.id) || !Array.isArray(p.pages) || !p.pages.every(validPage)) return false;
   return new Set(p.pages.map(pg => pg.id)).size === p.pages.length;
+}
+
+// ----- Задания: ученик не получает ответов и не может их подменить -----
+
+const isTask = (el: Element): el is TaskEl & Element => el.type === 'task';
+
+/** Страницы так, как их видит ученик: у заданий нет ответа и закрытого решения. Нетронутые страницы — те же объекты. */
+function projectPagesForGuest(pages: Page[]): Page[] {
+  return pages.map(pg => (pg.elements.some(isTask)
+    ? { ...pg, elements: pg.elements.map(el => (isTask(el) ? projectTaskForRole(el, 'guest') as Element : el)) }
+    : pg));
+}
+
+/** Элемент от участника поверх известного автору: у задания принимается только ввод ученика (черновик и попытки). */
+function guardedElement(known: Element | undefined, incoming: Element): Element {
+  if (!isTask(incoming) || !known || !isTask(known)) return incoming;
+  return mergeGuestTask(known, incoming) as Element;
+}
+
+/** Страница участника поверх страницы автора с защитой заданий. */
+function guardedPage(known: Page, incoming: Page): Page {
+  if (!incoming.elements.some(isTask)) return incoming;
+  const byId = new Map(known.elements.map(e => [e.id, e]));
+  return { ...incoming, elements: incoming.elements.map(el => guardedElement(byId.get(el.id), el)) };
 }
 
 const decoder = new TextDecoder();
@@ -245,7 +270,7 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
   }
 
   const projectFor = (info: Client): Project | null =>
-    info.host ? room.project : (room.project ? { ...room.project, pages: room.visiblePages(info.uid) } : null);
+    info.host ? room.project : (room.project ? { ...room.project, pages: projectPagesForGuest(room.visiblePages(info.uid)) } : null);
 
   function rightsOf(uid: number): UserRights {
     const r = room.rights.get(uid);
@@ -328,7 +353,8 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
   function mergePages(uid: number, isHost: boolean, project: Project): Project {
     const merged: Project = { ...project, pages: room.project!.pages.map(oldPg => {
       const newPg = project.pages.find(p => p.id === oldPg.id);
-      return newPg && room.userPageRight(uid, oldPg.id) === 'edit' ? newPg : oldPg;
+      if (!newPg || room.userPageRight(uid, oldPg.id) !== 'edit') return oldPg;
+      return isHost ? newPg : guardedPage(oldPg, newPg);
     }) };
     // новые страницы разрешаем добавлять только тем, у кого есть хоть одна edit; на free — не больше лимита
     for (const newPg of project.pages) {
@@ -357,16 +383,22 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
     }
   }
 
+  /** Операции так, как их видит ученик: у заданий в put нет ответа. */
+  const opsForGuest = (ops: ElementOp[]): ElementOp[] =>
+    ops.map(op => (op.op === 'put' && isTask(op.el) ? { op: 'put', el: projectTaskForRole(op.el, 'guest') as Element } : op));
+
   /** Принять патч страницы от участника: нужен edit на ней. Применяется к странице хаба и уходит остальным. */
   function acceptPatch(info: Client | null, patch: BoardPatch): boolean {
     const project = room.project;
     if (!project || !project.pages.some(p => p.id === patch.pageId)) return false;
     if (info && room.userPageRight(info.uid, patch.pageId) !== 'edit') return false;
+    const known = new Map(project.pages.find(p => p.id === patch.pageId)!.elements.map(e => [e.id, e]));
+    const fromGuest = !!info && !info.host;
     const ops: ElementOp[] = [];
     for (const op of patch.ops) {
       if (op.op !== 'put') { ops.push(op); continue; }
       const el = sanitizeElement(op.el);
-      if (el) ops.push({ op: 'put', el });
+      if (el) ops.push({ op: 'put', el: fromGuest ? guardedElement(known.get(el.id), el) : el });
     }
     const rev = (room.revs.get(patch.pageId) ?? 0) + 1;
     room.revs.set(patch.pageId, rev);
@@ -380,7 +412,7 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
     for (const c of room.clients.values()) {
       if (info && c.sock === info.sock) continue;
       if (room.userPageRight(c.uid, patch.pageId) === 'hidden') continue; // скрытая страница до участника не доходит
-      if (c.patches) sendTo(c.sock, { ...clean, by });
+      if (c.patches) sendTo(c.sock, { ...clean, ops: c.host ? ops : opsForGuest(ops), by });
       else sendTo(c.sock, { t: 'project', project: projectFor(c), by });
     }
     return true;

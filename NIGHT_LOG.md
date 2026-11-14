@@ -57,3 +57,18 @@
 - `src/state.ts`: `replaceElements`, `undo`, `redo` двигают привязанные комментарии (`followComments`).
 - Исключение из правила pushHistory (решение 49): реакции и комментарии в историю не пишутся; Undo откатывает элементы к снимкам, поэтому реакции откатятся вместе с ними — отдельный UI-слой должен менять их без записи истории.
 - Тесты: `tests/unit/comments.test.ts` (17). Всего 601.
+
+## TASK-08 — интерактивное задание TaskEl (готово)
+- `src/types.ts`: `TaskEl` (+ `subject`, `answerUnit`, `codeSnippet`), `TaskAttempt`, `TaskExamType`, `TaskSubject`; `TaskEl` добавлен в union `Element`.
+- `src/task-element.ts`: `createTaskElement` (360×220, `subject: 'math'`), `submitTaskAttempt`, `updateStudentDraft`, `toggleTaskHardFlag`, `projectTaskForRole`, плюс `answersMatch`/`normalizeAnswer` (trim, без пробелов, регистр, `,`→`.`, разные минусы, ё→е, числа как числа, варианты через `|`, единицы `answerUnit` в конце ввода игнорируются), `mergeGuestTask`, `taskStatus`.
+- `geom.ts`: `elementAABB`, `hitTest`, `elementHandles` (8 ручек, без поворота), `applyHandle` (мин. 220×140), `scaleElement`. `state.ts`: цвет/стиль к заданию не применяется. `controller.ts`: объектный ластик задание не стирает. `attachment.ts`: штрихи и стикеры можно привязывать к заданию.
+- `file.ts`: `sanitizeElement` для `task` (неверные `examType`/`topic` восстанавливаются, а не отбрасывают задание; `attempts` ≤ 100, `studentDraft` ≤ 1000).
+- `renderer.ts`: `drawTaskEl` — плашка экзамена, предмет, бейдж «Сложное», тема, условие с переносом, статус «Решено/Не решено/Нет ответа», ввод ученика; ответ и решение на холст не попадают.
+- `room-host.ts`: ученику во всех пакетах (`init`, `project`, `rights`, `patch`) задание уходит через `projectTaskForRole`; правки ученика поверх заданий проходят `mergeGuestTask` (принимаются только черновик и новые попытки, `isCorrect` пересчитывает автор по своему ответу).
+- Решения по мелочам: ответ ученика в рендере показывается как «Ответ: …», потому что это его собственный ввод; сетевое сообщение «ученик отвечает без права edit» не делалось (решение 55 — позже); при `answer === ''` попытка записывается как неверная до оценки автором.
+- Тесты: `tests/unit/task-element.test.ts` (31). Всего 632.
+
+## Итог ночи
+- Все 8 задач закрыты, каждая — отдельный коммит в `night/1`; `npm run typecheck && npm run typecheck:tests && npm test` — зелёные (632 теста), `vite build` собирается.
+- Не сделано намеренно (вне ТЗ): подключение роутера, хоста комнаты, хранилища ассетов и защиты копирования к UI/транспорту (`main.ts`, `app.ts`); e2e (Playwright) не запускались.
+- Известные ограничения: защита от копирования — сдерживание, не криптозащита; реакции откатываются вместе с элементами при Undo; `applyRemoteProject` по-прежнему заменяет проект целиком и сбрасывает стек отмены.

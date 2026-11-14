@@ -274,7 +274,7 @@ export function initController(canvas: HTMLCanvasElement): void {
     // радиус маленький, шагов много: проверяем только элементы, чья рамка задевает путь
     const path = { x0: Math.min(from.x, x), y0: Math.min(from.y, y), x1: Math.max(from.x, x), y1: Math.max(from.y, y) };
     const near = state.board.elements.filter(el => {
-      if (el.type === 'image') return false;
+      if (el.type === 'image' || el.type === 'task') return false;
       const pad = r + ('width' in el ? el.width : 0); // у линии рамка без толщины
       const b = elementAABB(el);
       return aabbIntersects({ x0: b.x0 - pad, y0: b.y0 - pad, x1: b.x1 + pad, y1: b.y1 + pad }, path);

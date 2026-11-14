@@ -235,6 +235,7 @@ export function elementAABB(el: Element): AABB {
       return { x0: el.x, y0: el.y, x1: el.x + t.w, y1: el.y + t.h };
     }
     case 'note':
+    case 'task':
       return { x0: el.x, y0: el.y, x1: el.x + el.w, y1: el.y + el.h };
     case 'image': {
       if (el.rot) {
@@ -375,6 +376,7 @@ export function hitTest(el: Element, x: number, y: number, tol: number): boolean
       return x >= a.x0 - tol && x <= a.x1 + tol && y >= a.y0 - tol && y <= a.y1 + tol;
     }
     case 'note':
+    case 'task':
       return x >= el.x - tol && x <= el.x + el.w + tol && y >= el.y - tol && y <= el.y + el.h + tol;
     case 'image': {
       let px = x, py = y;
@@ -414,6 +416,8 @@ const ROT_HANDLE_OFF_PX = 30; // отступ ручки поворота над
 const MIN_SHAPE_SIZE = 4;
 const MIN_NOTE_W = 80;
 const MIN_NOTE_H = 60;
+const MIN_TASK_W = 220;
+const MIN_TASK_H = 140;
 const ROT_SNAP = Math.PI / 45; // ~4°: примагничивание к кратным 45°
 
 /** Видимый шаг сетки при данном зуме (LOD как у рендера). */
@@ -467,8 +471,9 @@ export function elementHandles(el: Element, zoom: number): HandlePos[] {
       const box = textSize(el);
       return [-1, 1].map(dx => ({ h: { kind: 'resize' as const, dx: dx as -1 | 1, dy: 0 as const }, x: el.x + (dx > 0 ? box.w : 0), y: el.y + box.h / 2 }));
     }
-    case 'note': {
-      // стикер масштабируется за края и углы, без поворота
+    case 'note':
+    case 'task': {
+      // стикер и задание масштабируются за края и углы, без поворота
       const out: HandlePos[] = [];
       const dirs: [number, number][] = [[-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0]];
       for (const [dx, dy] of dirs) {
@@ -641,16 +646,17 @@ export function applyHandle(el: Element, h: Handle, pt: Pt, mods?: ResizeMods, r
     if (h.dx < 0) { const x = Math.min(pt.x, right - 24); return { ...el, x, w: right - x }; }
     return { ...el, w: Math.max(24, pt.x - el.x) };
   }
-  if (el.type === 'note' && h.kind === 'resize') {
+  if ((el.type === 'note' || el.type === 'task') && h.kind === 'resize') {
     // приводим к центровой системе, чтобы модификаторы работали единообразно
+    const minW = el.type === 'task' ? MIN_TASK_W : MIN_NOTE_W, minH = el.type === 'task' ? MIN_TASK_H : MIN_NOTE_H;
     const ncx = el.x + el.w / 2, ncy = el.y + el.h / 2;
     const plx = pt.x - ncx, ply = pt.y - ncy;
     const box = { left: -el.w / 2, right: el.w / 2, top: -el.h / 2, bottom: el.h / 2 };
-    if (h.dx < 0) box.left = Math.min(plx, box.right - MIN_NOTE_W);
-    if (h.dx > 0) box.right = Math.max(plx, box.left + MIN_NOTE_W);
-    if (h.dy < 0) box.top = Math.min(ply, box.bottom - MIN_NOTE_H);
-    if (h.dy > 0) box.bottom = Math.max(ply, box.top + MIN_NOTE_H);
-    applyResizeMods(box, h, mods, el.w, el.h, Math.min(MIN_NOTE_W, MIN_NOTE_H));
+    if (h.dx < 0) box.left = Math.min(plx, box.right - minW);
+    if (h.dx > 0) box.right = Math.max(plx, box.left + minW);
+    if (h.dy < 0) box.top = Math.min(ply, box.bottom - minH);
+    if (h.dy > 0) box.bottom = Math.max(ply, box.top + minH);
+    applyResizeMods(box, h, mods, el.w, el.h, Math.min(minW, minH));
     return { ...el, x: ncx + box.left, y: ncy + box.top, w: box.right - box.left, h: box.bottom - box.top };
   }
   if (el.type === 'solid' && h.kind === 'param') return applySolidParam(el, h.key, pt);
@@ -726,7 +732,8 @@ export function scaleElement(el: Element, from: AABB, to: AABB): Element {
       if (el.w !== undefined) next.w = el.w * sx;
       return next;
     }
-    case 'note': {
+    case 'note':
+    case 'task': {
       const nw = el.w * sx, nh = el.h * sy;
       const ncx = mx(el.x + el.w / 2), ncy = my(el.y + el.h / 2);
       return { ...el, x: ncx - nw / 2, y: ncy - nh / 2, w: nw, h: nh };

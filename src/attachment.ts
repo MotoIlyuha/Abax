@@ -17,7 +17,7 @@ export function geometricFoundationFor(item: Element, elements: Element[], exclu
   const itemIndex = elements.findIndex(e => e.id === item.id);
   // Only objects below the item in the layer stack can be foundations.
   const candidates = elements.slice(0, itemIndex < 0 ? elements.length : itemIndex).filter(e => !excluded.has(e.id) && e.id !== item.id &&
-    (item.type === 'note' ? e.type === 'image' : e.type === 'image' || e.type === 'note' || (e.type === 'shape' && e.shape !== 'line' && e.shape !== 'arrow')));
+    (item.type === 'note' ? e.type === 'image' || e.type === 'task' : e.type === 'image' || e.type === 'note' || e.type === 'task' || (e.type === 'shape' && e.shape !== 'line' && e.shape !== 'arrow')));
   for (const base of candidates.reverse()) {
     let inside = 0, total = 0;
     if (item.type === 'note') {

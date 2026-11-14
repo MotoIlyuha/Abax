@@ -1,4 +1,5 @@
-import type { Camera, Element, GridMode, ImageEl, Page, ShapeEl, SolidEl } from './types';
+import type { Camera, Element, GridMode, ImageEl, Page, ShapeEl, SolidEl, TaskEl } from './types';
+import { EXAM_LABELS, SUBJECT_LABELS, TASK_STATUS_LABEL, taskStatus } from './task-element';
 import { foreignSelections } from './collab';
 import {
   type AABB, type Caption, boxHandles, cornerRadius, elementAABB, elementHandles, imageFrame, pageLinkView, presentCamera, shapeCaption,
@@ -59,6 +60,7 @@ function cacheOf(el: Element): ElCacheEntry {
     c = { aabb: elementAABB(el), path: null, lines: null, fit: null };
     if (el.type === 'stroke') c.path = ribbonPath(el.pts, el.width);
     if (el.type === 'note') c.lines = wrapText(el.text, NOTE_FONT, el.w - NOTE_PAD * 2);
+    if (el.type === 'task') c.lines = wrapText(el.statementMd, TASK_FONT, Math.max(1, el.w - TASK_PAD * 2));
     if (shapeHoldsText(el) && el.text) c.fit = shapeCaption(el);
     elCache.set(el, c);
   }
@@ -358,7 +360,7 @@ function drawElement(
   const c = cacheOf(el);
   if (c.aabb.x1 < vx0 || c.aabb.x0 > vx1 || c.aabb.y1 < vy0 || c.aabb.y0 > vy1) return;
   // у картинки прозрачна только рамка — её непрозрачность выставляется при рисовании рамки
-  const alpha = el.type !== 'image' && el.type !== 'note' ? el.opacity ?? 1 : 1;
+  const alpha = el.type !== 'image' && el.type !== 'note' && el.type !== 'task' ? el.opacity ?? 1 : 1;
   if (alpha < 1) ctx.globalAlpha = alpha;
   drawElementBody(ctx, el, c);
   if (alpha < 1) ctx.globalAlpha = 1;
@@ -408,6 +410,9 @@ function drawElementBody(ctx: CanvasRenderingContext2D, el: Element, c: ElCacheE
       ctx.restore();
       break;
     }
+    case 'task':
+      drawTaskEl(ctx, el, c.lines ?? []);
+      break;
     case 'image': {
       if (el.page) { drawPageLink(ctx, el); break; }
       const img = imageOf(el);
@@ -451,6 +456,98 @@ function drawElementBody(ctx: CanvasRenderingContext2D, el: Element, c: ElCacheE
       break;
     }
   }
+}
+
+const TASK_FONT = 14;
+const TASK_PAD = 14;
+const TASK_HEAD_H = 34;
+const TASK_FOOT_H = 30;
+const TASK_LH = TASK_FONT * 1.4;
+const TASK_STATUS_COLOR = { solved: '#2f9e44', unsolved: '#bd0a0a', none: '#7a8291' } as const;
+
+/**
+ * Карточка задания: плашка экзамена, предмет, бейдж «Сложное», тема и условие с переносом строк,
+ * внизу — статус. Правильный ответ и решение на холст не попадают никогда: его видит окно демонстрации.
+ */
+function drawTaskEl(ctx: CanvasRenderingContext2D, el: TaskEl, lines: string[]): void {
+  const { x, y, w, h } = el;
+  ctx.save();
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, 10);
+  ctx.fillStyle = '#ffffff';
+  ctx.fill();
+  ctx.strokeStyle = '#c9d1e0';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.clip();
+  ctx.textBaseline = 'alphabetic';
+
+  // шапка: плашка экзамена, предмет, «Сложное»
+  ctx.font = TEXT_FONT(12, true);
+  const examText = EXAM_LABELS[el.examType] ?? EXAM_LABELS.custom;
+  const badgeW = ctx.measureText(examText).width + 16;
+  ctx.fillStyle = '#305bab';
+  ctx.beginPath();
+  ctx.roundRect(x + TASK_PAD, y + 8, badgeW, 20, 5);
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(examText, x + TASK_PAD + 8, y + 22);
+  let right = x + w - TASK_PAD;
+  if (el.markedHard) {
+    const hardW = ctx.measureText('Сложное').width + 16;
+    ctx.fillStyle = '#bd0a0a';
+    ctx.beginPath();
+    ctx.roundRect(right - hardW, y + 8, hardW, 20, 5);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText('Сложное', right - hardW + 8, y + 22);
+    right -= hardW + 8;
+  }
+  const subject = SUBJECT_LABELS[el.subject ?? 'math'];
+  if (subject && right - (x + TASK_PAD + badgeW + 8) > ctx.measureText(subject).width) {
+    ctx.font = TEXT_FONT(12);
+    ctx.fillStyle = '#7a8291';
+    ctx.textAlign = 'right';
+    ctx.fillText(subject, right, y + 22);
+    ctx.textAlign = 'left';
+  }
+  ctx.fillStyle = '#e4e8f0';
+  ctx.fillRect(x, y + TASK_HEAD_H, w, 1);
+
+  // тема и условие
+  let top = y + TASK_HEAD_H + TASK_PAD;
+  const bodyBottom = y + h - TASK_FOOT_H;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y + TASK_HEAD_H + 1, w, bodyBottom - y - TASK_HEAD_H - 1);
+  ctx.clip();
+  if (el.topic) {
+    ctx.font = TEXT_FONT(TASK_FONT, true);
+    ctx.fillStyle = '#1f2329';
+    ctx.fillText(el.topic, x + TASK_PAD, top + TASK_FONT * 0.8, w - TASK_PAD * 2);
+    top += TASK_LH + 4;
+  }
+  ctx.font = TEXT_FONT(TASK_FONT);
+  ctx.fillStyle = '#30343b';
+  for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], x + TASK_PAD, top + TASK_FONT * 0.8 + i * TASK_LH);
+  ctx.restore();
+
+  // подвал: статус и ввод ученика
+  const status = taskStatus(el);
+  ctx.fillStyle = '#f5f7fb';
+  ctx.fillRect(x, bodyBottom, w, TASK_FOOT_H);
+  ctx.font = TEXT_FONT(13, true);
+  ctx.fillStyle = TASK_STATUS_COLOR[status];
+  const statusText = TASK_STATUS_LABEL[status];
+  ctx.fillText(statusText, x + TASK_PAD, bodyBottom + 20);
+  if (el.studentDraft) {
+    const used = ctx.measureText(statusText).width + TASK_PAD * 2;
+    ctx.font = TEXT_FONT(13);
+    ctx.fillStyle = '#4a4f59';
+    const unit = el.answerUnit ? ` ${el.answerUnit}` : '';
+    ctx.fillText(`Ответ: ${el.studentDraft}${unit}`, x + TASK_PAD + used, bodyBottom + 20, Math.max(10, w - used - TASK_PAD * 2));
+  }
+  ctx.restore();
 }
 
 /** Рамка картинки — внутри неё: габарит элемента не меняется. */

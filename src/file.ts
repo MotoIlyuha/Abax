@@ -1,5 +1,6 @@
-import type { CommentMessage, CommentThread, Element, GridMode, Page, PageRight, Project, ProjectPermissions, Pt } from './types';
+import type { TaskAttempt, CommentMessage, CommentThread, Element, GridMode, Page, PageRight, Project, ProjectPermissions, Pt } from './types';
 import { MAX_AUTHOR_NAME, MAX_COMMENT_TEXT, MAX_REACTION_LEN } from './comments';
+import { EXAM_TYPES, MAX_ATTEMPTS, MAX_DRAFT, SUBJECTS } from './task-element';
 import { isPageRight, isPlanTier } from './limits';
 
 // Проверка данных на границе: файл, localStorage, сеть. Неизвестные поля сохраняются (проект из
@@ -19,6 +20,7 @@ const SHAPES = ['rect', 'ellipse', 'triangle', 'line', 'arrow'];
 const SOLIDS = ['cube', 'box', 'prism', 'pyramid', 'truncPyramid', 'cylinder', 'cone', 'truncCone', 'sphere'];
 const ALIGNS = ['left', 'center', 'right'];
 const VALIGNS = ['top', 'middle', 'bottom'];
+const codeSnippetCheck: Check = v => isObj(v) && (v.lang === 'python' || v.lang === 'cpp' || v.lang === 'text') && isStr(v.code);
 const baseIdCheck: Check = v => v === null || isStr(v);
 const cropCheck: Check = v => isObj(v) && isNum(v.x) && isNum(v.y) && isNum(v.w) && isNum(v.h);
 
@@ -69,6 +71,16 @@ const SPECS: Record<string, { req: Record<string, Check>; opt: Record<string, Ch
     req: { x: isNum, y: isNum, w: isNum, h: isNum, src: isStr },
     opt: { crop: cropCheck, rot: isNum, color: isStr, width: isNum, opacity: isNum, radius: isNum, page: isStr },
   },
+  task: {
+    req: {
+      x: isNum, y: isNum, w: isNum, h: isNum, taskId: isStr, examType: v => EXAM_TYPES.includes(v as never), topic: isStr,
+      statementMd: isStr, answer: isStr,
+    },
+    opt: {
+      solutionMd: isStr, studentDraft: isStr, attempts: Array.isArray, markedHard: isBool, solutionVisibleToStudent: isBool,
+      subject: v => SUBJECTS.includes(v as never), answerUnit: isStr, codeSnippet: codeSnippetCheck,
+    },
+  },
   solid: {
     req: { solid: v => SOLIDS.includes(v as string), x: isNum, y: isNum, w: isNum, d: isNum, h: isNum, color: isStr, width: isNum },
     opt: { n: isNum, t: isNum, opacity: isNum },
@@ -85,10 +97,29 @@ function sanitizePts(raw: unknown): Pt[] | null {
   return out;
 }
 
+/** Попытки ученика: негодные записи отбрасываются, число и длина ограничены. */
+function sanitizeAttempts(raw: unknown): TaskAttempt[] {
+  if (!Array.isArray(raw)) return [];
+  const out: TaskAttempt[] = [];
+  for (const a of raw) {
+    if (isObj(a) && isStr(a.value) && isNum(a.timestamp) && isBool(a.isCorrect)) {
+      out.push({ value: a.value.slice(0, MAX_DRAFT), timestamp: a.timestamp, isCorrect: a.isCorrect });
+    }
+  }
+  return out.slice(-MAX_ATTEMPTS);
+}
+
 /** Элемент доски из непроверенных данных; null — элемент негодный (неизвестный тип, нет обязательных полей). */
-export function sanitizeElement(raw: unknown): Element | null {
-  if (!isObj(raw) || !isStr(raw.id) || raw.id === '' || !isStr(raw.type)) return null;
-  const spec = SPECS[raw.type];
+export function sanitizeElement(rawInput: unknown): Element | null {
+  if (!isObj(rawInput) || !isStr(rawInput.id) || rawInput.id === '' || !isStr(rawInput.type)) return null;
+  let raw: Rec = rawInput;
+  if (raw.type === 'task') {
+    // у задания из старой или чужой версии тип экзамена и тема восстанавливаются, а не отбрасывают задание
+    raw = { ...raw };
+    if (!EXAM_TYPES.includes(raw.examType as never)) raw.examType = 'custom';
+    if (!isStr(raw.topic)) raw.topic = '';
+  }
+  const spec = SPECS[raw.type as string];
   if (!spec) return null;
   for (const [k, check] of Object.entries(spec.req)) if (!check(raw[k])) return null;
   const out: Rec = { ...raw };
@@ -99,6 +130,17 @@ export function sanitizeElement(raw: unknown): Element | null {
     const pts = sanitizePts(raw.pts);
     if (!pts) return null;
     out.pts = pts;
+  }
+  if (raw.type === 'task') {
+    if ('attempts' in out) {
+      const attempts = sanitizeAttempts(out.attempts);
+      if (attempts.length > 0) out.attempts = attempts;
+      else delete out.attempts;
+    }
+    if (isStr(out.studentDraft)) {
+      if (out.studentDraft === '') delete out.studentDraft;
+      else out.studentDraft = out.studentDraft.slice(0, MAX_DRAFT);
+    }
   }
   if ('reactions' in out) {
     const reactions = sanitizeReactions(out.reactions);

@@ -157,7 +157,43 @@ export interface SolidEl extends BaseEl {
   opacity?: number;
 }
 
-export type Element = (StrokeEl | ShapeEl | PolyEl | TextEl | NoteEl | ImageEl | SolidEl) & {
+/** Попытка ученика ответить на задание. */
+export interface TaskAttempt {
+  value: string;
+  timestamp: number;
+  isCorrect: boolean;
+}
+
+export type TaskExamType = 'oge' | 'ege_base' | 'ege_prof' | 'vpr' | 'custom';
+export type TaskSubject = 'math' | 'physics' | 'informatics' | 'other';
+
+/** Интерактивное задание ОГЭ/ЕГЭ (Abax Tutor): условие, ответ и попытки ученика. */
+export interface TaskEl extends BaseEl {
+  type: 'task';
+  x: number; y: number; w: number; h: number;
+  taskId: string;
+  examType: TaskExamType;
+  topic: string;
+  statementMd: string;
+  /** Правильный ответ; несколько допустимых — через «|». Ученику не отправляется. */
+  answer: string;
+  solutionMd?: string;
+  /** Текущий ввод ученика в реальном времени. */
+  studentDraft?: string;
+  attempts?: TaskAttempt[];
+  /** Помечено репетитором как сложное для повторения. */
+  markedHard?: boolean;
+  /** Показывать ли решение ученику. */
+  solutionVisibleToStudent?: boolean;
+  /** Предмет; нет поля — математика. */
+  subject?: TaskSubject;
+  /** Единицы измерения ответа (физика): «м/с», «кДж». */
+  answerUnit?: string;
+  /** Фрагмент кода (информатика). */
+  codeSnippet?: { lang: 'python' | 'cpp' | 'text'; code: string };
+}
+
+export type Element = (StrokeEl | ShapeEl | PolyEl | TextEl | NoteEl | ImageEl | SolidEl | TaskEl) & {
   /** Закрепление относительно обычных слоёв. */
   layerPin?: 'top' | 'bottom';
 };

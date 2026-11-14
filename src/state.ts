@@ -410,7 +410,7 @@ export function setSelection(ids: string[]): void {
 
 /** Элементы с цветом: всё, кроме стикеров и картинок без рамки. */
 function inkOf(e: Element): { color: string; width?: number; opacity?: number } | null {
-  if (e.type === 'note') return null;
+  if (e.type === 'note' || e.type === 'task') return null;
   if (e.type === 'image') return imageFrame(e) ? { color: e.color!, width: e.width, opacity: e.opacity } : null;
   return e;
 }
@@ -466,7 +466,7 @@ export interface StylePatch {
 
 /** Элемент с применённым стилем; тот же объект — если к нему ничего не относится. */
 function styledElement(el: Element, p: StylePatch): Element {
-  if (el.type === 'note') return el;
+  if (el.type === 'note' || el.type === 'task') return el;
   const set: Record<string, unknown> = {};
   if (el.type === 'image') {
     // цвет, толщина и прозрачность у картинки — это её рамка: недостающее берём из текущего стиля
@@ -532,6 +532,7 @@ export function colorElement(id: string, color: string, fill: boolean): void {
   const next = prev.map(el => {
     if (el.id !== id) return el;
     if (el.type === 'note') return { ...el, color };
+    if (el.type === 'task') return el;
     const useFill = fill && el.type === 'shape' && el.shape !== 'line' && el.shape !== 'arrow';
     return styledElement(el, useFill ? { fill: color } : { color });
   });
