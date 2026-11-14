@@ -8,9 +8,10 @@ import {
   setStyleWidth, setStyleOpacity, setNoteColor, selectPreset, presetKind, addElement, replaceElements, pushHistory, uid,
   applyStyleToSelection, colorElement, setSettings, setView, switchPage, addPage, deletePage, renamePage, setSelection,
   openProject, blankProject, blankPage, projectMeta, groupSelected, ungroupSelected, movePage,
-  bringForward, sendBackward, moveSelectionLayer, selectionLayerOrder, pinSelectionLayer, deleteSelected, setSolidSides, duplicateSelected, removeImageFrames, selectInserted,
+  bringForward, sendBackward, moveSelectionLayer, selectionLayerOrder, pinSelectionLayer, deleteSelected, setSolidSides, removeImageFrames, selectInserted,
   clampOpacity, opacityField, OPACITY_MIN, parseZoomPercent, zoomAtPoint,
   addDraft, deleteDraft, onDraft, realPageId,
+  canCopyCurrentBoard, canCloneCurrentProject,
 } from './state';
 import type { PresetKind, StylePatch, StyleValue } from './state';
 import { doskaApi, storage } from './storage';
@@ -43,7 +44,7 @@ import { renderAbout, showToast } from './about';
 import { closeIconPicker, openIconPicker } from './icon-picker';
 import { capitalize, dayLabel, pagesLabel } from './format';
 import { buildCustomColorPicker } from './color-picker';
-import { copySelection, COPY_STEP_PX, pasteFromMemory, pasteFromSystem } from './clipboard';
+import { copySelection, duplicateSelection as duplicateInPlace, pasteFromMemory, pasteFromSystem } from './clipboard';
 import { hideHeldTooltip, showHeldTooltip } from './tooltip';
 
 pdfjsLib.GlobalWorkerOptions.workerPort = new PdfWorker();
@@ -2268,6 +2269,7 @@ function pagesAtTop(): boolean {
 // ----- Экспорт PNG -----
 
 export async function copySelectionAsImage(): Promise<void> {
+  if (!canCopyCurrentBoard()) { showToast('Автор запретил копирование'); return; }
   const els = state.board.elements.filter(el => state.selection.has(el.id));
   if (!els.length) return;
   showToast('Копирование...');
@@ -2300,6 +2302,7 @@ export async function copySelectionAsImage(): Promise<void> {
 }
 
 export async function exportPng(): Promise<void> {
+  if (!canCopyCurrentBoard()) { showToast('Автор запретил копирование'); return; }
   const els = state.selection.size
     ? state.board.elements.filter(e => state.selection.has(e.id))
     : state.board.elements;
@@ -2569,8 +2572,7 @@ export function viewRect(): AABB {
 /** Ctrl+D: копия выделенного со сдвигом, выделение переходит на неё. */
 export function duplicateSelection(): void {
   if (!canEditBoard()) return;
-  const step = COPY_STEP_PX / state.camera.zoom;
-  duplicateSelected(step, step);
+  duplicateInPlace();
 }
 
 function wireImageInput(): void {
@@ -4410,6 +4412,7 @@ function wireTopbar(): void {
     if (action === 'png') void exportPng();
     if (action === 'settings') openAllSettings();
     if (action === 'project') void (async () => {
+      if (!canCloneCurrentProject()) { showToast('Автор запретил сохранение проекта'); return; }
       await saveNow();
       const url = URL.createObjectURL(new Blob([JSON.stringify(state.project, null, 2)], { type: 'application/json' }));
       const a = document.createElement('a'); a.href = url; a.download = `${state.project.name || 'Abax'}.json`; a.click();

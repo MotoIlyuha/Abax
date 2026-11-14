@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   PLAN_LIMITS, canCreatePage, canCreateProject, canGuestJoinRoom, effectivePermissions, planOf, sanitizePermissionsForPlan,
 } from '../../src/limits';
@@ -106,6 +106,7 @@ describe('сериализация прав проекта (file.ts)', () => {
   });
 
   it('штрих без точек отбрасывается, у точек появляется давление', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const stroke = { id: 's', type: 'stroke', tool: 'pen', color: '#000', width: 2, pts: [{ x: 1, y: 2 }] };
     const p: Project = parseProject(proj({ pages: [{ id: 'g', elements: [stroke, { ...stroke, id: 's2', pts: [] }] }] }))!;
     expect(p.pages[0].elements).toHaveLength(1);

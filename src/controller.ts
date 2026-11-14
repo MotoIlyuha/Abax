@@ -4,7 +4,7 @@ import {
   state, update, onChange, beginStroke, extendStroke, endStroke, pushHistory, replaceElements,
   addElement, setSelection, deleteSelected, undo, redo, setTool, uid, commitPoly,
   bringForward, sendBackward, moveSelectionLayer, expandSelectionWithGroups, groupSelected, ungroupSelected, selectAll, selectInserted, opacityField,
-  zoomAtPoint, ZOOM_MAX, ZOOM_MIN, insertCopies, isDraftId, touchProject,
+  zoomAtPoint, ZOOM_MAX, ZOOM_MIN, insertCopies, isDraftId, touchProject, canCopyCurrentBoard,
 } from './state';
 import {
   type AABB, hitTest, erasePart, aabbIntersects, aabbUnion, alignGuides, alignShift, boxAnchors, boxHandles, elementAABB, elementHandles,
@@ -128,11 +128,11 @@ export function initController(canvas: HTMLCanvasElement): void {
       ghost.style.cssText='position:fixed;z-index:9999;pointer-events:none;opacity:.8;box-shadow:0 2px 8px #0003;border-radius:3px;';
       renderScene(ghost.getContext('2d')!,a.source,{x:bounds.x0,y:bounds.y0,zoom:scale},w,h,1,'none');
       document.body.appendChild(ghost);
-      transfer={sourceId:state.pageId,sourcePage:state.board,source:a.source,original,copy:a.duplicate || e.altKey,ghost,hover:null,timer:null,transition:null};
+      transfer={sourceId:state.pageId,sourcePage:state.board,source:a.source,original,copy:a.duplicate,ghost,hover:null,timer:null,transition:null};
       update(true);
     }
     const tr=transfer;
-    tr.copy=e.altKey || a.duplicate;
+    tr.copy=a.duplicate || (e.altKey && canCopyCurrentBoard());
     const shouldHide = !tr.copy;
     if (shouldHide !== (state.dragHidden !== null)) {
       state.dragHidden = shouldHide ? { pageId: tr.sourceId, ids: new Set(tr.source.map(el => el.id)) } : null;
@@ -248,7 +248,7 @@ export function initController(canvas: HTMLCanvasElement): void {
     const box = others && orig.size > 0 ? [...orig.values()].map(elementAABB).reduce(aabbUnion) : null;
     action = {
       pid: e.pointerId, kind: 'move', pre: state.board.elements, start, orig, moved: false,
-      deselectOnUp, box, others, link, duplicate: e.altKey, source: [...orig.values()],
+      deselectOnUp, box, others, link, duplicate: e.altKey && canCopyCurrentBoard(), source: [...orig.values()],
     };
     // При невыделенных прикреплённых элементах нужен полный рендер всех слоёв.
     state.liveEdit = orig.size === state.selection.size;
@@ -920,7 +920,7 @@ export function initController(canvas: HTMLCanvasElement): void {
         let dx = s.x - a.start.x;
         let dy = s.y - a.start.y;
         if (!a.moved && Math.hypot(dx, dy) * state.camera.zoom < MOVE_THRESHOLD_PX) break;
-        if (!a.moved && (a.duplicate || e.altKey)) {
+        if (!a.moved && (a.duplicate || (e.altKey && canCopyCurrentBoard()))) {
           const sources = a.pre.filter(el => a.orig.has(el.id));
           const ids = new Map(sources.map(el => [el.id, uid()]));
           const groupIds = new Map<string, string>();
@@ -1015,7 +1015,7 @@ export function initController(canvas: HTMLCanvasElement): void {
         const p=toScene(localPos(e).x,localPos(e).y);
         const bounds=tr.source.map(elementAABB).reduce(aabbUnion);
         const dx=p.x-(bounds.x0+bounds.x1)/2, dy=p.y-(bounds.y0+bounds.y1)/2;
-        const copy=tr.copy || e.altKey;
+        const copy=tr.copy || (e.altKey && canCopyCurrentBoard());
         if (state.pageId===tr.sourceId && !copy) {
           pushHistory(tr.original);
           const ids=new Set(tr.source.map(el=>el.id));

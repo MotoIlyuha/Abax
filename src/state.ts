@@ -6,6 +6,7 @@ import { hasBaseSides, SIDES_MAX, SIDES_MIN, solidSides } from './solid';
 import { DEFAULT_NEW_PAGE_KEY } from './hotkeys';
 import { imageFrame, shapeHoldsText, translateElement } from './geom';
 import { attachNewElement, freezeAttachments, rebindAttachment } from './attachment';
+import { effectivePermissions } from './limits';
 
 export interface LiveStroke {
   tool: 'pen' | 'highlighter';
@@ -132,6 +133,10 @@ export interface AppState {
   hold: { pageId: string; camera: Camera } | null;
   /** Счётчик правок черновиков: сами они проект не меняют, а список страниц должен перерисовать превью. */
   draftRev: number;
+  /** Роль в совместной работе (выставляет collab.ts); null — работаем без неё. */
+  collabRole: 'host' | 'guest' | null;
+  /** Доска открыта по ссылке просмотра: всего проекта или одной страницы. */
+  linkMode: 'view-project' | 'view-page' | null;
 }
 
 let seq = 1;
@@ -191,6 +196,8 @@ export const state: AppState = {
   drafts: [],
   hold: null,
   draftRev: 0,
+  collabRole: null,
+  linkMode: null,
 };
 
 // ----- Черновики -----
@@ -345,9 +352,34 @@ export function insertCopies(els: Element[], dx: number, dy: number): Element[] 
   return copies;
 }
 
-/** Дублирует выделенное со сдвигом; выделение переходит на копии. */
-export function duplicateSelected(dx: number, dy: number): void {
-  insertCopies(selectedElements(), dx, dy);
+/** Дублирует выделенное со сдвигом; выделение переходит на копии. false — копирование запрещено или нечего дублировать. */
+export function duplicateSelected(dx: number, dy: number): boolean {
+  if (!canCopyCurrentBoard()) return false;
+  return insertCopies(selectedElements(), dx, dy).length > 0;
+}
+
+// ----- Защита от копирования и клонирования -----
+
+/** Читает доску чужой: гость совместной работы или ссылка просмотра. */
+function viewingForeign(): boolean {
+  return state.collabRole === 'guest' || state.linkMode !== null;
+}
+
+/**
+ * Можно ли копировать, вырезать и дублировать элементы. Автор может всегда; читатель — пока автор
+ * не запретил (allowCopy: false или forbidClone: true). Права берутся с поправкой на тариф владельца.
+ */
+export function canCopyCurrentBoard(): boolean {
+  if (!viewingForeign()) return true;
+  const perms = effectivePermissions(state.project);
+  return perms.allowCopy !== false && perms.forbidClone !== true;
+}
+
+/** Можно ли унести проект целиком (клонировать, сохранить файлом). Одна страница по ссылке — никогда. */
+export function canCloneCurrentProject(): boolean {
+  if (state.linkMode === 'view-page') return false;
+  if (!viewingForeign()) return true;
+  return effectivePermissions(state.project).forbidClone !== true;
 }
 
 /** Выделяет все элементы страницы и включает инструмент «Выделение», чтобы их сразу можно было двигать. */

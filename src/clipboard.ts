@@ -1,6 +1,6 @@
 import type { Element } from './types';
 import { aabbIntersects, aabbUnion, elementAABB, type AABB } from './geom';
-import { deleteSelected, insertCopies, selectedElements, state, uid } from './state';
+import { canCopyCurrentBoard, deleteSelected, duplicateSelected, insertCopies, selectedElements, state, uid } from './state';
 
 /** Тип данных Доски в системном буфере обмена: копирование между окнами и проектами. */
 export const CLIP_MIME = 'application/x-doska-elements';
@@ -22,12 +22,25 @@ let clip: Clip | null = null;
 
 /** Копирует выделенное в буфер Доски и в системный (data); cut — затем удаляет. false — нечего копировать. */
 export function copySelection(data?: DataTransfer | null, cut = false): boolean {
+  if (!canCopyCurrentBoard()) return false;
   const els = selectedElements();
   if (els.length === 0) return false;
   clip = { key: uid(), pageId: state.pageId, elements: structuredClone(els), pastes: 0, cut };
   data?.setData(CLIP_MIME, JSON.stringify({ key: clip.key, pageId: clip.pageId, elements: clip.elements }));
   if (cut) deleteSelected();
   return true;
+}
+
+/** Вырезает выделенное: копирует и удаляет. false — запрещено или нечего вырезать, доска не меняется. */
+export function cutSelection(data?: DataTransfer | null): boolean {
+  return copySelection(data, true);
+}
+
+/** Ctrl+D: копия выделенного со сдвигом на шаг вставки. false — запрещено или нечего дублировать. */
+export function duplicateSelection(): boolean {
+  if (!canCopyCurrentBoard()) return false;
+  const step = COPY_STEP_PX / state.camera.zoom;
+  return duplicateSelected(step, step);
 }
 
 /** Элементы Доски из системного буфера; скопированные в другом окне становятся текущим буфером. */

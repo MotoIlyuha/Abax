@@ -8,7 +8,7 @@
   - Новый `src/file.ts` (`parseProject`, `serializeProject`, `sanitizeElement`); `storage.migrate` использует его.
   - Тесты `tests/unit/limits.test.ts` (3x3 на free, 1 гость, сброс запретов на free, сериализация прав).
 
-- [ ] **TASK-02: Защита от копирования и клонирования (`src/clipboard.ts`, `src/state.ts`)**
+- [x] **TASK-02: Защита от копирования и клонирования (`src/clipboard.ts`, `src/state.ts`)**
   - `canCopyCurrentBoard()`, `canCloneCurrentProject()`, поля `collabRole`, `linkMode` в `state.ts`.
   - Блокировка `copySelection`, `cutSelection`, `duplicateSelected` и обёрток в `app.ts`/`controller.ts`.
   - Тесты `tests/unit/copy-protection.test.ts`.

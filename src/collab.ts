@@ -69,6 +69,7 @@ export function startCollab(wsUrl: string, asHost: boolean, name: string): Promi
  */
 export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void> {
   role = asHost ? 'host' : 'guest';
+  state.collabRole = role;
   transport = t;
   // события от прежнего, уже заменённого канала не должны трогать текущее состояние
   const current = () => transport === t;
@@ -326,6 +327,7 @@ export function stopCollab(): void {
   t?.close();
   connected = false;
   users = [];
+  state.collabRole = null;
   renderRemoteCursors();
 }
 
