@@ -42,3 +42,10 @@
 - `electron/room.cjs` и `share.cjs` не менялись (решение 41); к UI/транспорту хост пока не подключён.
 - В TASK-08 нужно доработать: проекция `TaskEl` для гостя (`projectFor`, `patch`) и слияние гостевых правок заданий.
 - Тесты: `tests/unit/room-host.test.ts` (30). Всего 573.
+
+## TASK-06 — хранилище ассетов (готово)
+- `src/asset-store.ts`: `computeAssetHash` (SHA-256 от UTF-8 всей строки data URL; `crypto.subtle`, без него — собственная `sha256Hex`, проверена на совпадение), `AssetStore` (память + необязательный IndexedDB `abax-assets`, при сбое — только память), `extractProjectAssets`, `hydrateProjectAssets(project, assets?)`, `assetRef`, `assetHashOf`.
+- Решение: вместо FNV-1a — полноценный SHA-256 на чистом JS, чтобы id не зависели от окружения.
+- Выносятся только `ImageEl.src` с `data:image/`; иконка проекта и ссылки на страницы не трогаются; неизвестный `asset://` остаётся ссылкой; нетронутые страницы — те же объекты.
+- В сохранение и синхронизацию не подключено (решение 47).
+- Тесты: `tests/unit/asset-store.test.ts` (11). Всего 584.

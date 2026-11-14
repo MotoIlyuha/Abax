@@ -25,7 +25,7 @@
   - Порт `electron/room.cjs` на TS: `maxGuests`, `maxEditors`, `allowCopy`, `patch`, `hidden`-страницы, `denied`.
   - Тесты `tests/unit/room-host.test.ts`.
 
-- [ ] **TASK-06: Хранилище ассетов (`src/asset-store.ts`)**
+- [x] **TASK-06: Хранилище ассетов (`src/asset-store.ts`)**
   - `computeAssetHash`, `AssetStore`, `extractProjectAssets`, `hydrateProjectAssets`.
   - Тесты `tests/unit/asset-store.test.ts`.
 
