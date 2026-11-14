@@ -2513,3 +2513,29 @@ body.link-view #project-icon { pointer-events: none; }
 .td-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 .td-save { border-color: var(--accent); background: var(--accent); color: #fff; }
 .td-save:hover { background: #2160dd; color: #fff; }
+
+/* ---- реакции и комментарии ---- */
+.qm-reactions { display: flex; align-items: center; gap: 1px; padding: 0 2px; }
+.qm-react { font-size: 15px; line-height: 1; }
+.qm-react.active { background: var(--accent-soft); }
+.qm-comment { font-size: 15px; line-height: 1; }
+.comment-pop {
+  position: absolute; z-index: 20; width: 280px; box-sizing: border-box; padding: 10px 12px; pointer-events: auto;
+  border: 1px solid var(--border); border-radius: 12px; background: var(--panel); box-shadow: var(--shadow); font-size: 13px;
+}
+.comment-pop.resolved { background: #f5f7fa; }
+.cp-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.cp-title { font-weight: 700; }
+.cp-close { border: 0; background: none; font-size: 20px; line-height: 1; color: var(--muted); cursor: pointer; }
+.cp-list { max-height: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; user-select: text; }
+.cp-list:empty { display: none; }
+.cp-meta { display: flex; gap: 8px; align-items: baseline; font-size: 12px; }
+.cp-author { font-weight: 700; }
+.cp-time { color: var(--muted); }
+.cp-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.cp-input { width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; font: inherit; resize: vertical; }
+.cp-input:focus { outline: none; border-color: var(--accent); }
+.cp-actions { display: flex; gap: 6px; margin-top: 6px; }
+.cp-send, .cp-resolve { padding: 4px 11px; border: 1px solid var(--border); border-radius: 99px; background: #fff; font: inherit; cursor: pointer; }
+.cp-send { border-color: var(--accent); background: var(--accent); color: #fff; font-weight: 600; }
+.cp-resolve:hover { border-color: var(--accent); color: var(--accent); }

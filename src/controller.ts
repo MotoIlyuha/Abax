@@ -12,6 +12,7 @@ import {
 } from './geom';
 import { collabActive, noteCursor } from './collab';
 import { addGestureProbe } from './gesture';
+import { annotationClick } from './comments-ui';
 import { isNativeApp } from './native';
 import { settingsDialogOpen } from './settings-dialog';
 import { partEraseRadius, presenting, requestRender, renderScene } from './renderer';
@@ -497,8 +498,20 @@ export function initController(canvas: HTMLCanvasElement): void {
     // открытый редактор текста фиксируем до разбора нажатия: перенос и ручки должны видеть новый текст
     closeEditor(true);
 
+    // пилюли реакций и пины комментариев нажимаются всегда — и читателем, у которого править доску нельзя
+    const anyTool = !canEditBoard() || activeTool() === 'select' || activeTool() === 'pan';
+    if (e.button === 0 && anyTool && !gesture && !action && annotationClick(lp.x, lp.y)) return;
+
     // совместный режим: на странице без права edit правки запрещены
-    if (!canEditBoard() && activeTool() !== 'pan' && !POINTER_TOOLS.has(activeTool()) && e.button !== 1) return;
+    if (!canEditBoard() && activeTool() !== 'pan' && !POINTER_TOOLS.has(activeTool()) && e.button !== 1) {
+      // читатель может выделить объект — для реакций и копирования, — если автор копировать не запретил
+      if (activeTool() === 'select' && e.button === 0 && state.linkMode === null && canCopyCurrentBoard()) {
+        const at = toScene(lp.x, lp.y);
+        const picked = topHit(at.x, at.y);
+        setSelection(picked ? expandSelectionWithGroups(new Set([picked.id])) : []);
+      }
+      return;
+    }
 
 
     const touches = touchPtrs();

@@ -54,6 +54,11 @@ function peer(url: string): Promise<Peer> {
 }
 const last = (p: Peer, t: string) => [...p.inbox].reverse().find(m => m.t === t);
 
+/** Сервер принял caps автора: до этого он получал бы вместо патчей полный проект. */
+async function hostCaps(): Promise<void> {
+  await until(() => [...server.room.clients.values()].some(c => (c as unknown as { host: boolean; patches: boolean }).host && (c as unknown as { patches: boolean }).patches));
+}
+
 let server: ShareServer;
 let base: string;
 let collab: Collab;
@@ -526,6 +531,7 @@ describe('дельта-патчи', () => {
     const host = await peer(`${base}&host=1&key=${encodeURIComponent(server.hostKey)}`);
     peers.push(host);
     host.ws.send(JSON.stringify({ t: 'caps', patches: true }));
+    await hostCaps();
     return { uid, host };
   }
 
@@ -652,6 +658,7 @@ describe('ввод ученика в задание', () => {
     const host = await peer(`${base}&host=1&key=${encodeURIComponent(server.hostKey)}`);
     peers.push(host);
     host.ws.send(JSON.stringify({ t: 'caps', patches: true }));
+    await hostCaps();
     host.inbox.length = 0;
     for (const d of ['1', '12', '123']) collab.sendTaskDraft('pg1', 'task', d);
     await until(() => (server.room.project!.pages[0].elements[0] as never as { studentDraft?: string }).studentDraft === '123');
@@ -671,5 +678,49 @@ describe('ввод ученика в задание', () => {
     expect((server.room.project!.pages[0].elements[0] as never as { answer: string }).answer).toBe('5');
     // а локально ничего не отправлялось как «своя правка»: хаб не вернул её автору лишний раз
     expect(st.canUndo()).toBe(false);
+  });
+});
+
+describe('реакции и комментарии через хаб', () => {
+  const withEls = (): Project => ({ ...demo(), pages: [{ id: 'pg1', name: 'П1', grid: 'square', elements: [rect('a') as never] }, demo().pages[1]] });
+
+  it('вне комнаты ничего не отправляется', () => {
+    expect(collab.noteOnline()).toBe(false);
+    expect(collab.sendReaction('pg1', 'a', '👍')).toBe(false);
+    expect(collab.sendComment('pg1', { op: 'reply', threadId: 't', text: 'х' })).toBe(false);
+  });
+
+  it('читатель ставит реакцию и пишет комментарий — оба доходят до него же и до остальных', async () => {
+    server.room.project = withEls();
+    await collab.startCollab(base, false, 'Ученик');
+    await until(() => st.state.project.id === 'proj');
+    await until(() => collab.noteOnline());
+    expect(collab.readOnly('pg1')).toBe(true);
+    const host = await peer(`${base}&host=1&key=${encodeURIComponent(server.hostKey)}`);
+    peers.push(host);
+    host.ws.send(JSON.stringify({ t: 'caps', patches: true }));
+    await hostCaps();
+    host.inbox.length = 0;
+
+    expect(collab.sendReaction('pg1', 'a', '👍')).toBe(true);
+    await until(() => st.state.board.elements[0].reactions?.['👍']?.length === 1);
+    expect(last(host, 'patch')!.ops[0].el.reactions['👍']).toHaveLength(1);
+    expect(st.canUndo()).toBe(false); // реакции в историю отмены не попадают
+
+    collab.sendComment('pg1', { op: 'create', x: 5, y: 6, targetElementId: 'a', text: 'Почему?' });
+    await until(() => st.state.board.comments?.length === 1);
+    expect(st.state.board.comments![0].messages[0]).toMatchObject({ text: 'Почему?', authorName: 'Ученик' });
+    expect(last(host, 'comments')!.comments).toHaveLength(1);
+    const id = st.state.board.comments![0].id;
+    collab.sendComment('pg1', { op: 'resolve', threadId: id, resolved: true });
+    await until(() => st.state.board.comments![0].resolved === true);
+
+    // чужие комментарии приходят и в удалённую страницу, не трогая проект целиком
+    const events: Event[] = [];
+    document.addEventListener('doska:collab-project', e => events.push(e));
+    host.ws.send(JSON.stringify({ t: 'comment', op: 'reply', pageId: 'pg1', threadId: id, text: 'Ответ' }));
+    await until(() => st.state.board.comments![0].messages.length === 2);
+    expect(events).toHaveLength(0);
+    expect(server.room.project!.pages[0].comments![0].messages).toHaveLength(2);
   });
 });

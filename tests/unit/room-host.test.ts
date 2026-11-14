@@ -481,3 +481,100 @@ describe('ввод ученика в задание (task-draft, task-submit)', 
     expect(taskOn(hub)).not.toHaveProperty('markedHard');
   });
 });
+
+describe('реакции и комментарии от участников', () => {
+  const withEls = () => demo({ pages: [
+    { id: 'pg1', name: 'Первая', grid: 'square', elements: [rect('a'), rect('b')] },
+    { id: 'pg2', name: 'Вторая', grid: 'square', elements: [rect('c')] },
+  ] });
+  const elOn = (hub: ReturnType<typeof setup>['hub'], id: string, page = 0) => hub.room.project!.pages[page].elements.find(e => e.id === id)!;
+
+  it('читатель без права правки ставит и снимает реакцию; её получают все, включая его самого', () => {
+    const { hub, host, join } = setup({ maxGuests: Infinity }, withEls());
+    const a = join('Маша');
+    const b = join('Вова');
+    host.sent.length = 0; a.s.sent.length = 0; b.s.sent.length = 0;
+    a.s.recv({ t: 'react', pageId: 'pg1', elId: 'a', emoji: '👍', userId: 'masha' });
+    b.s.recv({ t: 'react', pageId: 'pg1', elId: 'a', emoji: '👍', userId: 'vova' });
+    expect(elOn(hub, 'a').reactions).toEqual({ '👍': ['masha', 'vova'] });
+    for (const peer of [host, a.s, b.s]) {
+      const last = peer.last('patch')!;
+      expect(last).toMatchObject({ pageId: 'pg1', by: -1 });
+      expect(last.ops[0].el.reactions['👍']).toEqual(['masha', 'vova']);
+    }
+    a.s.recv({ t: 'react', pageId: 'pg1', elId: 'a', emoji: '👍', userId: 'masha' });
+    expect(elOn(hub, 'a').reactions).toEqual({ '👍': ['vova'] });
+    b.s.recv({ t: 'react', pageId: 'pg1', elId: 'a', emoji: '👍', userId: 'vova' });
+    expect(elOn(hub, 'a')).not.toHaveProperty('reactions');
+  });
+
+  it('без userId участник подписан своим номером; мусор, скрытая страница и чужие id отклоняются', () => {
+    const { hub, host, join } = setup({}, withEls());
+    const a = join('Маша');
+    a.s.recv({ t: 'react', pageId: 'pg1', elId: 'a', emoji: '🔥' });
+    expect(elOn(hub, 'a').reactions).toEqual({ '🔥': [`u${a.uid}`] });
+    hub.setRights(a.uid, { pages: { pg2: 'hidden' } });
+    host.sent.length = 0;
+    for (const m of [
+      { t: 'react', pageId: 'pg2', elId: 'c', emoji: '👍' }, { t: 'react', pageId: 'pg1', elId: 'нет', emoji: '👍' },
+      { t: 'react', pageId: 'pg1', elId: 'a', emoji: '' }, { t: 'react', pageId: 'pg1', elId: 'a', emoji: 'я'.repeat(40) },
+      { t: 'react', pageId: 'pg1', elId: 'a', emoji: 5 }, { t: 'react', pageId: '', elId: 'a', emoji: '👍' },
+      { t: 'react', pageId: 'pg1', elId: 'a', emoji: '👍', userId: 'x'.repeat(100) },
+    ]) a.s.recv(m);
+    expect(host.all('patch')).toHaveLength(1); // только последняя: слишком длинный userId заменён номером
+    expect(elOn(hub, 'c', 1)).not.toHaveProperty('reactions');
+  });
+
+  it('ветки комментариев: создание, ответ, закрытие; имя автора ставит хаб', () => {
+    const { hub, host, join } = setup({ maxGuests: Infinity }, withEls());
+    const a = join('Маша');
+    const b = join('Вова');
+    a.s.recv({ t: 'comment', op: 'create', pageId: 'pg1', x: 10, y: 20, targetElementId: 'a', text: '  Почему так?  ', userId: 'masha' });
+    const t1 = hub.room.project!.pages[0].comments![0];
+    expect(t1).toMatchObject({ x: 10, y: 20, targetElementId: 'a' });
+    expect(t1.messages[0]).toMatchObject({ authorId: 'masha', authorName: 'Маша', text: 'Почему так?' });
+    for (const peer of [host, a.s, b.s]) expect(peer.last('comments')).toMatchObject({ pageId: 'pg1', by: -1, comments: [expect.objectContaining({ id: t1.id })] });
+    host.recv({ t: 'comment', op: 'reply', pageId: 'pg1', threadId: t1.id, text: 'Потому что', userId: 'teacher' });
+    expect(hub.room.project!.pages[0].comments![0].messages.map(m => [m.authorName, m.text])).toEqual([['Маша', 'Почему так?'], ['Учитель', 'Потому что']]);
+    b.s.recv({ t: 'comment', op: 'resolve', pageId: 'pg1', threadId: t1.id, resolved: true });
+    expect(hub.room.project!.pages[0].comments![0].resolved).toBe(true);
+    b.s.recv({ t: 'comment', op: 'resolve', pageId: 'pg1', threadId: t1.id, resolved: false });
+    expect(hub.room.project!.pages[0].comments![0]).not.toHaveProperty('resolved');
+    // присланное имя автора не принимается
+    a.s.recv({ t: 'comment', op: 'reply', pageId: 'pg1', threadId: t1.id, text: 'ещё', authorName: 'Директор' });
+    expect(hub.room.project!.pages[0].comments![0].messages.at(-1)!.authorName).toBe('Маша');
+  });
+
+  it('комментарии на скрытой странице и мусорные запросы не принимаются; скрытая страница ветку не получает', () => {
+    const { hub, join } = setup({}, withEls());
+    const a = join('Маша');
+    hub.setRights(a.uid, { pages: { pg2: 'hidden' } });
+    a.s.sent.length = 0;
+    const before = hub.room.project;
+    for (const m of [
+      { t: 'comment', op: 'create', pageId: 'pg2', x: 1, y: 1, text: 'х' }, { t: 'comment', op: 'create', pageId: 'pg1', x: 'a', y: 1, text: 'х' },
+      { t: 'comment', op: 'create', pageId: 'pg1', x: 1, y: 1, text: '   ' }, { t: 'comment', op: 'reply', pageId: 'pg1', threadId: 'нет', text: 'х' },
+      { t: 'comment', op: 'resolve', pageId: 'pg1', threadId: '' }, { t: 'comment', op: 'взлом', pageId: 'pg1' }, { t: 'comment', pageId: 'pg1' },
+    ]) a.s.recv(m);
+    expect(hub.room.project).toBe(before);
+    const h = new FakeSock();
+    hub.attach(h, { name: 'Другой' });
+    hub.room.clients.get(h)!;
+    const other = hub.room.nextUid - 1;
+    hub.setRights(other, { pages: { pg1: 'hidden' } });
+    h.sent.length = 0;
+    a.s.recv({ t: 'comment', op: 'create', pageId: 'pg1', x: 1, y: 1, text: 'видно не всем' });
+    expect(h.last('comments')).toBeUndefined();
+  });
+
+  it('полный проект участника не затирает комментарии хаба', () => {
+    const { hub, host, join } = setup({}, withEls());
+    const a = join('Маша');
+    hub.setRights(a.uid, { all: 'edit' });
+    a.s.recv({ t: 'comment', op: 'create', pageId: 'pg1', x: 1, y: 1, text: 'мой' });
+    const stale = { ...hub.room.project!, pages: hub.room.project!.pages.map(pg => ({ ...pg, comments: undefined })) };
+    a.s.recv({ t: 'project', project: stale });
+    host.recv({ t: 'project', project: stale });
+    expect(hub.room.project!.pages[0].comments).toHaveLength(1);
+  });
+});

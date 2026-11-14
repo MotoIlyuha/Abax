@@ -2,6 +2,8 @@ import type { Element, GridMode, Page, Project, ProjectMeta } from './types';
 import { state, openProject, setSelection, isDraftId, onDraft, onChange, touchProject, update } from './state';
 import { MAX_PATCH_OPS, applyBoardPatch, diffElements, isBoardPatch, type BoardPatch } from './delta';
 import { gestureActive } from './gesture';
+import { sanitizeComments } from './file';
+import { clientId } from './identity';
 import { setStorage, storage, type BoardsStorage } from './storage';
 import {
   CLOSE_BAD_CODE, CLOSE_BAD_REQUEST, CLOSE_FREE_LIMIT, CLOSE_HOST_OFFLINE, CLOSE_PROTOCOL_MISMATCH, CLOSE_RATE_LIMITED,
@@ -112,6 +114,8 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
         if ((m.by as number) !== myUserId) applyRemoteProject(m.project as Project);
       } else if (m.t === 'patch') {
         if ((m.by as number) !== myUserId && isBoardPatch(m)) receivePatch(m);
+      } else if (m.t === 'comments') {
+        applyIncomingComments(m.pageId, m.comments);
       }
     };
     t.onclose = (code, reason) => {
@@ -283,6 +287,48 @@ function flushCursor(): void {
   // черновик виден только автору: остальным курсор «не на странице» (пустой id не совпадает ни с одной)
   send({ t: 'cursor', x: cursorThrottle.pending.x, y: cursorThrottle.pending.y, pageId: onDraft() ? '' : state.pageId });
   cursorThrottle.pending = null;
+}
+
+// ----- Реакции и комментарии -----
+
+/** Реакции и комментарии принимает хаб с патчами; false — не в комнате, вызывающий применит их у себя. */
+export function noteOnline(): boolean {
+  return connected && hubPatches;
+}
+
+/** Поставить или снять свою реакцию через хаб: так её может поставить и читатель. */
+export function sendReaction(pageId: string, elId: string, emoji: string): boolean {
+  if (!noteOnline()) return false;
+  send({ t: 'react', pageId, elId, emoji, userId: clientId() });
+  return true;
+}
+
+export type CommentRequest =
+  | { op: 'create'; x: number; y: number; targetElementId?: string; text: string }
+  | { op: 'reply'; threadId: string; text: string }
+  | { op: 'resolve'; threadId: string; resolved: boolean };
+
+export function sendComment(pageId: string, req: CommentRequest): boolean {
+  if (!noteOnline()) return false;
+  send({ t: 'comment', pageId, userId: clientId(), ...req });
+  return true;
+}
+
+/** Комментарии страницы от хаба заменяют прежние; проект целиком при этом не открывается заново. */
+function applyIncomingComments(pageId: unknown, raw: unknown): void {
+  if (typeof pageId !== 'string') return;
+  const page = state.project.pages.find(pg => pg.id === pageId);
+  if (!page) return;
+  const list = sanitizeComments(raw);
+  if (list.length > 0) page.comments = list;
+  else delete page.comments;
+  if (sentStructure) {
+    const i = state.project.pages.indexOf(page);
+    if (i >= 0) sentStructure.comments[i] = page.comments;
+  }
+  // автор сохраняет и чужие комментарии
+  if (role === 'host') touchProject();
+  update();
 }
 
 // ----- Ввод ученика в задание -----

@@ -7,6 +7,7 @@ import { PLAN_LIMITS, canCreatePage, canGuestJoinRoom, effectivePermissions, isP
 import { applyBoardPatch, isBoardPatch, type BoardPatch, type ElementOp } from './delta';
 import { sanitizeElement } from './file';
 import { CLOSE_FREE_LIMIT, PROTO } from './collab-transport';
+import { addCommentReply, createCommentThread, resolveCommentThread, toggleElementReaction } from './comments';
 import { mergeGuestTask, mergeHostTask, projectTaskForRole, submitTaskAttempt, updateStudentDraft } from './task-element';
 
 export { PROTO };
@@ -156,6 +157,21 @@ function hostPage(known: Page, incoming: Page): Page {
   if (!incoming.elements.some(isTask)) return incoming;
   const byId = new Map(known.elements.map(e => [e.id, e]));
   return { ...incoming, elements: incoming.elements.map(el => hostElement(byId.get(el.id), el)) };
+}
+
+/** Идентификатор автора реакции или комментария из сообщения участника: короткая строка без управляющих символов. */
+export const MAX_USER_ID = 64;
+export function cleanUserId(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const s = raw.replace(/[\p{Cc}\u2028\u2029]/gu, '').trim();
+  return s && s.length <= MAX_USER_ID ? s : null;
+}
+
+/** Страница проекта поверх страницы участника, но с комментариями хаба: их ведёт хаб, а не присланный проект. */
+function keepHubComments(known: Page, incoming: Page): Page {
+  if (known.comments === incoming.comments) return incoming;
+  const { comments: _c, ...rest } = incoming;
+  return known.comments ? { ...rest, comments: known.comments } : rest;
 }
 
 const decoder = new TextDecoder();
@@ -361,6 +377,9 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
       // ученик печатает и отправляет ответ даже на странице с правом view; проверяет хаб по настоящему ответу
       if (m.t === 'task-draft') acceptTaskInput(info, m, 'draft');
       else if (m.t === 'task-submit') acceptTaskInput(info, m, 'submit');
+      // реакции и комментарии доступны каждому, кто видит страницу, — и читателю тоже
+      else if (m.t === 'react') acceptReaction(info, m);
+      else if (m.t === 'comment') acceptComment(info, m);
     });
     sock.on('close', () => { room.clients.delete(sock); broadcastUsers(); });
     return uid;
@@ -371,7 +390,7 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
     const merged: Project = { ...project, pages: room.project!.pages.map(oldPg => {
       const newPg = project.pages.find(p => p.id === oldPg.id);
       if (!newPg || room.userPageRight(uid, oldPg.id) !== 'edit') return oldPg;
-      return isHost ? hostPage(oldPg, newPg) : guardedPage(oldPg, newPg);
+      return keepHubComments(oldPg, isHost ? hostPage(oldPg, newPg) : guardedPage(oldPg, newPg));
     }) };
     // новые страницы разрешаем добавлять только тем, у кого есть хоть одна edit; на free — не больше лимита
     for (const newPg of project.pages) {
@@ -461,6 +480,45 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
     }
     if (next === el) return;
     commitPatch({ t: 'patch', pageId: page.id, rev: 0, ops: [{ op: 'put', el: next as Element }] }, -1, null);
+  }
+
+  /** Реакция участника на элемент: ставится или снимается; результат — правка элемента от хаба (её получают все). */
+  function acceptReaction(info: Client, m: Rec): void {
+    if (!isId(m.pageId) || !isId(m.elId) || typeof m.emoji !== 'string') return;
+    const page = room.project?.pages.find(p => p.id === m.pageId);
+    if (!page || room.userPageRight(info.uid, page.id) === 'hidden') return;
+    const el = page.elements.find(e => e.id === m.elId);
+    if (!el) return;
+    const next = toggleElementReaction(el, m.emoji, cleanUserId(m.userId) ?? `u${info.uid}`);
+    if (next === el) return;
+    commitPatch({ t: 'patch', pageId: page.id, rev: 0, ops: [{ op: 'put', el: next }] }, -1, null);
+  }
+
+  /** Комментарии: создать ветку, ответить, закрыть. Имя автора — имя участника в комнате, а не присланное. */
+  function acceptComment(info: Client, m: Rec): void {
+    const project = room.project;
+    if (!project || !isId(m.pageId)) return;
+    const page = project.pages.find(p => p.id === m.pageId);
+    if (!page || room.userPageRight(info.uid, page.id) === 'hidden') return;
+    const authorId = cleanUserId(m.userId) ?? `u${info.uid}`;
+    const author = { authorId, authorName: info.name };
+    let next = page;
+    if (m.op === 'create') {
+      if (!isNum(m.x) || !isNum(m.y) || typeof m.text !== 'string') return;
+      next = createCommentThread(page, { x: m.x, y: m.y, ...(isId(m.targetElementId) ? { targetElementId: m.targetElementId } : {}), ...author, text: m.text });
+    } else if (m.op === 'reply') {
+      if (!isId(m.threadId) || typeof m.text !== 'string') return;
+      next = addCommentReply(page, m.threadId, { ...author, text: m.text });
+    } else if (m.op === 'resolve') {
+      if (!isId(m.threadId)) return;
+      next = resolveCommentThread(page, m.threadId, m.resolved !== false);
+    }
+    if (next === page) return;
+    room.project = { ...project, updatedAt: now(), pages: project.pages.map(pg => (pg === page ? next : pg)) };
+    const msg = { t: 'comments', pageId: page.id, comments: next.comments ?? [], by: -1 };
+    for (const c of room.clients.values()) {
+      if (room.userPageRight(c.uid, page.id) !== 'hidden') sendTo(c.sock, msg);
+    }
   }
 
   function pushRights(uid: number): void {

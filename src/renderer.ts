@@ -1,6 +1,8 @@
 import type { Camera, Element, GridMode, ImageEl, Page, ShapeEl, SolidEl, TaskEl } from './types';
 import { EXAM_LABELS, SUBJECT_LABELS, TASK_STATUS_LABEL, taskStatus } from './task-element';
-import { foreignSelections } from './collab';
+import { foreignSelections, readOnly } from './collab';
+import { PILL_H, layoutPills, layoutPins } from './annotations';
+import { clientId } from './identity';
 import {
   type AABB, type Caption, boxHandles, cornerRadius, elementAABB, elementHandles, imageFrame, pageLinkView, presentCamera, shapeCaption,
   shapeHoldsText, wrapText, textLines, TEXT_FONT, NOTE_PAD, NOTE_FONT, NOTE_TEXT_COLOR,
@@ -546,6 +548,57 @@ function drawTaskEl(ctx: CanvasRenderingContext2D, el: TaskEl, lines: string[]):
     ctx.fillStyle = '#4a4f59';
     const unit = el.answerUnit ? ` ${el.answerUnit}` : '';
     ctx.fillText(`Ответ: ${el.studentDraft}${unit}`, x + TASK_PAD + used, bodyBottom + 20, Math.max(10, w - used - TASK_PAD * 2));
+  }
+  ctx.restore();
+}
+
+const REACTION_FONT = '600 12px "Segoe UI", system-ui, sans-serif';
+
+/** Пилюли реакций под элементами (экранные координаты). По ссылке просмотра их нет. */
+function drawReactions(ctx: CanvasRenderingContext2D, cam: Camera, w: number, h: number, els: readonly Element[]): void {
+  if (state.linkMode) return;
+  const pills = layoutPills(els, cam, clientId(), w, h);
+  if (pills.length === 0) return;
+  ctx.save();
+  ctx.font = REACTION_FONT;
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'left';
+  for (const p of pills) {
+    ctx.beginPath();
+    ctx.roundRect(p.x, p.y, p.w, PILL_H, PILL_H / 2);
+    ctx.fillStyle = p.mine ? '#e6efff' : '#ffffff';
+    ctx.fill();
+    ctx.strokeStyle = p.mine ? '#3273f5' : '#cfd5df';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.fillStyle = '#1f2329';
+    ctx.fillText(p.emoji, p.x + 8, p.y + PILL_H / 2 + 0.5);
+    ctx.fillStyle = p.mine ? '#2160dd' : '#4a4f59';
+    ctx.fillText(String(p.count), p.x + 8 + 20, p.y + PILL_H / 2 + 0.5);
+  }
+  ctx.restore();
+}
+
+/** Пины комментариев страницы: число сообщений в кружке; решённые — полупрозрачные. */
+function drawCommentPins(ctx: CanvasRenderingContext2D, cam: Camera, w: number, h: number): void {
+  if (state.linkMode) return;
+  const pins = layoutPins(state.board.comments, cam, w, h);
+  if (pins.length === 0) return;
+  ctx.save();
+  ctx.font = '700 11px "Segoe UI", system-ui, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (const p of pins) {
+    ctx.globalAlpha = p.resolved ? 0.45 : 1;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+    ctx.fillStyle = p.resolved ? '#7a8291' : '#3273f5';
+    ctx.fill();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = '#ffffff';
+    ctx.stroke();
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(String(Math.min(p.count, 99)), p.x, p.y + 0.5);
   }
   ctx.restore();
 }
@@ -1320,8 +1373,10 @@ function draw(): void {
       ctx.strokeRect((a.x0 - cam.x) * cam.zoom - 4, (a.y0 - cam.y) * cam.zoom - 4, (a.x1 - a.x0) * cam.zoom + 8, (a.y1 - a.y0) * cam.zoom + 8);
     }
     ctx.setLineDash([]);
-    if (state.selection.size === 1) drawHandles(ctx, cam);
-    else drawBoxHandles(ctx, cam, contentBBox(selected));
+    // читатель выделять может (копировать, реакции), но менять — нет: ручек у него нет
+    const editable = !state.linkMode && !readOnly();
+    if (state.selection.size === 1) { if (editable) drawHandles(ctx, cam); }
+    else if (editable) drawBoxHandles(ctx, cam, contentBBox(selected));
   }
   if (state.guides.length > 0) drawGuides(ctx, cam);
   if (state.marquee) {
@@ -1348,6 +1403,8 @@ function draw(): void {
     }
     ctx.setLineDash([]);
   }
+  drawReactions(ctx, cam, cssW, cssH, state.board.elements);
+  drawCommentPins(ctx, cam, cssW, cssH);
   // у объектного ластика курсор — его иконка (CSS), кружок — только у ластика для пера и маркера
   if (state.tool === 'partEraser' && state.hover) {
     ctx.strokeStyle = '#7a828e';
@@ -1440,6 +1497,7 @@ function drawPresent(camSettled: boolean): void {
     else drawElement(c, state.liveText, pcam.x, pcam.y, pcam.x + w / pcam.zoom, pcam.y + h / pcam.zoom);
   }
   c.setTransform(pdpr, 0, 0, pdpr, 0, 0);
+  drawReactions(c, pcam, w, h, state.board.elements);
   if (state.flashes.length > 0) drawFlashes(c, pcam, w, h, pdpr, p.flash);
   // экранные координаты основного холста (указка, курсор) → окно демонстрации
   const k = pcam.zoom / cam.zoom;

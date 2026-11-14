@@ -49,6 +49,7 @@ import { hideHeldTooltip, showHeldTooltip } from './tooltip';
 import { copyBoardLink, currentBoardLink, registerLinkViewHooks } from './link-view-ui';
 import { addGestureProbe } from './gesture';
 import { initTaskOverlay, isTeacher } from './task-overlay';
+import { annotationButtons, initCommentsUi } from './comments-ui';
 import { openTaskDialog, taskDialogOpen, type TaskFormValues } from './task-dialog';
 import { TASK_H, TASK_W, createTaskElement } from './task-element';
 import {
@@ -1719,6 +1720,16 @@ document.addEventListener('pointerdown', e => {
   }
 });
 
+function copyImageButton(): HTMLButtonElement {
+  const copyImage = document.createElement('button');
+  copyImage.className = 'qm-btn';
+  copyImage.title = macKeys('Копировать как изображение (Ctrl+Shift+C)');
+  copyImage.setAttribute('aria-label', copyImage.title);
+  copyImage.innerHTML = svg('<rect x="3" y="3" width="14" height="14" rx="2"/><path d="m5 14 4-4 3 3 2-2 3 3M14 7h.01M7 21h12a2 2 0 0 0 2-2V7"/>');
+  copyImage.addEventListener('click', () => { void copySelectionAsImage(); });
+  return copyImage;
+}
+
 function updateQuickMenu(): void {
   const qm = quickMenuEl();
   // кегль набирают в поле меню — меню не пересобираем, иначе поле пропадёт из-под курсора
@@ -1733,6 +1744,14 @@ function updateQuickMenu(): void {
   if (selectionKey !== layerPanelSelection) { layerPanelOpen = false; layerPanelSelection = selectionKey; }
   qm.hidden = false;
   qm.textContent = '';
+  // читатель (править доску не может): реакции, комментарий и, если автор разрешил, копия картинкой
+  if (!canEditBoard()) {
+    for (const b of annotationButtons()) qm.appendChild(b);
+    if (canCopyCurrentBoard()) qm.appendChild(copyImageButton());
+    if (!qm.hasChildNodes()) { qm.hidden = true; return; }
+    positionQuickMenu();
+    return;
+  }
   // цвет и толщина — одна кнопка и одна панель; толщина — только для «линейных» элементов и рамок картинок
   const hasInk = selEls.some(e => e.type === 'stroke' || e.type === 'shape' || e.type === 'poly' || e.type === 'solid' || e.type === 'image');
   // у задания нет ни цвета, ни толщины: кнопка «Цвет» ничего бы не делала
@@ -1843,13 +1862,8 @@ function updateQuickMenu(): void {
     ug.addEventListener('click', () => { ungroupSelected(); });
     qm.appendChild(ug);
   }
-  const copyImage = document.createElement('button');
-  copyImage.className = 'qm-btn';
-  copyImage.title = macKeys('Копировать как изображение (Ctrl+Shift+C)');
-  copyImage.setAttribute('aria-label', copyImage.title);
-  copyImage.innerHTML = svg('<rect x="3" y="3" width="14" height="14" rx="2"/><path d="m5 14 4-4 3 3 2-2 3 3M14 7h.01M7 21h12a2 2 0 0 0 2-2V7"/>');
-  copyImage.addEventListener('click', () => { void copySelectionAsImage(); });
-  qm.appendChild(copyImage);
+  for (const b of annotationButtons()) qm.appendChild(b);
+  qm.appendChild(copyImageButton());
   // ссылка на выделенные объекты: открывается с наведением на них
   if (currentBoardLink('focus')) {
     const linkBtn = document.createElement('button');
@@ -5043,10 +5057,27 @@ async function openShareDialog(): Promise<void> {
   }, 2000);
 }
 
+/** Инструменты, которые читателю безвредны: ничего не рисуют и не меняют. */
+const READER_TOOLS = new Set<ToolId>(['select', 'pan', 'laser', 'fadePen', 'flash']);
+/** Инструмент гостя до того, как ему оставили только чтение. */
+let toolBeforeReader: ToolId | null = null;
+
 function refresh(): void {
   // совместный режим: скрываем тулбар на страницах без права edit
   if (collabActive() && !isHost()) {
     document.body.classList.toggle('readonly-mode', readOnly());
+    // читателю панели нет: инструмент — «Выделение» (реакции, копирование), а если копировать нельзя — «Панорама»
+    if (readOnly()) {
+      if (!READER_TOOLS.has(state.tool) || (state.tool === 'select' && !canCopyCurrentBoard())) {
+        if (!READER_TOOLS.has(state.tool)) toolBeforeReader = state.tool;
+        setTool(canCopyCurrentBoard() ? 'select' : 'pan');
+      }
+    } else if (toolBeforeReader) {
+      // право правки выдали: инструмент возвращается тот, каким гость пользовался до этого
+      const back = toolBeforeReader;
+      toolBeforeReader = null;
+      if (READER_TOOLS.has(state.tool) && state.tool !== 'pan') setTool(back);
+    }
   }
   const tb = document.getElementById('toolbar')!;
   for (const b of tb.querySelectorAll<HTMLButtonElement>('.tool[data-tool]')) {
@@ -5157,6 +5188,7 @@ export function initApp(c: HTMLCanvasElement): void {
   registerLinkViewHooks({ fit: fitContent });
   addGestureProbe(() => editing !== null || fontEdit !== null || taskDialogOpen());
   initTaskOverlay(editTaskElement);
+  initCommentsUi();
   restoreCamera();
   restoreStyle();
   restoreSettings();

@@ -276,3 +276,115 @@ test.describe('задания', () => {
     await student.close();
   });
 });
+
+test.describe('реакции и комментарии', () => {
+  test('реакция из меню выделения: пилюля под фигурой переключается кликом и переживает Undo', async ({ board, page }) => {
+    await board.open();
+    const a = await board.rect(400, 300, 500, 400);
+    await board.tool('v');
+    await board.click({ x: 450, y: 350 });
+    await expect(board.quickMenu.locator('.qm-reactions')).toBeVisible();
+    await board.quickMenu.locator('.qm-react', { hasText: '👍' }).click();
+    const reacted = async () => (await board.elements()).find(e => e.id === a.id)!.reactions;
+    await expect.poll(reacted).toEqual({ '👍': [expect.any(String)] });
+    // пилюля стоит под нижней границей: клик по ней снимает реакцию
+    await board.click({ x: 420, y: 417 });
+    await expect.poll(reacted).toBeUndefined();
+    await board.click({ x: 420, y: 417 }); // пилюли больше нет — это просто клик мимо
+    expect(await reacted()).toBeUndefined();
+
+    await board.click({ x: 450, y: 350 });
+    await board.quickMenu.locator('.qm-react', { hasText: '🔥' }).click();
+    await expect.poll(reacted).toEqual({ '🔥': [expect.any(String)] });
+    // новая фигура, затем Ctrl+Z: фигура пропала, реакция осталась
+    await board.rect(600, 300, 700, 400);
+    expect(await board.count('shape')).toBe(2);
+    await page.keyboard.press('Control+z');
+    expect(await board.count('shape')).toBe(1);
+    expect(await reacted()).toEqual({ '🔥': [expect.any(String)] });
+  });
+
+  test('комментарий к фигуре: пин, ответ, «Решено»', async ({ board, page }) => {
+    await board.open();
+    await board.rect(400, 300, 500, 400);
+    await board.tool('v');
+    await board.click({ x: 450, y: 350 });
+    await board.quickMenu.locator('.qm-comment').click();
+    const pop = page.locator('.comment-pop');
+    await expect(pop).toBeVisible();
+    await pop.locator('textarea').fill('Проверьте построение');
+    await pop.locator('.cp-send').click();
+    await expect(pop).toBeHidden();
+    const comments = () => page.evaluate(() => (window as any).__doska.state.board.comments);
+    await expect.poll(async () => (await comments())?.length).toBe(1);
+    const thread = (await comments())[0];
+    expect(thread).toMatchObject({ x: 500, y: 300 });
+    expect(thread.messages[0].text).toBe('Проверьте построение');
+    // клик по пину открывает ветку
+    await board.tool('v');
+    await board.click({ x: 500, y: 300 });
+    await expect(pop).toBeVisible();
+    await expect(pop.locator('.cp-text')).toHaveText('Проверьте построение');
+    await pop.locator('textarea').fill('Исправил');
+    await pop.locator('.cp-send').click();
+    await expect(pop.locator('.cp-msg')).toHaveCount(2);
+    await pop.locator('.cp-resolve').click();
+    await expect.poll(async () => (await comments())[0].resolved).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect(pop).toBeHidden();
+    // комментарий едет за фигурой
+    await board.tool('v');
+    await board.drag([{ x: 450, y: 350 }, { x: 550, y: 450 }]);
+    await expect.poll(async () => (await comments())[0].x).toBe(600);
+  });
+
+  test('читатель в комнате: выделяет, ставит реакцию и комментирует; автор это видит', async ({ board, page, context }) => {
+    await board.open();
+    const a = await board.rect(400, 300, 500, 400);
+    await startBrowserRoom(page, 'react1');
+    const guest = await joinLocal(context, 'react1', 'Маша');
+    const gb = new (board.constructor as any)(guest);
+    await expect.poll(() => guest.evaluate(() => (window as any).__doska.state.board.elements.length)).toBe(1);
+    // у читателя нет панели, но выделить фигуру он может
+    await expect.poll(() => guest.evaluate(() => (window as any).__doska.state.tool)).toBe('select');
+    await gb.click({ x: 450, y: 350 });
+    await expect.poll(async () => (await gb.state()).selection).toEqual([a.id]);
+    await expect(guest.locator('#quick-menu .qm-reactions')).toBeVisible();
+    await guest.locator('#quick-menu .qm-react', { hasText: '❤️' }).click();
+    await expect.poll(async () => (await board.elements())[0].reactions?.['❤️']?.length).toBe(1);
+    // читатель двигать и стирать не может
+    await gb.drag([{ x: 450, y: 350 }, { x: 600, y: 500 }]);
+    await guest.keyboard.press('Delete');
+    expect((await board.elements())[0].x).toBe(a.x);
+    expect(await gb.count()).toBe(1);
+    // комментарий читателя виден автору как пин с именем
+    await guest.locator('#quick-menu .qm-comment').click();
+    await guest.locator('.comment-pop textarea').fill('Не понял шаг');
+    await guest.locator('.comment-pop .cp-send').click();
+    await expect.poll(() => page.evaluate(() => (window as any).__doska.state.board.comments?.[0]?.messages[0]?.authorName)).toBe('Маша');
+    await guest.close();
+  });
+
+  test('автор запретил копирование: читатель не выделяет, но пилюля и пин нажимаются', async ({ board, page, context }) => {
+    await board.open();
+    const a = await board.rect(400, 300, 500, 400);
+    await board.tool('v');
+    await board.click({ x: 450, y: 350 });
+    await board.quickMenu.locator('.qm-react', { hasText: '👍' }).click();
+    // Pro-проект с запретом копирования
+    await page.evaluate(() => { const s = (window as any).__doska.state; s.project.ownerPlan = 'pro'; s.project.permissions = { allowCopy: false }; });
+    await startBrowserRoom(page, 'react2');
+    const guest = await joinLocal(context, 'react2', 'Маша');
+    const gb = new (board.constructor as any)(guest);
+    await expect.poll(() => guest.evaluate(() => (window as any).__doska.state.board.elements[0]?.reactions?.['👍']?.length)).toBe(1);
+    await expect.poll(() => guest.evaluate(() => (window as any).__doska.state.tool)).toBe('pan');
+    await gb.tool('v');
+    await gb.click({ x: 450, y: 350 });
+    expect((await gb.state()).selection).toEqual([]);
+    // пилюля работает всегда
+    await gb.click({ x: 420, y: 417 });
+    await expect.poll(() => guest.evaluate(() => (window as any).__doska.state.board.elements[0].reactions['👍'].length)).toBe(2);
+    expect((await board.elements())[0].id).toBe(a.id);
+    await guest.close();
+  });
+});

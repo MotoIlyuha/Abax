@@ -319,3 +319,58 @@ describe('задания (task-draft, task-submit) и маскировка от�
     expect(stored(hub).answer).toBe('0,75');
   });
 });
+
+describe('реакции и комментарии', () => {
+  const withEls = () => ({ ...demo(), pages: [
+    { id: 'pg1', name: 'П1', grid: 'square', elements: [rect('a'), rect('b')] as unknown[] },
+    { id: 'pg2', name: 'П2', grid: 'square', elements: [rect('c')] as unknown[] },
+  ] });
+  function room() {
+    const hub = createRoomHub({ code: 'N' });
+    const host = new FakeSock();
+    hub.attach(host, { isHost: true, name: 'Учитель' });
+    host.recv({ t: 'project', project: withEls() });
+    const g = new FakeSock();
+    const uid = hub.attach(g, { name: 'Маша' });
+    return { hub, host, g, uid };
+  }
+  const el = (hub: any, id: string, page = 0) => hub.room.project.pages[page].elements.find((e: Msg) => e.id === id);
+
+  it('читатель ставит и снимает реакцию, её видят все', () => {
+    const { hub, host, g } = room();
+    host.recv({ t: 'caps', patches: true });
+    g.recv({ t: 'caps', patches: true });
+    g.recv({ t: 'react', pageId: 'pg1', elId: 'a', emoji: '👍', userId: 'masha' });
+    expect(el(hub, 'a').reactions).toEqual({ '👍': ['masha'] });
+    expect(host.last('patch')).toMatchObject({ by: -1 });
+    expect(g.last('patch')!.ops[0].el.reactions['👍']).toEqual(['masha']);
+    g.recv({ t: 'react', pageId: 'pg1', elId: 'a', emoji: '👍', userId: 'masha' });
+    expect(el(hub, 'a')).not.toHaveProperty('reactions');
+    // без userId — номер участника; мусор отклоняется
+    g.recv({ t: 'react', pageId: 'pg1', elId: 'b', emoji: '❓' });
+    expect(Object.values(el(hub, 'b').reactions)[0]).toEqual([expect.stringMatching(/^u\d+$/)]);
+    host.sent.length = 0;
+    for (const m of [{ t: 'react', pageId: 'нет', elId: 'a', emoji: '👍' }, { t: 'react', pageId: 'pg1', elId: 'a', emoji: '' }, { t: 'react', pageId: 'pg1', elId: 'a', emoji: 7 }]) g.recv(m);
+    expect(host.sent.filter(m => m.t === 'patch')).toHaveLength(0);
+  });
+
+  it('комментарии: ветка, ответ, закрытие; имя автора — имя в комнате; скрытая страница не принимается', () => {
+    const { hub, host, g, uid } = room();
+    g.recv({ t: 'comment', op: 'create', pageId: 'pg1', x: 5, y: 6, targetElementId: 'a', text: ' Вопрос ', userId: 'masha', authorName: 'Подделка' });
+    const t = hub.room.project.pages[0].comments[0];
+    expect(t.messages[0]).toMatchObject({ authorId: 'masha', authorName: 'Маша', text: 'Вопрос' });
+    expect(host.last('comments')).toMatchObject({ pageId: 'pg1', comments: [expect.objectContaining({ id: t.id })] });
+    host.recv({ t: 'comment', op: 'reply', pageId: 'pg1', threadId: t.id, text: 'Ответ' });
+    g.recv({ t: 'comment', op: 'resolve', pageId: 'pg1', threadId: t.id, resolved: true });
+    expect(hub.room.project.pages[0].comments[0].messages).toHaveLength(2);
+    expect(hub.room.project.pages[0].comments[0].resolved).toBe(true);
+    hub.setRights(uid, { pages: { pg2: 'hidden' } });
+    const before = hub.room.project;
+    g.recv({ t: 'comment', op: 'create', pageId: 'pg2', x: 1, y: 1, text: 'х' });
+    g.recv({ t: 'comment', op: 'create', pageId: 'pg1', x: 1, y: 1, text: '  ' });
+    expect(hub.room.project).toBe(before);
+    // присланный проект комментарии хаба не затирает
+    host.recv({ t: 'project', project: { ...before, pages: before.pages.map((pg: Msg) => ({ ...pg, comments: undefined })) } });
+    expect(hub.room.project.pages[0].comments).toHaveLength(1);
+  });
+});
