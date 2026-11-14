@@ -47,6 +47,10 @@ import { buildCustomColorPicker } from './color-picker';
 import { copySelection, duplicateSelection as duplicateInPlace, pasteFromMemory, pasteFromSystem } from './clipboard';
 import { hideHeldTooltip, showHeldTooltip } from './tooltip';
 import { copyBoardLink, currentBoardLink, registerLinkViewHooks } from './link-view-ui';
+import { addGestureProbe } from './gesture';
+import {
+  browserSetRights, browserShareStatus, startBrowserCloud, startBrowserHost, stopBrowserCloud, stopBrowserHost,
+} from './browser-host';
 
 pdfjsLib.GlobalWorkerOptions.workerPort = new PdfWorker();
 
@@ -4366,7 +4370,8 @@ function wireTopbar(): void {
     iconBtn.disabled = true;
   }
   // сервер совместной работы живёт в main-процессе Electron: в браузере и на Android раздавать нечем
-  if (!doskaApi) document.getElementById('btn-share')!.style.display = 'none';
+  if (!doskaApi && isNativeApp()) document.getElementById('btn-share')!.style.display = 'none';
+  document.body.classList.toggle('web-build', !doskaApi);
   // окно демонстрации — второе окно браузера, в приложении для Android его не открыть
   if (isNativeApp()) document.getElementById('btn-present')!.style.display = 'none';
 
@@ -4688,7 +4693,8 @@ interface ShareCloudStatus {
 }
 interface ShareStatus { active: boolean; url?: string; code?: string; port?: number; maxEditors?: number; users?: ShareUser[]; cloud?: ShareCloudStatus | null }
 interface ShareApi {
-  shareStart(): Promise<{ ok: boolean; port?: number; code?: string; hostKey?: string }>;
+  /** connected — автор уже подключён к комнате (браузерный хост): в окне приложения подключаться должен сам диалог. */
+  shareStart(): Promise<{ ok: boolean; port?: number; code?: string; hostKey?: string; connected?: boolean; error?: string }>;
   shareStop(): Promise<{ ok: boolean }>;
   shareStatus(): Promise<ShareStatus>;
   shareSetRights(uid: number, patch: { pages?: Record<string, string>; default?: string; all?: string }): Promise<{ ok: boolean; error?: string }>;
@@ -4698,8 +4704,31 @@ interface ShareApi {
   shareCloudStop?(): Promise<{ ok: boolean }>;
 }
 
+/** Совместная работа во вкладке браузера: комната и хаб живут в самой странице, гости приходят через ретранслятор. */
+const browserShareApi: ShareApi = {
+  async shareStart() {
+    await startBrowserHost();
+    return { ok: true, connected: true };
+  },
+  async shareStop() { stopBrowserHost(); return { ok: true }; },
+  async shareStatus() { return browserShareStatus(); },
+  async shareSetRights(uid, patch) { return browserSetRights(uid, patch as Parameters<typeof browserSetRights>[1]); },
+  async shareOpenTestWindow() { return { ok: false }; },
+  async shareCloudStart(opts) {
+    try {
+      await startBrowserCloud(opts?.relayUrl || savedRelayUrl());
+      return { ok: true, cloud: browserShareStatus().cloud ?? null };
+    } catch (e) {
+      const text = e instanceof Error ? e.message : '';
+      return { ok: false, error: text || 'Не удалось подключиться к ретранслятору' };
+    }
+  },
+  async shareCloudStop() { stopBrowserCloud(); return { ok: true }; },
+};
+
 async function collabApi(): Promise<ShareApi> {
-  return (window as unknown as { doskaAPI?: ShareApi }).doskaAPI!;
+  const api = (window as unknown as { doskaAPI?: ShareApi }).doskaAPI;
+  return api?.shareStart ? api : browserShareApi;
 }
 
 let shareInfo: ShareStatus = { active: false };
@@ -4828,33 +4857,36 @@ async function openShareDialog(): Promise<void> {
       start.className = 'ctx-custom-btn';
       start.textContent = 'Включить совместную работу';
       start.addEventListener('click', async () => {
+        await saveNow();
         const r = await api.shareStart();
-        if (!r.ok || !r.port || !r.code || !r.hostKey) {
-          alert((r as { error?: string }).error || 'Не удалось запустить сервер совместной работы');
+        if (!r.ok || (!r.connected && (!r.port || !r.code || !r.hostKey))) {
+          alert(r.error || 'Не удалось запустить сервер совместной работы');
           await render();
           return;
         }
-        await saveNow();
-        await startHostConnection(r.port, r.code, r.hostKey, 'Автор');
+        if (!r.connected) await startHostConnection(r.port!, r.code!, r.hostKey!, 'Автор');
         await render();
       });
       dlg!.appendChild(start);
     } else {
-      const link = document.createElement('div');
-      link.className = 'share-link';
-      link.textContent = status.url || '';
-      link.title = 'Клик — скопировать ссылку';
-      link.addEventListener('click', () => {
-        void navigator.clipboard.writeText(status.url || '');
-        link.textContent = 'Ссылка скопирована';
-        setTimeout(() => { link.textContent = status.url || ''; }, 1200);
-      });
-      dlg!.appendChild(link);
-      const testBtn = document.createElement('button');
-      testBtn.className = 'ctx-custom-btn';
-      testBtn.textContent = '+ Тестовое окно гостя';
-      testBtn.addEventListener('click', () => { void api.shareOpenTestWindow(); });
-      dlg!.appendChild(testBtn);
+      // ссылка в локальной сети и тестовое окно есть только у приложения; во вкладке гостей зовут через интернет
+      if (status.url) {
+        const link = document.createElement('div');
+        link.className = 'share-link';
+        link.textContent = status.url;
+        link.title = 'Клик — скопировать ссылку';
+        link.addEventListener('click', () => {
+          void navigator.clipboard.writeText(status.url || '');
+          link.textContent = 'Ссылка скопирована';
+          setTimeout(() => { link.textContent = status.url || ''; }, 1200);
+        });
+        dlg!.appendChild(link);
+        const testBtn = document.createElement('button');
+        testBtn.className = 'ctx-custom-btn';
+        testBtn.textContent = '+ Тестовое окно гостя';
+        testBtn.addEventListener('click', () => { void api.shareOpenTestWindow(); });
+        dlg!.appendChild(testBtn);
+      }
       const cloudBox = renderCloudShare(api, status, render);
       if (cloudBox) dlg!.appendChild(cloudBox);
       const stopBtn = document.createElement('button');
@@ -5044,6 +5076,7 @@ export function initApp(c: HTMLCanvasElement): void {
   });
   canvas = c;
   registerLinkViewHooks({ fit: fitContent });
+  addGestureProbe(() => editing !== null || fontEdit !== null);
   restoreCamera();
   restoreStyle();
   restoreSettings();

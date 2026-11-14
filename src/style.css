@@ -65,6 +65,8 @@ body.hide-undo-redo .undo-group { display: none; }
   .topbar-side { gap: 12px; }
   #project-name { max-width: 90px; }
   #page-name { max-width: 100px; }
+  /* во вкладке браузера (не в приложении) на узком экране шапке не хватает места */
+  body.web-build #btn-share { display: none; }
 }
 @media (max-width: 600px) {
   #topbar { flex-wrap: wrap; }

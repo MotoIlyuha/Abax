@@ -110,3 +110,57 @@ test.describe('просмотр по ссылке', () => {
     expect(await page.evaluate(() => navigator.clipboard.readText())).toContain('route=project');
   });
 });
+
+/** Автор в браузере: комната во вкладке (кнопка «Поделиться»), гости — из соседних вкладок по `?room=local:КОД`. */
+async function startBrowserRoom(page: Page, code: string): Promise<void> {
+  await page.locator('#btn-share').click();
+  await page.locator('#share-dialog button', { hasText: 'Включить совместную работу' }).click();
+  await expect(page.locator('#share-dialog button', { hasText: 'Выключить совместную работу' })).toBeVisible();
+  await page.evaluate((c) => (window as any).__doska.startLocalRoom(c), code);
+}
+
+async function joinLocal(context: import('@playwright/test').BrowserContext, code: string, name: string): Promise<Page> {
+  const guest = await context.newPage();
+  await guest.goto(`/?room=local:${code}&name=${encodeURIComponent(name)}`);
+  await guest.waitForFunction(() => !!(window as any).__doska);
+  return guest;
+}
+
+test.describe('браузерный хост и патчи', () => {
+  test('гость из соседней вкладки видит правки автора, а с правом edit — рисует сам; всё идёт патчами', async ({ board, page, context }) => {
+    await board.open();
+    await board.rect(400, 300, 500, 400);
+    await startBrowserRoom(page, 'abc1');
+    const guest = await joinLocal(context, 'abc1', 'Маша');
+    await expect(guest.locator('body')).toHaveClass(/collab-guest/);
+    await expect.poll(() => guest.evaluate(() => (window as any).__doska.state.board.elements.length)).toBe(1);
+
+    // новая фигура автора доходит патчем: у гостя не открывается проект заново (камера и отмена целы)
+    await guest.evaluate(() => { (window as any).__guestProject = (window as any).__doska.state.project; });
+    await board.rect(600, 300, 700, 400);
+    await expect.poll(() => guest.evaluate(() => (window as any).__doska.state.board.elements.length)).toBe(2);
+    expect(await guest.evaluate(() => (window as any).__doska.state.project === (window as any).__guestProject)).toBe(true);
+
+    // автор открывает гостю правку страницы
+    await expect(page.locator('#share-dialog .share-user')).toHaveCount(1);
+    await page.locator('#share-dialog .share-user select').first().selectOption('edit');
+    await expect.poll(() => guest.evaluate(() => document.body.classList.contains('readonly-mode'))).toBe(false);
+    const gb = new (board.constructor as any)(guest);
+    await gb.rect(300, 500, 380, 560);
+    await expect.poll(() => board.count('shape')).toBe(3);
+    await guest.close();
+  });
+
+  test('на бесплатном тарифе второй гость получает отказ', async ({ board, page, context }) => {
+    await page.addInitScript(() => localStorage.setItem('doska.enforceLimits', '1'));
+    await board.open();
+    await startBrowserRoom(page, 'free1');
+    const first = await joinLocal(context, 'free1', 'Первый');
+    await expect(first.locator('body')).toHaveClass(/collab-guest/);
+    await expect.poll(() => first.evaluate(() => (window as any).__doska.state.project.pages.length)).toBeGreaterThan(0);
+    const second = await joinLocal(context, 'free1', 'Второй');
+    await expect(second.locator('#collab-notice')).toContainText('Бесплатная комната занята');
+    await first.close();
+    await second.close();
+  });
+});

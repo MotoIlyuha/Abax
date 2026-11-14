@@ -255,6 +255,8 @@ describe('гость', () => {
 
 describe('автор', () => {
   it('startHostConnection: права edit везде и рассылка проекта', async () => {
+    // у хаба ещё нет проекта: первый проект задаёт автор (иначе init вернул бы автору его же проект)
+    server.room.project = null;
     const guest = await peer(`${base}&name=Гость`);
     peers.push(guest);
     st.openProject(demo());
@@ -508,5 +510,123 @@ describe('шифрованный транспорт гостя', () => {
       link.stop();
       await relay.close();
     }
+  });
+});
+
+
+describe('дельта-патчи', () => {
+  const patchOf = (host: Peer) => last(host, 'patch');
+
+  async function editor() {
+    await collab.startCollab(base, false, 'Ученик');
+    await until(() => st.state.project.id === 'proj');
+    const uid = [...server.room.clients.values()][0].uid;
+    server.setRights(uid, { all: 'edit' });
+    await until(() => collab.pageRight('pg1') === 'edit');
+    const host = await peer(`${base}&host=1&key=${encodeURIComponent(server.hostKey)}`);
+    peers.push(host);
+    host.ws.send(JSON.stringify({ t: 'caps', patches: true }));
+    return { uid, host };
+  }
+
+  it('правка элементов уходит патчем, а не проектом', async () => {
+    const { host } = await editor();
+    host.inbox.length = 0;
+    st.addElement(rect('mine') as never);
+    const msg = await until(() => patchOf(host));
+    expect(msg).toMatchObject({ pageId: 'pg1' });
+    expect(msg.ops).toEqual([{ op: 'put', el: expect.objectContaining({ id: 'mine' }) }]);
+    expect(server.room.project!.pages[0].elements.map(e => e.id)).toEqual(['mine']);
+    expect(last(host, 'project')).toBeUndefined();
+    // удаление — del
+    host.inbox.length = 0;
+    st.state.selection = new Set(['mine']);
+    st.deleteSelected();
+    const del = await until(() => patchOf(host));
+    expect(del.ops).toEqual([{ op: 'del', id: 'mine' }]);
+  });
+
+  it('сетка страницы идёт в патче', async () => {
+    const { host } = await editor();
+    host.inbox.length = 0;
+    st.setGrid('dots');
+    const msg = await until(() => patchOf(host));
+    expect(msg.grid).toBe('dots');
+    expect(msg.ops).toEqual([]);
+  });
+
+  it('частые правки склеиваются: патч не чаще раза в 100 мс', async () => {
+    const { host } = await editor();
+    host.inbox.length = 0;
+    for (let i = 0; i < 20; i++) st.addElement(rect(`r${i}`) as never);
+    await until(() => host.inbox.filter(m => m.t === 'patch').flatMap(m => m.ops).length >= 20);
+    expect(host.inbox.filter(m => m.t === 'patch').length).toBeLessThan(6);
+  });
+
+  it('чужой патч применяется без сброса отмены и выделения', async () => {
+    const { host } = await editor();
+    st.addElement(rect('mine') as never);
+    st.setSelection(['mine']);
+    await until(() => server.room.project!.pages[0].elements.length === 1);
+    const events: Event[] = [];
+    document.addEventListener('doska:collab-project', e => events.push(e));
+    host.inbox.length = 0;
+    host.ws.send(JSON.stringify({ t: 'patch', pageId: 'pg1', rev: 0, ops: [{ op: 'put', el: rect('theirs') }] }));
+    await until(() => st.state.board.elements.length === 2);
+    expect(st.canUndo()).toBe(true);
+    expect([...st.state.selection]).toEqual(['mine']);
+    expect(events).toHaveLength(0); // проект целиком не открывался заново
+    // удалённое выделенное выпадает из выделения
+    host.ws.send(JSON.stringify({ t: 'patch', pageId: 'pg1', rev: 0, ops: [{ op: 'del', id: 'mine' }] }));
+    await until(() => st.state.board.elements.length === 1);
+    expect([...st.state.selection]).toEqual([]);
+    // принятый патч не возвращается обратно как собственная правка
+    await new Promise(r => setTimeout(r, 250));
+    expect(host.inbox.filter(m => m.t === 'patch')).toHaveLength(0);
+  });
+
+  it('патч для другой страницы меняет её, активная остаётся', async () => {
+    const { host } = await editor();
+    host.ws.send(JSON.stringify({ t: 'patch', pageId: 'pg2', rev: 0, ops: [{ op: 'put', el: rect('far') }], grid: 'none' }));
+    await until(() => st.state.project.pages[1].elements.length === 1);
+    expect(st.state.project.pages[1].grid).toBe('none');
+    expect(st.state.pageId).toBe('pg1');
+    expect(st.state.board.elements).toHaveLength(0);
+  });
+
+  it('пока идёт жест, чужие патчи ждут его окончания', async () => {
+    const { gestureActive: _g, addGestureProbe } = await import('../../src/gesture');
+    const { host } = await editor();
+    let busy = true;
+    const off = addGestureProbe(() => busy);
+    host.ws.send(JSON.stringify({ t: 'patch', pageId: 'pg1', rev: 0, ops: [{ op: 'put', el: rect('late') }] }));
+    await new Promise(r => setTimeout(r, 250));
+    expect(st.state.board.elements).toHaveLength(0);
+    busy = false;
+    await until(() => st.state.board.elements.length === 1);
+    off();
+  });
+
+  it('смена состава проекта (имя страницы) уходит полным проектом', async () => {
+    const { host } = await editor();
+    host.inbox.length = 0;
+    st.renamePage('pg1', 'Новое имя');
+    collab.sendProject(st.state.project);
+    const msg = await until(() => last(host, 'project'));
+    expect(msg.project.pages[0].name).toBe('Новое имя');
+  });
+
+  it('без поддержки патчей хаб получает прежний полный проект', async () => {
+    await collab.startCollab(base, false, 'Ученик');
+    await until(() => st.state.project.id === 'proj');
+    const uid = [...server.room.clients.values()][0].uid;
+    server.setRights(uid, { all: 'edit' });
+    await until(() => collab.pageRight('pg1') === 'edit');
+    const host = await peer(`${base}&host=1&key=${encodeURIComponent(server.hostKey)}`);
+    peers.push(host);
+    // у участника-автора нет caps: ему шлётся проект, а клиент гостя по-прежнему отправляет patch (хаб поддерживает)
+    st.addElement(rect('x') as never);
+    const msg = await until(() => last(host, 'project'));
+    expect(msg.project.pages[0].elements[0].id).toBe('x');
   });
 });

@@ -9,7 +9,7 @@
 - [x] **TASK-02: Роутер, режимы просмотра, клонирование (`src/main.ts`, `src/app.ts`, `src/router.ts`)**
   - `state.linkMode`, `canEditBoard()` с учётом просмотра, плашка и «Клонировать проект», наведение на объекты, ссылки в меню экспорта и `#quick-menu`.
 
-- [ ] **TASK-03: Дельта-патчи, браузерный хост, `room.cjs` (`src/collab.ts`, `src/relay-host.ts`, `electron/room.cjs`)**
+- [x] **TASK-03: Дельта-патчи, браузерный хост, `room.cjs` (`src/collab.ts`, `src/relay-host.ts`, `electron/room.cjs`)**
   - Патчи в `collab.ts` без сброса Undo; local transport; браузерный хост с `createRoomHub`; `room.cjs` понимает patch/caps.
 
 - [ ] **TASK-04: Учитель ↔ ученик по `TaskEl` (`src/room-host.ts`, `electron/room.cjs`, `src/collab.ts`)**

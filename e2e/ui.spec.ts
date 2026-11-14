@@ -518,8 +518,8 @@ test.describe('страница', () => {
     void board;
   });
 
-  test('в браузере нет кнопки совместной работы: её сервер есть только в приложении', async ({ board, page }) => {
-    await expect(page.locator('#btn-share')).toBeHidden();
+  test('в браузере кнопка совместной работы есть: комната живёт во вкладке', async ({ board, page }) => {
+    await expect(page.locator('#btn-share')).toBeVisible();
     await expect(page.locator('#btn-present')).toBeVisible();
     void board;
   });

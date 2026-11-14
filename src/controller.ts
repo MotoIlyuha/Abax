@@ -11,6 +11,7 @@ import {
   applyHandle, insertPolyNode, removePolyNode, gridStepFor, resizeBox, scaleElement, shapeHoldsText, snapValue, translateElement,
 } from './geom';
 import { collabActive, noteCursor } from './collab';
+import { addGestureProbe } from './gesture';
 import { isNativeApp } from './native';
 import { settingsDialogOpen } from './settings-dialog';
 import { partEraseRadius, presenting, requestRender, renderScene } from './renderer';
@@ -1327,6 +1328,7 @@ export function initController(canvas: HTMLCanvasElement): void {
     if (mouseAction(e)) { e.preventDefault(); e.stopImmediatePropagation(); }
   }, true);
 
+  addGestureProbe(() => (action !== null && action.kind !== 'pan' && action.kind !== 'marquee' && action.kind !== 'fade') || nudge !== null);
   canvas.addEventListener('pointerdown', onPointerDown);
   canvas.addEventListener('pointermove', onPointerMove);
   canvas.addEventListener('pointerup', onPointerUp);

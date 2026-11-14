@@ -161,3 +161,86 @@ describe('проверка входящих сообщений', () => {
     expect(hub.users().find((u: Msg) => u.userId === uid).cursor).toEqual({ x: 1, y: 1 });
   });
 });
+
+describe('дельта-патчи', () => {
+  const patch = (extra: Msg = {}) => ({ t: 'patch', pageId: 'pg1', rev: 0, ops: [{ op: 'put', el: rect('p1') }], ...extra });
+
+  it('init сообщает о поддержке патчей', () => {
+    const { guest } = setup();
+    expect(guest.sent.find(m => m.t === 'init')!.patches).toBe(true);
+  });
+
+  it('патч редактора применяется к странице хаба и уходит автору патчем, а без caps — проектом', () => {
+    const { hub, host, guest, uid } = setup();
+    hub.setRights(uid, { pages: { pg1: 'edit' } });
+    host.recv({ t: 'caps', patches: true });
+    guest.recv(patch());
+    expect(hub.room.project.pages[0].elements.map((e: Msg) => e.id)).toEqual(['p1']);
+    expect(host.last('patch')).toMatchObject({ pageId: 'pg1', by: uid, rev: 1 });
+    // другая страница не тронута
+    expect(hub.room.project.pages[1].elements).toEqual([]);
+    // участник без caps получает полный проект
+    const third = new FakeSock();
+    hub.attach(third, { name: 'Вова' });
+    hub.setRights(hub.room.nextUid - 1, { pages: { pg1: 'view' } });
+    third.sent.length = 0;
+    guest.recv(patch({ ops: [{ op: 'put', el: { ...rect('p1'), x: 5 } }] }));
+    expect(third.last('patch')).toBeUndefined();
+    expect(third.last('project')!.project.pages[0].elements[0].x).toBe(5);
+    // ревизии растут
+    expect(host.last('patch')!.rev).toBe(2);
+  });
+
+  it('участник с patches в attach получает патчи без caps', () => {
+    const hub = createRoomHub({ code: 'P' });
+    const host = new FakeSock();
+    hub.attach(host, { isHost: true });
+    host.recv({ t: 'project', project: demo() });
+    const g = new FakeSock();
+    const uid = hub.attach(g, { patches: true });
+    hub.setRights(uid, { pages: { pg1: 'view' } });
+    expect(hub.pushPatch(patch())).toBe(true);
+    expect(g.last('patch')).toMatchObject({ by: -1 });
+  });
+
+  it('патч без права edit, на скрытую страницу и неизвестную страницу не принимается', () => {
+    const { hub, guest, uid } = setup();
+    guest.recv(patch());
+    expect(hub.room.project.pages[0].elements).toEqual([]);
+    hub.setRights(uid, { pages: { pg1: 'edit' } });
+    guest.recv(patch({ pageId: 'нет' }));
+    guest.recv(patch({ pageId: 'pg2' }));
+    expect(hub.room.project.pages[1].elements).toEqual([]);
+    expect(hub.pushPatch(patch({ pageId: 'нет' }))).toBe(false);
+  });
+
+  it('патч скрытой от участника страницы до него не доходит', () => {
+    const { hub, host, guest, uid } = setup();
+    hub.setRights(uid, { pages: { pg2: 'hidden' } });
+    guest.sent.length = 0;
+    guest.recv({ t: 'caps', patches: true });
+    host.recv({ t: 'caps', patches: true });
+    host.recv(patch({ pageId: 'pg2' }));
+    expect(guest.last('patch')).toBeUndefined();
+    expect(guest.last('project')).toBeUndefined();
+    host.recv(patch());
+    expect(guest.last('patch')).toMatchObject({ pageId: 'pg1' });
+  });
+
+  it('del, order, сетка и фон; мусорные патчи игнорируются', () => {
+    const { hub, host } = setup();
+    host.recv(patch({ ops: [{ op: 'put', el: rect('a') }, { op: 'put', el: rect('b') }] }));
+    host.recv(patch({ ops: [{ op: 'order', ids: ['b', 'a'] }], grid: 'dots', backgroundColor: '#112233' }));
+    expect(hub.room.project.pages[0]).toMatchObject({ grid: 'dots', backgroundColor: '#112233' });
+    expect(hub.room.project.pages[0].elements.map((e: Msg) => e.id)).toEqual(['b', 'a']);
+    host.recv(patch({ ops: [{ op: 'del', id: 'b' }], backgroundColor: null }));
+    expect(hub.room.project.pages[0].elements.map((e: Msg) => e.id)).toEqual(['a']);
+    expect(hub.room.project.pages[0]).not.toHaveProperty('backgroundColor');
+    const before = hub.room.project;
+    for (const bad of [
+      { ops: 'нет' }, { ops: [{ op: 'put', el: { type: 'x' } }] }, { ops: [{ op: 'взлом' }] }, { grid: 'круги' }, { rev: 'x' },
+      { ops: Array(10001).fill({ op: 'del', id: 'a' }) },
+    ]) host.recv(patch(bad));
+    expect(hub.room.project).toBe(before);
+  });
+});

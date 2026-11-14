@@ -45,6 +45,7 @@ class Room {
     this.clients = new Map(); // sock -> info
     this.rights = new Map(); // uid -> { default: 'view'|'edit', pages: {pageId: 'view'|'edit'} }
     this.nextUid = 1;
+    this.revs = new Map(); // pageId -> ревизия: растёт с каждым принятым патчем
   }
   editorsCount() {
     let n = 0;
@@ -127,6 +128,55 @@ function validProject(p) {
   return new Set(p.pages.map(pg => pg.id)).size === p.pages.length;
 }
 
+// ----- Дельта-патчи (то же, что src/delta.ts: операции над элементами страницы) -----
+
+const MAX_PATCH_OPS = 10000;
+const GRIDS = ['none', 'dots', 'square', 'coord'];
+
+/** Патч из сети: форма операций и размеры (как isBoardPatch в src/delta.ts). */
+function validPatch(p) {
+  if (!isObj(p) || p.t !== 'patch' || !isId(p.pageId) || !isNum(p.rev)) return false;
+  if (!Array.isArray(p.ops) || p.ops.length > MAX_PATCH_OPS) return false;
+  if (p.grid !== undefined && !GRIDS.includes(p.grid)) return false;
+  if (p.backgroundColor !== undefined && p.backgroundColor !== null && typeof p.backgroundColor !== 'string') return false;
+  return p.ops.every(o => {
+    if (!isObj(o)) return false;
+    if (o.op === 'put') return isObj(o.el) && isId(o.el.id) && typeof o.el.type === 'string';
+    if (o.op === 'del') return typeof o.id === 'string' && o.id.length <= MAX_ID;
+    if (o.op === 'order') return Array.isArray(o.ids) && o.ids.length <= MAX_PATCH_OPS && o.ids.every(i => typeof i === 'string');
+    return false;
+  });
+}
+
+/** Закреплённые сверху и снизу — по краям, остальные в своём порядке (как replaceElements в state.ts). */
+function pinOrder(els) {
+  if (!els.some(e => e.layerPin)) return els;
+  return [...els.filter(e => e.layerPin === 'bottom'), ...els.filter(e => !e.layerPin), ...els.filter(e => e.layerPin === 'top')];
+}
+
+/** Страница с применёнными операциями; ops уже проверены и очищены (put без негодных элементов). */
+function applyPatchToPage(page, patch) {
+  let els = page.elements.slice();
+  for (const op of patch.ops) {
+    if (op.op === 'put') {
+      const i = els.findIndex(e => e.id === op.el.id);
+      if (i < 0) els.push(op.el); else els[i] = op.el;
+    } else if (op.op === 'del') {
+      els = els.filter(e => e.id !== op.id);
+    } else if (op.op === 'order') {
+      const byId = new Map(els.map(e => [e.id, e]));
+      const ordered = [];
+      for (const id of op.ids) { const e = byId.get(id); if (e) { ordered.push(e); byId.delete(id); } }
+      els = [...ordered, ...els.filter(e => byId.has(e.id))];
+    }
+  }
+  const out = { ...page, elements: pinOrder(els) };
+  if (patch.grid !== undefined) out.grid = patch.grid;
+  if (patch.backgroundColor === null) delete out.backgroundColor;
+  else if (typeof patch.backgroundColor === 'string') out.backgroundColor = patch.backgroundColor;
+  return out;
+}
+
 /**
  * Хаб комнаты: принимает участников от любого транспорта и рассылает им сообщения.
  * @param {{ code: string, openEdit?: boolean }} opts
@@ -150,22 +200,23 @@ function createRoomHub({ code, openEdit = false }) {
     return { default: r?.default || 'view', pages };
   }
 
-  const initFor = info => ({ t: 'init', proto: PROTO, userId: info.uid, color: info.color, name: info.name, project: projectFor(info), rights: rightsOf(info.uid), users: room.usersSnapshot() });
+  // patches: true — хаб понимает t: 'patch'; клиент отвечает { t: 'caps', patches: true }, и ему шлются патчи вместо проектов
+  const initFor = info => ({ t: 'init', proto: PROTO, userId: info.uid, color: info.color, name: info.name, project: projectFor(info), rights: rightsOf(info.uid), users: room.usersSnapshot(), patches: true });
 
   /**
    * Подключить участника. Проверку доступа (код комнаты, ключ автора) делает транспорт до вызова.
    * @param {RoomSocket} sock
-   * @param {{ isHost?: boolean, name?: string }} [opts]
+   * @param {{ isHost?: boolean, name?: string, patches?: boolean }} [opts] patches — участник понимает патчи без caps
    * @returns {number | null} uid участника или null, если подключение отклонено
    */
-  function attach(sock, { isHost = false, name = '' } = {}) {
+  function attach(sock, { isHost = false, name = '', patches = false } = {}) {
     if (isHost && [...room.clients.values()].some(c => c.host)) { sock.close(4409, 'host already connected'); return null; }
     const uid = isHost ? 0 : room.nextUid++;
     const info = {
       sock, uid, host: isHost,
       name: normalizeName(name) || (isHost ? 'Автор' : `Гость ${uid}`),
       color: isHost ? '#e03131' : COLORS[uid % COLORS.length],
-      last: Date.now(), cursor: null, pageId: null, selection: [],
+      last: Date.now(), cursor: null, pageId: null, selection: [], patches,
     };
     room.clients.set(sock, info);
     if (isHost) room.rights.set(0, { default: 'edit', pages: {} });
@@ -186,6 +237,8 @@ function createRoomHub({ code, openEdit = false }) {
         if (!validSelection(m)) return;
         info.selection = m.ids ?? []; info.pageId = m.pageId ?? info.pageId; broadcastUsers(); return;
       }
+      if (m.t === 'caps') { info.patches = m.patches === true; return; }
+      if (m.t === 'patch') { if (validPatch(m)) acceptPatch(info, m); return; }
       if (m.t === 'project' && validProject(m.project)) {
         // серверный enforcement: чужие view-страницы не применяем
         if (!room.project) {
@@ -222,6 +275,29 @@ function createRoomHub({ code, openEdit = false }) {
     return uid;
   }
 
+  /** Принять патч страницы: нужен edit на ней. Применяется к странице хаба и уходит остальным; info = null — от автора. */
+  function acceptPatch(info, patch) {
+    const project = room.project;
+    if (!project || !project.pages.some(p => p.id === patch.pageId)) return false;
+    if (info && room.userPageRight(info.uid, patch.pageId) !== 'edit') return false;
+    const rev = (room.revs.get(patch.pageId) || 0) + 1;
+    room.revs.set(patch.pageId, rev);
+    const clean = { ...patch, rev };
+    room.project = {
+      ...project,
+      updatedAt: Date.now(),
+      pages: project.pages.map(pg => (pg.id === patch.pageId ? applyPatchToPage(pg, clean) : pg)),
+    };
+    const by = info ? info.uid : -1;
+    for (const c of room.clients.values()) {
+      if (info && c.sock === info.sock) continue;
+      if (room.userPageRight(c.uid, patch.pageId) === 'hidden') continue; // скрытая страница до участника не доходит
+      if (c.patches) sendTo(c.sock, { ...clean, by });
+      else sendTo(c.sock, { t: 'project', project: projectFor(c), by });
+    }
+    return true;
+  }
+
   function pushRights(uid) {
     const c = [...room.clients.values()].find(x => x.uid === uid);
     if (!c) return;
@@ -248,6 +324,7 @@ function createRoomHub({ code, openEdit = false }) {
     attach,
     refresh,
     setRights: (uid, patch) => { const r = room.setRights(uid, patch); broadcastUsers(); pushRights(uid); return r; },
+    pushPatch: patch => validPatch(patch) && acceptPatch(null, patch),
     pushProject: project => { room.project = project; for (const c of room.clients.values()) sendTo(c.sock, { t: 'project', project, by: -1 }); },
     users: () => room.usersSnapshot(),
     closeAll: () => { for (const sock of room.clients.keys()) try { sock.close(); } catch { /* уже закрыт */ } },

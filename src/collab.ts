@@ -1,5 +1,7 @@
-import type { Project, ProjectMeta } from './types';
-import { state, openProject, setSelection, isDraftId, onDraft } from './state';
+import type { Element, GridMode, Page, Project, ProjectMeta } from './types';
+import { state, openProject, setSelection, isDraftId, onDraft, onChange, touchProject, update } from './state';
+import { MAX_PATCH_OPS, applyBoardPatch, diffElements, isBoardPatch, type BoardPatch } from './delta';
+import { gestureActive } from './gesture';
 import { setStorage, storage, type BoardsStorage } from './storage';
 import {
   CLOSE_BAD_CODE, CLOSE_BAD_REQUEST, CLOSE_FREE_LIMIT, CLOSE_HOST_OFFLINE, CLOSE_PROTOCOL_MISMATCH, CLOSE_RATE_LIMITED,
@@ -30,6 +32,8 @@ let users: CollabUser[] = [];
 let myRights: { default: string; pages: Record<string, string> } = { default: 'view', pages: {} };
 let connected = false;
 let role: 'host' | 'guest' = 'guest';
+/** Хаб комнаты понимает дельта-патчи (признак приходит в init): тогда содержимое страниц идёт патчами, а не проектом. */
+let hubPatches = false;
 
 
 export function collabActive(): boolean { return connected; }
@@ -71,6 +75,10 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
   role = asHost ? 'host' : 'guest';
   state.collabRole = role;
   transport = t;
+  hubPatches = false;
+  baselines.clear();
+  incoming.length = 0;
+  watchBoard();
   // события от прежнего, уже заменённого канала не должны трогать текущее состояние
   const current = () => transport === t;
   return new Promise(resolve => {
@@ -88,6 +96,9 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
         myUserId = m.userId as number;
         myRights = (m.rights as typeof myRights) || myRights;
         if (Array.isArray(m.users)) users = m.users as CollabUser[];
+        // хаб умеет патчи — сообщаем, что мы тоже: до ответа он шлёт полные проекты
+        hubPatches = m.patches === true;
+        if (hubPatches) send({ t: 'caps', patches: true });
         if (m.project) applyRemoteProject(m.project as Project);
         renderRemoteCursors();
       } else if (m.t === 'users') {
@@ -99,6 +110,8 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
         setSelection([...state.selection]);
       } else if (m.t === 'project') {
         if ((m.by as number) !== myUserId) applyRemoteProject(m.project as Project);
+      } else if (m.t === 'patch') {
+        if ((m.by as number) !== myUserId && isBoardPatch(m)) receivePatch(m);
       }
     };
     t.onclose = (code, reason) => {
@@ -131,7 +144,121 @@ function applyRemoteProject(project: Project): void {
   openProject(project, keepPageId ?? undefined);
   state.camera = keepCam;
   setSelection([...state.selection]);
+  // содержимое теперь общее: следующие правки считаются от него
+  markSent(state.project);
   document.dispatchEvent(new CustomEvent('doska:collab-project'));
+}
+
+// ----- Дельта-патчи -----
+
+interface Baseline { elements: Element[]; grid: GridMode; backgroundColor: string | undefined }
+/** Что хаб уже знает о каждой странице: от этого снимка считается следующий патч. */
+const baselines = new Map<string, Baseline>();
+/** Что хаб знает о составе проекта (названия, страницы, права, комментарии): иначе нужен полный проект. */
+let sentStructure: { key: string; comments: unknown[] } | null = null;
+let patchRev = 0;
+const incoming: BoardPatch[] = [];
+const BOARD_SYNC_MS = 100;
+const syncThrottle: { last: number; timer: number } = { last: 0, timer: 0 };
+let incomingTimer = 0;
+let watching = false;
+
+const structureKey = (p: Project): string =>
+  JSON.stringify([p.name, p.icon ?? null, p.ownerPlan ?? null, p.permissions ?? null, p.pages.map(pg => [pg.id, pg.name])]);
+
+function structureChanged(p: Project): boolean {
+  if (!sentStructure || sentStructure.key !== structureKey(p)) return true;
+  return p.pages.some((pg, i) => sentStructure!.comments[i] !== pg.comments);
+}
+
+/** Проект целиком известен хабу: страницы и состав запоминаются как отправленные. */
+function markSent(p: Project): void {
+  baselines.clear();
+  for (const pg of p.pages) baselines.set(pg.id, { elements: pg.elements, grid: pg.grid, backgroundColor: pg.backgroundColor });
+  sentStructure = { key: structureKey(p), comments: p.pages.map(pg => pg.comments) };
+}
+
+/** Страницы, изменившиеся с прошлой отправки, уходят патчами. false — патч не поместился, нужен полный проект. */
+function flushPatches(p: Project): boolean {
+  let whole = true;
+  for (const pg of p.pages) {
+    if (readOnly(pg.id)) continue;
+    const base = baselines.get(pg.id);
+    if (!base) continue; // страница новая — её увезёт полный проект
+    if (pg.elements === base.elements && pg.grid === base.grid && pg.backgroundColor === base.backgroundColor) continue;
+    const ops = diffElements(base.elements, pg.elements);
+    if (ops.length > MAX_PATCH_OPS) { whole = false; continue; }
+    const patch: BoardPatch = { t: 'patch', pageId: pg.id, rev: ++patchRev, ops };
+    if (pg.grid !== base.grid) patch.grid = pg.grid;
+    if (pg.backgroundColor !== base.backgroundColor) patch.backgroundColor = pg.backgroundColor ?? null;
+    baselines.set(pg.id, { elements: pg.elements, grid: pg.grid, backgroundColor: pg.backgroundColor });
+    if (ops.length > 0 || patch.grid !== undefined || patch.backgroundColor !== undefined) send(patch);
+  }
+  return whole;
+}
+
+function scheduleBoardSync(): void {
+  if (!connected || !hubPatches || onDraft()) return;
+  const wait = BOARD_SYNC_MS - (Date.now() - syncThrottle.last);
+  if (wait <= 0) {
+    syncThrottle.last = Date.now();
+    flushPatches(state.project);
+  } else if (!syncThrottle.timer) {
+    syncThrottle.timer = window.setTimeout(() => {
+      syncThrottle.timer = 0;
+      syncThrottle.last = Date.now();
+      if (connected && hubPatches) flushPatches(state.project);
+    }, wait);
+  }
+}
+
+function watchBoard(): void {
+  if (watching) return;
+  watching = true;
+  onChange(() => {
+    scheduleBoardSync();
+    if (incoming.length > 0) drainIncoming();
+  });
+}
+
+function receivePatch(p: BoardPatch): void {
+  incoming.push(p);
+  drainIncoming();
+}
+
+/** Чужие патчи ждут окончания жеста: он держит прежний массив элементов и затёр бы их. */
+function drainIncoming(): void {
+  if (incoming.length === 0) return;
+  if (gestureActive()) {
+    if (!incomingTimer) incomingTimer = window.setTimeout(() => { incomingTimer = 0; drainIncoming(); }, 100);
+    return;
+  }
+  const list = incoming.splice(0, incoming.length);
+  for (const p of list) applyIncomingPatch(p);
+}
+
+/** Страница меняется на месте, как и её элементы в state.ts; камера, выделение и история отмены остаются. */
+function applyIncomingPatch(p: BoardPatch): void {
+  const page: Page | undefined = state.project.pages.find(pg => pg.id === p.pageId);
+  if (!page) return;
+  const next = applyBoardPatch(page, p);
+  const same = next.elements === page.elements && next.grid === page.grid && next.backgroundColor === page.backgroundColor;
+  if (!same) {
+    page.elements = next.elements;
+    page.grid = next.grid;
+    if (next.backgroundColor === undefined) delete page.backgroundColor;
+    else page.backgroundColor = next.backgroundColor;
+  }
+  baselines.set(page.id, { elements: page.elements, grid: page.grid, backgroundColor: page.backgroundColor });
+  if (same) return;
+  // автор сохраняет и чужие правки; у гостя доска — чужая, сохранять нечего
+  if (role === 'host') touchProject();
+  if (page === state.board && state.selection.size > 0) {
+    const alive = new Set(page.elements.map(e => e.id));
+    const kept = [...state.selection].filter(id => alive.has(id));
+    if (kept.length !== state.selection.size) { setSelection(kept); return; }
+  }
+  update();
 }
 
 /** Отправка позиции курсора (сцена) с троттлингом 40мс. */
@@ -166,8 +293,15 @@ export function noteSelection(ids: string[]): void {
 /** Отправка проекта (дебаунс 250мс) — вызывается из storage.save сетевого режима. */
 export function sendProject(project: Project): void {
   if (!connected) return;
+  if (hubPatches) {
+    // содержимое страниц уходит патчами; полный проект — только когда изменился состав проекта
+    if (flushPatches(project) && !structureChanged(project)) return;
+  }
   clearTimeout(projectThrottle.timer);
-  projectThrottle.timer = window.setTimeout(() => send({ t: 'project', project }), 250);
+  projectThrottle.timer = window.setTimeout(() => {
+    send({ t: 'project', project });
+    markSent(project);
+  }, 250);
 }
 
 /** Сетевое хранилище: save = отправка, load = из init-проекта. */
@@ -315,6 +449,16 @@ let hostLocalStorage: BoardsStorage | null = null;
 export async function startHostConnection(port: number, code: string, hostKey: string, name: string): Promise<void> {
   const q = new URLSearchParams({ code, key: hostKey });
   await startCollab(`ws://127.0.0.1:${port}/ws?${q}`, true, name);
+  finishHostConnection();
+}
+
+/** Автор подключился к комнате любым каналом (WebSocket приложения или память вкладки браузера). */
+export async function connectHost(t: CollabTransport): Promise<void> {
+  await connectCollab(t, true);
+  finishHostConnection();
+}
+
+function finishHostConnection(): void {
   // правки автора уходят гостям тем же путём, что и автосохранение
   if (!hostLocalStorage) {
     const local = storage;
@@ -330,6 +474,12 @@ export function stopCollab(): void {
   transport = null;
   t?.close();
   connected = false;
+  hubPatches = false;
+  baselines.clear();
+  sentStructure = null;
+  incoming.length = 0;
+  clearTimeout(syncThrottle.timer);
+  syncThrottle.timer = 0;
   users = [];
   state.collabRole = null;
   renderRemoteCursors();

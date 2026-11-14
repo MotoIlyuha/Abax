@@ -282,6 +282,7 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
   const initFor = (info: Client) => ({
     t: 'init', proto: PROTO, userId: info.uid, color: info.color, name: info.name,
     project: projectFor(info), rights: rightsOf(info.uid), allowCopy: allowCopy(), users: room.usersSnapshot(),
+    patches: true,
   });
 
   /** Права нового гостя: по умолчанию и по страницам, заданным автором в permissions.pageRights. */

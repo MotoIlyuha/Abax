@@ -11,6 +11,8 @@ import { startUpdateChecks } from './update-notice';
 import { initAppIcon } from './app-icon';
 import { linkModeOf, parseBoardUrl } from './router';
 import { enterLinkView, startLinkViewCamera } from './link-view-ui';
+import { localGuestTransport, localRoomCode } from './local-transport';
+import { startLocalRoom } from './browser-host';
 
 async function boot(): Promise<void> {
   initTooltips();
@@ -33,7 +35,9 @@ async function boot(): Promise<void> {
       const notice = closedNotice((ev as CustomEvent<CollabClosedDetail>).detail.code);
       showCollabNotice(notice.title, notice.text);
     });
+    const localCode = localRoomCode(roomCode);
     if (invite) await connectCollab(cloudTransport(invite.relayUrl, invite.room, invite.key, name, relayNotice), false);
+    else if (localCode) await connectCollab(localGuestTransport(localCode, name), false);
     else await startCollab(`ws://${location.host}/ws?code=${encodeURIComponent(roomCode!)}`, false, name);
     setStorage(netStorage);
     initRenderer(canvas);
@@ -104,7 +108,7 @@ async function boot(): Promise<void> {
   }
 
   // отладочный доступ для smoke-тестов
-  (window as unknown as Record<string, unknown>).__doska = { state, undo, redo, requestRender, importPdfFromDataUrl };
+  (window as unknown as Record<string, unknown>).__doska = { state, undo, redo, requestRender, importPdfFromDataUrl, startLocalRoom };
 }
 
 void boot().then(() => {
