@@ -5,18 +5,30 @@ test('перетаскивание к краю прокручивает холс
   await board.tool('v');
   await board.move({ x: 450, y: 300 });
   await page.mouse.down();
+  // Камера и точка штриха читаются одним вызовом: автопрокрутка идёт по кадрам, и два отдельных чтения
+  // видели разные кадры — разница «камера − штрих» тогда прыгала на шаг прокрутки.
+  const snap = () => page.evaluate(() => {
+    const s = (window as any).__doska.state;
+    return { cam: s.camera.x as number, el: s.board.elements[0].pts[0].x as number };
+  });
   const box = (await board.canvas.boundingBox())!;
   await page.mouse.move(box.x + box.width - 4, box.y + box.height / 2, { steps: 8 });
-  const before = await board.state();
-  const first = (await board.elements())[0].pts[0].x;
-  await expect.poll(async () => (await board.state()).camera.x).toBeGreaterThan(before.camera.x + 10);
-  const after = await board.state();
-  const second = (await board.elements())[0].pts[0].x;
-  expect(Math.abs((second - first) - (after.camera.x - before.camera.x))).toBeLessThan(15);
+  // отсчёт — от снимка у края: сам перенос к краю сдвигает штрих, а прокрутка — камеру и штрих вместе
+  const start = await snap();
+  await expect.poll(async () => (await snap()).cam).toBeGreaterThan(start.cam + 10);
+  const moved = await snap();
+  expect(Math.abs((moved.el - start.el) - (moved.cam - start.cam))).toBeLessThan(15);
   await page.mouse.up();
-  const stopped = (await board.state()).camera.x;
+  // прокрутка после отпускания останавливается: ждём, пока камера перестанет меняться, а не фиксированное время
+  let stopped = (await snap()).cam;
+  await expect.poll(async () => {
+    const now = (await snap()).cam;
+    const same = now === stopped;
+    stopped = now;
+    return same;
+  }, { intervals: [100, 100, 100] }).toBe(true);
   await page.waitForTimeout(150);
-  expect((await board.state()).camera.x).toBe(stopped);
+  expect((await snap()).cam).toBe(stopped);
   await page.keyboard.press('Control+z');
   expect((await board.elements())[0].pts[0].x).toBeCloseTo(400, 0);
 });

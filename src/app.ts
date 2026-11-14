@@ -11,7 +11,7 @@ import {
   bringForward, sendBackward, moveSelectionLayer, selectionLayerOrder, pinSelectionLayer, deleteSelected, setSolidSides, removeImageFrames, selectInserted,
   clampOpacity, opacityField, OPACITY_MIN, parseZoomPercent, zoomAtPoint,
   addDraft, deleteDraft, onDraft, realPageId,
-  canCopyCurrentBoard, canCloneCurrentProject,
+  canCopyCurrentBoard, canCloneCurrentProject, canAddPageTo, PAGE_LIMIT_TEXT,
 } from './state';
 import type { PresetKind, StylePatch, StyleValue } from './state';
 import { doskaApi, storage } from './storage';
@@ -46,7 +46,9 @@ import { capitalize, dayLabel, pagesLabel } from './format';
 import { buildCustomColorPicker } from './color-picker';
 import { copySelection, duplicateSelection as duplicateInPlace, pasteFromMemory, pasteFromSystem } from './clipboard';
 import { hideHeldTooltip, showHeldTooltip } from './tooltip';
-import { copyBoardLink, currentBoardLink, registerLinkViewHooks } from './link-view-ui';
+import { LIMIT_PROJECTS_TEXT, copyBoardLink, currentBoardLink, registerLinkViewHooks } from './link-view-ui';
+import { canCreateProject } from './limits';
+import { limitsEnforced, userPlan } from './plan';
 import { addGestureProbe } from './gesture';
 import { initTaskOverlay, isTeacher } from './task-overlay';
 import { annotationButtons, initCommentsUi } from './comments-ui';
@@ -2979,6 +2981,7 @@ function newPageTip(): string {
 }
 
 async function newPageHandler(): Promise<void> {
+  if (!canAddPageTo(state.project)) { showToast(PAGE_LIMIT_TEXT); return; }
   await saveNow();
   changePage(() => addPage());
 }
@@ -3555,10 +3558,11 @@ async function openFromHome(projectId: string, pageId?: string): Promise<void> {
 }
 
 async function newProjectHandler(): Promise<void> {
+  if (limitsEnforced() && !canCreateProject(userPlan(), state.projects.length)) { showToast(LIMIT_PROJECTS_TEXT); return; }
   await saveNow();
   saveCamera();
   rememberOpenProject();
-  const p = blankProject(`Проект ${state.projects.length + 1}`);
+  const p = { ...blankProject(`Проект ${state.projects.length + 1}`), ownerPlan: userPlan() };
   await storage.save(p);
   state.projects = [projectMeta(p), ...state.projects];
   openProject(p);
@@ -3623,6 +3627,8 @@ async function togglePinnedHandler(id: string): Promise<void> {
 }
 
 async function homeAddPage(projectId: string): Promise<void> {
+  const target = state.project.id === projectId ? state.project : homeProject(state.projects.find(m => m.id === projectId) ?? { id: '', updatedAt: 0 } as ProjectMeta);
+  if (target && !canAddPageTo(target)) { showToast(PAGE_LIMIT_TEXT); return; }
   if (state.project.id === projectId) {
     await saveNow();
     addPage();

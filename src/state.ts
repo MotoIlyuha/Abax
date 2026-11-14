@@ -1,12 +1,13 @@
 import type {
-  BoardSettings, Camera, Element, FadeStroke, Flash, GridMode, Guide, LaserPt, NoteEl, Page, Project, ProjectMeta, Pt, ShapeEl, SolidKind,
+  BoardSettings, Camera, Element, PlanTier, FadeStroke, Flash, GridMode, Guide, LaserPt, NoteEl, Page, Project, ProjectMeta, Pt, ShapeEl, SolidKind,
   TextAlign, TextEl, TextVAlign, ToolId,
 } from './types';
 import { hasBaseSides, SIDES_MAX, SIDES_MIN, solidSides } from './solid';
 import { DEFAULT_NEW_PAGE_KEY } from './hotkeys';
 import { imageFrame, shapeHoldsText, translateElement } from './geom';
 import { attachNewElement, freezeAttachments, rebindAttachment } from './attachment';
-import { effectivePermissions } from './limits';
+import { canCreatePage, effectivePermissions, isPlanTier } from './limits';
+import { limitsEnforced, userPlan } from './plan';
 import { preserveLiveFields, syncCommentsWithMovedElements } from './comments';
 
 export interface LiveStroke {
@@ -736,7 +737,21 @@ export function switchPage(pageId: string): void {
   update();
 }
 
-export function addPage(): Page {
+export const PAGE_LIMIT_TEXT = 'На бесплатном тарифе доступно до 3 страниц в проекте';
+
+/** Тариф проекта: свой, а у старых проектов без него — тариф пользователя на этом устройстве (по умолчанию бесплатный). */
+export function projectPlan(project: { ownerPlan?: unknown }): PlanTier {
+  return isPlanTier(project.ownerPlan) ? project.ownerPlan : userPlan();
+}
+
+/** Можно ли добавить в проект страницу: лимит действует, только когда лимиты включены. Черновики в него не входят. */
+export function canAddPageTo(project: Project): boolean {
+  return !limitsEnforced() || canCreatePage(projectPlan(project), project.pages.length);
+}
+
+/** Новая страница в открытом проекте; null — лимит тарифа (страница не создаётся). */
+export function addPage(): Page | null {
+  if (!canAddPageTo(state.project)) return null;
   const page = blankPage(`Страница ${state.project.pages.length + 1}`);
   state.project = { ...state.project, pages: [...state.project.pages, page] };
   state.pageId = page.id;

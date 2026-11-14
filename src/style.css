@@ -2539,3 +2539,5 @@ body.link-view #project-icon { pointer-events: none; }
 .cp-send, .cp-resolve { padding: 4px 11px; border: 1px solid var(--border); border-radius: 99px; background: #fff; font: inherit; cursor: pointer; }
 .cp-send { border-color: var(--accent); background: var(--accent); color: #fff; font-weight: 600; }
 .cp-resolve:hover { border-color: var(--accent); color: var(--accent); }
+.sd-exp-plan { display: flex; align-items: center; gap: 6px; margin: 4px 0 10px; }
+.sd-exp-plan-select { padding: 4px 8px; border: 1px solid var(--border); border-radius: 8px; font: inherit; background: #fff; }

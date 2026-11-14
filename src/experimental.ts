@@ -2,6 +2,8 @@
 // нажать и задержать логотип, и дальше остаётся, пока его не скроют кнопкой внизу раздела.
 
 import { buildCustomColorPicker } from './color-picker';
+import { isPlanTier } from './limits';
+import { limitsEnforced, setLimitsEnforced, setUserPlan, userPlan } from './plan';
 import {
   DEFAULT_ICON_COLORS, iconColors, logoDataUrl, logoSrc, sameColors, saveIconColors, type IconColors,
 } from './app-icon';
@@ -138,6 +140,29 @@ export function renderExperimental(host: HTMLElement, deps: ExperimentalDeps): v
 
   if (recursionDiscovered()) box.appendChild(deps.check('recursionEnabled', 'Включить рекурсию!',
     'Показывать вложенные копии страницы вместо пасхалки'));
+
+  // ----- тариф -----
+  box.appendChild(el('div', 'ctx-label', 'Тариф'));
+  const lim = el('label', 'ctx-check');
+  lim.title = 'Бесплатный тариф: 3 проекта, 3 страницы в проекте и один гость в комнате';
+  const limBox = el('input', '');
+  limBox.type = 'checkbox';
+  limBox.checked = limitsEnforced();
+  limBox.addEventListener('change', () => setLimitsEnforced(limBox.checked));
+  lim.append(limBox, el('span', '', 'Действуют лимиты тарифа'));
+  box.appendChild(lim);
+  const planRow = el('label', 'sd-exp-plan');
+  planRow.append(el('span', 'sd-exp-plan-name', 'Мой тариф: '));
+  const planSel = el('select', 'sd-exp-plan-select');
+  for (const [id, title] of [['free', 'Free'], ['pro', 'Pro'], ['tutor', 'Tutor']] as const) {
+    const o = el('option', '', title);
+    o.value = id;
+    planSel.appendChild(o);
+  }
+  planSel.value = userPlan();
+  planSel.addEventListener('change', () => { if (isPlanTier(planSel.value)) setUserPlan(planSel.value); });
+  planRow.appendChild(planSel);
+  box.appendChild(planRow);
 
   const hide = el('button', 'sd-btn sd-exp-hide', 'Скрыть раздел');
   hide.title = 'Раздел снова появится, если задержать логотип в «О проекте»';

@@ -72,8 +72,8 @@ describe('проекты и страницы', () => {
 
   it('movePage переставляет страницы, активная остаётся активной', () => {
     const first = state.board;
-    const second = addPage();
-    const third = addPage();
+    const second = addPage()!;
+    const third = addPage()!;
     switchPage(first.id);
     state.dirty = false;
     const calls = vi.fn();
@@ -110,7 +110,7 @@ describe('проекты и страницы', () => {
 
   it('addPage / switchPage / renamePage / deletePage', () => {
     const first = state.pageId;
-    const page = addPage();
+    const page = addPage()!;
     expect(state.project.pages).toHaveLength(2);
     expect(page.name).toBe('Страница 2');
     expect(state.pageId).toBe(page.id);
@@ -139,7 +139,7 @@ describe('проекты и страницы', () => {
     addElement(rect('a'));
     expect(state.project.pages[0].elements.map(e => e.id)).toEqual(['a']);
     // неактивная страница переименовывается, активная остаётся прежней
-    const other = addPage();
+    const other = addPage()!;
     const firstId = state.project.pages[0].id;
     renamePage(firstId, 'Первая');
     expect(state.board).toBe(other);
@@ -747,7 +747,7 @@ describe('черновики', () => {
   });
 
   it('закрытие открытого черновика возвращает на прежнюю страницу', () => {
-    const second = addPage();
+    const second = addPage()!;
     const draft = addDraft();
     expect(isDraftId(draft.id)).toBe(true);
     deleteDraft(draft.id);

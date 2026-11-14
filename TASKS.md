@@ -20,5 +20,5 @@
 - [x] **TASK-06: Реакции и комментарии: рендер и UI (`src/renderer.ts`, `src/comments-ui.ts`, `src/app.ts`)**
   - Сообщения `react`/`comment` в хабах.
 
-- [ ] **TASK-07: Лимиты тарифов в UI, починка `canvas-edges`, E2E `night2-features`**
+- [x] **TASK-07: Лимиты тарифов в UI, починка `canvas-edges`, E2E `night2-features`**
   - Playwright: canvas-edges, night2-features и затронутые спеки — зелёные.

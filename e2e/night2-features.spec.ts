@@ -388,3 +388,85 @@ test.describe('реакции и комментарии', () => {
     await guest.close();
   });
 });
+
+test.describe('лимиты тарифов', () => {
+  const enforce = (page: Page, plan?: string) => page.addInitScript((p) => {
+    localStorage.setItem('doska.enforceLimits', '1');
+    if (p) localStorage.setItem('doska.plan', p);
+  }, plan);
+
+  test('четвёртая страница не создаётся: уведомление, страниц по-прежнему три; черновики можно', async ({ board, page }) => {
+    await enforce(page);
+    await board.open();
+    await board.addPage();
+    await board.addPage();
+    expect((await board.state()).project.pages).toHaveLength(3);
+    await page.locator('#pages-list .page-add').click();
+    await expect(page.locator('#toast')).toHaveText('На бесплатном тарифе доступно до 3 страниц в проекте');
+    expect((await board.state()).project.pages).toHaveLength(3);
+    // черновик (Alt + клик по плитке) в лимит не входит
+    await page.keyboard.down('Alt');
+    await page.locator('#pages-list .page-add').click();
+    await page.keyboard.up('Alt');
+    await expect.poll(() => page.evaluate(() => (window as any).__doska.state.drafts.length)).toBe(1);
+    expect((await board.state()).project.pages).toHaveLength(3);
+  });
+
+  test('на Pro страниц сколько угодно', async ({ board, page }) => {
+    await enforce(page, 'pro');
+    await board.open();
+    await page.evaluate(() => { (window as any).__doska.state.project.ownerPlan = 'pro'; });
+    for (let i = 0; i < 4; i++) await board.addPage();
+    expect((await board.state()).project.pages).toHaveLength(5);
+  });
+
+  test('четвёртый проект не создаётся: уведомление', async ({ board, page }) => {
+    await enforce(page);
+    await board.open();
+    for (let i = 0; i < 2; i++) {
+      await board.home();
+      await page.locator('#home .new-project').click();
+      await expect.poll(async () => (await board.state()).projects.length).toBe(i + 2);
+    }
+    await board.home();
+    await page.locator('#home .new-project').click();
+    await expect(page.locator('#toast')).toHaveText('На бесплатном тарифе доступно до 3 проектов');
+    expect((await board.state()).projects).toHaveLength(3);
+  });
+
+  test('клонирование по ссылке тоже упирается в лимит проектов', async ({ board, page }) => {
+    await board.open();
+    await board.rect(400, 300, 500, 400);
+    await board.saved();
+    const s = await board.state();
+    await page.addInitScript(() => localStorage.setItem('doska.enforceLimits', '1'));
+    // ещё два проекта — вместе с первым три
+    await page.evaluate(() => {
+      const now = Date.now();
+      for (const i of [1, 2]) {
+        const p = { id: `extra${i}`, name: `Доп ${i}`, createdAt: now, updatedAt: now, pages: [{ id: `pg${i}`, name: 'С', grid: 'square', elements: [] }] };
+        localStorage.setItem(`doska.p.extra${i}`, JSON.stringify(p));
+      }
+      const idx = JSON.parse(localStorage.getItem('doska.projects') || '[]');
+      for (const i of [1, 2]) idx.push({ id: `extra${i}`, name: `Доп ${i}`, createdAt: now, updatedAt: now, pageCount: 1 });
+      localStorage.setItem('doska.projects', JSON.stringify(idx));
+    });
+    await openLink(page, `/?route=project&projectId=${s.project.id}`);
+    await page.locator('#link-banner .lb-clone').click();
+    await expect(page.locator('#toast')).toHaveText('На бесплатном тарифе доступно до 3 проектов');
+    expect((await snap(page)).linkMode).toBe('view-project');
+  });
+
+  test('переключатель лимитов и тарифа есть в «Экспериментальных»', async ({ board, page }) => {
+    await board.open();
+    await page.evaluate(() => localStorage.setItem('doska.experiments', '1'));
+    await page.keyboard.press('Control+Comma');
+    const nav = page.locator('.sd-nav-item[data-section="experimental"]');
+    await nav.click();
+    const box = page.locator('.sd-experimental');
+    await expect(box.locator('.ctx-check', { hasText: 'Действуют лимиты тарифа' })).toBeVisible();
+    await box.locator('.ctx-check', { hasText: 'Действуют лимиты тарифа' }).locator('input').check();
+    await box.locator('.sd-exp-plan-select').selectOption('pro');
+    expect(await page.evaluate(() => [localStorage.getItem('doska.enforceLimits'), localStorage.getItem('doska.plan')])).toEqual(['1', 'pro']);
+  });
+});
