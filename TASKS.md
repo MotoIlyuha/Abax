@@ -12,7 +12,7 @@
 - [x] **TASK-03: Дельта-патчи, браузерный хост, `room.cjs` (`src/collab.ts`, `src/relay-host.ts`, `electron/room.cjs`)**
   - Патчи в `collab.ts` без сброса Undo; local transport; браузерный хост с `createRoomHub`; `room.cjs` понимает patch/caps.
 
-- [ ] **TASK-04: Учитель ↔ ученик по `TaskEl` (`src/room-host.ts`, `electron/room.cjs`, `src/collab.ts`)**
+- [x] **TASK-04: Учитель ↔ ученик по `TaskEl` (`src/room-host.ts`, `electron/room.cjs`, `src/collab.ts`)**
   - Сообщения `task-draft`, `task-submit`; защита полей хоста; маскировка ответов.
 
 - [ ] **TASK-05: DOM-оверлей заданий и создание заданий (`src/task-overlay.ts`, `src/app.ts`)**

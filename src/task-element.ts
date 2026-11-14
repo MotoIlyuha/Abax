@@ -136,6 +136,21 @@ export function mergeGuestTask(hostEl: TaskEl, guestEl: TaskEl): TaskEl {
   return out;
 }
 
+/**
+ * Задание от автора поверх известного хабу: условие, ответ, решение, флаги и положение — автора,
+ * а ввод ученика (черновик и попытки) — хаба: за время, пока автор двигал карточку, ученик мог ответить.
+ * Свои ответы автор отправляет сообщениями task-draft и task-submit, а не правкой карточки. Те же данные — тот же объект.
+ */
+export function mergeHostTask(known: TaskEl, incoming: TaskEl): TaskEl {
+  if (known.studentDraft === incoming.studentDraft && known.attempts === incoming.attempts) return incoming;
+  const { studentDraft: _d, attempts: _a, ...rest } = incoming;
+  return {
+    ...rest,
+    ...(known.attempts ? { attempts: known.attempts } : {}),
+    ...(known.studentDraft !== undefined ? { studentDraft: known.studentDraft } : {}),
+  };
+}
+
 export type TaskStatus = 'solved' | 'unsolved' | 'none';
 
 /** Решено — есть верная попытка; не решено — попытки есть, верной нет; нет ответа — попыток нет. */

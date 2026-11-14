@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { closedNotice } from '../../src/collab';
 import { createRoomHub, PROTO, normalizeName, type RoomHubOptions, type RoomSocket } from '../../src/room-host';
 import type { BoardPatch } from '../../src/delta';
-import type { Element, Project, ShapeEl } from '../../src/types';
+import { createTaskElement } from '../../src/task-element';
+import type { Element, Project, ShapeEl, TaskEl } from '../../src/types';
 
 type Msg = Record<string, any>;
 
@@ -366,5 +367,117 @@ describe('прочее', () => {
     hub.closeAll();
     expect(host.readyState).toBe(3);
     expect(g.s.readyState).toBe(3);
+  });
+});
+
+describe('ввод ученика в задание (task-draft, task-submit)', () => {
+  const taskEl = (extra: Record<string, unknown> = {}): Element =>
+    createTaskElement({ x: 0, y: 0, taskId: 't1', statementMd: 'Условие', answer: '0,75', id: 'task', solutionMd: 'решение', ...extra }) as Element;
+  const withTask = () => demo({ pages: [
+    { id: 'pg1', name: 'Первая', grid: 'square', elements: [taskEl()] },
+    { id: 'pg2', name: 'Вторая', grid: 'square', elements: [] },
+  ] });
+  const taskOn = (hub: ReturnType<typeof setup>['hub'], page = 'pg1') =>
+    hub.room.project!.pages.find(p => p.id === page)!.elements.find(e => e.id === 'task') as unknown as TaskEl;
+
+  it('черновик ученика с правом view доходит автору и самому ученику, ответ ему не виден', () => {
+    const { hub, host, join } = setup({ maxGuests: Infinity }, withTask());
+    const a = join('Маша');
+    const b = join('Вова');
+    a.s.sent.length = 0; b.s.sent.length = 0; host.sent.length = 0;
+    a.s.recv({ t: 'task-draft', pageId: 'pg1', elId: 'task', draft: '0,7' });
+    expect(taskOn(hub).studentDraft).toBe('0,7');
+    for (const peer of [host, a.s, b.s]) {
+      const p = peer.last('patch')!;
+      expect(p).toMatchObject({ pageId: 'pg1', by: -1 });
+      expect(p.ops[0].el.studentDraft).toBe('0,7');
+    }
+    expect(host.last('patch')!.ops[0].el.answer).toBe('0,75');
+    expect(a.s.last('patch')!.ops[0].el.answer).toBe('');
+    expect(a.s.last('patch')!.ops[0].el).not.toHaveProperty('solutionMd');
+    // пустой черновик убирает поле
+    a.s.recv({ t: 'task-draft', pageId: 'pg1', elId: 'task', draft: '' });
+    expect(taskOn(hub)).not.toHaveProperty('studentDraft');
+  });
+
+  it('ответ проверяет хаб по настоящему ответу: верный и неверный попадают в attempts, черновик очищается', () => {
+    const { hub, host, join } = setup({}, withTask());
+    const a = join('Маша');
+    a.s.recv({ t: 'task-draft', pageId: 'pg1', elId: 'task', draft: '3/4' });
+    a.s.recv({ t: 'task-submit', pageId: 'pg1', elId: 'task', value: '0.5' });
+    a.s.recv({ t: 'task-submit', pageId: 'pg1', elId: 'task', value: ' 0.750 ' });
+    const t = taskOn(hub);
+    expect(t.attempts!.map(x => [x.value, x.isCorrect])).toEqual([['0.5', false], ['0.750', true]]);
+    expect(t).not.toHaveProperty('studentDraft');
+    // ученик видит результат, но не ответ
+    const last = a.s.last('patch')!.ops[0].el;
+    expect(last.attempts).toHaveLength(2);
+    expect(last.attempts[1].isCorrect).toBe(true);
+    expect(last.answer).toBe('');
+    expect(host.last('patch')!.ops[0].el.attempts).toHaveLength(2);
+    // пустой ответ попытки не создаёт и ничего не рассылает
+    host.sent.length = 0;
+    a.s.recv({ t: 'task-submit', pageId: 'pg1', elId: 'task', value: '   ' });
+    expect(host.all('patch')).toHaveLength(0);
+  });
+
+  it('участник без поддержки патчей получает проект без ответа', () => {
+    const { hub, join } = setup({}, withTask());
+    const old = join('Старый', false);
+    old.s.sent.length = 0;
+    old.s.recv({ t: 'task-submit', pageId: 'pg1', elId: 'task', value: '0.75' });
+    const pr = old.s.last('project')!.project;
+    expect(pr.pages[0].elements[0].answer).toBe('');
+    expect(pr.pages[0].elements[0].attempts[0].isCorrect).toBe(true);
+    expect(taskOn(hub).answer).toBe('0,75');
+  });
+
+  it('скрытая страница, чужие id, не задание и неверные типы — молча отклоняются', () => {
+    const { hub, host, join } = setup({}, demo({ pages: [
+      { id: 'pg1', name: 'Первая', grid: 'square', elements: [taskEl(), rect('r')] },
+      { id: 'pg2', name: 'Вторая', grid: 'square', elements: [taskEl({ id: 'hidden-task' })] },
+    ] }));
+    const a = join('Маша');
+    hub.setRights(a.uid, { pages: { pg2: 'hidden' } });
+    host.sent.length = 0;
+    for (const m of [
+      { t: 'task-draft', pageId: 'pg2', elId: 'hidden-task', draft: 'x' },
+      { t: 'task-draft', pageId: 'pg1', elId: 'нет', draft: 'x' },
+      { t: 'task-draft', pageId: 'нет', elId: 'task', draft: 'x' },
+      { t: 'task-draft', pageId: 'pg1', elId: 'r', draft: 'x' },
+      { t: 'task-draft', pageId: 'pg1', elId: 'task', draft: 5 },
+      { t: 'task-submit', pageId: 'pg1', elId: 'task', value: { x: 1 } },
+      { t: 'task-submit', pageId: '', elId: 'task', value: '1' },
+    ]) a.s.recv(m);
+    expect(host.all('patch')).toHaveLength(0);
+    expect(taskOn(hub)).not.toHaveProperty('studentDraft');
+    expect(hub.room.project!.pages[1].elements[0]).not.toHaveProperty('studentDraft');
+  });
+
+  it('автор двигает карточку со старым вводом — ввод ученика, пришедший за это время, не теряется', () => {
+    const { hub, host, join } = setup({ maxGuests: Infinity }, withTask());
+    const a = join('Маша');
+    const stale = taskOn(hub); // копия автора до ответа ученика
+    a.s.recv({ t: 'task-draft', pageId: 'pg1', elId: 'task', draft: '0,7' });
+    a.s.recv({ t: 'task-submit', pageId: 'pg1', elId: 'task', value: '0.75' });
+    a.s.recv({ t: 'task-draft', pageId: 'pg1', elId: 'task', draft: 'новый' });
+    host.recv(patch('pg1', [{ op: 'put', el: { ...stale, x: 500, markedHard: true } as Element }]));
+    const t = taskOn(hub);
+    expect(t).toMatchObject({ x: 500, markedHard: true, studentDraft: 'новый' });
+    expect(t.attempts).toHaveLength(1);
+    // то же при отправке полным проектом
+    host.recv({ t: 'project', project: { ...hub.room.project!, pages: [{ ...hub.room.project!.pages[0], elements: [{ ...stale, y: 9 } as Element] }, hub.room.project!.pages[1]] } });
+    expect(taskOn(hub)).toMatchObject({ y: 9, studentDraft: 'новый' });
+    expect(taskOn(hub).attempts).toHaveLength(1);
+  });
+
+  it('гость с edit не может менять условие, ответ и флаги, но ввод принимается', () => {
+    const { hub, join } = setup({}, withTask());
+    const a = join('Маша');
+    hub.setRights(a.uid, { all: 'edit' });
+    const forged = { ...taskOn(hub), answer: 'взлом', statementMd: 'чужое', markedHard: true, studentDraft: 'ввод' } as Element;
+    a.s.recv(patch('pg1', [{ op: 'put', el: forged }]));
+    expect(taskOn(hub)).toMatchObject({ answer: '0,75', statementMd: 'Условие', studentDraft: 'ввод' });
+    expect(taskOn(hub)).not.toHaveProperty('markedHard');
   });
 });

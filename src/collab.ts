@@ -285,6 +285,38 @@ function flushCursor(): void {
   cursorThrottle.pending = null;
 }
 
+// ----- Ввод ученика в задание -----
+
+const DRAFT_SEND_MS = 300;
+const draftSends = new Map<string, { last: number; timer: number; draft: string }>();
+
+/** Комната принимает ввод в задания (хаб с патчами): иначе ввод применяется только у себя. */
+export function taskInputOnline(): boolean {
+  return connected && hubPatches;
+}
+
+/** Черновик ответа уходит хабу не чаще раза в 300 мс (последнее значение не теряется). false — не в комнате. */
+export function sendTaskDraft(pageId: string, elId: string, draft: string): boolean {
+  if (!taskInputOnline()) return false;
+  const key = `${pageId}\u0000${elId}`;
+  const d = draftSends.get(key) ?? { last: 0, timer: 0, draft: '' };
+  draftSends.set(key, d);
+  d.draft = draft;
+  const flush = () => { d.timer = 0; d.last = Date.now(); send({ t: 'task-draft', pageId, elId, draft: d.draft }); };
+  const wait = DRAFT_SEND_MS - (Date.now() - d.last);
+  if (wait <= 0) { clearTimeout(d.timer); flush(); } else if (!d.timer) d.timer = window.setTimeout(flush, wait);
+  return true;
+}
+
+/** Ответ на проверку: проверяет хаб по настоящему ответу, результат приходит правкой задания. false — не в комнате. */
+export function sendTaskSubmit(pageId: string, elId: string, value: string): boolean {
+  if (!taskInputOnline()) return false;
+  const d = draftSends.get(`${pageId}\u0000${elId}`);
+  if (d) { clearTimeout(d.timer); d.timer = 0; } // отправленный ответ не должен вернуться черновиком
+  send({ t: 'task-submit', pageId, elId, value });
+  return true;
+}
+
 export function noteSelection(ids: string[]): void {
   if (!connected) return;
   send({ t: 'selection', ids: onDraft() ? [] : ids, pageId: onDraft() ? '' : state.pageId });
@@ -475,6 +507,8 @@ export function stopCollab(): void {
   t?.close();
   connected = false;
   hubPatches = false;
+  for (const d of draftSends.values()) clearTimeout(d.timer);
+  draftSends.clear();
   baselines.clear();
   sentStructure = null;
   incoming.length = 0;

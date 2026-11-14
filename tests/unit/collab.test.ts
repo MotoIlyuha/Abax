@@ -630,3 +630,46 @@ describe('дельта-патчи', () => {
     expect(msg.project.pages[0].elements[0].id).toBe('x');
   });
 });
+
+describe('ввод ученика в задание', () => {
+  const task = (extra: Record<string, unknown> = {}) => ({
+    id: 'task', type: 'task', x: 0, y: 0, w: 360, h: 220, taskId: 't', examType: 'oge', topic: '', statementMd: 'У', answer: '5', ...extra,
+  });
+  const withTask = (): Project => ({ ...demo(), pages: [{ id: 'pg1', name: 'П1', grid: 'square', elements: [task() as never] }, demo().pages[1]] });
+
+  it('вне комнаты ввод не отправляется — вызывающий применит его у себя', () => {
+    expect(collab.taskInputOnline()).toBe(false);
+    expect(collab.sendTaskDraft('pg1', 'task', 'x')).toBe(false);
+    expect(collab.sendTaskSubmit('pg1', 'task', 'x')).toBe(false);
+  });
+
+  it('гость с правом view: черновик с троттлингом и ответ, результат приходит правкой хаба без ответа', async () => {
+    server.room.project = withTask();
+    await collab.startCollab(base, false, 'Ученик');
+    await until(() => st.state.project.id === 'proj');
+    await until(() => collab.taskInputOnline());
+    expect(collab.readOnly('pg1')).toBe(true);
+    const host = await peer(`${base}&host=1&key=${encodeURIComponent(server.hostKey)}`);
+    peers.push(host);
+    host.ws.send(JSON.stringify({ t: 'caps', patches: true }));
+    host.inbox.length = 0;
+    for (const d of ['1', '12', '123']) collab.sendTaskDraft('pg1', 'task', d);
+    await until(() => (server.room.project!.pages[0].elements[0] as never as { studentDraft?: string }).studentDraft === '123');
+    const drafts = host.inbox.filter(m => m.t === 'patch');
+    expect(drafts.length).toBeLessThanOrEqual(3);
+    expect(drafts.at(-1)!.ops[0].el.studentDraft).toBe('123');
+    // результат виден у самого ученика
+    await until(() => (st.state.board.elements[0] as never as { studentDraft?: string }).studentDraft === '123');
+
+    collab.sendTaskDraft('pg1', 'task', '12345'); // отложенный черновик не должен вернуться после ответа
+    collab.sendTaskSubmit('pg1', 'task', '5');
+    await until(() => (st.state.board.elements[0] as never as { attempts?: { isCorrect: boolean }[] }).attempts?.[0]?.isCorrect === true);
+    await new Promise(r => setTimeout(r, 400));
+    const mine = st.state.board.elements[0] as never as { answer: string; studentDraft?: string };
+    expect(mine.answer).toBe(''); // ученик не получил ответ
+    expect(mine.studentDraft).toBeUndefined();
+    expect((server.room.project!.pages[0].elements[0] as never as { answer: string }).answer).toBe('5');
+    // а локально ничего не отправлялось как «своя правка»: хаб не вернул её автору лишний раз
+    expect(st.canUndo()).toBe(false);
+  });
+});

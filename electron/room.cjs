@@ -2,6 +2,8 @@
 // Транспорт подключает участника через hub.attach(sock, opts): локальный WebSocket (share.cjs)
 // или, позже, виртуальный сокет облачного ретранслятора. Не зависит от Electron.
 
+const tasks = require('./room-tasks.cjs');
+
 /** Версия протокола сообщений. Поднимать при несовместимых изменениях формата. */
 const PROTO = 1;
 const COLORS = ['#e8590c', '#1971c2', '#2f9e44', '#9c36b5', '#0c8599', '#f08c00'];
@@ -177,6 +179,30 @@ function applyPatchToPage(page, patch) {
   return out;
 }
 
+// ----- Задания: ученик не получает ответов и не может их подменить -----
+
+/** Страницы так, как их видит ученик: у заданий нет ответа и закрытого решения. Нетронутые страницы — те же объекты. */
+function projectPagesForGuest(pages) {
+  return pages.map(pg => (pg.elements.some(tasks.isTask)
+    ? { ...pg, elements: pg.elements.map(el => (tasks.isTask(el) ? tasks.projectTaskForGuest(el) : el)) }
+    : pg));
+}
+/** Элемент от ученика поверх известного: у задания принимается только ввод ученика. */
+function guardedElement(known, incoming) {
+  if (!tasks.isTask(incoming) || !tasks.isTask(known)) return incoming;
+  return tasks.mergeGuestTask(known, incoming);
+}
+/** Элемент от автора поверх известного: ввод ученика остаётся хабу. */
+function hostElement(known, incoming) {
+  if (!tasks.isTask(incoming) || !tasks.isTask(known)) return incoming;
+  return tasks.mergeHostTask(known, incoming);
+}
+function mapPage(known, incoming, fn) {
+  if (!incoming.elements.some(tasks.isTask)) return incoming;
+  const byId = new Map(known.elements.map(e => [e.id, e]));
+  return { ...incoming, elements: incoming.elements.map(el => fn(byId.get(el.id), el)) };
+}
+
 /**
  * Хаб комнаты: принимает участников от любого транспорта и рассылает им сообщения.
  * @param {{ code: string, openEdit?: boolean }} opts
@@ -191,7 +217,7 @@ function createRoomHub({ code, openEdit = false }) {
     for (const c of room.clients.values()) { if (c.sock.readyState === 1) try { c.sock.send(users); } catch { /* канал закрывается */ } }
   }
 
-  const projectFor = info => info.host ? room.project : (room.project ? { ...room.project, pages: room.visiblePages(info.uid) } : null);
+  const projectFor = info => info.host ? room.project : (room.project ? { ...room.project, pages: projectPagesForGuest(room.visiblePages(info.uid)) } : null);
 
   function rightsOf(uid) {
     const r = room.rights.get(uid);
@@ -239,6 +265,9 @@ function createRoomHub({ code, openEdit = false }) {
       }
       if (m.t === 'caps') { info.patches = m.patches === true; return; }
       if (m.t === 'patch') { if (validPatch(m)) acceptPatch(info, m); return; }
+      // ученик печатает и отправляет ответ даже на странице с правом view; проверяет хаб по настоящему ответу
+      if (m.t === 'task-draft') { acceptTaskInput(info, m, 'draft'); return; }
+      if (m.t === 'task-submit') { acceptTaskInput(info, m, 'submit'); return; }
       if (m.t === 'project' && validProject(m.project)) {
         // серверный enforcement: чужие view-страницы не применяем
         if (!room.project) {
@@ -264,7 +293,8 @@ function createRoomHub({ code, openEdit = false }) {
     function mergePages(project) {
       const merged = { ...project, pages: room.project.pages.map(oldPg => {
         const newPg = project.pages.find(p => p.id === oldPg.id);
-        return newPg && room.userPageRight(uid, oldPg.id) === 'edit' ? newPg : oldPg;
+        if (!newPg || room.userPageRight(uid, oldPg.id) !== 'edit') return oldPg;
+        return mapPage(oldPg, newPg, isHost ? hostElement : guardedElement);
       }) };
       // новые страницы разрешаем добавлять только тем, у кого есть хоть одна edit
       for (const newPg of project.pages) {
@@ -275,11 +305,9 @@ function createRoomHub({ code, openEdit = false }) {
     return uid;
   }
 
-  /** Принять патч страницы: нужен edit на ней. Применяется к странице хаба и уходит остальным; info = null — от автора. */
-  function acceptPatch(info, patch) {
+  /** Применить очищенный патч к странице хаба и разослать; skip — отправитель, которому его же правку возвращать не нужно. */
+  function commitPatch(patch, by, skip) {
     const project = room.project;
-    if (!project || !project.pages.some(p => p.id === patch.pageId)) return false;
-    if (info && room.userPageRight(info.uid, patch.pageId) !== 'edit') return false;
     const rev = (room.revs.get(patch.pageId) || 0) + 1;
     room.revs.set(patch.pageId, rev);
     const clean = { ...patch, rev };
@@ -288,14 +316,48 @@ function createRoomHub({ code, openEdit = false }) {
       updatedAt: Date.now(),
       pages: project.pages.map(pg => (pg.id === patch.pageId ? applyPatchToPage(pg, clean) : pg)),
     };
-    const by = info ? info.uid : -1;
+    const forGuest = clean.ops.map(op => (op.op === 'put' && tasks.isTask(op.el) ? { op: 'put', el: tasks.projectTaskForGuest(op.el) } : op));
     for (const c of room.clients.values()) {
-      if (info && c.sock === info.sock) continue;
+      if (skip && c.sock === skip) continue;
       if (room.userPageRight(c.uid, patch.pageId) === 'hidden') continue; // скрытая страница до участника не доходит
-      if (c.patches) sendTo(c.sock, { ...clean, by });
+      if (c.patches) sendTo(c.sock, { ...clean, ops: c.host ? clean.ops : forGuest, by });
       else sendTo(c.sock, { t: 'project', project: projectFor(c), by });
     }
+  }
+
+  /** Принять патч страницы: нужен edit на ней. Применяется к странице хаба и уходит остальным; info = null — от автора. */
+  function acceptPatch(info, patch) {
+    const project = room.project;
+    if (!project || !project.pages.some(p => p.id === patch.pageId)) return false;
+    if (info && room.userPageRight(info.uid, patch.pageId) !== 'edit') return false;
+    const known = new Map(project.pages.find(p => p.id === patch.pageId).elements.map(e => [e.id, e]));
+    const guard = info && !info.host ? guardedElement : hostElement;
+    const ops = patch.ops.map(op => (op.op === 'put' ? { op: 'put', el: guard(known.get(op.el.id), op.el) } : op));
+    commitPatch({ ...patch, ops }, info ? info.uid : -1, info ? info.sock : null);
     return true;
+  }
+
+  /**
+   * Ввод ученика в задание: черновик (task-draft) или ответ на проверку (task-submit). Нужен лишь доступ
+   * к странице. Результат — правка задания от хаба (by = -1): её получают все, и сам отправитель тоже.
+   */
+  function acceptTaskInput(info, m, kind) {
+    if (!isId(m.pageId) || !isId(m.elId)) return;
+    if (typeof (kind === 'draft' ? m.draft : m.value) !== 'string') return;
+    const page = room.project && room.project.pages.find(p => p.id === m.pageId);
+    if (!page || room.userPageRight(info.uid, page.id) === 'hidden') return;
+    const el = page.elements.find(e => e.id === m.elId);
+    if (!el || !tasks.isTask(el)) return;
+    let next;
+    if (kind === 'draft') {
+      next = tasks.updateStudentDraft(el, m.draft);
+    } else {
+      const res = tasks.submitTaskAttempt(el, m.value);
+      // отправленное в черновике уже не нужно
+      next = res.updated === el ? el : tasks.updateStudentDraft(res.updated, '');
+    }
+    if (next === el) return;
+    commitPatch({ t: 'patch', pageId: page.id, rev: 0, ops: [{ op: 'put', el: next }] }, -1, null);
   }
 
   function pushRights(uid) {
@@ -303,7 +365,7 @@ function createRoomHub({ code, openEdit = false }) {
     if (!c) return;
     sendTo(c.sock, { t: 'rights', rights: rightsOf(uid) });
     // состав видимых страниц мог измениться: скрытая страница пропадает у гостя сразу, открытая — появляется
-    if (room.project) sendTo(c.sock, { t: 'project', project: { ...room.project, pages: room.visiblePages(uid) }, by: -1 });
+    if (room.project) sendTo(c.sock, { t: 'project', project: projectFor(c), by: -1 });
   }
 
   /**
@@ -325,7 +387,7 @@ function createRoomHub({ code, openEdit = false }) {
     refresh,
     setRights: (uid, patch) => { const r = room.setRights(uid, patch); broadcastUsers(); pushRights(uid); return r; },
     pushPatch: patch => validPatch(patch) && acceptPatch(null, patch),
-    pushProject: project => { room.project = project; for (const c of room.clients.values()) sendTo(c.sock, { t: 'project', project, by: -1 }); },
+    pushProject: project => { room.project = project; for (const c of room.clients.values()) sendTo(c.sock, { t: 'project', project: projectFor(c), by: -1 }); },
     users: () => room.usersSnapshot(),
     closeAll: () => { for (const sock of room.clients.keys()) try { sock.close(); } catch { /* уже закрыт */ } },
   };

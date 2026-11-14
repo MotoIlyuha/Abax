@@ -7,7 +7,7 @@ import { PLAN_LIMITS, canCreatePage, canGuestJoinRoom, effectivePermissions, isP
 import { applyBoardPatch, isBoardPatch, type BoardPatch, type ElementOp } from './delta';
 import { sanitizeElement } from './file';
 import { CLOSE_FREE_LIMIT, PROTO } from './collab-transport';
-import { mergeGuestTask, projectTaskForRole } from './task-element';
+import { mergeGuestTask, mergeHostTask, projectTaskForRole, submitTaskAttempt, updateStudentDraft } from './task-element';
 
 export { PROTO };
 
@@ -144,6 +144,18 @@ function guardedPage(known: Page, incoming: Page): Page {
   if (!incoming.elements.some(isTask)) return incoming;
   const byId = new Map(known.elements.map(e => [e.id, e]));
   return { ...incoming, elements: incoming.elements.map(el => guardedElement(byId.get(el.id), el)) };
+}
+
+/** Элемент от автора поверх известного: ввод ученика в задании остаётся хабу. */
+function hostElement(known: Element | undefined, incoming: Element): Element {
+  if (!isTask(incoming) || !known || !isTask(known)) return incoming;
+  return mergeHostTask(known, incoming) as Element;
+}
+
+function hostPage(known: Page, incoming: Page): Page {
+  if (!incoming.elements.some(isTask)) return incoming;
+  const byId = new Map(known.elements.map(e => [e.id, e]));
+  return { ...incoming, elements: incoming.elements.map(el => hostElement(byId.get(el.id), el)) };
 }
 
 const decoder = new TextDecoder();
@@ -344,7 +356,11 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
       }
       if (m.t === 'patch') {
         if (isBoardPatch(m)) acceptPatch(info, m);
+        return;
       }
+      // ученик печатает и отправляет ответ даже на странице с правом view; проверяет хаб по настоящему ответу
+      if (m.t === 'task-draft') acceptTaskInput(info, m, 'draft');
+      else if (m.t === 'task-submit') acceptTaskInput(info, m, 'submit');
     });
     sock.on('close', () => { room.clients.delete(sock); broadcastUsers(); });
     return uid;
@@ -355,7 +371,7 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
     const merged: Project = { ...project, pages: room.project!.pages.map(oldPg => {
       const newPg = project.pages.find(p => p.id === oldPg.id);
       if (!newPg || room.userPageRight(uid, oldPg.id) !== 'edit') return oldPg;
-      return isHost ? newPg : guardedPage(oldPg, newPg);
+      return isHost ? hostPage(oldPg, newPg) : guardedPage(oldPg, newPg);
     }) };
     // новые страницы разрешаем добавлять только тем, у кого есть хоть одна edit; на free — не больше лимита
     for (const newPg of project.pages) {
@@ -388,6 +404,25 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
   const opsForGuest = (ops: ElementOp[]): ElementOp[] =>
     ops.map(op => (op.op === 'put' && isTask(op.el) ? { op: 'put', el: projectTaskForRole(op.el, 'guest') as Element } : op));
 
+  /** Применить очищенный патч к странице хаба и разослать; skip — отправитель, которому его же правку возвращать не нужно. */
+  function commitPatch(patch: BoardPatch, by: number, skip: RoomSocket | null): void {
+    const project = room.project!;
+    const rev = (room.revs.get(patch.pageId) ?? 0) + 1;
+    room.revs.set(patch.pageId, rev);
+    const clean: BoardPatch = { ...patch, rev };
+    room.project = {
+      ...project,
+      updatedAt: now(),
+      pages: project.pages.map(pg => (pg.id === patch.pageId ? applyBoardPatch(pg, clean) : pg)),
+    };
+    for (const c of room.clients.values()) {
+      if (skip && c.sock === skip) continue;
+      if (room.userPageRight(c.uid, patch.pageId) === 'hidden') continue; // скрытая страница до участника не доходит
+      if (c.patches) sendTo(c.sock, { ...clean, ops: c.host ? clean.ops : opsForGuest(clean.ops), by });
+      else sendTo(c.sock, { t: 'project', project: projectFor(c), by });
+    }
+  }
+
   /** Принять патч страницы от участника: нужен edit на ней. Применяется к странице хаба и уходит остальным. */
   function acceptPatch(info: Client | null, patch: BoardPatch): boolean {
     const project = room.project;
@@ -399,24 +434,33 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
     for (const op of patch.ops) {
       if (op.op !== 'put') { ops.push(op); continue; }
       const el = sanitizeElement(op.el);
-      if (el) ops.push({ op: 'put', el: fromGuest ? guardedElement(known.get(el.id), el) : el });
+      if (el) ops.push({ op: 'put', el: fromGuest ? guardedElement(known.get(el.id), el) : hostElement(known.get(el.id), el) });
     }
-    const rev = (room.revs.get(patch.pageId) ?? 0) + 1;
-    room.revs.set(patch.pageId, rev);
-    const clean: BoardPatch = { ...patch, ops, rev };
-    room.project = {
-      ...project,
-      updatedAt: now(),
-      pages: project.pages.map(pg => (pg.id === patch.pageId ? applyBoardPatch(pg, clean) : pg)),
-    };
-    const by = info ? info.uid : -1;
-    for (const c of room.clients.values()) {
-      if (info && c.sock === info.sock) continue;
-      if (room.userPageRight(c.uid, patch.pageId) === 'hidden') continue; // скрытая страница до участника не доходит
-      if (c.patches) sendTo(c.sock, { ...clean, ops: c.host ? ops : opsForGuest(ops), by });
-      else sendTo(c.sock, { t: 'project', project: projectFor(c), by });
-    }
+    commitPatch({ ...patch, ops }, info ? info.uid : -1, info ? info.sock : null);
     return true;
+  }
+
+  /**
+   * Ввод ученика в задание: черновик (task-draft) или ответ на проверку (task-submit). Нужен лишь доступ
+   * к странице. Результат — правка задания от хаба (by = -1): её получают все, и сам отправитель тоже.
+   */
+  function acceptTaskInput(info: Client, m: Rec, kind: 'draft' | 'submit'): void {
+    if (!isId(m.pageId) || !isId(m.elId)) return;
+    if (typeof (kind === 'draft' ? m.draft : m.value) !== 'string') return;
+    const page = room.project?.pages.find(p => p.id === m.pageId);
+    if (!page || room.userPageRight(info.uid, page.id) === 'hidden') return;
+    const el = page.elements.find(e => e.id === m.elId);
+    if (!el || !isTask(el)) return;
+    let next: TaskEl;
+    if (kind === 'draft') {
+      next = updateStudentDraft(el, m.draft as string);
+    } else {
+      const res = submitTaskAttempt(el, m.value as string, now());
+      // отправленное в черновике уже не нужно
+      next = res.updated === el ? el : updateStudentDraft(res.updated, '');
+    }
+    if (next === el) return;
+    commitPatch({ t: 'patch', pageId: page.id, rev: 0, ops: [{ op: 'put', el: next as Element }] }, -1, null);
   }
 
   function pushRights(uid: number): void {

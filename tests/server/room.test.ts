@@ -244,3 +244,78 @@ describe('дельта-патчи', () => {
     expect(hub.room.project).toBe(before);
   });
 });
+
+describe('задания (task-draft, task-submit) и маскировка ответов', () => {
+  const task = (extra: Msg = {}) => ({
+    id: 'task', type: 'task', x: 0, y: 0, w: 360, h: 220, taskId: 't', examType: 'oge', topic: '', statementMd: 'Условие',
+    answer: '0,75', solutionMd: 'решение', subject: 'math', ...extra,
+  });
+  const withTask = () => ({ ...demo(), pages: [{ id: 'pg1', name: 'П1', grid: 'square', elements: [task()] }, { id: 'pg2', name: 'П2', grid: 'square', elements: [] }] });
+  function room() {
+    const hub = createRoomHub({ code: 'T' });
+    const host = new FakeSock();
+    hub.attach(host, { isHost: true, name: 'Учитель' });
+    host.recv({ t: 'project', project: withTask() });
+    host.recv({ t: 'caps', patches: true });
+    const g = new FakeSock();
+    const uid = hub.attach(g, { name: 'Маша' });
+    g.recv({ t: 'caps', patches: true });
+    return { hub, host, g, uid };
+  }
+  const stored = (hub: any) => hub.room.project.pages[0].elements[0];
+
+  it('ученику не уходят ответ и решение: ни в init, ни в проекте, ни в правах', () => {
+    const { hub, host, g, uid } = room();
+    expect(g.sent.find(m => m.t === 'init')!.project.pages[0].elements[0]).toMatchObject({ answer: '' });
+    expect(g.sent.find(m => m.t === 'init')!.project.pages[0].elements[0]).not.toHaveProperty('solutionMd');
+    hub.setRights(uid, { all: 'view' });
+    expect(g.last('project')!.project.pages[0].elements[0].answer).toBe('');
+    hub.pushProject(withTask());
+    expect(g.last('project')!.project.pages[0].elements[0].answer).toBe('');
+    expect(host.last('project')?.project?.pages?.[0]?.elements?.[0]?.answer ?? '0,75').toBe('0,75');
+    expect(stored(hub).answer).toBe('0,75');
+  });
+
+  it('черновик и ответ ученика с правом view; проверка по настоящему ответу', () => {
+    const { hub, host, g } = room();
+    g.recv({ t: 'task-draft', pageId: 'pg1', elId: 'task', draft: '3/' });
+    expect(stored(hub).studentDraft).toBe('3/');
+    expect(host.last('patch')!.ops[0].el.studentDraft).toBe('3/');
+    g.recv({ t: 'task-submit', pageId: 'pg1', elId: 'task', value: ' 0.750 ' });
+    g.recv({ t: 'task-submit', pageId: 'pg1', elId: 'task', value: '0.5' });
+    expect(stored(hub).attempts.map((a: Msg) => a.isCorrect)).toEqual([true, false]);
+    expect(stored(hub)).not.toHaveProperty('studentDraft');
+    expect(g.last('patch')!.ops[0].el.answer).toBe('');
+    expect(g.last('patch')).toMatchObject({ by: -1 });
+    expect(host.last('patch')!.ops[0].el.answer).toBe('0,75');
+  });
+
+  it('мусор, скрытые страницы и не-задания игнорируются', () => {
+    const { hub, host, g, uid } = room();
+    hub.setRights(uid, { pages: { pg2: 'hidden' } });
+    host.sent.length = 0;
+    for (const m of [
+      { t: 'task-draft', pageId: 'pg1', elId: 'нет', draft: 'x' }, { t: 'task-draft', pageId: 'pg1', elId: 'task', draft: 5 },
+      { t: 'task-submit', pageId: 'pg1', elId: 'task', value: null }, { t: 'task-submit', pageId: '', elId: 'task', value: '1' },
+      { t: 'task-submit', pageId: 'pg1', elId: 'task', value: '   ' },
+    ]) g.recv(m);
+    expect(host.sent.filter(m => m.t === 'patch')).toHaveLength(0);
+    expect(stored(hub)).not.toHaveProperty('attempts');
+  });
+
+  it('ученик с edit не меняет ответ и условие, автор не теряет ввод ученика при правке карточки', () => {
+    const { hub, host, g, uid } = room();
+    hub.setRights(uid, { all: 'edit' });
+    const stale = stored(hub);
+    g.recv({ t: 'patch', t0: 0, pageId: 'pg1', rev: 0, ops: [{ op: 'put', el: { ...stale, answer: 'взлом', statementMd: 'чужое', studentDraft: 'ввод' } }] });
+    expect(stored(hub)).toMatchObject({ answer: '0,75', statementMd: 'Условие', studentDraft: 'ввод' });
+    g.recv({ t: 'task-submit', pageId: 'pg1', elId: 'task', value: '0.75' });
+    host.recv({ t: 'patch', pageId: 'pg1', rev: 0, ops: [{ op: 'put', el: { ...stale, x: 77, markedHard: true } }] });
+    expect(stored(hub)).toMatchObject({ x: 77, markedHard: true });
+    expect(stored(hub).attempts).toHaveLength(1);
+    expect(stored(hub).studentDraft).toBeUndefined();
+    // полным проектом от гостя то же самое
+    g.recv({ t: 'project', project: { ...hub.room.project, pages: [{ ...hub.room.project.pages[0], elements: [{ ...stored(hub), answer: 'взлом2' }] }, hub.room.project.pages[1]] } });
+    expect(stored(hub).answer).toBe('0,75');
+  });
+});
