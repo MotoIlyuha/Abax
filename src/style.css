@@ -2384,3 +2384,50 @@ body.no-ui-anim #btn-settings svg { transition: none; }
 #export-menu .main-menu-icon { display: inline-flex; width: 18px; height: 18px; flex: none; color: #667085; }
 #export-menu .main-menu-icon svg { width: 18px; height: 18px; }
 #export-menu hr { border: 0; border-top: 1px solid var(--border); margin: 5px 4px; }
+
+/* ---- просмотр по ссылке ---- */
+#link-banner {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100% - 24px);
+  padding: 5px 6px 5px 14px;
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  background: var(--panel);
+  color: #3b465a;
+  font-size: 13px;
+  box-shadow: var(--shadow);
+}
+#link-banner[hidden] { display: none; }
+#link-banner .lb-title { font-weight: 700; white-space: nowrap; }
+#link-banner .lb-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #6b7686; }
+#link-banner .lb-clone {
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 99px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+#link-banner .lb-clone:hover { filter: brightness(1.08); }
+/* только чтение: нет инструментов, импорта, отмены, общего доступа и перехода на домашнюю */
+body.link-view #toolbar,
+body.link-view #btn-import,
+body.link-view #btn-image,
+body.link-view .undo-group,
+body.link-view #btn-share,
+body.link-view #btn-home,
+body.link-view #grid-mode,
+body.link-view #view-grid-icon { display: none !important; }
+body.link-view-page #pages-dock { display: none !important; }
+body.link-view #page-name { pointer-events: none; }
+body.link-view #project-icon { pointer-events: none; }

@@ -9,6 +9,8 @@ import { cloudTransport, parseCloudInvite } from './collab-transport';
 import { initTooltips } from './tooltip';
 import { startUpdateChecks } from './update-notice';
 import { initAppIcon } from './app-icon';
+import { linkModeOf, parseBoardUrl } from './router';
+import { enterLinkView, startLinkViewCamera } from './link-view-ui';
 
 async function boot(): Promise<void> {
   initTooltips();
@@ -47,22 +49,34 @@ async function boot(): Promise<void> {
     showCollabNotice('Неверная ссылка', 'Ссылка-приглашение повреждена или скопирована не полностью. Попросите автора прислать её заново.');
   }
 
+  // ссылка просмотра: /p/…, ?route=project|page — без своей доски на запуске и без записи на устройство
+  const route = parseBoardUrl(location.href);
+  if (route.mode === 'collab' && route.token) {
+    showCollabNotice('Ссылка не поддерживается', 'Приглашения по коду пока не работают. Попросите автора прислать ссылку заново.');
+  }
+  const viewRoute = linkModeOf(route) ? route : null;
+
   let metas = await storage.list();
-  let last: { pid?: string; pageId?: string } = {};
-  try {
-    last = JSON.parse(localStorage.getItem('doska.last') || '{}');
-  } catch { /* нет сохранённой позиции */ }
-  let project = last.pid ? await storage.load(last.pid) : null;
-  if (!project && metas.length > 0) project = await storage.load(metas[0].id);
-  if (!project) {
-    project = blankProject('Проект 1');
-    await storage.save(project);
+  if (viewRoute) {
+    state.projects = metas;
+    await enterLinkView(viewRoute);
+  } else {
+    let last: { pid?: string; pageId?: string } = {};
+    try {
+      last = JSON.parse(localStorage.getItem('doska.last') || '{}');
+    } catch { /* нет сохранённой позиции */ }
+    let project = last.pid ? await storage.load(last.pid) : null;
+    if (!project && metas.length > 0) project = await storage.load(metas[0].id);
+    if (!project) {
+      project = blankProject('Проект 1');
+      await storage.save(project);
+    }
+    if (!metas.some(m => m.id === project!.id)) {
+      metas = [projectMeta(project), ...metas];
+    }
+    state.projects = metas;
+    openProject(project, last.pageId, 'board');
   }
-  if (!metas.some(m => m.id === project!.id)) {
-    metas = [projectMeta(project), ...metas];
-  }
-  state.projects = metas;
-  openProject(project, last.pageId, 'board');
 
   initRenderer(canvas);
   initApp(canvas);
@@ -70,6 +84,24 @@ async function boot(): Promise<void> {
   onChange(() => requestRender());
   // обновления — только здесь: гость совместной работы (ветка выше) открыл приложение автора
   startUpdateChecks();
+  if (viewRoute) {
+    startLinkViewCamera(viewRoute);
+    // из просмотра в просмотр — без перезагрузки; во всё остальное (своя доска, совместная работа) — с ней
+    const onNavigate = () => {
+      const next = parseBoardUrl(location.href);
+      if (!linkModeOf(next)) { location.reload(); return; }
+      void enterLinkView(next).then(() => startLinkViewCamera(next));
+    };
+    window.addEventListener('popstate', onNavigate);
+    window.addEventListener('hashchange', onNavigate);
+  } else {
+    // со своей доски на ссылку просмотра или приглашение — перезагрузка: у них другой запуск
+    const onNavigate = () => {
+      if (parseBoardUrl(location.href).mode !== 'none') location.reload();
+    };
+    window.addEventListener('popstate', onNavigate);
+    window.addEventListener('hashchange', onNavigate);
+  }
 
   // отладочный доступ для smoke-тестов
   (window as unknown as Record<string, unknown>).__doska = { state, undo, redo, requestRender, importPdfFromDataUrl };

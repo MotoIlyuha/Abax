@@ -6,7 +6,7 @@
   - `preserveElementReactions`, `preserveLiveFields` (attempts, studentDraft); вызов в `undo()`/`redo()`.
   - Тесты `tests/unit/comments.test.ts`, `tests/unit/state.test.ts`.
 
-- [ ] **TASK-02: Роутер, режимы просмотра, клонирование (`src/main.ts`, `src/app.ts`, `src/router.ts`)**
+- [x] **TASK-02: Роутер, режимы просмотра, клонирование (`src/main.ts`, `src/app.ts`, `src/router.ts`)**
   - `state.linkMode`, `canEditBoard()` с учётом просмотра, плашка и «Клонировать проект», наведение на объекты, ссылки в меню экспорта и `#quick-menu`.
 
 - [ ] **TASK-03: Дельта-патчи, браузерный хост, `room.cjs` (`src/collab.ts`, `src/relay-host.ts`, `electron/room.cjs`)**

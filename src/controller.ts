@@ -10,7 +10,7 @@ import {
   type AABB, hitTest, erasePart, aabbIntersects, aabbUnion, alignGuides, alignShift, boxAnchors, boxHandles, elementAABB, elementHandles,
   applyHandle, insertPolyNode, removePolyNode, gridStepFor, resizeBox, scaleElement, shapeHoldsText, snapValue, translateElement,
 } from './geom';
-import { collabActive, noteCursor, readOnly } from './collab';
+import { collabActive, noteCursor } from './collab';
 import { isNativeApp } from './native';
 import { settingsDialogOpen } from './settings-dialog';
 import { partEraseRadius, presenting, requestRender, renderScene } from './renderer';
@@ -497,7 +497,7 @@ export function initController(canvas: HTMLCanvasElement): void {
     closeEditor(true);
 
     // совместный режим: на странице без права edit правки запрещены
-    if (collabActive() && readOnly() && activeTool() !== 'pan' && !POINTER_TOOLS.has(activeTool()) && e.button !== 1) return;
+    if (!canEditBoard() && activeTool() !== 'pan' && !POINTER_TOOLS.has(activeTool()) && e.button !== 1) return;
 
 
     const touches = touchPtrs();
@@ -1045,6 +1045,7 @@ export function initController(canvas: HTMLCanvasElement): void {
   }
 
   function onDblClick(e: MouseEvent): void {
+    if (!canEditBoard()) return;
     const lp = localPos(e);
     const s = toScene(lp.x, lp.y);
     if (activeTool() === 'poly') {
@@ -1214,11 +1215,12 @@ export function initController(canvas: HTMLCanvasElement): void {
     }
     if (e.ctrlKey || e.metaKey) {
       switch (e.code) {
-        case 'KeyZ': e.preventDefault(); if (e.shiftKey) redo(); else undo(); return;
-        case 'KeyY': e.preventDefault(); redo(); return;
+        case 'KeyZ': e.preventDefault(); if (!canEditBoard()) return; if (e.shiftKey) redo(); else undo(); return;
+        case 'KeyY': e.preventDefault(); if (canEditBoard()) redo(); return;
         case 'KeyS': e.preventDefault(); void saveNow(); return;
         case 'KeyG':
           e.preventDefault();
+          if (!canEditBoard()) return;
           if (e.shiftKey) ungroupSelected(); else groupSelected();
           return;
         case 'KeyE': e.preventDefault(); void exportPng(); return;
@@ -1237,7 +1239,7 @@ export function initController(canvas: HTMLCanvasElement): void {
         case 'KeyA':
           e.preventDefault();
           // без права правки выделять нечего: выделенное можно было бы удалить
-          if (!(collabActive() && readOnly())) selectAll();
+          if (canEditBoard()) selectAll();
           return;
         case 'Comma': e.preventDefault(); openAllSettings(); return;
       }
@@ -1258,7 +1260,7 @@ export function initController(canvas: HTMLCanvasElement): void {
         if (state.livePoly) commitPoly(false);
         break;
       case 'Delete':
-      case 'Backspace': e.preventDefault(); deleteSelected(); break;
+      case 'Backspace': e.preventDefault(); if (canEditBoard()) deleteSelected(); break;
       case 'Equal': zoomAtCenter(1.25); break;
       case 'Minus': zoomAtCenter(1 / 1.25); break;
       case 'Digit0': fitContent(); break;

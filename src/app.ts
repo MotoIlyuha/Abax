@@ -46,6 +46,7 @@ import { capitalize, dayLabel, pagesLabel } from './format';
 import { buildCustomColorPicker } from './color-picker';
 import { copySelection, duplicateSelection as duplicateInPlace, pasteFromMemory, pasteFromSystem } from './clipboard';
 import { hideHeldTooltip, showHeldTooltip } from './tooltip';
+import { copyBoardLink, currentBoardLink, registerLinkViewHooks } from './link-view-ui';
 
 pdfjsLib.GlobalWorkerOptions.workerPort = new PdfWorker();
 
@@ -1829,6 +1830,16 @@ function updateQuickMenu(): void {
   copyImage.innerHTML = svg('<rect x="3" y="3" width="14" height="14" rx="2"/><path d="m5 14 4-4 3 3 2-2 3 3M14 7h.01M7 21h12a2 2 0 0 0 2-2V7"/>');
   copyImage.addEventListener('click', () => { void copySelectionAsImage(); });
   qm.appendChild(copyImage);
+  // ссылка на выделенные объекты: открывается с наведением на них
+  if (currentBoardLink('focus')) {
+    const linkBtn = document.createElement('button');
+    linkBtn.className = 'qm-btn qm-link';
+    linkBtn.title = 'Ссылка на выделенные объекты';
+    linkBtn.setAttribute('aria-label', linkBtn.title);
+    linkBtn.innerHTML = svg('<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>');
+    linkBtn.addEventListener('click', () => { void copyBoardLink('focus'); });
+    qm.appendChild(linkBtn);
+  }
   // дублирование
   const dup = document.createElement('button');
   dup.className = 'qm-btn';
@@ -2421,6 +2432,7 @@ async function documentText(file: File): Promise<string> {
 }
 
 export async function importDocument(): Promise<void> {
+  if (!canEditBoard()) return;
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = '.pdf,.docx,.xlsx,.odt,.ods,.txt,.csv,.tsv,.md';
@@ -2451,6 +2463,7 @@ const PDF_MAX_PAGES = 30;
 
 /** Импортирует PDF: каждая страница — картинка-фон на доске. */
 export async function importPdf(): Promise<void> {
+  if (!canEditBoard()) return;
   const dataUrl = (window as { doskaAPI?: { pickPdf(): Promise<string | null> } }).doskaAPI
     ? await (window as unknown as { doskaAPI: { pickPdf(): Promise<string | null> } }).doskaAPI.pickPdf()
     : await pickPdfViaInput();
@@ -2538,6 +2551,7 @@ export function insertImageFromDataUrl(dataUrl: string, at?: { x: number; y: num
 }
 
 export async function insertImage(): Promise<void> {
+  if (!canEditBoard()) return;
   const api = (window as { doskaAPI?: { pickImage(): Promise<string | null> } }).doskaAPI;
   const dataUrl = api ? await api.pickImage() : await pickImageViaInput();
   if (dataUrl) insertImageFromDataUrl(dataUrl);
@@ -2559,7 +2573,7 @@ function boardClipboardEvent(e: ClipboardEvent): boolean {
 
 /** Можно менять содержимое активной страницы (в совместной работе — нужно право edit). */
 export function canEditBoard(): boolean {
-  return !(collabActive() && readOnly());
+  return state.linkMode === null && !(collabActive() && readOnly());
 }
 
 /** Видимая область холста в координатах сцены. */
@@ -2610,7 +2624,7 @@ function wireImageInput(): void {
   wrap.addEventListener('drop', e => {
     e.preventDefault();
     const f = e.dataTransfer?.files?.[0];
-    if (f && f.type.startsWith('image/')) {
+    if (f && f.type.startsWith('image/') && canEditBoard()) {
       void fileToDataUrl(f).then(d => { if (d) insertImageFromDataUrl(d); });
     }
   });
@@ -2645,13 +2659,15 @@ function cameraKey(projectId: string, pageId: string): string {
 const draftCameras = new Map<string, Camera>();
 
 function saveCamera(): void {
-  if (linkTransit) return;
+  if (linkTransit || state.linkMode) return;
   if (onDraft()) { draftCameras.set(state.pageId, { ...state.camera }); return; }
   try { localStorage.setItem(cameraKey(state.project.id, state.pageId), JSON.stringify(state.camera)); }
   catch { /* просмотр продолжает работать, даже если хранилище недоступно */ }
 }
 
 function restoreCamera(): boolean {
+  // по ссылке просмотра положение камеры не запоминается и не берётся с устройства
+  if (state.linkMode) return false;
   if (onDraft()) {
     const camera = draftCameras.get(state.pageId);
     if (!camera) return false;
@@ -2673,6 +2689,8 @@ function restoreCamera(): boolean {
 
 export async function saveNow(): Promise<void> {
   clearTimeout(saveTimer);
+  // просмотр по ссылке ничего не записывает: в проекте зрителя нет скрытых страниц и ответов
+  if (state.linkMode) { state.dirty = false; return; }
   if (!state.dirty) return;
   state.dirty = false;
   await storage.save(state.project);
@@ -2727,7 +2745,7 @@ function changePage(change: () => void): void {
   refresh();
   if (state.pageId !== fromId) {
     if (!restoreCamera()) fitContent();
-    localStorage.setItem('doska.last', JSON.stringify({ pid: state.project.id, pageId: realPageId() }));
+    if (!state.linkMode) localStorage.setItem('doska.last', JSON.stringify({ pid: state.project.id, pageId: realPageId() }));
   }
   // кадр новой страницы — сразу и начисто, не дожидаясь покоя камеры
   renderNow();
@@ -2776,7 +2794,7 @@ export async function openPageLink(el: ImageEl, duringDrag = false): Promise<voi
         const play = capturePageTransition('fade', transitionCanvases());
         switchPage(page.id);
         if (!restoreCamera()) { state.camera = target; update(); }
-        localStorage.setItem('doska.last', JSON.stringify({ pid: state.project.id, pageId: realPageId() }));
+        if (!state.linkMode) localStorage.setItem('doska.last', JSON.stringify({ pid: state.project.id, pageId: realPageId() }));
         refresh();
         renderNow();
         play?.(1);
@@ -2871,6 +2889,7 @@ async function newPageHandler(): Promise<void> {
 }
 
 async function deletePageHandler(pageId: string): Promise<void> {
+  if (!canEditPages()) return;
   const draft = state.drafts.find(d => d.id === pageId);
   if (draft) {
     // пустой черновик убираем сразу: терять в нём нечего
@@ -2887,11 +2906,13 @@ async function deletePageHandler(pageId: string): Promise<void> {
 }
 
 async function renamePageHandler(pageId: string, name: string): Promise<void> {
+  if (!canEditPages()) return;
   renamePage(pageId, name);
   await saveNow();
 }
 
 async function movePageHandler(from: number, to: number): Promise<void> {
+  if (!canEditPages()) return;
   movePage(from, to);
   await saveNow();
 }
@@ -2964,7 +2985,7 @@ let revealedPageId = '';
 
 /** Гость совместной работы страниц не добавляет и не удаляет. */
 function canEditPages(): boolean {
-  return !(collabActive() && !isHost());
+  return state.linkMode === null && !(collabActive() && !isHost());
 }
 
 function makePageCard(pageId: string, draft = false): PageCard {
@@ -3341,6 +3362,7 @@ function wirePagesDock(): void {
 }
 
 function startPageRename(card: PageCard, pageId: string): void {
+  if (!canEditPages()) return;
   if (card.el.querySelector('input')) return;
   const oldName = (state.project.pages.find(p => p.id === pageId) ?? state.drafts.find(p => p.id === pageId))?.name;
   if (oldName === undefined) return;
@@ -3426,7 +3448,7 @@ async function openProjectHandler(project: Project, pageId?: string): Promise<vo
   saveCamera();
   if (project.id !== state.project.id) rememberOpenProject();
   openProject(project, pageId);
-  localStorage.setItem('doska.last', JSON.stringify({ pid: project.id, pageId: realPageId() }));
+  if (!state.linkMode) localStorage.setItem('doska.last', JSON.stringify({ pid: project.id, pageId: realPageId() }));
   refresh();
   if (!restoreCamera()) fitContent();
 }
@@ -3634,7 +3656,7 @@ function noteOpened(): void {
   openedMap()[state.project.id] = { at: Date.now(), page: realPageId() };
   saveOpened();
   try {
-    localStorage.setItem('doska.last', JSON.stringify({ pid: state.project.id, pageId: realPageId() }));
+    if (!state.linkMode) localStorage.setItem('doska.last', JSON.stringify({ pid: state.project.id, pageId: realPageId() }));
   } catch { /* хранилище недоступно — запустимся с последнего сохранённого */ }
 }
 
@@ -4332,6 +4354,7 @@ function wireTopbar(): void {
   document.getElementById('btn-share')!.addEventListener('click', () => { void openShareDialog(); });
   const iconBtn = document.getElementById('project-icon') as HTMLButtonElement;
   iconBtn.addEventListener('click', () => {
+    if (state.linkMode) return;
     openIconPicker(iconBtn, state.project.icon ?? null, icon => { void setProjectIconHandler(state.project.id, icon); });
   });
   // guest-режим: скрываем недоступные функции
@@ -4366,7 +4389,8 @@ function wireTopbar(): void {
     ${section('import', 'Импорт', ICONS.pdf,
       menuItem('import', 'Импорт документа', ICONS.pdf) + menuItem('image', 'Вставить изображение', ICONS.image, `<kbd>${macKeys('Ctrl+V')}</kbd>`))}
     ${section('export', 'Экспорт', ICONS.export,
-      menuItem('project', 'Скачать проект как файл', ICONS.export) + '<hr>' + menuItem('pdf', 'Экспорт в PDF', ICONS.pdf) + menuItem('png', 'Экспорт в PNG', ICONS.image))}<hr>
+      menuItem('project', 'Скачать проект как файл', ICONS.export) + '<hr>' + menuItem('pdf', 'Экспорт в PDF', ICONS.pdf) + menuItem('png', 'Экспорт в PNG', ICONS.image)
+        + '<hr>' + menuItem('link-project', 'Ссылка на проект (просмотр)', svg('<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>')) + menuItem('link-page', 'Ссылка на текущую страницу', svg('<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>')))}<hr>
     ${section('hide', 'Скрыть', svg('<path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M9.9 5.2A10 10 0 0 1 12 5c5 0 8.5 5 9 7a13 13 0 0 1-2.4 3.6M6.3 6.3A13 13 0 0 0 3 12c.5 2 4 7 9 7a10 10 0 0 0 4-.8"/>'),
       checkItem('undo', 'Кнопки отмены и повтора') + checkItem('imports', 'Кнопки импорта'))}
     ${menuItem('settings', 'Настройки', ICONS.settings)}<hr>
@@ -4410,6 +4434,8 @@ function wireTopbar(): void {
     if (action === 'import') void importDocument();
     if (action === 'image') void insertImage();
     if (action === 'png') void exportPng();
+    if (action === 'link-project') void copyBoardLink('project');
+    if (action === 'link-page') void copyBoardLink('page');
     if (action === 'settings') openAllSettings();
     if (action === 'project') void (async () => {
       if (!canCloneCurrentProject()) { showToast('Автор запретил сохранение проекта'); return; }
@@ -4468,6 +4494,7 @@ function wireTopbar(): void {
   const nameInput = document.getElementById('page-name') as HTMLInputElement;
   nameInput.addEventListener('change', () => {
     const v = nameInput.value.trim();
+    if (!canEditPages()) { nameInput.value = state.board.name; return; }
     if (v && v !== state.board.name) {
       renamePage(state.pageId, v);
       void saveNow();
@@ -5005,9 +5032,9 @@ function syncSelectionToCollab(): void {
 }
 
 export function initApp(c: HTMLCanvasElement): void {
-  c.addEventListener('dragover', e => { if (draggedColor && !readOnly()) e.preventDefault(); });
+  c.addEventListener('dragover', e => { if (draggedColor && canEditBoard()) e.preventDefault(); });
   c.addEventListener('drop', e => {
-    if (!draggedColor || readOnly()) return;
+    if (!draggedColor || !canEditBoard()) return;
     e.preventDefault();
     const rect = c.getBoundingClientRect();
     const x = (e.clientX - rect.left) / state.camera.zoom + state.camera.x;
@@ -5016,6 +5043,7 @@ export function initApp(c: HTMLCanvasElement): void {
     if (target) colorElement(target.id, draggedColor.color, styleColorTab === 'fill');
   });
   canvas = c;
+  registerLinkViewHooks({ fit: fitContent });
   restoreCamera();
   restoreStyle();
   restoreSettings();
@@ -5066,7 +5094,7 @@ export function initApp(c: HTMLCanvasElement): void {
       clearTimeout(cameraTimer);
       const camera = JSON.stringify(state.camera);
       cameraTimer = window.setTimeout(() => {
-        if (identity.startsWith('draft:')) return;
+        if (identity.startsWith('draft:') || state.linkMode) return;
         try { localStorage.setItem(identity, camera); } catch { /* хранилище недоступно */ }
       }, 200);
     }
