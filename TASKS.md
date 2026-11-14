@@ -13,7 +13,7 @@
   - Блокировка `copySelection`, `cutSelection`, `duplicateSelected` и обёрток в `app.ts`/`controller.ts`.
   - Тесты `tests/unit/copy-protection.test.ts`.
 
-- [ ] **TASK-03: URL-роутер и авто-фокус (`src/router.ts`)**
+- [x] **TASK-03: URL-роутер и авто-фокус (`src/router.ts`)**
   - `parseBoardUrl`, `buildBoardUrl`, `computeFocusCamera`, `focusElementsOnBoard`; `Flash.ms?`.
   - Тесты `tests/unit/router.test.ts`.
 

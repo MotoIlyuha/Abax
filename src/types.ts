@@ -246,8 +246,8 @@ export interface LaserPt { x: number; y: number; t: number }
 /** Росчерк исчезающего маркера; endT — когда оторвали перо (с этого момента гаснет). */
 export interface FadeStroke { color: string; width: number; opacity?: number; pts: Pt[]; endT: number | null }
 
-/** Кратковременная подсветка контура элементов; t — момент начала. */
-export interface Flash { ids: string[]; t: number }
+/** Кратковременная подсветка контура элементов; t — момент начала, ms — длительность (нет — по умолчанию). */
+export interface Flash { ids: string[]; t: number; ms?: number }
 
 /** Ручка редактирования выделенного элемента. */
 export type Handle =

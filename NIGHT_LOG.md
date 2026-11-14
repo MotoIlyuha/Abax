@@ -19,3 +19,10 @@
 - Заблокированы также: Ctrl+Shift+C (картинкой), экспорт PNG, экспорт проекта в JSON, дублирование Alt-перетаскиванием и копирование при переносе на другую страницу.
 - Ограничение: защита — сдерживание, не криптозащита (в памяти гостя весь проект).
 - Тесты: `tests/unit/copy-protection.test.ts` (10). Всего 505.
+
+## TASK-03 — URL-роутер (готово)
+- `src/router.ts`: `parseBoardUrl`, `buildBoardUrl` (по умолчанию `?route=…`, `{style:'path'}` — `/p/…`, `/j/…`), `computeFocusCamera`, `focusElementsOnBoard`, а также `linkModeOf`, `pagesVisibleForRoute`, `routeAllowsCloneButton`, `routeShowsPagesDock`.
+- `?room=CODE` (локальная сеть) и `#relay=…` разбираются как `collab`; ключ шифрования всегда в `#k=`, в `/j/:token` не попадает. Права по страницам в ссылке не передаются.
+- `Flash.ms?` — длительность подсветки; `renderer.ts` её учитывает (по умолчанию 1400 мс), фокус подсвечивает 2000 мс.
+- Загрузка проекта по `projectId` не делалась (бэкенда нет); к UI роутер не подключён (`state.linkMode` пока выставляется только вручную).
+- Тесты: `tests/unit/router.test.ts` (21). Всего 526.

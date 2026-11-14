@@ -1429,9 +1429,9 @@ function drawFadeStrokes(ctx: CanvasRenderingContext2D): void {
 /** Служебные канвасы подсветки: свои у каждого холста. */
 interface FlashScratch { shape: HTMLCanvasElement; ring: HTMLCanvasElement }
 
-function flashAlpha(age: number): number {
+function flashAlpha(age: number, total: number): number {
   if (age < FLASH_IN) return age / FLASH_IN;
-  if (age > FLASH_MS - FLASH_OUT) return Math.max(0, (FLASH_MS - age) / FLASH_OUT);
+  if (age > total - FLASH_OUT) return Math.max(0, (total - age) / FLASH_OUT);
   return 1;
 }
 
@@ -1439,7 +1439,7 @@ function drawFlashes(
   ctx: CanvasRenderingContext2D, cam: Camera, cssW: number, cssH: number, dpr: number, scratch: FlashScratch,
 ): void {
   const now = performance.now();
-  state.flashes = state.flashes.filter(f => now - f.t < FLASH_MS);
+  state.flashes = state.flashes.filter(f => now - f.t < (f.ms ?? FLASH_MS));
   if (state.flashes.length === 0) return;
   const W = Math.round(cssW * dpr), H = Math.round(cssH * dpr);
   const { shape: flashShape, ring: flashRing } = scratch;
@@ -1498,7 +1498,7 @@ function drawFlashes(
 
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.globalAlpha = flashAlpha(now - f.t);
+    ctx.globalAlpha = flashAlpha(now - f.t, f.ms ?? FLASH_MS);
     ctx.shadowColor = FLASH_COLOR;
     ctx.shadowBlur = 10 * dpr;
     ctx.drawImage(flashRing, bx, by, bw, bh, bx, by, bw, bh);
