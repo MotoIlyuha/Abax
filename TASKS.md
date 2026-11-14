@@ -2,7 +2,7 @@
 
 Выполняй строго по порядку. После каждой задачи: `npm run typecheck && npm run typecheck:tests && npm test` — зелёные. Имена — по таблице соответствия и `Locked Decisions` в `SPEC_NIGHT1.md`.
 
-- [ ] **TASK-01: Тарифы, лимиты и права проекта (`src/limits.ts`, `src/types.ts`, `src/file.ts`)**
+- [x] **TASK-01: Тарифы, лимиты и права проекта (`src/limits.ts`, `src/types.ts`, `src/file.ts`)**
   - Типы `PlanTier`, `PageRight`, `ProjectPermissions`; поля `ownerPlan?`, `permissions?` в `Project`; `BaseEl`.
   - `src/limits.ts` по разделу 1 SPEC.
   - Новый `src/file.ts` (`parseProject`, `serializeProject`, `sanitizeElement`); `storage.migrate` использует его.

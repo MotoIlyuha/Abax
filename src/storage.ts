@@ -1,4 +1,5 @@
 import type { Project, ProjectMeta } from './types';
+import { parseProject } from './file';
 
 export interface BoardsStorage {
   list(): Promise<ProjectMeta[]>;
@@ -43,29 +44,6 @@ export const doskaApi: DoskaApi | undefined = resolveApi();
 const IDX_KEY = 'doska.projects';
 const projectKey = (id: string) => `doska.p.${id}`;
 
-/** Старая доска (до страниц) оборачивается в проект с одной страницей. */
-function migrate(raw: unknown): Project | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const o = raw as Record<string, unknown>;
-  if (Array.isArray(o.pages)) return raw as Project;
-  if (Array.isArray(o.elements)) {
-    const b = o as unknown as { id: string; name: string; createdAt: number; updatedAt: number; elements: unknown[]; grid?: string };
-    return {
-      id: b.id,
-      name: b.name,
-      createdAt: b.createdAt,
-      updatedAt: b.updatedAt,
-      pages: [{
-        id: `pg-${b.id}`,
-        name: 'Страница 1',
-        grid: (b.grid as Project['pages'][number]['grid']) || 'square',
-        elements: b.elements as Project['pages'][number]['elements'],
-      }],
-    };
-  }
-  return null;
-}
-
 const lsStorage: BoardsStorage = {
   async list(): Promise<ProjectMeta[]> {
     try {
@@ -77,7 +55,7 @@ const lsStorage: BoardsStorage = {
   },
   async load(id): Promise<Project | null> {
     try {
-      return migrate(JSON.parse(localStorage.getItem(projectKey(id)) || 'null'));
+      return parseProject(JSON.parse(localStorage.getItem(projectKey(id)) || 'null'));
     } catch {
       return null;
     }
@@ -104,7 +82,7 @@ const lsStorage: BoardsStorage = {
 export let storage: BoardsStorage = doskaApi
   ? {
       list: () => doskaApi.list(),
-      load: async id => migrate(await doskaApi.load(id)),
+      load: async id => parseProject(await doskaApi.load(id)),
       save: project => doskaApi.save(project),
       remove: id => doskaApi.remove(id),
     }

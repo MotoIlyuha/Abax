@@ -12,11 +12,19 @@ export type ToolId =
 /** Инструменты группы «Указка»: ничего не оставляют на доске. */
 export type PointerKind = 'laser' | 'fadePen' | 'flash';
 
+/** Общие поля всех элементов доски. */
+export interface BaseEl {
+  id: string;
+  /** Идентификатор группы, если элемент сгруппирован. */
+  groupId?: string;
+  /** Реакции: эмодзи → id пользователей, поставивших её. */
+  reactions?: Record<string, string[]>;
+}
+
 /** Точка в координатах сцены; p — давление 0..1 (мышь даёт 0.5). */
 export interface Pt { x: number; y: number; p: number }
 
-export interface StrokeEl {
-  id: string;
+export interface StrokeEl extends BaseEl {
   type: 'stroke';
   tool: 'pen' | 'highlighter';
   color: string;
@@ -30,16 +38,13 @@ export interface StrokeEl {
    * Нет поля у старых проектов — привязка фиксируется при открытии (см. attachment.ts).
    */
   baseId?: string | null;
-  /** Идентификатор группы, если элемент сгруппирован. */
-  groupId?: string;
 }
 
 /** Выравнивание надписи в фигуре по горизонтали и по вертикали. */
 export type TextAlign = 'left' | 'center' | 'right';
 export type TextVAlign = 'top' | 'middle' | 'bottom';
 
-export interface ShapeEl {
-  id: string;
+export interface ShapeEl extends BaseEl {
   type: 'shape';
   shape: 'rect' | 'ellipse' | 'triangle' | 'line' | 'arrow';
   /** x,y — якорь; w,h — смещения (для линии/стрелки могут быть отрицательными). */
@@ -64,23 +69,19 @@ export interface ShapeEl {
   /** Выравнивание надписи; нет поля — по центру. */
   align?: TextAlign;
   valign?: TextVAlign;
-  groupId?: string;
 }
 
 /** Ломаная: открытая или замкнутая (контур). */
-export interface PolyEl {
-  id: string;
+export interface PolyEl extends BaseEl {
   type: 'poly';
   closed: boolean;
   color: string;
   width: number;
   opacity?: number;
   pts: Pt[];
-  groupId?: string;
 }
 
-export interface TextEl {
-  id: string;
+export interface TextEl extends BaseEl {
   type: 'text';
   /** x,y — левый верхний угол текстового блока. */
   x: number; y: number;
@@ -92,10 +93,8 @@ export interface TextEl {
   opacity?: number;
   bold?: boolean;
   italic?: boolean;
-  groupId?: string;
 }
-export interface NoteEl {
-  id: string;
+export interface NoteEl extends BaseEl {
   type: 'note';
   x: number; y: number; w: number; h: number;
   text: string;
@@ -105,12 +104,10 @@ export interface NoteEl {
    * Нет поля у старых проектов — привязка фиксируется при открытии (см. attachment.ts).
    */
   baseId?: string | null;
-  groupId?: string;
 }
 
 /** Импортированная страница PDF или картинка — фон для аннотирования. */
-export interface ImageEl {
-  id: string;
+export interface ImageEl extends BaseEl {
   type: 'image';
   x: number; y: number; w: number; h: number;
   /** data:image/jpeg;base64,... или data:image/png;base64,... */
@@ -130,7 +127,6 @@ export interface ImageEl {
    * клик по нему переходит на неё (src пустой). Не поворачивается: переход приближением был бы не бесшовным.
    */
   page?: string;
-  groupId?: string;
 }
 
 /**
@@ -138,8 +134,7 @@ export interface ImageEl {
  * Многогранники — в кабинетной проекции (глубина под 45° с сокращением 0.5),
  * тела вращения — с основаниями-эллипсами, как в школьных учебниках.
  */
-export interface SolidEl {
-  id: string;
+export interface SolidEl extends BaseEl {
   type: 'solid';
   solid: SolidKind;
   /**
@@ -160,7 +155,6 @@ export interface SolidEl {
   color: string;
   width: number;
   opacity?: number;
-  groupId?: string;
 }
 
 export type Element = (StrokeEl | ShapeEl | PolyEl | TextEl | NoteEl | ImageEl | SolidEl) & {
@@ -178,6 +172,41 @@ export interface Page {
   grid: GridMode;
   backgroundColor?: string;
   elements: Element[];
+  /** Ветки комментариев к странице. */
+  comments?: CommentThread[];
+}
+
+export interface CommentMessage {
+  id: string;
+  authorId: string;
+  authorName: string;
+  text: string;
+  createdAt: number;
+}
+
+export interface CommentThread {
+  id: string;
+  x: number;
+  y: number;
+  /** Если привязан к элементу доски — двигается вместе с ним. */
+  targetElementId?: string;
+  resolved?: boolean;
+  messages: CommentMessage[];
+}
+
+/** Тариф владельца проекта. */
+export type PlanTier = 'free' | 'pro' | 'tutor';
+
+/** Право на страницу для ссылки совместной работы. */
+export type PageRight = 'edit' | 'view' | 'hidden';
+
+export interface ProjectPermissions {
+  /** Запретить клонирование проекта по ссылке просмотра (Pro/Tutor). */
+  forbidClone?: boolean;
+  /** Разрешить читателям выделять и копировать элементы (нет поля — разрешено). */
+  allowCopy?: boolean;
+  /** Права по страницам для ссылки совместной работы (pageId → право). */
+  pageRights?: Record<string, PageRight>;
 }
 
 /** Проект — набор страниц. */
@@ -191,6 +220,9 @@ export interface Project {
   pinned?: boolean;
   /** Иконка рядом с названием: эмодзи или загруженная картинка (data:image/…). */
   icon?: string;
+  /** Тариф владельца; нет поля — free. */
+  ownerPlan?: PlanTier;
+  permissions?: ProjectPermissions;
 }
 
 export interface ProjectMeta {
