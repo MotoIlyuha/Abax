@@ -1,4 +1,5 @@
-import type { Element, GridMode, Page, PageRight, Project, ProjectPermissions, Pt } from './types';
+import type { CommentMessage, CommentThread, Element, GridMode, Page, PageRight, Project, ProjectPermissions, Pt } from './types';
+import { MAX_AUTHOR_NAME, MAX_COMMENT_TEXT, MAX_REACTION_LEN } from './comments';
 import { isPageRight, isPlanTier } from './limits';
 
 // Проверка данных на границе: файл, localStorage, сеть. Неизвестные поля сохраняются (проект из
@@ -26,7 +27,7 @@ export function sanitizeReactions(raw: unknown): Record<string, string[]> | unde
   if (!isObj(raw)) return undefined;
   const out: Record<string, string[]> = {};
   for (const [emoji, users] of Object.entries(raw)) {
-    if (!Array.isArray(users)) continue;
+    if (!Array.isArray(users) || emoji === '' || emoji.length > MAX_REACTION_LEN) continue;
     const ids = [...new Set(users.filter(isStr))];
     if (ids.length > 0) out[emoji] = ids;
   }
@@ -107,6 +108,32 @@ export function sanitizeElement(raw: unknown): Element | null {
   return out as unknown as Element;
 }
 
+function sanitizeMessage(raw: unknown): CommentMessage | null {
+  if (!isObj(raw) || !isStr(raw.id) || !isStr(raw.authorId) || raw.authorId === '' || !isStr(raw.text) || !isNum(raw.createdAt)) return null;
+  const text = raw.text.trim().slice(0, MAX_COMMENT_TEXT);
+  if (!text) return null;
+  const authorName = isStr(raw.authorName) ? Array.from(raw.authorName).slice(0, MAX_AUTHOR_NAME).join('') : '';
+  return { id: raw.id, authorId: raw.authorId, authorName, text, createdAt: raw.createdAt };
+}
+
+/** Ветки комментариев страницы: негодные сообщения и ветки без сообщений отбрасываются. */
+export function sanitizeComments(raw: unknown): CommentThread[] {
+  if (!Array.isArray(raw)) return [];
+  const out: CommentThread[] = [];
+  for (const t of raw) {
+    if (!isObj(t) || !isStr(t.id) || t.id === '' || !isNum(t.x) || !isNum(t.y) || !Array.isArray(t.messages)) continue;
+    const messages = t.messages.map(sanitizeMessage).filter((m): m is CommentMessage => m !== null);
+    if (messages.length === 0) continue;
+    out.push({
+      id: t.id, x: t.x, y: t.y,
+      ...(isStr(t.targetElementId) && t.targetElementId !== '' ? { targetElementId: t.targetElementId } : {}),
+      ...(t.resolved === true ? { resolved: true } : {}),
+      messages,
+    });
+  }
+  return out;
+}
+
 function sanitizePage(raw: unknown): Page | null {
   if (!isObj(raw) || !isStr(raw.id) || raw.id === '') return null;
   const out: Rec = { ...raw };
@@ -122,6 +149,11 @@ function sanitizePage(raw: unknown): Page | null {
     }
   }
   out.elements = elements;
+  if ('comments' in out) {
+    const comments = sanitizeComments(out.comments);
+    if (comments.length > 0) out.comments = comments;
+    else delete out.comments;
+  }
   return out as unknown as Page;
 }
 

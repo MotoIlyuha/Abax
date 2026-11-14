@@ -29,7 +29,7 @@
   - `computeAssetHash`, `AssetStore`, `extractProjectAssets`, `hydrateProjectAssets`.
   - Тесты `tests/unit/asset-store.test.ts`.
 
-- [ ] **TASK-07: Реакции и комментарии (`src/comments.ts`, `src/types.ts`, `src/file.ts`)**
+- [x] **TASK-07: Реакции и комментарии (`src/comments.ts`, `src/types.ts`, `src/file.ts`)**
   - `reactions` в `BaseEl`, `comments` в `Page`; функции `src/comments.ts`; обновить `file.ts`; синхронизация в `state.ts`.
   - Тесты `tests/unit/comments.test.ts`.
 

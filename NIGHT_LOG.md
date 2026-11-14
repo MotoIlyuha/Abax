@@ -49,3 +49,11 @@
 - Выносятся только `ImageEl.src` с `data:image/`; иконка проекта и ссылки на страницы не трогаются; неизвестный `asset://` остаётся ссылкой; нетронутые страницы — те же объекты.
 - В сохранение и синхронизацию не подключено (решение 47).
 - Тесты: `tests/unit/asset-store.test.ts` (11). Всего 584.
+
+## TASK-07 — реакции и комментарии (готово)
+- `src/types.ts`: `BaseEl.reactions` (с TASK-01), `Page.comments`, `CommentMessage`, `CommentThread`.
+- `src/comments.ts`: `toggleElementReaction`, `createCommentThread`, `addCommentReply`, `resolveCommentThread`, `syncCommentsWithMovedElements` (+ необязательные `id`/`now` для тестов). Пустой текст отклоняется, эмодзи ≤ 16, комментарий ≤ 2000 (обрезается), отсутствующая цель — ветка без привязки; удаление цели ветку не удаляет; сдвиг = сдвиг левого верхнего угла рамки.
+- `src/file.ts`: `sanitizeComments`, чистка `reactions` (ключи ≤ 16, пустые списки и дубли убираются), `Page.comments` читается и сохраняется.
+- `src/state.ts`: `replaceElements`, `undo`, `redo` двигают привязанные комментарии (`followComments`).
+- Исключение из правила pushHistory (решение 49): реакции и комментарии в историю не пишутся; Undo откатывает элементы к снимкам, поэтому реакции откатятся вместе с ними — отдельный UI-слой должен менять их без записи истории.
+- Тесты: `tests/unit/comments.test.ts` (17). Всего 601.

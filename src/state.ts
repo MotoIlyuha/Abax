@@ -7,6 +7,7 @@ import { DEFAULT_NEW_PAGE_KEY } from './hotkeys';
 import { imageFrame, shapeHoldsText, translateElement } from './geom';
 import { attachNewElement, freezeAttachments, rebindAttachment } from './attachment';
 import { effectivePermissions } from './limits';
+import { syncCommentsWithMovedElements } from './comments';
 
 export interface LiveStroke {
   tool: 'pen' | 'highlighter';
@@ -281,11 +282,19 @@ export function pushHistory(prev: Element[]): void {
 export function canUndo(): boolean { return undoStack.length > 0; }
 export function canRedo(): boolean { return redoStack.length > 0; }
 
+/** Привязанные комментарии едут за своими элементами; страница меняется на месте, как и её элементы. */
+function followComments(prev: Element[]): void {
+  if (!state.board.comments?.length) return;
+  state.board.comments = syncCommentsWithMovedElements(state.board, prev, state.board.elements).comments;
+}
+
 export function undo(): void {
   const prev = undoStack.pop();
   if (!prev) return;
   redoStack.push(state.board.elements);
+  const before = state.board.elements;
   state.board.elements = prev;
+  followComments(before);
   state.selection = new Set();
   update(true);
 }
@@ -294,7 +303,9 @@ export function redo(): void {
   const next = redoStack.pop();
   if (!next) return;
   undoStack.push(state.board.elements);
+  const before = state.board.elements;
   state.board.elements = next;
+  followComments(before);
   state.selection = new Set();
   update(true);
 }
@@ -302,12 +313,14 @@ export function redo(): void {
 // ----- Мутации сцены (элементы заменяются, никогда не правятся на месте) -----
 
 export function replaceElements(next: Element[]): void {
+  const before = state.board.elements;
   // Закреплённые объекты сохраняют относительный порядок внутри своих областей.
   state.board.elements = [
     ...next.filter(e => e.layerPin === 'bottom'),
     ...next.filter(e => !e.layerPin),
     ...next.filter(e => e.layerPin === 'top'),
   ];
+  followComments(before);
   update(true);
 }
 
