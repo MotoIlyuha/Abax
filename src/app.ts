@@ -4472,9 +4472,11 @@ function wireTopbar(): void {
   });
   // guest-режим: скрываем недоступные функции
   if (collabActive() && !isHost()) {
-    for (const id of ['btn-home', 'btn-import', 'btn-image', 'btn-share']) {
+    for (const id of ['btn-home', 'btn-share']) {
       document.getElementById(id)!.style.display = 'none';
     }
+    // группа импорта скрывается целиком: иначе в шапке остаётся пустой контейнер с отступами
+    document.querySelector<HTMLElement>('.import-group')!.style.display = 'none';
     // иконку проекта меняет только автор
     iconBtn.disabled = true;
   }
