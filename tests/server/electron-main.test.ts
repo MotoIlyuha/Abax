@@ -410,11 +410,11 @@ describe('совместная работа через интернет', () => 
 
   beforeEach(async () => {
     await handlers.get('share:stop')?.({});
-    delete process.env.DOSKA_RELAY_URL;
+    process.env.DOSKA_RELAY_URL = ''; // без адреса по умолчанию из package.json
     delete process.env.DOSKA_GUEST_URL;
     await loadMain();
   });
-  afterAll(async () => { await relay?.close(); });
+  afterAll(async () => { await relay?.close(); delete process.env.DOSKA_RELAY_URL; });
 
   it('без запущенной совместной работы и без адреса ретранслятора — понятные ошибки', async () => {
     expect(await invoke('share:cloudStart')).toEqual({ ok: false, error: 'Совместная работа выключена' });

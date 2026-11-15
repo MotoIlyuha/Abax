@@ -23,5 +23,7 @@ export default defineConfig({
     url: `http://127.0.0.1:${PORT}`,
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
+    // без ретранслятора по умолчанию: тесты поднимают свой (relay/server.cjs), в интернет не ходят
+    env: { DOSKA_RELAY_URL: '' },
   },
 });

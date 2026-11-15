@@ -293,8 +293,11 @@ function shareInfo() {
 }
 
 // ----- Совместная работа через интернет (облачный ретранслятор relay/) -----
-/** Ретранслятор по умолчанию; пусто — адрес нужно передать в share:cloudStart. */
-const DEFAULT_RELAY_URL = process.env.DOSKA_RELAY_URL || '';
+/**
+ * Ретранслятор по умолчанию — relayUrl из package.json; DOSKA_RELAY_URL его перекрывает
+ * (пустая строка — адреса по умолчанию нет, его нужно передать в share:cloudStart).
+ */
+const DEFAULT_RELAY_URL = process.env.DOSKA_RELAY_URL ?? (require('../package.json').relayUrl || '');
 /** Клиент доски для гостей из интернета: сборка этой же версии на GitHub Pages. */
 const GUEST_BASE = process.env.DOSKA_GUEST_URL || `https://motoilyuha.github.io/Abax/v/${require('../package.json').version}/`;
 let cloud = null;

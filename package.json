@@ -1,6 +1,7 @@
 {
   "name": "doska",
   "version": "2.6.0",
+  "relayUrl": "wss://relay.95-174-92-156.sslip.io",
   "private": true,
   "description": "Локальная доска для занятий по математике",
   "main": "electron/main.cjs",

@@ -4814,8 +4814,11 @@ const browserShareApi: ShareApi = {
   async shareSetRights(uid, patch) { return browserSetRights(uid, patch as Parameters<typeof browserSetRights>[1]); },
   async shareOpenTestWindow() { return { ok: false }; },
   async shareCloudStart(opts) {
+    const relayUrl = opts?.relayUrl || savedRelayUrl() || defaultRelayUrl();
+    // как share:cloudStart в main.cjs: пустой адрес — не «неверный», а «не указан»
+    if (!relayUrl) return { ok: false, error: 'Не указан адрес ретранслятора' };
     try {
-      await startBrowserCloud(opts?.relayUrl || savedRelayUrl());
+      await startBrowserCloud(relayUrl);
       return { ok: true, cloud: browserShareStatus().cloud ?? null };
     } catch (e) {
       const text = e instanceof Error ? e.message : '';
@@ -4836,6 +4839,10 @@ let shareInfo: ShareStatus = { active: false };
 const RELAY_KEY = 'doska.relayUrl';
 function savedRelayUrl(): string {
   try { return localStorage.getItem(RELAY_KEY) || ''; } catch { return ''; }
+}
+/** Ретранслятор по умолчанию из сборки (vite.config.ts); вне Vite (unit-тесты) — не задан. */
+function defaultRelayUrl(): string {
+  return typeof __DEFAULT_RELAY_URL__ === 'string' ? __DEFAULT_RELAY_URL__ : '';
 }
 /** Состояние раздела «Через интернет» между перерисовками диалога (раз в 2 с). */
 const cloudUi = { starting: false, error: null as string | null, askRelay: false };

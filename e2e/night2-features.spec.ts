@@ -1,6 +1,9 @@
 // Ночь №2: просмотр по ссылке, клонирование, патчи, задания, реакции и лимиты тарифов.
 import { expect, test } from './fixtures';
 import type { Page } from '@playwright/test';
+import { createRequire } from 'node:module';
+
+const { createRelay } = createRequire(__filename)('../relay/server.cjs');
 
 const snap = (page: Page) => page.evaluate(() => {
   const s = (window as any).__doska.state;
@@ -149,6 +152,36 @@ test.describe('браузерный хост и патчи', () => {
     await gb.rect(300, 500, 380, 560);
     await expect.poll(() => board.count('shape')).toBe(3);
     await guest.close();
+  });
+
+  test('через интернет из браузера: без адреса — «Не указан», после ввода — ссылка, гость видит доску', async ({ board, page, browser }) => {
+    const relay = await createRelay({ port: 0, host: '127.0.0.1', statsIntervalMs: 0, log: () => {} });
+    try {
+      await board.open();
+      await board.rect(400, 300, 500, 400);
+      await startBrowserRoom(page, 'cloud1');
+      const dlg = page.locator('#share-dialog');
+      await dlg.locator('button', { hasText: 'Пригласить через интернет' }).click();
+      await expect(dlg.locator('.share-cloud-error')).toHaveText('Не указан адрес ретранслятора');
+      const input = dlg.locator('.share-relay-input');
+      await expect(input).toBeVisible();
+
+      const relayUrl = `ws://127.0.0.1:${relay.port}`;
+      await input.fill(relayUrl);
+      await input.press('Enter');
+      const link = dlg.locator('.share-link-cloud');
+      await expect(link).toHaveText(/#relay=/);
+      expect(await page.evaluate(() => localStorage.getItem('doska.relayUrl'))).toBe(relayUrl);
+
+      const ctx = await browser.newContext();
+      const guest = await ctx.newPage();
+      await guest.goto(`${await link.innerText()}&name=${encodeURIComponent('Из облака')}`);
+      await expect(guest.locator('body')).toHaveClass(/collab-guest/);
+      await expect.poll(() => guest.evaluate(() => (window as any).__doska?.state.board.elements.length ?? 0)).toBe(1);
+      await ctx.close();
+    } finally {
+      await relay.close();
+    }
   });
 
   test('на бесплатном тарифе второй гость получает отказ', async ({ board, page, context }) => {
