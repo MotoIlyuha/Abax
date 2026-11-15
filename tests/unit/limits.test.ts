@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  PLAN_LIMITS, canCreatePage, canCreateProject, canGuestJoinRoom, effectivePermissions, planOf, sanitizePermissionsForPlan,
+  PLAN_LIMITS, isOverPageLimit, isOverProjectLimit, canCreatePage, canCreateProject, canGuestJoinRoom, effectivePermissions, planOf, sanitizePermissionsForPlan,
 } from '../../src/limits';
 import { parseProject, serializeProject } from '../../src/file';
 import type { Project } from '../../src/types';
@@ -111,5 +111,20 @@ describe('сериализация прав проекта (file.ts)', () => {
     const p: Project = parseProject(proj({ pages: [{ id: 'g', elements: [stroke, { ...stroke, id: 's2', pts: [] }] }] }))!;
     expect(p.pages[0].elements).toHaveLength(1);
     expect((p.pages[0].elements[0] as { pts: { p: number }[] }).pts[0].p).toBe(0.5);
+  });
+});
+
+describe('превышение лимита после смены тарифа', () => {
+  it('страницы: на free больше 3 — сверх лимита, ровно 3 — нет', () => {
+    expect(isOverPageLimit('free', 4)).toBe(true);
+    expect(isOverPageLimit('free', 3)).toBe(false);
+  });
+  it('проекты: на free больше 3 — сверх лимита, ровно 3 — нет', () => {
+    expect(isOverProjectLimit('free', 4)).toBe(true);
+    expect(isOverProjectLimit('free', 3)).toBe(false);
+  });
+  it('платные тарифы без ограничений', () => {
+    expect(isOverPageLimit('pro', 100)).toBe(false);
+    expect(isOverProjectLimit('tutor', 100)).toBe(false);
   });
 });

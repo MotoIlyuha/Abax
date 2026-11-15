@@ -55,6 +55,16 @@ export function canCreatePage(plan: PlanTier, currentPageCount: number): boolean
   return currentPageCount < PLAN_LIMITS[plan].maxPagesPerProject;
 }
 
+/** Страниц в проекте больше, чем разрешено тарифом (остались с прежнего тарифа): удалённую заново не создать. */
+export function isOverPageLimit(plan: PlanTier, pageCount: number): boolean {
+  return pageCount > PLAN_LIMITS[plan].maxPagesPerProject;
+}
+
+/** Проектов больше, чем разрешено тарифом: удалённый заново не создать. */
+export function isOverProjectLimit(plan: PlanTier, projectCount: number): boolean {
+  return projectCount > PLAN_LIMITS[plan].maxProjects;
+}
+
 /** Можно ли подключиться ещё одному гостю; автор в currentGuestCount не входит. */
 export function canGuestJoinRoom(plan: PlanTier, currentGuestCount: number): boolean {
   return currentGuestCount < PLAN_LIMITS[plan].maxP2PGuests;

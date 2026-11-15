@@ -47,7 +47,7 @@ import { buildCustomColorPicker } from './color-picker';
 import { copySelection, duplicateSelection as duplicateInPlace, pasteFromMemory, pasteFromSystem } from './clipboard';
 import { hideHeldTooltip, showHeldTooltip } from './tooltip';
 import { LIMIT_PROJECTS_TEXT, copyBoardLink, currentBoardLink, registerLinkViewHooks } from './link-view-ui';
-import { canCreateProject, PLAN_LIMITS } from './limits';
+import { canCreateProject, isOverPageLimit, isOverProjectLimit, PLAN_LIMITS } from './limits';
 import { limitsEnforced, userPlan } from './plan';
 import { addGestureProbe } from './gesture';
 import { initTaskOverlay, isTeacher } from './task-overlay';
@@ -2999,8 +2999,7 @@ async function deletePageHandler(pageId: string): Promise<void> {
   const page = state.project.pages.find(p => p.id === pageId);
   if (!page) return;
   // проект сверх лимита free (остался с Pro): после удаления страницу заново не создать
-  const overLimit = limitsEnforced() && projectPlan(state.project) === 'free'
-    && state.project.pages.length > PLAN_LIMITS.free.maxPagesPerProject;
+  const overLimit = limitsEnforced() && isOverPageLimit(projectPlan(state.project), state.project.pages.length);
   const msg = overLimit
     ? `Удалить страницу «${page.name}»?\n\nВ проекте больше страниц, чем разрешено на бесплатном тарифе (${PLAN_LIMITS.free.maxPagesPerProject}). Заново создать удалённую страницу не получится, пока не оформлена подписка Pro. Оформите подписку, чтобы снять ограничение.`
     : `Удалить страницу «${page.name}»?`;
@@ -3581,8 +3580,7 @@ async function deleteProjectHandler(id: string): Promise<void> {
   const meta = state.projects.find(m => m.id === id);
   if (!meta) return;
   // проектов больше, чем разрешено на free: удалённый заново не создать
-  const overLimit = limitsEnforced() && userPlan() === 'free'
-    && state.projects.length > PLAN_LIMITS.free.maxProjects;
+  const overLimit = limitsEnforced() && isOverProjectLimit(userPlan(), state.projects.length);
   const msg = overLimit
     ? `Удалить проект «${meta.name}» со всеми страницами?\n\nУ вас больше проектов, чем разрешено на бесплатном тарифе (${PLAN_LIMITS.free.maxProjects}). Заново создать удалённый проект не получится, пока не оформлена подписка Pro. Оформите подписку, чтобы снять ограничение.`
     : `Удалить проект «${meta.name}» со всеми страницами?`;
