@@ -126,9 +126,14 @@ test.describe('совместная работа', () => {
     // метка курсора тоже серая, как только сервер разошлёт состояние
     await host.board.move({ x: 500, y: 500 }, 3);
     await expect(host.page.locator('#remote-cursors .remote-cursor.away')).toContainText('Отошёл');
-    // гость вернулся
-    await guest.board.move({ x: 400, y: 400 }, 3);
-    await expect(host.userRow('Ученик')).not.toContainText('Отошёл', { timeout: 5000 });
+    // гость вернулся и продолжает двигать мышь: после одного движения он «активен» лишь 1.5 с
+    // (DOSKA_AWAY_MS), а диалог автора обновляет список раз в 2 с и может проскочить это окно
+    let x = 400;
+    await expect(async () => {
+      x = x === 400 ? 420 : 400;
+      await guest.board.move({ x, y: 400 }, 2);
+      await expect(host.userRow('Ученик')).not.toContainText('Отошёл', { timeout: 600 });
+    }).toPass({ timeout: 8000 });
   });
 
   test('выделение гостя видно остальным', async ({ host, join }) => {
