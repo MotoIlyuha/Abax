@@ -11,7 +11,7 @@ import {
   bringForward, sendBackward, moveSelectionLayer, selectionLayerOrder, pinSelectionLayer, deleteSelected, setSolidSides, removeImageFrames, selectInserted,
   clampOpacity, opacityField, OPACITY_MIN, parseZoomPercent, zoomAtPoint,
   addDraft, deleteDraft, onDraft, realPageId,
-  canCopyCurrentBoard, canCloneCurrentProject, canAddPageTo, PAGE_LIMIT_TEXT,
+  canCopyCurrentBoard, canCloneCurrentProject, canAddPageTo, PAGE_LIMIT_TEXT, projectPlan,
 } from './state';
 import type { PresetKind, StylePatch, StyleValue } from './state';
 import { doskaApi, storage } from './storage';
@@ -47,7 +47,7 @@ import { buildCustomColorPicker } from './color-picker';
 import { copySelection, duplicateSelection as duplicateInPlace, pasteFromMemory, pasteFromSystem } from './clipboard';
 import { hideHeldTooltip, showHeldTooltip } from './tooltip';
 import { LIMIT_PROJECTS_TEXT, copyBoardLink, currentBoardLink, registerLinkViewHooks } from './link-view-ui';
-import { canCreateProject } from './limits';
+import { canCreateProject, PLAN_LIMITS } from './limits';
 import { limitsEnforced, userPlan } from './plan';
 import { addGestureProbe } from './gesture';
 import { initTaskOverlay, isTeacher } from './task-overlay';
@@ -2997,7 +2997,14 @@ async function deletePageHandler(pageId: string): Promise<void> {
     return;
   }
   const page = state.project.pages.find(p => p.id === pageId);
-  if (!page || !confirm(`Удалить страницу «${page.name}»?`)) return;
+  if (!page) return;
+  // проект сверх лимита free (остался с Pro): после удаления страницу заново не создать
+  const overLimit = limitsEnforced() && projectPlan(state.project) === 'free'
+    && state.project.pages.length > PLAN_LIMITS.free.maxPagesPerProject;
+  const msg = overLimit
+    ? `Удалить страницу «${page.name}»?\n\nВ проекте больше страниц, чем разрешено на бесплатном тарифе (${PLAN_LIMITS.free.maxPagesPerProject}). Заново создать удалённую страницу не получится, пока не оформлена подписка Pro. Оформите подписку, чтобы снять ограничение.`
+    : `Удалить страницу «${page.name}»?`;
+  if (!confirm(msg)) return;
   await saveNow();
   changePage(() => deletePage(pageId));
   try { localStorage.removeItem(cameraKey(state.project.id, pageId)); } catch { /* нет доступа к хранилищу */ }
@@ -3572,7 +3579,14 @@ async function newProjectHandler(): Promise<void> {
 
 async function deleteProjectHandler(id: string): Promise<void> {
   const meta = state.projects.find(m => m.id === id);
-  if (!meta || !confirm(`Удалить проект «${meta.name}» со всеми страницами?`)) return;
+  if (!meta) return;
+  // проектов больше, чем разрешено на free: удалённый заново не создать
+  const overLimit = limitsEnforced() && userPlan() === 'free'
+    && state.projects.length > PLAN_LIMITS.free.maxProjects;
+  const msg = overLimit
+    ? `Удалить проект «${meta.name}» со всеми страницами?\n\nУ вас больше проектов, чем разрешено на бесплатном тарифе (${PLAN_LIMITS.free.maxProjects}). Заново создать удалённый проект не получится, пока не оформлена подписка Pro. Оформите подписку, чтобы снять ограничение.`
+    : `Удалить проект «${meta.name}» со всеми страницами?`;
+  if (!confirm(msg)) return;
   await storage.remove(id);
   homeProjects.delete(id);
   carouselPos.delete(id);
