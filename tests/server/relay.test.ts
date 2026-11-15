@@ -426,6 +426,30 @@ describe('лимиты', () => {
     expect(ok.ws.readyState).toBe(WebSocket.OPEN);
   });
 
+  it('образец настроек (.env.example) пускает гостей со всех страниц, куда ведут ссылки-приглашения', async () => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const root = path.join(__dirname, '..', '..');
+    const read = (f: string): string => fs.readFileSync(path.join(root, f), 'utf8');
+    // разбор — как в relay/index.cjs
+    const line = /^RELAY_ALLOWED_ORIGINS=(.*)$/m.exec(read('relay/.env.example'));
+    const allowedOrigins = (line?.[1] ?? '').split(',').map(s => s.trim()).filter(Boolean);
+    // ссылки из приложения ведут на гостевой клиент GitHub Pages (GUEST_BASE в electron/main.cjs),
+    // ссылки автора в браузере — на сайт веб-версии, где он работает (site.yml)
+    const guestBase = /const GUEST_BASE = [^\n]*`(https:\/\/[^`$]+)/.exec(read('electron/main.cjs'))?.[1];
+    const site = /Веб-версия на (https:\/\/\S+)/.exec(read('.github/workflows/site.yml'))?.[1];
+    expect(guestBase && site).toBeTruthy();
+    const pages = [new URL(guestBase!).origin, new URL(site!).origin];
+
+    await start({ allowedOrigins });
+    const { host, opened } = await openRoom();
+    for (const origin of pages) {
+      const g = await connect(`/g/${opened.room}`, { origin });
+      await until(() => host.control.filter(m => m.t === 'join').length === pages.indexOf(origin) + 1);
+      expect(g.ws.readyState, origin).toBe(WebSocket.OPEN);
+    }
+  });
+
   it('гость, который не забирает данные, отключается (4408), комната живёт', async () => {
     await start({ maxBuffer: 64 * 1024, closeTimeoutMs: 100 });
     const { host, opened } = await openRoom();
