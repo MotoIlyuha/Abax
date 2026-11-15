@@ -109,6 +109,48 @@ const optPageId = (v: unknown) => v === undefined || v === null || isId(v);
 function validCursor(m: Rec): boolean {
   return isNum(m.x) && isNum(m.y) && optPageId(m.pageId);
 }
+const MAX_POINTER_PTS = 64;
+const MAX_FLASH_IDS = 2000;
+const POINTER_COLOR = /^#[0-9a-fA-F]{6}$/;
+const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+
+/**
+ * Указка участника (лазер, исчезающий маркер, подсветка объектов) → то, что можно разослать остальным.
+ * Пересобираем сообщение, а не пересылаем присланное: приходит от участника и не заслуживает доверия.
+ */
+export function cleanPointer(m: Rec): Rec | null {
+  if (!isId(m.pageId)) return null;
+  const pts = (): Rec[] | null => {
+    if (!Array.isArray(m.pts) || m.pts.length === 0 || m.pts.length > MAX_POINTER_PTS) return null;
+    const out: Rec[] = [];
+    for (const p of m.pts) {
+      if (!isObj(p) || !isNum(p.x) || !isNum(p.y)) return null;
+      out.push({ x: p.x, y: p.y, p: isNum(p.p) ? clamp01(p.p) : 0.5 });
+    }
+    return out;
+  };
+  if (m.k === 'laser') {
+    const list = pts();
+    if (!list || typeof m.color !== 'string' || !POINTER_COLOR.test(m.color)) return null;
+    return { k: 'laser', pageId: m.pageId, color: m.color, pts: list.map(p => ({ x: p.x, y: p.y })), end: m.end === true };
+  }
+  if (m.k === 'fade') {
+    const list = pts();
+    if (!list || !isId(m.sid) || typeof m.color !== 'string' || !POINTER_COLOR.test(m.color)) return null;
+    if (!isNum(m.width) || m.width <= 0 || m.width > 200) return null;
+    if (m.opacity !== undefined && !isNum(m.opacity)) return null;
+    return {
+      k: 'fade', pageId: m.pageId, sid: m.sid, color: m.color, width: m.width, pts: list, end: m.end === true,
+      ...(m.opacity !== undefined && m.opacity < 1 ? { opacity: clamp01(m.opacity as number) } : {}),
+    };
+  }
+  if (m.k === 'flash') {
+    if (!Array.isArray(m.ids) || m.ids.length === 0 || m.ids.length > MAX_FLASH_IDS || !m.ids.every(isId)) return null;
+    return { k: 'flash', pageId: m.pageId, ids: m.ids };
+  }
+  return null;
+}
+
 /** Без ids — пустое выделение (так клиент снимает выделение). */
 function validSelection(m: Rec): boolean {
   const ids = m.ids ?? [];
@@ -378,6 +420,7 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
       if (m.t === 'task-draft') acceptTaskInput(info, m, 'draft');
       else if (m.t === 'task-submit') acceptTaskInput(info, m, 'submit');
       // реакции и комментарии доступны каждому, кто видит страницу, — и читателю тоже
+      else if (m.t === 'pointer') relayPointer(info, m);
       else if (m.t === 'react') acceptReaction(info, m);
       else if (m.t === 'comment') acceptComment(info, m);
     });
@@ -416,6 +459,17 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
     }
     for (const c of room.clients.values()) {
       if (c.sock !== info.sock) sendTo(c.sock, { t: 'project', project: projectFor(c), by: info.uid });
+    }
+  }
+
+  /** Указка не хранится: чистое сообщение уходит всем остальным, кто видит страницу. */
+  function relayPointer(info: Client, m: Rec): void {
+    const clean = cleanPointer(m);
+    if (!clean || !room.project?.pages.some(p => p.id === clean.pageId)) return;
+    if (room.userPageRight(info.uid, clean.pageId as string) === 'hidden') return;
+    for (const c of room.clients.values()) {
+      if (c === info || room.userPageRight(c.uid, clean.pageId as string) === 'hidden') continue;
+      sendTo(c.sock, { t: 'pointer', ...clean, by: info.uid });
     }
   }
 

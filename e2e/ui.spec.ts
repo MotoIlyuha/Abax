@@ -82,7 +82,10 @@ test.describe('панель цвета и толщины', () => {
     }
     // открытая с панели палитра закрылась вместе с кнопками
     await expect(page.locator('.ctx-panel[data-kind="style"]')).toHaveCount(0);
+    // у лазерной указки цвет выбирается, пресет один
     await board.groupTool('pointer', 'laser');
+    await expect(styleGroup).toBeVisible();
+    await board.groupTool('pointer', 'flash');
     await expect(styleGroup).toBeHidden();
     await board.groupTool('pointer', 'fadePen');
     await expect(styleGroup).toBeVisible();

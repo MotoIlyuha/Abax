@@ -277,7 +277,14 @@ export type GridMode = 'none' | 'dots' | 'square' | 'coord';
  * Точка лазерной указки в экранных координатах с меткой времени.
  * Экранных, а не сцены: при масштабировании след не раздувается вместе с доской.
  */
-export interface LaserPt { x: number; y: number; t: number }
+export interface LaserPt {
+  x: number; y: number; t: number;
+  /** Первая точка нового росчерка: след рвётся здесь, значение — цвет росчерка. */
+  start?: string;
+}
+
+/** Лазерная указка другого участника: точки в координатах сцены (экран у каждого свой), t — время прихода. */
+export interface RemoteLaser { down: boolean; pts: LaserPt[] }
 
 /** Росчерк исчезающего маркера; endT — когда оторвали перо (с этого момента гаснет). */
 export interface FadeStroke { color: string; width: number; opacity?: number; pts: Pt[]; endT: number | null }

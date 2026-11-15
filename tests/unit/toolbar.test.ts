@@ -41,11 +41,11 @@ describe('настройка по умолчанию', () => {
 });
 
 describe('toolUsesColor', () => {
-  it('цвет нужен рисующим инструментам, но не выделению, ластикам, стикеру и указке', () => {
-    for (const id of ['pen', 'highlighter', 'text', 'rect', 'line', 'poly', 'cube', 'fadePen'] as ToolId[]) {
+  it('цвет нужен рисующим инструментам и лазерной указке, но не выделению, ластикам и стикеру', () => {
+    for (const id of ['pen', 'highlighter', 'text', 'rect', 'line', 'poly', 'cube', 'fadePen', 'laser'] as ToolId[]) {
       expect(toolUsesColor(id), id).toBe(true);
     }
-    for (const id of ['select', 'pan', 'eraser', 'partEraser', 'note', 'spread', 'laser', 'flash'] as ToolId[]) {
+    for (const id of ['select', 'pan', 'eraser', 'partEraser', 'note', 'spread', 'flash'] as ToolId[]) {
       expect(toolUsesColor(id), id).toBe(false);
     }
   });

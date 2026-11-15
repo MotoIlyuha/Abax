@@ -5,7 +5,7 @@ import type {
 } from './types';
 import {
   state, update, onChange, undo, redo, canUndo, canRedo, setTool, setGrid, setStyleColor,
-  setStyleWidth, setStyleOpacity, setNoteColor, selectPreset, presetKind, addElement, replaceElements, pushHistory, uid,
+  setStyleWidth, setStyleOpacity, pickTool, setNoteColor, selectPreset, presetKind, addElement, replaceElements, pushHistory, uid,
   applyStyleToSelection, colorElement, setSettings, setView, switchPage, addPage, deletePage, renamePage, setSelection,
   openProject, blankProject, blankPage, projectMeta, groupSelected, ungroupSelected, movePage,
   bringForward, sendBackward, moveSelectionLayer, selectionLayerOrder, pinSelectionLayer, deleteSelected, setSolidSides, removeImageFrames, selectInserted,
@@ -255,7 +255,7 @@ function chooseColor(c: string): void {
     refresh();
     return;
   }
-  if (state.selection.size > 0) applyStyleToSelection({ color: c });
+  if (state.selection.size > 0 && state.tool !== 'laser') applyStyleToSelection({ color: c });
   setStyleColor(c);
   persistStyle();
   // панель не пересобираем: живой HSV-пикер должен остаться на месте;
@@ -941,7 +941,7 @@ function buildToolGroupPanel(cp: CtxPanel, groupId: string): void {
       if (dropClickBlocked()) return;
       // откреплённая панель работает как палитра — остаётся открытой, подсветку обновит refresh()
       if (!cp.detached) closePanel(cp);
-      setTool(id);
+      pickTool(id);
     });
     grid.appendChild(b);
   }
@@ -1031,13 +1031,14 @@ function selectedForStyle(): Element[] {
 
 /** Толщина нужна с тулбара и для выделенных линий/фигур и рамок картинок (у текста и стикеров её нет). */
 function styleNeedsWidth(source: CtxSource): boolean {
-  if (source === 'toolbar') return true;
+  if (source === 'toolbar') return state.tool !== 'laser'; // у указки только цвет
   return selectedForStyle().some(e =>
     e.type === 'stroke' || e.type === 'shape' || e.type === 'poly' || e.type === 'solid' || e.type === 'image');
 }
 
 /** Прозрачность — у всего, кроме стикеров. */
 function styleNeedsOpacity(source: CtxSource): boolean {
+  if (source === 'toolbar' && state.tool === 'laser') return false;
   return source === 'toolbar' || selectedForStyle().some(e => e.type !== 'note');
 }
 
@@ -4288,7 +4289,7 @@ function buildToolbar(): void {
         const group = toolbarGroup(groupId);
         if (!group) return;
         const last = lastGroupTool[groupId];
-        setTool(group.tools.includes(last) ? last : group.tools[0]);
+        pickTool(group.tools.includes(last) ? last : group.tools[0]);
       };
       let suppressClick = false;
       b.addEventListener('pointerdown', e => {
@@ -4341,7 +4342,7 @@ function buildToolbar(): void {
           if (event.type === 'pointerup' && id) {
             suppressClick = true;
             closePanel(panel);
-            setTool(id);
+            pickTool(id);
           } else if (moved || event.type === 'pointercancel') {
             suppressClick = true;
             closePanel(panel);
@@ -4376,7 +4377,7 @@ function buildToolbar(): void {
       }
       b.addEventListener('click', () => {
         if (dropClickBlocked()) return;
-        setTool(id);
+        pickTool(id);
       });
     }
     tools.appendChild(b);
@@ -4418,7 +4419,7 @@ function syncPresetButtons(tb: HTMLElement): void {
   const kind = presetKind(state.tool);
   const set = state.presets[kind];
   const multi = set.list.length > 1;
-  const title = kind === 'pen' ? 'Перо' : kind === 'highlighter' ? 'Маркер' : '';
+  const title = kind === 'pen' ? 'Перо' : kind === 'highlighter' ? 'Маркер' : kind === 'laser' ? 'Указка' : '';
   for (const b of tb.querySelectorAll<HTMLButtonElement>('.style-btn[data-preset]')) {
     const i = Number(b.dataset.preset);
     const preset = set.list[i];
@@ -4430,7 +4431,7 @@ function syncPresetButtons(tb: HTMLElement): void {
     else { delete b.dataset.ctx; b.removeAttribute('id'); }
     b.title = multi ? `${title}: пресет ${i + 1}${current ? ' — цвет и толщина' : ''}` : 'Цвет и толщина';
     // текущий показывает живой стиль (в т.ч. подхваченный из выделения)
-    paintStyleIndicator(b.querySelector<HTMLElement>('.style-ind')!, true, current ? state.style : preset);
+    paintStyleIndicator(b.querySelector<HTMLElement>('.style-ind')!, kind !== 'laser', current ? state.style : preset);
   }
   syncCtxButtons();
   const sp = panelOf('style');

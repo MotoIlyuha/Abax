@@ -5,7 +5,7 @@ import {
   moveItem, movePage, moveSelectionLayer, selectionLayerOrder, pinSelectionLayer, onChange, openProject, projectMeta, pushHistory, redo, renamePage, replaceElements, sendBackward, setGrid,
   presetKind, selectAll, selectPreset, setNoteColor, setSelection, setSettings, setSolidSides, setStyleColor, setStyleWidth, setTool, setView, state,
   switchPage, uid, undo, ungroupSelected, update, clampOpacity, opacityField, parseZoomPercent, removeImageFrames, setStyleOpacity,
-  zoomAtPoint, ZOOM_MAX, ZOOM_MIN, addDraft, deleteDraft, isDraftId, onDraft, realPageId,
+  pickTool, zoomAtPoint, ZOOM_MAX, ZOOM_MIN, addDraft, deleteDraft, isDraftId, onDraft, realPageId,
 } from '../../src/state';
 import type { Element, ImageEl, ShapeEl, SolidEl, TextEl } from '../../src/types';
 
@@ -22,6 +22,7 @@ beforeEach(() => {
   state.presets.pen = { list: [{ color: '#1f2329', width: 4 }, { color: '#bd0a0a', width: 4 }, { color: '#305bab', width: 4 }], active: 0 };
   state.presets.highlighter = { list: [{ color: '#ffdc4a', width: 4 }, { color: '#2dc75c', width: 4 }, { color: '#ff6464', width: 4 }], active: 0 };
   state.presets.other = { list: [{ color: '#1f2329', width: 4 }], active: 0 };
+  state.presets.laser = { list: [{ color: '#ff2d2d', width: 4 }], active: 0 };
   state.style = { color: '#1f2329', width: 4 };
 });
 
@@ -788,5 +789,42 @@ describe('черновики', () => {
   it('не считаются страницами проекта в метаданных', () => {
     addDraft();
     expect(projectMeta(state.project).pageCount).toBe(1);
+  });
+});
+
+describe('выбор инструмента и указка', () => {
+  it('выбор любого другого инструмента снимает выделение', () => {
+    for (const tool of ['pan', 'pen', 'laser', 'rect', 'eraser'] as const) {
+      setTool('select');
+      addElement(rect('a'));
+      setSelection(['a']);
+      pickTool(tool);
+      expect(state.tool, tool).toBe(tool);
+      expect([...state.selection], tool).toEqual([]);
+    }
+  });
+
+  it('повторный выбор того же инструмента и «Задание» выделения не трогают, программный setTool — тоже', () => {
+    setTool('select');
+    addElement(rect('a'));
+    setSelection(['a']);
+    pickTool('select');
+    expect([...state.selection]).toEqual(['a']);
+    pickTool('task');
+    expect([...state.selection]).toEqual(['a']);
+    setTool('rect');
+    expect([...state.selection]).toEqual(['a']);
+  });
+
+  it('у лазерной указки свой цвет, по умолчанию красный, и он не меняет цвета других инструментов', () => {
+    setTool('laser');
+    expect(presetKind('laser')).toBe('laser');
+    expect(state.style.color).toBe('#ff2d2d');
+    setStyleColor('#2dc75c');
+    expect(state.presets.laser.list[0].color).toBe('#2dc75c');
+    setTool('rect');
+    expect(state.style.color).toBe('#1f2329');
+    setTool('laser');
+    expect(state.style.color).toBe('#2dc75c');
   });
 });

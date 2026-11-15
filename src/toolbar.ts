@@ -68,8 +68,8 @@ export const TOOL_DEFS: ToolDef[] = [
 
 const DEF_BY_ID = new Map(TOOL_DEFS.map(t => [t.id, t]));
 
-/** Инструменты без цвета: у стикеров своя палитра, указка и подсветка — фиксированного цвета. */
-const COLORLESS_TOOLS = new Set<ToolId>(['select', 'pan', 'eraser', 'partEraser', 'note', 'task', 'spread', 'laser', 'flash']);
+/** Инструменты без цвета: у стикеров своя палитра, подсветка — фиксированного цвета (у лазерной указки цвет выбирается). */
+const COLORLESS_TOOLS = new Set<ToolId>(['select', 'pan', 'eraser', 'partEraser', 'note', 'task', 'spread', 'flash']);
 
 /** Нужен ли инструменту выбор цвета и толщины на панели инструментов. */
 export function toolUsesColor(id: ToolId): boolean {

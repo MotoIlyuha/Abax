@@ -154,6 +154,37 @@ test.describe('браузерный хост и патчи', () => {
     await guest.close();
   });
 
+  test('указка автора — лазер, исчезающий маркер и подсветка — видна гостю', async ({ board, page, context }) => {
+    await board.open();
+    await board.rect(400, 300, 500, 400);
+    await startBrowserRoom(page, 'ptr1');
+    const guest = await joinLocal(context, 'ptr1', 'Маша');
+    await expect.poll(() => guest.evaluate(() => (window as any).__doska.state.board.elements.length)).toBe(1);
+    const seen = () => guest.evaluate(() => {
+      const s = (window as any).__doska.state;
+      return { lasers: s.remoteLasers.size as number, fades: s.fadeStrokes.length as number, flashes: s.flashes.length as number };
+    });
+
+    // лазер: цвет и след доходят, только пока кнопка зажата
+    await board.groupTool('pointer', 'laser');
+    await board.move({ x: 300, y: 300 });
+    await board.move({ x: 700, y: 500 }, 10);
+    expect((await seen()).lasers).toBe(0);
+    await board.drag([{ x: 300, y: 300 }, { x: 700, y: 500 }], { steps: 10 });
+    await expect.poll(async () => (await seen()).lasers).toBe(1);
+
+    await board.groupTool('pointer', 'fadePen');
+    await board.drag([{ x: 300, y: 600 }, { x: 700, y: 650 }]);
+    await expect.poll(async () => (await seen()).fades).toBeGreaterThan(0);
+
+    await board.groupTool('pointer', 'flash');
+    await board.click({ x: 450, y: 350 });
+    await expect.poll(async () => (await seen()).flashes).toBe(1);
+    // доска гостя от указки не меняется
+    expect(await guest.evaluate(() => (window as any).__doska.state.board.elements.length)).toBe(1);
+    await guest.close();
+  });
+
   test('через интернет из браузера: без адреса — «Не указан», после ввода — ссылка, гость видит доску', async ({ board, page, browser }) => {
     const relay = await createRelay({ port: 0, host: '127.0.0.1', statsIntervalMs: 0, log: () => {} });
     try {

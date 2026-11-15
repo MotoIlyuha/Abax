@@ -1,5 +1,5 @@
 import type {
-  BoardSettings, Camera, Element, PlanTier, FadeStroke, Flash, GridMode, Guide, LaserPt, NoteEl, Page, Project, ProjectMeta, Pt, ShapeEl, SolidKind,
+  BoardSettings, Camera, Element, PlanTier, FadeStroke, Flash, GridMode, Guide, LaserPt, RemoteLaser, NoteEl, Page, Project, ProjectMeta, Pt, ShapeEl, SolidKind,
   TextAlign, TextEl, TextVAlign, ToolId,
 } from './types';
 import { hasBaseSides, SIDES_MAX, SIDES_MIN, solidSides } from './solid';
@@ -65,12 +65,12 @@ function setOpacityOf(s: StyleValue, v: number): void {
   if (v >= 1) delete s.opacity;
   else s.opacity = v;
 }
-export type PresetKind = 'pen' | 'highlighter' | 'other';
+export type PresetKind = 'pen' | 'highlighter' | 'laser' | 'other';
 export interface PresetSet { list: StyleValue[]; active: number }
 
-/** Перо и маркер держат собственные пресеты, все прочие инструменты делят общий. */
+/** Перо, маркер и указка держат собственные пресеты, все прочие инструменты делят общий. */
 export function presetKind(tool: ToolId): PresetKind {
-  return tool === 'pen' || tool === 'highlighter' ? tool : 'other';
+  return tool === 'pen' || tool === 'highlighter' || tool === 'laser' ? tool : 'other';
 }
 
 export interface AppState {
@@ -117,6 +117,10 @@ export interface AppState {
   hover: { x: number; y: number } | null;
   /** След лазерной указки (экранные координаты + метка времени). */
   laserPts: LaserPt[];
+  /** Кнопка зажата — указка оставляет след и тянет его к курсору. */
+  laserDown: boolean;
+  /** Указки других участников совместной работы по номеру участника. */
+  remoteLasers: Map<number, RemoteLaser>;
   /** Росчерки исчезающего маркера (координаты сцены). */
   fadeStrokes: FadeStroke[];
   /** Активные подсветки контуров объектов. */
@@ -166,6 +170,7 @@ export const state: AppState = {
   presets: {
     pen: { list: [{ color: '#1f2329', width: 4 }, { color: '#bd0a0a', width: 4 }, { color: '#305bab', width: 4 }], active: 0 },
     highlighter: { list: [{ color: '#ffdc4a', width: 4 }, { color: '#2dc75c', width: 4 }, { color: '#ff6464', width: 4 }], active: 0 },
+    laser: { list: [{ color: '#ff2d2d', width: 4 }], active: 0 },
     other: { list: [{ color: '#1f2329', width: 4 }], active: 0 },
   },
   noteColor: '#ffe066',
@@ -192,6 +197,8 @@ export const state: AppState = {
   spread: null,
   hover: null,
   laserPts: [],
+  laserDown: false,
+  remoteLasers: new Map(),
   fadeStrokes: [],
   flashes: [],
   dirty: false,
@@ -435,6 +442,15 @@ function syncStyleFromSelection(): void {
   }
   const opacities = new Set(inked.map(e => e.opacity ?? 1));
   if (opacities.size === 1) setOpacityOf(state.style, inked[0].opacity ?? 1);
+}
+
+/**
+ * Выбор инструмента на панели или клавишей: выделение снимается. Само «Задание» — кнопка, а не режим,
+ * поэтому выделение не трогает. Программные переключения (после вставки и т. п.) идут через setTool.
+ */
+export function pickTool(tool: ToolId): void {
+  if (tool !== state.tool && tool !== 'task' && state.selection.size > 0) setSelection([]);
+  setTool(tool);
 }
 
 export function setTool(tool: ToolId): void {

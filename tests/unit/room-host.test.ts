@@ -578,3 +578,61 @@ describe('реакции и комментарии от участников', (
     expect(hub.room.project!.pages[0].comments).toHaveLength(1);
   });
 });
+
+describe('указка участников', () => {
+  const laser = (extra: Msg = {}) => ({ t: 'pointer', k: 'laser', pageId: 'pg1', color: '#ff2d2d', pts: [{ x: 1, y: 2 }, { x: 3, y: 4 }], ...extra });
+
+  it('след уходит всем остальным с номером отправителя, но не ему самому и не в проект', () => {
+    const { hub, host, join } = setup({ plan: 'pro' });
+    const a = join('А'); const b = join('Б');
+    for (const s of [host, a.s, b.s]) s.sent.length = 0;
+    a.s.recv(laser({ end: true }));
+    for (const s of [host, b.s]) {
+      expect(s.last('pointer')).toEqual({ t: 'pointer', k: 'laser', pageId: 'pg1', color: '#ff2d2d', pts: [{ x: 1, y: 2 }, { x: 3, y: 4 }], end: true, by: a.uid });
+    }
+    expect(a.s.last('pointer')).toBeUndefined();
+    expect(hub.room.project!.pages[0].elements).toEqual([]);
+    expect(b.s.last('patch')).toBeUndefined();
+  });
+
+  it('читатель тоже может показывать указкой; исчезающий маркер и подсветка доходят', () => {
+    const { host, join } = setup({ plan: 'pro' });
+    const g = join('Ученик');
+    host.sent.length = 0;
+    g.s.recv({ t: 'pointer', k: 'fade', pageId: 'pg1', sid: 's1', color: '#305bab', width: 12.8, opacity: 0.5, pts: [{ x: 0, y: 0, p: 2 }] });
+    expect(host.last('pointer')).toMatchObject({ k: 'fade', sid: 's1', color: '#305bab', width: 12.8, opacity: 0.5, by: g.uid, pts: [{ x: 0, y: 0, p: 1 }] });
+    g.s.recv({ t: 'pointer', k: 'flash', pageId: 'pg1', ids: ['a', 'b'] });
+    expect(host.last('pointer')).toMatchObject({ k: 'flash', ids: ['a', 'b'], by: g.uid });
+  });
+
+  it('скрытая страница указку не получает и не принимает', () => {
+    const { hub, host, join } = setup({ plan: 'pro' });
+    const a = join('А'); const b = join('Б');
+    hub.setRights(b.uid, { pages: { pg2: 'hidden' } });
+    for (const s of [host, a.s, b.s]) s.sent.length = 0;
+    a.s.recv(laser({ pageId: 'pg2' }));
+    expect(host.last('pointer')).toBeDefined();
+    expect(b.s.last('pointer')).toBeUndefined();
+    b.s.recv(laser({ pageId: 'pg2' }));
+    expect(a.s.sent.filter(m => m.t === 'pointer')).toEqual([]); // его указка на скрытой странице не принята
+  });
+
+  it('мусор отбрасывается: цвет, число точек, неизвестная страница, чужие поля не пересылаются', () => {
+    const { host, join } = setup({ plan: 'pro' });
+    const g = join('Ученик');
+    host.sent.length = 0;
+    const bad: Msg[] = [
+      laser({ color: 'red' }), laser({ color: '#ff2d2d;x' }), laser({ pts: [] }), laser({ pts: [{ x: 1, y: NaN }] }),
+      laser({ pts: Array.from({ length: 65 }, () => ({ x: 1, y: 1 })) }), laser({ pageId: 'нет' }), laser({ pageId: '' }),
+      { t: 'pointer', k: 'fade', pageId: 'pg1', sid: 's', color: '#000000', width: 0, pts: [{ x: 1, y: 1 }] },
+      { t: 'pointer', k: 'fade', pageId: 'pg1', sid: 's', color: '#000000', width: 500, pts: [{ x: 1, y: 1 }] },
+      { t: 'pointer', k: 'fade', pageId: 'pg1', color: '#000000', width: 4, pts: [{ x: 1, y: 1 }] },
+      { t: 'pointer', k: 'flash', pageId: 'pg1', ids: [] }, { t: 'pointer', k: 'flash', pageId: 'pg1', ids: [1] },
+      { t: 'pointer', k: 'другое', pageId: 'pg1' },
+    ];
+    for (const m of bad) g.s.recv(m);
+    expect(host.all('pointer')).toEqual([]);
+    g.s.recv(laser({ by: 99, evil: '<img>', pts: [{ x: 1, y: 2, extra: 1 }] }));
+    expect(host.last('pointer')).toEqual({ t: 'pointer', k: 'laser', pageId: 'pg1', color: '#ff2d2d', pts: [{ x: 1, y: 2 }], end: false, by: g.uid });
+  });
+});

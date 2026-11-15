@@ -724,3 +724,87 @@ describe('реакции и комментарии через хаб', () => {
     expect(server.room.project!.pages[0].comments![0].messages).toHaveLength(2);
   });
 });
+
+describe('указка в совместной работе', () => {
+  async function pair() {
+    await collab.startCollab(base, false, 'Ученик');
+    await until(() => st.state.project.id === 'proj');
+    await until(() => collab.collabActive());
+    const other = await peer(`${base}&host=1&key=${encodeURIComponent(server.hostKey)}`);
+    peers.push(other);
+    await until(() => last(other, 'init'));
+    other.inbox.length = 0;
+    return other;
+  }
+
+  it('мой лазер, маркер и подсветка уходят остальным пачками; конец росчерка помечен', async () => {
+    const other = await pair();
+    collab.sendLaser([{ x: 1, y: 1, p: 0.5 }], '#2dc75c', false);
+    collab.sendLaser([{ x: 2, y: 2, p: 0.5 }, { x: 3, y: 3, p: 0.5 }], '#2dc75c', false);
+    collab.sendLaser([], '#2dc75c', true);
+    await until(() => other.inbox.some(m => m.t === 'pointer' && m.end));
+    const msgs = other.inbox.filter(m => m.t === 'pointer');
+    expect(msgs.flatMap(m => m.pts)).toEqual([{ x: 1, y: 1 }, { x: 2, y: 2 }, { x: 3, y: 3 }]);
+    expect(msgs.every(m => m.k === 'laser' && m.color === '#2dc75c' && m.pageId === 'pg1')).toBe(true);
+    expect(msgs.filter(m => m.end)).toHaveLength(1);
+
+    other.inbox.length = 0;
+    collab.sendFadeStroke('s1', { color: '#305bab', width: 12.8 }, [{ x: 5, y: 5, p: 0.5 }], false);
+    collab.sendFadeStroke('s1', { color: '#305bab', width: 12.8 }, [], true);
+    collab.sendFlash(['a']);
+    await until(() => other.inbox.some(m => m.k === 'flash') && other.inbox.some(m => m.k === 'fade' && m.end));
+    expect(other.inbox.filter(m => m.k === 'fade').flatMap(m => m.pts)).toEqual([{ x: 5, y: 5, p: 0.5 }]); // на конце ничего не дублируется
+    expect(last(other, 'pointer')).toBeDefined();
+  });
+
+  it('вне комнаты ничего не уходит', () => {
+    expect(() => { collab.sendLaser([{ x: 1, y: 1, p: 0.5 }], '#ff2d2d', true); collab.sendFlash(['a']); }).not.toThrow();
+  });
+
+  it('чужой лазер ложится в state.remoteLasers с цветом росчерка и рвётся между росчерками', async () => {
+    const other = await pair();
+    const send = (m: Msg) => other.ws.send(JSON.stringify({ t: 'pointer', pageId: 'pg1', ...m }));
+    send({ k: 'laser', color: '#2dc75c', pts: [{ x: 10, y: 20 }, { x: 11, y: 21 }] });
+    await until(() => st.state.remoteLasers.size === 1);
+    const [uid, r] = [...st.state.remoteLasers][0];
+    expect(typeof uid).toBe('number');
+    expect(r.down).toBe(true);
+    expect(r.pts.map(p => p.start)).toEqual(['#2dc75c', undefined]);
+    send({ k: 'laser', color: '#2dc75c', pts: [{ x: 12, y: 22 }], end: true });
+    await until(() => st.state.remoteLasers.get(uid)!.down === false && st.state.remoteLasers.get(uid)!.pts.length === 3);
+    send({ k: 'laser', color: '#ff0000', pts: [{ x: 50, y: 50 }] });
+    await until(() => st.state.remoteLasers.get(uid)!.pts.length === 4);
+    expect(st.state.remoteLasers.get(uid)!.pts.map(p => p.start)).toEqual(['#2dc75c', undefined, undefined, '#ff0000']);
+  });
+
+  it('чужой маркер дописывается в один росчерк и гаснет после конца; подсветка — только на этой странице', async () => {
+    const other = await pair();
+    const send = (m: Msg) => other.ws.send(JSON.stringify({ t: 'pointer', pageId: 'pg1', ...m }));
+    send({ k: 'fade', sid: 's', color: '#305bab', width: 12.8, opacity: 0.5, pts: [{ x: 1, y: 1 }] });
+    send({ k: 'fade', sid: 's', color: '#305bab', width: 12.8, opacity: 0.5, pts: [{ x: 2, y: 2 }, { x: 3, y: 3 }] });
+    await until(() => st.state.fadeStrokes.length === 1 && st.state.fadeStrokes[0].pts.length === 3);
+    expect(st.state.fadeStrokes[0]).toMatchObject({ color: '#305bab', width: 12.8, opacity: 0.5, endT: null });
+    send({ k: 'fade', sid: 's', color: '#305bab', width: 12.8, pts: [{ x: 4, y: 4 }], end: true });
+    await until(() => st.state.fadeStrokes[0].endT !== null);
+    expect(st.state.fadeStrokes).toHaveLength(1);
+
+    send({ k: 'flash', ids: ['a'] });
+    await until(() => st.state.flashes.length === 1);
+    expect(st.state.flashes[0].ids).toEqual(['a']);
+    st.state.flashes = [];
+    st.switchPage('pg2');
+    send({ k: 'flash', ids: ['a'] });
+    send({ k: 'laser', color: '#2dc75c', pts: [{ x: 1, y: 1 }] });
+    await new Promise(r => setTimeout(r, 150));
+    expect(st.state.flashes).toEqual([]);
+    expect(st.state.remoteLasers.size).toBe(0); // чужая страница — указка не рисуется
+  });
+
+  it('при выходе из комнаты чужие указки пропадают', async () => {
+    const other = await pair();
+    other.ws.send(JSON.stringify({ t: 'pointer', pageId: 'pg1', k: 'laser', color: '#2dc75c', pts: [{ x: 1, y: 1 }] }));
+    await until(() => st.state.remoteLasers.size === 1);
+    collab.stopCollab();
+    expect(st.state.remoteLasers.size).toBe(0);
+  });
+});

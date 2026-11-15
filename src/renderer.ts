@@ -1,4 +1,4 @@
-import type { Camera, Element, GridMode, ImageEl, Page, ShapeEl, SolidEl, TaskEl } from './types';
+import type { Camera, Element, GridMode, ImageEl, LaserPt, Page, ShapeEl, SolidEl, TaskEl } from './types';
 import { EXAM_LABELS, SUBJECT_LABELS, TASK_STATUS_LABEL, taskStatus } from './task-element';
 import { foreignSelections, readOnly } from './collab';
 import { PILL_H, layoutPills, layoutPins } from './annotations';
@@ -76,9 +76,9 @@ function hexA(hex: string, a: number): string {
 
 const HIGHLIGHTER_ALPHA = 0.42;
 const GRID_STEP = 40; // юниты сцены
-const LASER_TTL = 550; // мс жизни точки следа указки
+const LASER_TTL = 700; // мс жизни точки следа указки
 const LASER_R = 4.5; // полуширина следа у головы, px экрана
-const LASER_COLOR = '#ff2d2d';
+const LASER_COLOR = '#ff2d2d'; // цвет указки по умолчанию
 const FADE_MS = 650; // мс угасания росчерка исчезающего маркера
 const FLASH_MS = 1400; // мс подсветки контура
 const FLASH_IN = 140;
@@ -1683,47 +1683,128 @@ function taperPath(xs: number[], ys: number[], hw: number[]): Path2D {
   return path;
 }
 
-/** Лазерная указка: светящийся след, который сужается и гаснет к хвосту. */
+/** Разбивает точки на росчерки: новый начинается с точки, у которой задан start. */
+function laserStrokes(pts: LaserPt[]): LaserPt[][] {
+  const out: LaserPt[][] = [];
+  for (const p of pts) {
+    if (p.start !== undefined || out.length === 0) out.push([]);
+    out[out.length - 1].push(p);
+  }
+  return out;
+}
+
+/** Цвет, смешанный с белым: сердцевина следа светится ярче его краёв. */
+function lighten(hex: string, t: number): string {
+  const n = parseInt(hex.slice(1, 7), 16);
+  const mix = (c: number) => Math.round(c + (255 - c) * t);
+  return `rgb(${mix((n >> 16) & 255)},${mix((n >> 8) & 255)},${mix(n & 255)})`;
+}
+
+/**
+ * Сглаживание следа: лёгкий фильтр по соседним точкам убирает дрожь руки, а сплайн Катмулла — Рома
+ * через них превращает ломаную в плавную кривую (иначе на быстром движении видны углы).
+ */
+function smoothTrail(xs: number[], ys: number[], ks: number[]): { xs: number[]; ys: number[]; ks: number[] } {
+  const n = xs.length;
+  if (n < 3) return { xs, ys, ks };
+  let px = xs, py = ys;
+  for (let pass = 0; pass < 2; pass++) {
+    const nx = px.slice(), ny = py.slice();
+    for (let i = 1; i < n - 1; i++) {
+      nx[i] = (px[i - 1] + 2 * px[i] + px[i + 1]) / 4;
+      ny[i] = (py[i - 1] + 2 * py[i] + py[i + 1]) / 4;
+    }
+    px = nx; py = ny;
+  }
+  const ox: number[] = [], oy: number[] = [], ok: number[] = [];
+  for (let i = 0; i < n - 1; i++) {
+    const i0 = Math.max(0, i - 1), i3 = Math.min(n - 1, i + 2);
+    const steps = Math.min(8, Math.max(1, Math.ceil(Math.hypot(px[i + 1] - px[i], py[i + 1] - py[i]) / 3)));
+    for (let s = 0; s < steps; s++) {
+      const t = s / steps, t2 = t * t, t3 = t2 * t;
+      const cr = (a: number, b: number, c: number, d: number) =>
+        0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3);
+      ox.push(cr(px[i0], px[i], px[i + 1], px[i3]));
+      oy.push(cr(py[i0], py[i], py[i + 1], py[i3]));
+      ok.push(ks[i] + (ks[i + 1] - ks[i]) * t);
+    }
+  }
+  ox.push(px[n - 1]); oy.push(py[n - 1]); ok.push(ks[n - 1]);
+  return { xs: ox, ys: oy, ks: ok };
+}
+
+/** Светящийся след одного росчерка: сужается и гаснет к хвосту. pts — экранные точки, head — куда тянуть голову. */
+function drawLaserTrail(
+  ctx: CanvasRenderingContext2D, pts: { x: number; y: number; t: number }[], now: number, color: string,
+  head: { x: number; y: number } | null,
+): void {
+  if (pts.length === 0) return;
+  const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+  const ks = pts.map(p => Math.pow(Math.max(0, 1 - (now - p.t) / LASER_TTL), 0.7));
+  // хвост дотягиваем до курсора, чтобы голова не отставала
+  if (head) { xs.push(head.x); ys.push(head.y); ks.push(1); }
+  if (xs.length < 2) return;
+  // свечение — широкий полупрозрачный ореол, а не shadowBlur: размытие
+  // считается по габариту пути и на длинном следе стоит слишком дорого
+  const s = smoothTrail(xs, ys, ks);
+  ctx.fillStyle = hexA(color, 0.22);
+  ctx.fill(taperPath(s.xs, s.ys, s.ks.map(v => v * LASER_R * 2.2)));
+  ctx.fillStyle = color;
+  ctx.fill(taperPath(s.xs, s.ys, s.ks.map(v => v * LASER_R)));
+  ctx.fillStyle = lighten(color, 0.85);
+  ctx.fill(taperPath(s.xs, s.ys, s.ks.map(v => v * LASER_R * 0.38)));
+}
+
+/** Голова указки: яркая точка с ореолом. */
+function drawLaserHead(ctx: CanvasRenderingContext2D, x: number, y: number, color: string): void {
+  ctx.fillStyle = hexA(color, 0.25);
+  ctx.beginPath();
+  ctx.arc(x, y, LASER_R * 2.4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(x, y, LASER_R + 1, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.arc(x, y, 2.2, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+/**
+ * Лазерная указка. След появляется, только пока кнопка зажата; без нажатия под курсором — одна голова.
+ * Указки других участников приходят в координатах сцены и переводятся в экранные текущей камерой.
+ */
 function drawLaser(ctx: CanvasRenderingContext2D): void {
   const now = performance.now();
   const alive = state.laserPts.filter(p => now - p.t < LASER_TTL);
   if (alive.length !== state.laserPts.length) state.laserPts = alive;
+  const remote = state.remoteLasers;
+  const cam = state.camera;
+  let busy = alive.length > 0;
   const hover = state.tool === 'laser' ? state.hover : null;
-  if (alive.length === 0 && !hover) return;
-  // свечение — широкий полупрозрачный ореол, а не shadowBlur: размытие
-  // считается по габариту пути и на длинном следе стоит слишком дорого
-  if (alive.length > 1) {
-    const xs: number[] = [], ys: number[] = [], k: number[] = [];
-    for (const p of alive) {
-      xs.push(p.x);
-      ys.push(p.y);
-      k.push(Math.pow(1 - (now - p.t) / LASER_TTL, 0.7));
-    }
-    // хвост дотягиваем до курсора, чтобы голова не отставала
-    if (hover) { xs.push(hover.x); ys.push(hover.y); k.push(1); }
-    ctx.fillStyle = hexA(LASER_COLOR, 0.22);
-    ctx.fill(taperPath(xs, ys, k.map(v => v * LASER_R * 2.2)));
-    ctx.fillStyle = LASER_COLOR;
-    ctx.fill(taperPath(xs, ys, k.map(v => v * LASER_R)));
-    ctx.fillStyle = '#ffe3e3';
-    ctx.fill(taperPath(xs, ys, k.map(v => v * LASER_R * 0.38)));
+  const mine = state.tool === 'laser' ? state.style.color : LASER_COLOR;
+  const strokes = laserStrokes(alive);
+  strokes.forEach((seg, i) => {
+    const live = state.laserDown && i === strokes.length - 1;
+    drawLaserTrail(ctx, seg, now, seg[0].start ?? mine, live ? hover : null);
+  });
+  for (const [uid, r] of remote) {
+    r.pts = r.pts.filter(p => now - p.t < LASER_TTL);
+    if (r.pts.length === 0 && !r.down) { remote.delete(uid); continue; }
+    busy = true;
+    const screen = r.pts.map(p => ({ x: (p.x - cam.x) * cam.zoom, y: (p.y - cam.y) * cam.zoom, t: p.t, start: p.start }));
+    const segs = laserStrokes(screen);
+    segs.forEach(seg => drawLaserTrail(ctx, seg, now, seg[0].start ?? LASER_COLOR, null));
+    const tip = screen[screen.length - 1];
+    if (r.down && tip) drawLaserHead(ctx, tip.x, tip.y, segs[segs.length - 1][0].start ?? LASER_COLOR);
   }
-  const head = hover ?? alive[alive.length - 1];
-  if (head) {
-    ctx.fillStyle = hexA(LASER_COLOR, 0.25);
-    ctx.beginPath();
-    ctx.arc(head.x, head.y, LASER_R * 2.4, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = LASER_COLOR;
-    ctx.beginPath();
-    ctx.arc(head.x, head.y, LASER_R + 1, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.arc(head.x, head.y, 2.2, 0, Math.PI * 2);
-    ctx.fill();
+  if (hover) drawLaserHead(ctx, hover.x, hover.y, mine);
+  else if (state.laserDown && alive.length > 0) {
+    const tip = alive[alive.length - 1];
+    drawLaserHead(ctx, tip.x, tip.y, strokes[strokes.length - 1][0].start ?? mine);
   }
-  if (alive.length > 0) requestRender(); // гоним кадры, пока след гаснет
+  if (busy) requestRender(); // гоним кадры, пока след гаснет
 }
 
 export const partEraseRadius = PART_ERASE_R;

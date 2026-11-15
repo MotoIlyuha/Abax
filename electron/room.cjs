@@ -116,6 +116,48 @@ const optPageId = v => v === undefined || v === null || isId(v);
 function validCursor(m) {
   return isNum(m.x) && isNum(m.y) && optPageId(m.pageId);
 }
+const MAX_POINTER_PTS = 64;
+const MAX_FLASH_IDS = 2000;
+const POINTER_COLOR = /^#[0-9a-fA-F]{6}$/;
+const clamp01 = v => Math.min(1, Math.max(0, v));
+
+/**
+ * Указка участника (лазер, исчезающий маркер, подсветка объектов) → то, что можно разослать остальным.
+ * Зеркало cleanPointer из src/room-host.ts (паритет — tests/server/room-pointer.test.ts).
+ */
+function cleanPointer(m) {
+  if (!isId(m.pageId)) return null;
+  const pts = () => {
+    if (!Array.isArray(m.pts) || m.pts.length === 0 || m.pts.length > MAX_POINTER_PTS) return null;
+    const out = [];
+    for (const p of m.pts) {
+      if (!isObj(p) || !isNum(p.x) || !isNum(p.y)) return null;
+      out.push({ x: p.x, y: p.y, p: isNum(p.p) ? clamp01(p.p) : 0.5 });
+    }
+    return out;
+  };
+  if (m.k === 'laser') {
+    const list = pts();
+    if (!list || typeof m.color !== 'string' || !POINTER_COLOR.test(m.color)) return null;
+    return { k: 'laser', pageId: m.pageId, color: m.color, pts: list.map(p => ({ x: p.x, y: p.y })), end: m.end === true };
+  }
+  if (m.k === 'fade') {
+    const list = pts();
+    if (!list || !isId(m.sid) || typeof m.color !== 'string' || !POINTER_COLOR.test(m.color)) return null;
+    if (!isNum(m.width) || m.width <= 0 || m.width > 200) return null;
+    if (m.opacity !== undefined && !isNum(m.opacity)) return null;
+    return {
+      k: 'fade', pageId: m.pageId, sid: m.sid, color: m.color, width: m.width, pts: list, end: m.end === true,
+      ...(m.opacity !== undefined && m.opacity < 1 ? { opacity: clamp01(m.opacity) } : {}),
+    };
+  }
+  if (m.k === 'flash') {
+    if (!Array.isArray(m.ids) || m.ids.length === 0 || m.ids.length > MAX_FLASH_IDS || !m.ids.every(isId)) return null;
+    return { k: 'flash', pageId: m.pageId, ids: m.ids };
+  }
+  return null;
+}
+
 /** Без ids — пустое выделение (так клиент снимает выделение). */
 function validSelection(m) {
   const ids = m.ids ?? [];
@@ -276,6 +318,7 @@ function createRoomHub({ code, openEdit = false }) {
       if (m.t === 'task-draft') { acceptTaskInput(info, m, 'draft'); return; }
       if (m.t === 'task-submit') { acceptTaskInput(info, m, 'submit'); return; }
       // реакции и комментарии доступны каждому, кто видит страницу, — и читателю тоже
+      if (m.t === 'pointer') { relayPointer(info, m); return; }
       if (m.t === 'react') { acceptReaction(info, m); return; }
       if (m.t === 'comment') { acceptComment(info, m); return; }
       if (m.t === 'project' && validProject(m.project)) {
@@ -370,6 +413,17 @@ function createRoomHub({ code, openEdit = false }) {
     commitPatch({ t: 'patch', pageId: page.id, rev: 0, ops: [{ op: 'put', el: next }] }, -1, null);
   }
 
+  /** Указка не хранится: чистое сообщение уходит всем остальным, кто видит страницу. */
+  function relayPointer(info, m) {
+    const clean = cleanPointer(m);
+    if (!clean || !(room.project && room.project.pages.some(p => p.id === clean.pageId))) return;
+    if (room.userPageRight(info.uid, clean.pageId) === 'hidden') return;
+    for (const c of room.clients.values()) {
+      if (c === info || room.userPageRight(c.uid, clean.pageId) === 'hidden') continue;
+      sendTo(c.sock, { t: 'pointer', ...clean, by: info.uid });
+    }
+  }
+
   /** Реакция участника на элемент: ставится или снимается; результат — правка элемента от хаба (её получают все). */
   function acceptReaction(info, m) {
     if (!isId(m.pageId) || !isId(m.elId) || typeof m.emoji !== 'string') return;
@@ -441,4 +495,4 @@ function createRoomHub({ code, openEdit = false }) {
   };
 }
 
-module.exports = { createRoomHub, Room, PROTO, MAX_EDITORS, MAX_ID, MAX_SELECTION, MAX_NAME, normalizeName };
+module.exports = { createRoomHub, Room, PROTO, MAX_EDITORS, MAX_ID, MAX_SELECTION, MAX_NAME, normalizeName, cleanPointer };

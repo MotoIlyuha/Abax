@@ -439,11 +439,43 @@ test.describe('стереометрия', () => {
 });
 
 test.describe('указка', () => {
+  test('выбор инструмента на панели и клавишей снимает выделение', async ({ board, page }) => {
+    await board.rect(400, 300, 500, 400);
+    await board.tool('v');
+    await board.click({ x: 450, y: 350 });
+    expect((await board.state()).selection).toHaveLength(1);
+    await page.locator('#toolbar .tool[data-tool="pan"]').click();
+    expect((await board.state()).selection).toHaveLength(0);
+    await board.tool('v');
+    await board.click({ x: 450, y: 350 });
+    expect((await board.state()).selection).toHaveLength(1);
+    await board.groupTool('pointer', 'laser');
+    expect((await board.state()).selection).toHaveLength(0);
+  });
+
+  test('лазер: красный по умолчанию, цвет меняется, а след рисуется только при нажатии', async ({ board, page }) => {
+    await board.groupTool('pointer', 'laser');
+    expect((await board.state()).style.color).toBe('#ff2d2d');
+    await page.locator('#btn-style').click();
+    await expect(page.locator('.ctx-panel[data-kind="style"] .ctx-width')).toHaveCount(0); // толщины у указки нет
+    await page.locator('.ctx-panel[data-kind="style"] .ctx-swatches:not(.custom) .ctx-swatch').nth(3).click();
+    const color = (await board.state()).style.color;
+    expect(color).not.toBe('#ff2d2d');
+    // остальные инструменты цвет указки не получили
+    await board.tool('r');
+    expect((await board.state()).style.color).not.toBe(color);
+    await board.groupTool('pointer', 'laser');
+    expect((await board.state()).style.color).toBe(color);
+  });
+
   test('лазер, исчезающий маркер и подсветка не меняют доску', async ({ board }) => {
     const r = await board.rect(400, 300, 500, 400);
     await board.groupTool('pointer', 'laser');
+    // без нажатия следа нет — только голова под курсором
     await board.move({ x: 300, y: 300 });
     await board.move({ x: 700, y: 500 }, 10);
+    expect((await board.state()).laserPts).toBe(0);
+    await board.drag([{ x: 300, y: 300 }, { x: 700, y: 500 }], { steps: 10 });
     expect((await board.state()).laserPts).toBeGreaterThan(3);
 
     await board.groupTool('pointer', 'fadePen');

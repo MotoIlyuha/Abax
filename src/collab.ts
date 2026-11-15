@@ -1,4 +1,4 @@
-import type { Element, GridMode, Page, Project, ProjectMeta } from './types';
+import type { Element, FadeStroke, GridMode, Page, Project, ProjectMeta, Pt } from './types';
 import { state, openProject, setSelection, isDraftId, onDraft, onChange, touchProject, update } from './state';
 import { MAX_PATCH_OPS, applyBoardPatch, diffElements, isBoardPatch, type BoardPatch } from './delta';
 import { gestureActive } from './gesture';
@@ -116,11 +116,14 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
         if ((m.by as number) !== myUserId && isBoardPatch(m)) receivePatch(m);
       } else if (m.t === 'comments') {
         applyIncomingComments(m.pageId, m.comments);
+      } else if (m.t === 'pointer') {
+        applyIncomingPointer(m);
       }
     };
     t.onclose = (code, reason) => {
       if (!current()) return;
       connected = false;
+      dropRemotePointers();
       renderRemoteCursors();
       notifyClosed(code, reason);
       resolve(); // не открылся вовсе — не держим запуск приложения
@@ -138,6 +141,7 @@ function closeWith(code: number, reason: string): void {
   transport = null;
   connected = false;
   t?.close();
+  dropRemotePointers();
   renderRemoteCursors();
   notifyClosed(code, reason);
 }
@@ -287,6 +291,141 @@ function flushCursor(): void {
   // черновик виден только автору: остальным курсор «не на странице» (пустой id не совпадает ни с одной)
   send({ t: 'cursor', x: cursorThrottle.pending.x, y: cursorThrottle.pending.y, pageId: onDraft() ? '' : state.pageId });
   cursorThrottle.pending = null;
+}
+
+// ----- Указка: лазер, исчезающий маркер и подсветка объектов видны остальным участникам -----
+
+const TRAIL_FLUSH_MS = 40;
+/** Не больше, чем хаб принимает в одном сообщении. */
+const TRAIL_CHUNK = 64;
+const TRAIL_MAX_PTS = 400;
+const FADE_MAX_PTS = 4000;
+/** Росчерк, от которого давно нет вестей (связь оборвалась), считаем оторванным. */
+const REMOTE_STALE_MS = 8000;
+const POINTER_COLOR = /^#[0-9a-fA-F]{6}$/;
+
+interface TrailOut { base: Record<string, unknown>; pts: Pt[]; last: Pt | null; timer: number }
+const trailOut = new Map<string, TrailOut>();
+
+function flushTrail(key: string, end: boolean): void {
+  const o = trailOut.get(key);
+  if (!o) return;
+  clearTimeout(o.timer);
+  o.timer = 0;
+  const pts = o.pts;
+  o.pts = [];
+  if (pts.length === 0 && end && o.last) pts.push(o.last); // конец росчерка без новых точек
+  for (let i = 0; i < pts.length; i += TRAIL_CHUNK) {
+    const last = i + TRAIL_CHUNK >= pts.length;
+    send({ t: 'pointer', ...o.base, pts: pts.slice(i, i + TRAIL_CHUNK), ...(end && last ? { end: true } : {}) });
+  }
+  if (end) trailOut.delete(key);
+}
+
+/** Точки росчерка уходят пачками раз в 40 мс; end — росчерк закончен. На черновике (его видит только автор) ничего не шлём. */
+function queueTrail(key: string, base: Record<string, unknown>, pts: Pt[], end: boolean): void {
+  if (!connected || onDraft()) return;
+  let o = trailOut.get(key);
+  if (!o) {
+    if (pts.length === 0) return;
+    o = { base: { ...base, pageId: state.pageId }, pts: [], last: null, timer: 0 };
+    trailOut.set(key, o);
+  }
+  o.pts.push(...pts);
+  if (pts.length > 0) o.last = pts[pts.length - 1];
+  if (end) flushTrail(key, true);
+  else if (!o.timer) o.timer = window.setTimeout(() => flushTrail(key, false), TRAIL_FLUSH_MS);
+}
+
+/** След лазерной указки (точки сцены); end — кнопку отпустили. */
+export function sendLaser(pts: Pt[], color: string, end: boolean): void {
+  queueTrail('laser', { k: 'laser', color }, pts, end);
+}
+
+/** Росчерк исчезающего маркера: sid — номер росчерка, по нему остальные дописывают точки. */
+export function sendFadeStroke(sid: string, stroke: Pick<FadeStroke, 'color' | 'width' | 'opacity'>, pts: Pt[], end: boolean): void {
+  queueTrail(`fade:${sid}`, {
+    k: 'fade', sid, color: stroke.color, width: stroke.width, ...(stroke.opacity !== undefined ? { opacity: stroke.opacity } : {}),
+  }, pts, end);
+}
+
+/** Подсветка объектов указкой: остальные видят то же свечение контура. */
+export function sendFlash(ids: string[]): void {
+  if (!connected || onDraft() || ids.length === 0) return;
+  send({ t: 'pointer', k: 'flash', pageId: state.pageId, ids });
+}
+
+/** Чужие исчезающие росчерки, которые ещё тянутся: ключ — «участник:росчерк». */
+const remoteFades = new Map<string, { stroke: FadeStroke; at: number }>();
+
+function releaseRemoteFades(onlyStale: boolean): void {
+  const now = performance.now();
+  for (const [key, f] of remoteFades) {
+    if (onlyStale && now - f.at < REMOTE_STALE_MS) continue;
+    f.stroke.endT = now;
+    remoteFades.delete(key);
+  }
+}
+
+function dropRemotePointers(): void {
+  for (const [key, o] of trailOut) { clearTimeout(o.timer); trailOut.delete(key); }
+  state.remoteLasers.clear();
+  releaseRemoteFades(false);
+}
+
+const finiteNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+
+/** Указка другого участника. Хаб уже проверил форму, но клиент не полагается на это: проект и сообщения могут прийти откуда угодно. */
+function applyIncomingPointer(m: Record<string, unknown>): void {
+  const by = m.by;
+  if (!finiteNum(by) || by === myUserId || m.pageId !== state.pageId) return;
+  releaseRemoteFades(true);
+  const now = performance.now();
+  if (m.k === 'flash') {
+    if (!Array.isArray(m.ids)) return;
+    const ids = m.ids.filter((id): id is string => typeof id === 'string').slice(0, 2000);
+    if (ids.length > 0) { state.flashes.push({ ids, t: now }); update(); }
+    return;
+  }
+  if (m.k !== 'laser' && m.k !== 'fade') return;
+  if (!Array.isArray(m.pts)) return;
+  const fallback = users.find(u => u.userId === by)?.color ?? '#e03131';
+  const color = typeof m.color === 'string' && POINTER_COLOR.test(m.color) ? m.color : fallback;
+  const pts: Pt[] = [];
+  for (const p of m.pts.slice(0, TRAIL_CHUNK)) {
+    const q = p as { x?: unknown; y?: unknown; p?: unknown } | null;
+    if (q && finiteNum(q.x) && finiteNum(q.y)) pts.push({ x: q.x, y: q.y, p: finiteNum(q.p) ? q.p : 0.5 });
+  }
+  if (pts.length === 0) return;
+  const end = m.end === true;
+  if (m.k === 'laser') {
+    const r = state.remoteLasers.get(by) ?? { down: false, pts: [] };
+    const begin = !r.down;
+    // пачка пришла разом, а точки были набраны за последние 40 мс — раскладываем их по времени
+    pts.forEach((p, i) => r.pts.push({
+      x: p.x, y: p.y, t: now - (pts.length - 1 - i) * (TRAIL_FLUSH_MS / pts.length),
+      ...(begin && i === 0 ? { start: color } : {}),
+    }));
+    if (r.pts.length > TRAIL_MAX_PTS) r.pts.splice(0, r.pts.length - TRAIL_MAX_PTS);
+    r.down = !end;
+    state.remoteLasers.set(by, r);
+    update();
+    return;
+  }
+  if (typeof m.sid !== 'string' || !finiteNum(m.width) || m.width <= 0 || m.width > 200) return;
+  const key = `${by}:${m.sid}`;
+  let f = remoteFades.get(key);
+  if (!f) {
+    const opacity = finiteNum(m.opacity) && m.opacity < 1 ? Math.max(0, m.opacity) : undefined;
+    const stroke: FadeStroke = { color, width: m.width, ...(opacity !== undefined ? { opacity } : {}), pts: [], endT: null };
+    f = { stroke, at: now };
+    remoteFades.set(key, f);
+    state.fadeStrokes.push(stroke);
+  }
+  f.at = now;
+  if (f.stroke.pts.length < FADE_MAX_PTS) f.stroke.pts.push(...pts);
+  if (end) { f.stroke.endT = now; remoteFades.delete(key); }
+  update();
 }
 
 // ----- Реакции и комментарии -----
@@ -553,6 +692,7 @@ export function stopCollab(): void {
   t?.close();
   connected = false;
   hubPatches = false;
+  dropRemotePointers();
   for (const d of draftSends.values()) clearTimeout(d.timer);
   draftSends.clear();
   baselines.clear();

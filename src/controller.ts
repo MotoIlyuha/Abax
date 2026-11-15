@@ -2,7 +2,7 @@ import { geometricFoundationFor, rebindAttachment, reattachMoved, withAttached }
 import type { Camera, Element, FadeStroke, Handle, ImageEl, Pt, ShapeEl, ToolId } from './types';
 import {
   state, update, onChange, beginStroke, extendStroke, endStroke, pushHistory, replaceElements,
-  addElement, setSelection, deleteSelected, undo, redo, setTool, uid, commitPoly,
+  addElement, setSelection, deleteSelected, undo, redo, pickTool, uid, commitPoly,
   bringForward, sendBackward, moveSelectionLayer, expandSelectionWithGroups, groupSelected, ungroupSelected, selectAll, selectInserted, opacityField,
   zoomAtPoint, ZOOM_MAX, ZOOM_MIN, insertCopies, isDraftId, touchProject, canCopyCurrentBoard,
 } from './state';
@@ -10,7 +10,7 @@ import {
   type AABB, hitTest, erasePart, aabbIntersects, aabbUnion, alignGuides, alignShift, boxAnchors, boxHandles, elementAABB, elementHandles,
   applyHandle, insertPolyNode, removePolyNode, gridStepFor, resizeBox, scaleElement, shapeHoldsText, snapValue, translateElement,
 } from './geom';
-import { collabActive, noteCursor } from './collab';
+import { collabActive, noteCursor, sendFadeStroke, sendFlash, sendLaser } from './collab';
 import { addGestureProbe } from './gesture';
 import { annotationClick } from './comments-ui';
 import { isNativeApp } from './native';
@@ -81,7 +81,8 @@ type Action = { pid: number } & (
     changed: boolean; others: AABB[] | null;
   }
   | { kind: 'marquee'; flash?: boolean }
-  | { kind: 'fade'; stroke: FadeStroke }
+  | { kind: 'laser' }
+  | { kind: 'fade'; stroke: FadeStroke; sid: string }
   | { kind: 'pan'; sx: number; sy: number; cam: Camera }
   /** Раздвигание: ids сдвигаются вниз на dy от линии y (координаты сцены). */
   | { kind: 'spread'; pre: Element[]; ids: Set<string>; y: number; dy: number }
@@ -401,17 +402,18 @@ export function initController(canvas: HTMLCanvasElement): void {
 
   /** Подсветка указкой: выделение не трогаем, только мигаем контуром. */
   function flashIds(ids: string[]): void {
-    if (ids.length) state.flashes.push({ ids, t: performance.now() });
+    if (ids.length) { state.flashes.push({ ids, t: performance.now() }); sendFlash(ids); }
     update();
   }
 
-  function addLaserPt(sx: number, sy: number): void {
+  /** start — цвет нового росчерка: след рвётся, а не тянется от предыдущего. */
+  function addLaserPt(sx: number, sy: number, start?: string): void {
     const pts = state.laserPts;
     const last = pts[pts.length - 1];
     const t = performance.now();
     // слишком близкие точки только освежают голову следа
-    if (last && Math.hypot(last.x - sx, last.y - sy) < 1.5) { last.t = t; return; }
-    pts.push({ x: sx, y: sy, t });
+    if (!start && last && Math.hypot(last.x - sx, last.y - sy) < 1.5) { last.t = t; return; }
+    pts.push({ x: sx, y: sy, t, ...(start ? { start } : {}) });
     if (pts.length > LASER_MAX_PTS) pts.splice(0, pts.length - LASER_MAX_PTS);
   }
 
@@ -466,8 +468,14 @@ export function initController(canvas: HTMLCanvasElement): void {
         update();
         break;
       case 'marquee': finishMarquee(!!a.flash); break;
+      case 'laser':
+        state.laserDown = false; // кнопку отпустили — след гаснет, голова остаётся курсором
+        sendLaser([], state.style.color, true);
+        update();
+        break;
       case 'fade':
         a.stroke.endT = performance.now(); // перо оторвано — след гаснет
+        sendFadeStroke(a.sid, a.stroke, [], true);
         update();
         break;
       case 'click': beginTextEdit({ at: { x: a.x, y: a.y }, target: a.target }); break;
@@ -710,8 +718,16 @@ export function initController(canvas: HTMLCanvasElement): void {
         update();
         break;
       }
-      case 'laser':
-        break; // указка не создаёт действий — след рисуется в onPointerMove
+      case 'laser': {
+        // след — только пока кнопка зажата; цвет закрепляется за росчерком
+        const color = state.style.color;
+        state.laserDown = true;
+        action = { pid: e.pointerId, kind: 'laser' };
+        addLaserPt(lp.x, lp.y, color);
+        sendLaser([{ x: s.x, y: s.y, p: 0.5 }], color, false);
+        update();
+        break;
+      }
       case 'fadePen': {
         // толщина как у маркера (см. endStroke)
         const stroke: FadeStroke = {
@@ -719,7 +735,9 @@ export function initController(canvas: HTMLCanvasElement): void {
           pts: [{ x: s.x, y: s.y, p: pressureOf(e) }], endT: null,
         };
         state.fadeStrokes.push(stroke);
-        action = { pid: e.pointerId, kind: 'fade', stroke };
+        const sid = uid();
+        action = { pid: e.pointerId, kind: 'fade', stroke, sid };
+        sendFadeStroke(sid, stroke, [{ x: s.x, y: s.y, p: pressureOf(e) }], false);
         update();
         break;
       }
@@ -771,13 +789,7 @@ export function initController(canvas: HTMLCanvasElement): void {
 
     if (gesture) { applyGesture(); return; }
     if (touchBlocked && e.pointerType === 'touch') return;
-    if (state.tool === 'laser') {
-      for (const ev of coalesced(e)) {
-        const c = localPos(ev);
-        addLaserPt(c.x, c.y);
-      }
-      update();
-    }
+    if (state.tool === 'laser' && action?.kind !== 'laser') update(); // голова указки следует за курсором
     if (state.tool === 'poly' && state.livePoly) {
       const sp = toScene(lp.x, lp.y);
       state.livePoly.cursor = { x: sp.x, y: sp.y, p: 0.5 };
@@ -804,14 +816,29 @@ export function initController(canvas: HTMLCanvasElement): void {
           extendStroke({ x: s.x, y: s.y, p: pressureOf(ev) });
         }
         break;
-      case 'fade':
+      case 'laser': {
+        const out: Pt[] = [];
+        for (const ev of coalesced(e)) {
+          const c = localPos(ev);
+          addLaserPt(c.x, c.y);
+          const s = toScene(c.x, c.y);
+          out.push({ x: s.x, y: s.y, p: 0.5 });
+        }
+        sendLaser(out, state.style.color, false);
+        update();
+        break;
+      }
+      case 'fade': {
+        const before = a.stroke.pts.length;
         for (const ev of coalesced(e)) {
           const c = localPos(ev);
           const s = toScene(c.x, c.y);
           extendFade(a.stroke, { x: s.x, y: s.y, p: pressureOf(ev) });
         }
+        if (a.stroke.pts.length > before) sendFadeStroke(a.sid, a.stroke, a.stroke.pts.slice(before), false);
         update();
         break;
+      }
       case 'erase':
         for (const ev of coalesced(e)) {
           const c = localPos(ev);
@@ -1283,7 +1310,7 @@ export function initController(canvas: HTMLCanvasElement): void {
       default: {
         // клавиши инструментов настраиваются в окне «Все настройки»
         const tool = toolByKey(e.code);
-        if (tool) setTool(tool);
+        if (tool) pickTool(tool);
       }
     }
   }
@@ -1328,7 +1355,7 @@ export function initController(canvas: HTMLCanvasElement): void {
       }
     } else if (a.startsWith('tool:')) {
       const id = a.slice(5);
-      if (TOOL_DEFS.some(def => def.id === id)) setTool(id as ToolId);
+      if (TOOL_DEFS.some(def => def.id === id)) pickTool(id as ToolId);
     } else if (a.startsWith('key:')) {
       const parts = a.slice(4).split('+');
       const code = parts.pop()!;
