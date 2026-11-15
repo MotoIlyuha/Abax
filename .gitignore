@@ -6,6 +6,9 @@ release/
 coverage/
 test-results/
 playwright-report/
+.check-deps/
+.claude/
+.codex/
 
 # настройки ретранслятора на сервере (образец — relay/.env.example)
 relay/.env
