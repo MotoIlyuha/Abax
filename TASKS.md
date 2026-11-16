@@ -27,7 +27,7 @@
   - `LocalFsAssetBackend`, `S3AssetBackend` (SigV4), `POST/GET /api/assets`, `uploadMissingAssets`, `fetchMissingAssets`.
   - **Тесты**: `tests/server/assets.test.ts`, `tests/unit/asset-store.test.ts` (дополнение).
 
-- [ ] **TASK-04: REST проектов, ревизии, клонирование**
+- [x] **TASK-04: REST проектов, ревизии, клонирование**
   - **Файлы**: `server/projects.ts`, `server/app.ts`, `src/project-access.ts`, `src/link-view.ts`.
   - `GET/PUT/DELETE /api/projects[/:id]`, `POST …/patch`, `POST …/clone`, лимиты, `409 id-taken`, `409 missing-assets`, маскировка ответов.
   - **Тесты**: `tests/server/projects.test.ts` (в т. ч. отсутствие `answer` для не-владельца и в клоне).

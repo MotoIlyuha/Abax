@@ -1,4 +1,5 @@
 import type { Db } from './db';
+import type { Project } from '../src/types';
 import type { AssetStorageBackend } from './asset-storage';
 
 /** Настройки сервера после разбора. */
@@ -31,4 +32,11 @@ export interface AppContext {
   log(msg: string): void;
   /** true — запрос в пределах лимита (и засчитан). */
   rateLimit(key: string, max: number, windowMs: number): boolean;
+  /** Подписка на изменения проекта через REST (Cloud Room обновляет своё состояние). */
+  onProjectChanged(fn: (id: string, project: Project) => void): void;
+  /** Сообщить, что проект изменён через REST. */
+  notifyProjectChanged(id: string, project: Project): void;
+  /** Подписка на удаление проекта и отзыв приглашений (комната отключает участников). */
+  onAccessChanged(fn: (event: { projectId: string; kind: 'deleted' | 'invite-revoked'; token?: string }) => void): void;
+  notifyAccessChanged(event: { projectId: string; kind: 'deleted' | 'invite-revoked'; token?: string }): void;
 }

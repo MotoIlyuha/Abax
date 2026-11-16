@@ -177,7 +177,7 @@ function projectPagesForGuest(pages: Page[]): Page[] {
 }
 
 /** Элемент от участника поверх известного автору: у задания принимается только ввод ученика (черновик и попытки). */
-function guardedElement(known: Element | undefined, incoming: Element): Element {
+export function guardedElement(known: Element | undefined, incoming: Element): Element {
   if (!isTask(incoming) || !known || !isTask(known)) return incoming;
   return mergeGuestTask(known, incoming) as Element;
 }
@@ -190,7 +190,7 @@ function guardedPage(known: Page, incoming: Page): Page {
 }
 
 /** Элемент от автора поверх известного: ввод ученика в задании остаётся хабу. */
-function hostElement(known: Element | undefined, incoming: Element): Element {
+export function hostElement(known: Element | undefined, incoming: Element): Element {
   if (!isTask(incoming) || !known || !isTask(known)) return incoming;
   return mergeHostTask(known, incoming) as Element;
 }

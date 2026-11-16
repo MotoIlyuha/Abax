@@ -65,3 +65,43 @@ export async function anon(app: { base: string }, device = deviceToken()): Promi
 export function setPlan(app: AppServer, userId: string, plan: string, expiresAt: number | null = null): void {
   app.db.prepare('UPDATE users SET plan = ?, plan_expires_at = ? WHERE id = ?').run(plan, expiresAt, userId);
 }
+
+// ----- Данные для проектов -----
+
+export const rectEl = (id: string) => ({ id, type: 'shape', shape: 'rect', x: 0, y: 0, w: 10, h: 10, color: '#000000', width: 2 });
+export const taskEl = (over: Record<string, unknown> = {}) => ({
+  id: 't1', type: 'task', x: 0, y: 0, w: 360, h: 220, taskId: 'tk', examType: 'oge', topic: '', statementMd: 'Сколько будет 6×7?',
+  answer: '42', solutionMd: 'СЕКРЕТНОЕ-РЕШЕНИЕ', ...over,
+});
+
+/** Проект из двух страниц: на первой задание и фигура, на второй фигура. */
+export function proj(id: string, over: Record<string, unknown> = {}): any {
+  return {
+    id, name: `Проект ${id}`, createdAt: 1, updatedAt: 1,
+    pages: [
+      { id: `${id}-p1`, name: 'Первая', grid: 'square', elements: [taskEl(), rectEl('r1')] },
+      { id: `${id}-p2`, name: 'Вторая', grid: 'square', elements: [rectEl('r2')] },
+    ],
+    ...over,
+  };
+}
+
+export const putProject = (app: { base: string }, token: string, project: any, expectedRev?: number) =>
+  call(app, 'PUT', `/api/projects/${project.id}`, { project, ...(expectedRev !== undefined ? { expectedRev } : {}) }, { token });
+
+export interface InviteSpec { defaultRole?: string; allowCopy?: number; pageRights?: Record<string, string>; revoked?: number; expiresAt?: number | null }
+
+/** Приглашение напрямую в базе (маршруты приглашений проверяются отдельно). */
+export function addInvite(app: AppServer, token: string, projectId: string, createdBy: string, spec: InviteSpec = {}): string {
+  app.db.prepare('INSERT INTO invites (token, project_id, created_by, default_role, allow_copy, page_rights_json, revoked, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)')
+    .run(token, projectId, createdBy, spec.defaultRole ?? 'edit', spec.allowCopy ?? 1, JSON.stringify(spec.pageRights ?? {}), spec.revoked ?? 0, spec.expiresAt ?? null);
+  return token;
+}
+
+/** Правка сохранённого проекта мимо API (так в базе оказываются ответы учеников, которых автор не видел). */
+export function editStored(app: AppServer, id: string, edit: (p: any) => void): void {
+  const row = app.db.prepare('SELECT data_json, rev FROM projects WHERE id = ?').get(id) as { data_json: string; rev: number };
+  const p = JSON.parse(row.data_json);
+  edit(p);
+  app.db.prepare('UPDATE projects SET data_json = ?, rev = ? WHERE id = ?').run(JSON.stringify(p), row.rev + 1, id);
+}

@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from 'node:net';
 import { LocalFsAssetBackend, type AssetStorageBackend } from './asset-storage';
 import { registerAssetRoutes } from './assets';
+import { registerProjectRoutes } from './projects';
 import { authenticate, registerAuthRoutes } from './auth';
 import type { AppContext, ResolvedOptions } from './context';
 import { openDb, type Db } from './db';
@@ -102,17 +103,26 @@ export function createAppServer(options: AppOptions, extraRoutes: RouteModule[] 
   const now = options.now ?? (() => Date.now());
   const db = openDb(options.dbPath);
   const limiter = new RateLimiter(now);
+  const changedListeners: Parameters<AppContext['onProjectChanged']>[0][] = [];
+  const accessListeners: Parameters<AppContext['onAccessChanged']>[0][] = [];
+  const log = options.log ?? (() => {});
+  const logError = (e: unknown) => log(`Ошибка обработчика: ${e instanceof Error ? e.stack ?? e.message : String(e)}`);
   const app: AppContext = {
     db,
     opts: resolveOptions(options),
     assets: options.assetBackend ?? new LocalFsAssetBackend(options.assetsDir),
     now,
-    log: options.log ?? (() => {}),
+    log,
     rateLimit: (key, max, windowMs) => limiter.take(key, max, windowMs),
+    onProjectChanged: fn => { changedListeners.push(fn); },
+    notifyProjectChanged: (id, project) => { for (const fn of changedListeners) try { fn(id, project); } catch (e) { logError(e); } },
+    onAccessChanged: fn => { accessListeners.push(fn); },
+    notifyAccessChanged: ev => { for (const fn of accessListeners) try { fn(ev); } catch (e) { logError(e); } },
   };
   const router = new Router();
   registerAuthRoutes(router);
   registerAssetRoutes(router);
+  registerProjectRoutes(router);
   for (const mod of extraRoutes) mod(router, app);
 
   const upgradeHandlers: Parameters<AppServer['onUpgrade']>[0][] = [];
