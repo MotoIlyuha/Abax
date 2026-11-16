@@ -23,6 +23,7 @@ beforeEach(() => {
   document.body.appendChild(root);
   root.innerHTML = `
     <div id="toolbar" data-pos="left"><button id="t1" title="Перо (P)">p</button><button id="t2" title="Ластик (E)">e</button></div>
+    <div id="panel"><button id="t3" title="Перо (P)">p</button><button id="t4" title="Ластик (E)">e</button></div>
     <button id="plain" title="Просто подсказка">x</button>
     <div data-tip-side="top"><button id="side" title="Сверху">s</button></div>
     <button id="empty" title="">-</button>`;
@@ -53,38 +54,33 @@ describe('подсказки', () => {
   });
 
   it('хоткей в скобках выделяется отдельным фрагментом', () => {
-    over(document.getElementById('t1')!);
+    over(document.getElementById('t3')!);
     vi.advanceTimersByTime(500);
     const kbd = tip()!.querySelector('.tooltip-kbd');
     expect(kbd?.textContent).toBe('P');
     expect(tip()!.firstElementChild!.textContent).toBe('Перо');
   });
 
-  it('у тулбара слева пузырь справа, data-tip-side уважается', () => {
-    over(document.getElementById('t1')!);
+  it('вне панели инструментов пузырь по умолчанию снизу, data-tip-side уважается', () => {
+    over(document.getElementById('t3')!);
     vi.advanceTimersByTime(500);
-    expect(tip()!.dataset.side).toBe('right');
+    expect(tip()!.dataset.side).toBe('bottom');
     over(document.getElementById('side')!);
     vi.advanceTimersByTime(500);
     expect(['top', 'bottom']).toContain(tip()!.dataset.side);
   });
 
-  it('позиция тулбара определяет сторону', () => {
-    const tb = document.getElementById('toolbar')!;
-    for (const [pos, side] of [['right', 'left'], ['bottom', 'top'], ['top', 'bottom']]) {
-      tb.dataset.pos = pos;
-      over(document.getElementById('plain')!);
-      over(document.getElementById('t1')!);
-      vi.advanceTimersByTime(500);
-      // в jsdom размеры нулевые: сторона либо предпочтительная, либо противоположная
-      expect([side, { left: 'right', right: 'left', top: 'bottom', bottom: 'top' }[side]]).toContain(tip()!.dataset.side);
-    }
+  it('кнопки панели инструментов не показывают обычный пузырь: у них своя подсказка', () => {
+    over(document.getElementById('t1')!);
+    vi.advanceTimersByTime(1000);
+    expect(shown()).toBe(false);
+    expect(document.getElementById('t1')!.dataset.tip).toBe('Перо (P)');
   });
 
   it('«тёплый» переход между кнопками почти без задержки', () => {
-    over(document.getElementById('t1')!);
+    over(document.getElementById('t3')!);
     vi.advanceTimersByTime(500);
-    over(document.getElementById('t2')!);
+    over(document.getElementById('t4')!);
     vi.advanceTimersByTime(50);
     expect(shown()).toBe(true);
     expect(tip()!.textContent).toContain('Ластик');
@@ -97,7 +93,7 @@ describe('подсказки', () => {
     out(b, document.body);
     expect(shown()).toBe(false);
 
-    over(document.getElementById('t1')!);
+    over(document.getElementById('t3')!);
     vi.advanceTimersByTime(500);
     document.dispatchEvent(new Event('pointerdown'));
     expect(shown()).toBe(false);

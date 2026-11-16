@@ -85,6 +85,12 @@
   --draft-paper: #fbfaf4; /* карточка страницы-черновика */
   /* Тёмные плашки и фирменные */
   --tooltip-bg: #1e2026; /* подсказка */
+  /* Пружины движения «жёсткость затухание» (designbookmark.com/motion): их читает src/motion.ts */
+  --spring-lead: 620 36; /* растягивающийся край, обращённый к цели */
+  --spring-trail: 190 19; /* отстающий край: из-за него пузырь тянется */
+  --spring-soft: 260 24; /* крупные сдвиги и смена размера */
+  --spring-fade: 420 32; /* прозрачность и мелкие сдвиги надписей */
+  --spring-pop: 520 16; /* «нажатие» иконки при клике */
   --toast-bg: #141917; /* тост */
   --toast-fg: #f3f1e7; /* текст тоста */
   --toast-link: #9ed9ff; /* ссылка в тосте */
@@ -2267,6 +2273,62 @@ body.collab-guest.readonly-mode #toolbar { display: none; }
 #tooltip[data-side="left"]::before { left: 100%; top: var(--arrow); margin-top: -5px; border-left-color: var(--tip-bg); }
 #tooltip[data-side="bottom"]::before { bottom: 100%; left: var(--arrow); margin-left: -5px; border-bottom-color: var(--tip-bg); }
 #tooltip[data-side="top"]::before { top: 100%; left: var(--arrow); margin-left: -5px; border-top-color: var(--tip-bg); }
+
+/* ----- Подсказка панели инструментов: пузырь перетекает от кнопки к кнопке (src/morph-tooltip.ts) ----- */
+#morph-tip { position: fixed; inset: 0; z-index: 1000; pointer-events: none; visibility: hidden; }
+.mt-tip {
+  position: absolute; left: 0; top: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--tooltip-bg);
+  color: var(--fg-inverse);
+  opacity: 0;
+  will-change: transform, width, height, opacity;
+}
+/* пузырь вырастает из стороны, обращённой к панели */
+.mt-tip[data-side="top"] { transform-origin: 50% 140%; }
+.mt-tip[data-side="bottom"] { transform-origin: 50% -40%; }
+.mt-tip[data-side="left"] { transform-origin: 140% 50%; }
+.mt-tip[data-side="right"] { transform-origin: -40% 50%; }
+.mt-lab {
+  position: absolute; left: 50%; top: 50%;
+  display: flex; align-items: center; gap: 8px;
+  width: max-content; max-width: 260px;
+  padding: 6px 10px;
+  font-size: 12px; font-weight: 500; line-height: 1.35;
+  white-space: normal;
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  will-change: transform, opacity;
+}
+.mt-kbd {
+  flex: none;
+  display: grid; place-items: center;
+  min-width: 20px; height: 20px; padding: 0 5px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.14);
+  font: inherit; font-size: 11px; font-weight: 600;
+  white-space: nowrap;
+}
+.mt-tail {
+  position: absolute; left: 0; top: 0;
+  width: 12px; height: 12px;
+  border-radius: 2px;
+  background: var(--tooltip-bg);
+  opacity: 0;
+  will-change: transform, opacity;
+}
+/* подсветка кнопки под курсором: тянется от кнопки к кнопке; под кнопками, поэтому кнопки выше (z-index) */
+.mt-hl {
+  position: absolute; left: 0; top: 0; z-index: 0;
+  border-radius: 9px;
+  background: var(--hover);
+  opacity: 0;
+  pointer-events: none;
+  will-change: transform, width, height, opacity;
+}
+#toolbar .tool { position: relative; z-index: 1; }
+#toolbar .tool:hover:not(.active) { background: transparent; }
 
 /* ----- Плавное появление меню и панелей ----- */
 /* только появление: закрываются мгновенно. Плавающее меню выделения на холсте не анимируем —

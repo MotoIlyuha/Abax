@@ -529,15 +529,38 @@ test.describe('страница', () => {
 });
 
 test.describe('подсказки', () => {
-  test('наведение на кнопку показывает подсказку с хоткеем', async ({ page }) => {
+  test('наведение на кнопку панели показывает морфящуюся подсказку с хоткеем', async ({ page }) => {
     await page.locator('.tool[data-tool="pen"]').hover();
-    const tip = page.locator('#tooltip');
+    const tip = page.locator('#morph-tip .mt-tip');
     await expect(tip).toBeVisible();
-    await expect(tip).toContainText('Перо');
-    await expect(tip.locator('.tooltip-kbd')).toHaveText('P');
+    const lab = page.locator('#morph-tip .mt-lab.cur');
+    await expect(lab).toContainText('Перо');
+    await expect(lab.locator('.mt-kbd')).toHaveText('P');
     await expect(tip).toHaveAttribute('data-side', 'right');
     await page.mouse.move(900, 500);
     await expect(tip).toBeHidden();
+  });
+
+  test('подсказка перетекает к соседней кнопке: не гаснет и меняет надпись', async ({ page }) => {
+    await page.locator('.tool[data-tool="pen"]').hover();
+    await expect(page.locator('#morph-tip .mt-lab.cur')).toContainText('Перо');
+    const before = (await page.locator('#morph-tip .mt-tip').boundingBox())!;
+    await page.locator('.tool[data-tool="eraser"]').hover();
+    await expect(page.locator('#morph-tip .mt-lab.cur')).toContainText('Ластик');
+    await expect(page.locator('#morph-tip .mt-tip')).toBeVisible();
+    // пузырь поехал вдоль панели вниз, и стоит напротив новой кнопки
+    const btn = (await page.locator('.tool[data-tool="eraser"]').boundingBox())!;
+    await expect.poll(async () => {
+      const b = (await page.locator('#morph-tip .mt-tip').boundingBox())!;
+      return Math.abs(b.y + b.height / 2 - (btn.y + btn.height / 2));
+    }).toBeLessThan(2);
+    expect((await page.locator('#morph-tip .mt-tip').boundingBox())!.y).toBeGreaterThan(before.y);
+  });
+
+  test('обычный пузырь вне панели инструментов работает как раньше', async ({ page }) => {
+    await page.locator('#btn-pages').hover();
+    await expect(page.locator('#tooltip')).toBeVisible();
+    await expect(page.locator('#morph-tip .mt-tip')).toBeHidden();
   });
 });
 
