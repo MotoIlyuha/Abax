@@ -10,7 +10,7 @@ import { initTooltips } from './tooltip';
 import { startUpdateChecks } from './update-notice';
 import { initAppIcon } from './app-icon';
 import { linkModeOf, parseBoardUrl } from './router';
-import { enterLinkView, startLinkViewCamera } from './link-view-ui';
+import { enterInvite, enterLinkView, startLinkViewCamera } from './link-view-ui';
 import { localGuestTransport, localRoomCode } from './local-transport';
 import { startLocalRoom } from './browser-host';
 import { syncPlanFromServer } from './api-client';
@@ -56,16 +56,18 @@ async function boot(): Promise<void> {
 
   // ссылка просмотра: /p/…, ?route=project|page — без своей доски на запуске и без записи на устройство
   const route = parseBoardUrl(location.href);
-  if (route.mode === 'collab' && route.token) {
-    showCollabNotice('Ссылка не поддерживается', 'Приглашения по коду пока не работают. Попросите автора прислать ссылку заново.');
-  }
-  const viewRoute = linkModeOf(route) ? route : null;
+  let viewRoute = linkModeOf(route) ? route : null;
 
   let metas = await storage.list();
   if (viewRoute) {
     state.projects = metas;
     await enterLinkView(viewRoute);
-  } else {
+  } else if (route.mode === 'collab' && route.token) {
+    // приглашение /j/:token: с сервером — открывается проект, без него — объяснение; не открылось — обычная доска
+    state.projects = metas;
+    if (await enterInvite(route.token)) viewRoute = { mode: 'view-project', projectId: state.project.id };
+  }
+  if (!viewRoute) {
     let last: { pid?: string; pageId?: string } = {};
     try {
       last = JSON.parse(localStorage.getItem('doska.last') || '{}');

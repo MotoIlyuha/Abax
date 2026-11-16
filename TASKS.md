@@ -32,7 +32,7 @@
   - `GET/PUT/DELETE /api/projects[/:id]`, `POST …/patch`, `POST …/clone`, лимиты, `409 id-taken`, `409 missing-assets`, маскировка ответов.
   - **Тесты**: `tests/server/projects.test.ts` (в т. ч. отсутствие `answer` для не-владельца и в клоне).
 
-- [ ] **TASK-05: Инвайты и кросс-девайсный просмотр**
+- [x] **TASK-05: Инвайты и кросс-девайсный просмотр**
   - **Файлы**: `server/invites.ts`, `server/app.ts`, `src/link-view.ts`, `src/link-view-ui.ts`, `src/main.ts`, `src/router.ts`.
   - `POST/GET/DELETE /api/invites`, `GET /j/:token` (JSON); просмотр по ссылке — сначала сервер, потом `storage.load`; клонирование через сервер.
   - **Тесты**: `tests/server/invites.test.ts`, `tests/unit/link-view-cloud.test.ts`.
