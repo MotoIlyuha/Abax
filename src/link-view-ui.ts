@@ -1,6 +1,10 @@
 import type { Project } from './types';
 import { blankPage, canCloneCurrentProject, onDraft, openProject, projectMeta, setTool, state, uid } from './state';
 import { doskaApi, storage } from './storage';
+import { getApi } from './api-client';
+import { cloneOnServer, loadCloudView, loadInvite, type InviteView } from './link-view-cloud';
+import { setSyncedRev } from './sync-state';
+import { showCollabNotice } from './collab';
 import { isNativeApp } from './native';
 import { canCreateProject } from './limits';
 import { limitsEnforced, userPlan } from './plan';
@@ -16,6 +20,10 @@ export const LIMIT_PROJECTS_TEXT = 'На бесплатном тарифе до�
 
 let hooks: { fit(): void } = { fit() { /* до initApp камеры нет */ } };
 let missing = false;
+/** Проект открыт по ссылке с сервера: клонировать его можно и там. */
+let fromCloud = false;
+/** Просмотр открыт по приглашению: токен нужен серверу, чтобы скрыть страницы, закрытые именно приглашением. */
+let viaInvite: string | null = null;
 
 /** app.ts сообщает, как вписать доску в окно (камера зависит от размера холста). */
 export function registerLinkViewHooks(h: { fit(): void }): void {
@@ -72,7 +80,18 @@ function applyBodyClasses(): void {
 export async function enterLinkView(route: RouteMatch): Promise<void> {
   const mode = linkModeOf(route);
   if (!mode || (route.mode !== 'view-project' && route.mode !== 'view-page')) return;
-  const loaded = await storage.load(route.projectId).catch(() => null);
+  // сначала сервер (там свежая версия и чужие проекты), на ошибку или 404 — копия на этом устройстве
+  let loaded: Project | null = null;
+  fromCloud = false;
+  viaInvite = null;
+  const api = getApi();
+  if (api) {
+    let res = await loadCloudView(api, route.projectId, route.mode === 'view-page' ? route.pageId : undefined);
+    // такой страницы нет или она скрыта: покажем первую из видимых и сообщим об этом (как без сервера)
+    if (!res.ok && res.reason === 'page-not-found') res = await loadCloudView(api, route.projectId);
+    if (res.ok) { loaded = res.value.project; fromCloud = true; }
+  }
+  if (!loaded) loaded = await storage.load(route.projectId).catch(() => null);
   const res = resolveViewProject(route, loaded, () => blankPage('Страница 1'));
   missing = res.missing;
   state.linkMode = mode;
@@ -83,10 +102,48 @@ export async function enterLinkView(route: RouteMatch): Promise<void> {
   if (res.notice && !res.missing) showToast(res.notice);
 }
 
+export const NOTICE_INVITE_GONE = ['Приглашение недействительно', 'Ссылка отозвана или устарела. Попросите автора прислать новую.'] as const;
+export const NOTICE_INVITE_OFFLINE = ['Нет связи с сервером', 'Не удалось открыть приглашение. Проверьте подключение и откройте ссылку ещё раз.'] as const;
+
+/**
+ * Открывает приглашение /j/:token. true — проект открыт (пока только для чтения; подключение к комнате — в collab-guest),
+ * false — приглашение не открылось (причина показана) или это ссылка самого автора: тогда запускается его обычная доска.
+ */
+export async function enterInvite(token: string): Promise<boolean> {
+  const api = getApi();
+  if (!api) {
+    showCollabNotice('Ссылка не поддерживается', 'Приглашения по коду пока не работают. Попросите автора прислать ссылку заново.');
+    return false;
+  }
+  const res = await loadInvite(api, token);
+  if (!res.ok) {
+    const [title, text] = res.reason === 'not-found' ? NOTICE_INVITE_GONE : NOTICE_INVITE_OFFLINE;
+    showCollabNotice(title, text);
+    return false;
+  }
+  if (res.value.isOwner) return false;
+  openInviteView(res.value, token);
+  return true;
+}
+
+/** Приглашение открывается как просмотр: проект с сервера, только чтение (если в комнату подключиться не удалось). */
+export function openInviteView(inv: InviteView, token: string): void {
+  fromCloud = true;
+  viaInvite = token;
+  missing = false;
+  state.linkMode = 'view-project';
+  openProject(inv.project, inv.project.pages[0]?.id, 'board');
+  setTool('pan');
+  applyBodyClasses();
+  renderBanner();
+}
+
 /** Выйти из режима просмотра (после клонирования). */
 export function exitLinkView(): void {
   state.linkMode = null;
   missing = false;
+  fromCloud = false;
+  viaInvite = null;
   applyBodyClasses();
   renderBanner();
 }
@@ -145,8 +202,19 @@ export async function cloneViewedProject(): Promise<void> {
   if (state.linkMode !== 'view-project' || missing) return;
   if (!canCloneCurrentProject()) { showToast('Автор запретил клонирование'); return; }
   if (limitsEnforced() && !canCreateProject(userPlan(), state.projects.length)) { showToast(LIMIT_PROJECTS_TEXT); return; }
-  const clone: Project = cloneProjectForViewer(state.project, { plan: userPlan(), id: uid() });
+  let clone: Project | null = null;
+  let syncedRev: number | null = null;
+  const api = getApi();
+  if (api && fromCloud) {
+    const r = await cloneOnServer(api, state.project.id, viaInvite ?? undefined);
+    if (r.ok) { clone = r.project; syncedRev = r.rev; }
+    else if (r.reason === 'clone-forbidden') { showToast('Автор запретил клонирование'); return; }
+    else if (r.reason === 'plan-limit-projects') { showToast(LIMIT_PROJECTS_TEXT); return; }
+    // сервер недоступен или проекта на нём нет — копия делается здесь, из того, что открыто
+  }
+  clone ??= cloneProjectForViewer(state.project, { plan: userPlan(), id: uid() });
   await storage.save(clone);
+  if (syncedRev !== null) setSyncedRev(clone.id, syncedRev);
   state.projects = [projectMeta(clone), ...state.projects.filter(m => m.id !== clone.id)];
   exitLinkView();
   openProject(clone, undefined, 'board');

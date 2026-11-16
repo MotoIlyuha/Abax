@@ -6,8 +6,8 @@ import { hasBaseSides, SIDES_MAX, SIDES_MIN, solidSides } from './solid';
 import { DEFAULT_NEW_PAGE_KEY } from './hotkeys';
 import { imageFrame, shapeHoldsText, translateElement } from './geom';
 import { attachNewElement, freezeAttachments, rebindAttachment } from './attachment';
-import { canCreatePage, effectivePermissions, isPlanTier } from './limits';
-import { limitsEnforced, userPlan } from './plan';
+import { canCreatePage, effectivePermissions, planOf } from './limits';
+import { limitsEnforced } from './plan';
 import { preserveLiveFields, syncCommentsWithMovedElements } from './comments';
 
 export interface LiveStroke {
@@ -755,9 +755,9 @@ export function switchPage(pageId: string): void {
 
 export const PAGE_LIMIT_TEXT = 'На бесплатном тарифе доступно до 3 страниц в проекте';
 
-/** Тариф проекта: свой, а у старых проектов без него — тариф пользователя на этом устройстве (по умолчанию бесплатный). */
+/** Тариф проекта: его ownerPlan; у старых проектов без него — free (тариф пользователя на них не переносится). */
 export function projectPlan(project: { ownerPlan?: unknown }): PlanTier {
-  return isPlanTier(project.ownerPlan) ? project.ownerPlan : userPlan();
+  return planOf(project);
 }
 
 /** Можно ли добавить в проект страницу: лимит действует, только когда лимиты включены. Черновики в него не входят. */

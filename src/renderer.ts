@@ -10,6 +10,7 @@ import {
 import { ribbonPath } from './stroke';
 import { fitSolid, solidGeometry, type SolidPrim } from './solid';
 import { state } from './state';
+import { assetHashOf } from './asset-store';
 import { ERASER_PATHS, ERASER_TIP } from './toolbar';
 import { SpatialIndex } from './spatial-index';
 
@@ -32,7 +33,8 @@ function imageOf(el: ImageEl): HTMLImageElement {
       imgEpoch++;
       requestRender();
     };
-    img.src = el.src;
+    // ссылка asset://… ещё не заменена картинкой (загрузка с сервера идёт) — пока рисуется заглушка, запрос не делаем
+    if (!assetHashOf(el.src)) img.src = el.src;
     imgCache.set(el, img);
   }
   return img;

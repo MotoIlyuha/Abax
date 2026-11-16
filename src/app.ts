@@ -49,6 +49,8 @@ import { hideHeldTooltip, showHeldTooltip } from './tooltip';
 import { LIMIT_PROJECTS_TEXT, copyBoardLink, currentBoardLink, registerLinkViewHooks } from './link-view-ui';
 import { canCreateProject, isOverPageLimit, isOverProjectLimit, PLAN_LIMITS } from './limits';
 import { limitsEnforced, userPlan } from './plan';
+import { openFresh } from './cloud-sync';
+import { createInviteBox, refreshInviteBox } from './invite-ui';
 import { addGestureProbe } from './gesture';
 import { initTaskOverlay, isTeacher } from './task-overlay';
 import { annotationButtons, initCommentsUi } from './comments-ui';
@@ -3560,7 +3562,8 @@ async function openProjectHandler(project: Project, pageId?: string): Promise<vo
 
 /** Открывает проект с домашней (на заданной странице или первой). */
 async function openFromHome(projectId: string, pageId?: string): Promise<void> {
-  const p = state.project.id === projectId ? state.project : await storage.load(projectId);
+  // свой проект с учётом облака: на сервере версия могла стать новее (правки с другого устройства или учеников в комнате)
+  const p = state.project.id === projectId ? state.project : await openFresh(projectId);
   if (p) await openProjectHandler(p, pageId);
 }
 
@@ -4964,6 +4967,8 @@ async function openShareDialog(): Promise<void> {
   dlg = document.createElement('div');
   dlg.id = 'share-dialog';
   document.body.appendChild(dlg);
+  // блок облачной ссылки-приглашения живёт между перерисовками окна (иначе каждые 2 с — запрос к серверу)
+  const inviteBox = createInviteBox();
   const render = async () => {
     const status = await api.shareStatus();
     shareInfo = status; void shareInfo; // доступно другим частям UI
@@ -5068,6 +5073,8 @@ async function openShareDialog(): Promise<void> {
         dlg!.appendChild(hint);
       }
     }
+    dlg!.appendChild(inviteBox);
+    refreshInviteBox(inviteBox);
     const close = document.createElement('button');
     close.className = 'ctx-custom-btn';
     close.textContent = 'Закрыть';
@@ -5202,6 +5209,8 @@ function syncSelectionToCollab(): void {
 }
 
 export function initApp(c: HTMLCanvasElement): void {
+  // облако нашло проекты, которых нет на устройстве: показываем их на главном экране
+  document.addEventListener('doska:projects-changed', () => { if (state.view === 'home') renderHome(); });
   c.addEventListener('dragover', e => { if (draggedColor && canEditBoard()) e.preventDefault(); });
   c.addEventListener('drop', e => {
     if (!draggedColor || !canEditBoard()) return;

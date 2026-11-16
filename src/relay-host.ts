@@ -35,7 +35,12 @@ export interface RelayHostOptions {
   helloTimeoutMs?: number;
   /** Паузы между попытками переподключения; последняя повторяется. */
   backoffMs?: number[];
+  /** Как часто слать ping ретранслятору (держит соединение за прокси и находит полуоткрытое). */
+  pingMs?: number;
 }
+
+/** Через сколько пингов без ответа соединение считается мёртвым (если ретранслятор отвечать умеет). */
+const MAX_MISSED_PONGS = 2;
 
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 
@@ -116,7 +121,7 @@ export interface RelayHost {
 }
 
 export function createRelayHost(options: RelayHostOptions): RelayHost {
-  const o = { helloTimeoutMs: 10_000, backoffMs: [1000, 2000, 4000, 8000, 16000, 30000], onChange: () => {}, ...options };
+  const o = { helloTimeoutMs: 10_000, backoffMs: [1000, 2000, 4000, 8000, 16000, 30000], pingMs: 25_000, onChange: () => {}, ...options };
   const WS = options.WebSocketImpl ?? WebSocket;
   const relayUrl = normalizeRelayUrl(o.relayUrl);
 
@@ -130,6 +135,10 @@ export function createRelayHost(options: RelayHostOptions): RelayHost {
   let attempt = 0;
   let stopped = false;
   let retryTimer = 0;
+  let pingTimer = 0;
+  /** Пингов без ответа подряд; отвечал ли ретранслятор хоть раз (старый pong не знает — тогда не рвём соединение). */
+  let missedPongs = 0;
+  let relayPongs = false;
   let firstOpen: { resolve(): void; reject(e: Error): void } | null = null;
   let sending: Promise<unknown> = Promise.resolve();
 
@@ -228,6 +237,10 @@ export function createRelayHost(options: RelayHostOptions): RelayHost {
     let m: Record<string, unknown>;
     try { m = JSON.parse(text) as Record<string, unknown>; } catch { return; }
     if (!m || typeof m !== 'object') return;
+    if (m.t === 'pong') {
+      relayPongs = true;
+      return;
+    }
     if (m.t === 'opened') {
       if (m.resumed && m.room === room) {
         reconcile(Array.isArray(m.guests) ? m.guests as number[] : []);
@@ -255,20 +268,47 @@ export function createRelayHost(options: RelayHostOptions): RelayHost {
     ws = sock;
     sock.onopen = () => {
       sock.send(JSON.stringify(room && token ? { t: 'open', proto: RELAY_PROTO, room, token } : { t: 'open', proto: RELAY_PROTO }));
+      startPing(sock);
     };
     sock.onmessage = ev => {
       if (ws !== sock) return;
+      missedPongs = 0; // любое сообщение ретранслятора — соединение живо
       if (typeof ev.data === 'string') onControl(ev.data);
       else onData(ev.data as ArrayBuffer);
     };
     sock.onclose = ev => {
       if (ws !== sock) return;
       ws = null;
+      stopPing();
       onClosed(ev.code);
     };
   }
 
+  function stopPing(): void {
+    clearInterval(pingTimer);
+    pingTimer = 0;
+  }
+
+  /** Раз в pingMs: ping ретранслятору; нет ответов — соединение полуоткрытое, переподключаемся. */
+  function startPing(sock: WebSocket): void {
+    stopPing();
+    missedPongs = 0;
+    pingTimer = window.setInterval(() => {
+      if (ws !== sock) { stopPing(); return; }
+      if (relayPongs && missedPongs >= MAX_MISSED_PONGS) {
+        ws = null;
+        stopPing();
+        try { sock.close(); } catch { /* уже закрыт */ }
+        onClosed(1006);
+        return;
+      }
+      missedPongs++;
+      sendControl({ t: 'ping' });
+    }, o.pingMs);
+  }
+
   function fail(message: string): void {
+    stopPing();
     dropGuests();
     room = null;
     token = null;
@@ -322,6 +362,7 @@ export function createRelayHost(options: RelayHostOptions): RelayHost {
       if (stopped) return;
       stopped = true;
       clearTimeout(retryTimer);
+      stopPing();
       const sock = ws;
       ws = null;
       if (sock && sock.readyState === 1) {
