@@ -319,15 +319,28 @@ test.describe('настройки доски', () => {
     }
   });
 
-  test('подписи координатной плоскости', async ({ board, page }) => {
+  test('подписи координатной плоскости — переключатель в меню фона', async ({ board, page }) => {
+    // в настройках такого пункта больше нет
     await page.locator('#btn-settings').click();
-    const cb = page.locator('#settings-popover label', { hasText: 'Деления' }).locator('input');
+    await expect(page.locator('#settings-popover label', { hasText: 'Деления' })).toHaveCount(0);
+    await page.locator('#btn-settings').click();
+    // для клетки переключателя нет
+    await page.locator('#view-grid-icon').click();
+    await expect(page.locator('#view-menu .grid-switch')).toHaveCount(0);
+    await page.locator('#view-menu button', { hasText: 'Координатная плоскость' }).click();
+    // для координатной плоскости он есть и включён по умолчанию
+    await page.locator('#view-grid-icon').click();
+    const cb = page.locator('#view-menu .grid-switch input');
     await expect(cb).toBeChecked();
+    // пока деления включены, на иконке плоскости виден ноль в начале координат
+    await expect(page.locator('#view-grid-icon .coord-zero')).toHaveCount(1);
     await cb.uncheck();
-    expect((await board.state()).settings.coordLabels).toBe(false);
+    await expect(page.locator('#view-grid-icon .coord-zero')).toHaveCount(0);
+    expect(await page.evaluate(() => (window as any).__doska.state.board.coordLabels)).toBe(false);
+    // и выключенное состояние переживает перезагрузку (сохранено вместе с фоном страницы)
     await page.reload();
     await board.ready();
-    expect((await board.state()).settings.coordLabels).toBe(false);
+    expect(await page.evaluate(() => (window as any).__doska.state.board.coordLabels)).toBe(false);
   });
 
   test('ось Y координатной плоскости направлена вверх', async ({ board, page }) => {

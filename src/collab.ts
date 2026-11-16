@@ -224,7 +224,7 @@ function applyRemoteProject(project: Project): void {
 
 // ----- Дельта-патчи -----
 
-interface Baseline { elements: Element[]; grid: GridMode; backgroundColor: string | undefined }
+interface Baseline { elements: Element[]; grid: GridMode; backgroundColor: string | undefined; coordLabels: boolean }
 /** Что хаб уже знает о каждой странице: от этого снимка считается следующий патч. */
 const baselines = new Map<string, Baseline>();
 /** Что хаб знает о составе проекта (названия, страницы, права, комментарии): иначе нужен полный проект. */
@@ -247,7 +247,7 @@ function structureChanged(p: Project): boolean {
 /** Проект целиком известен хабу: страницы и состав запоминаются как отправленные. */
 function markSent(p: Project): void {
   baselines.clear();
-  for (const pg of p.pages) baselines.set(pg.id, { elements: pg.elements, grid: pg.grid, backgroundColor: pg.backgroundColor });
+  for (const pg of p.pages) baselines.set(pg.id, { elements: pg.elements, grid: pg.grid, backgroundColor: pg.backgroundColor, coordLabels: pg.coordLabels !== false });
   sentStructure = { key: structureKey(p), comments: p.pages.map(pg => pg.comments) };
 }
 
@@ -258,14 +258,15 @@ function flushPatches(p: Project): boolean {
     if (readOnly(pg.id)) continue;
     const base = baselines.get(pg.id);
     if (!base) continue; // страница новая — её увезёт полный проект
-    if (pg.elements === base.elements && pg.grid === base.grid && pg.backgroundColor === base.backgroundColor) continue;
+    if (pg.elements === base.elements && pg.grid === base.grid && pg.backgroundColor === base.backgroundColor && (pg.coordLabels !== false) === base.coordLabels) continue;
     const ops = diffElements(base.elements, pg.elements);
     if (ops.length > MAX_PATCH_OPS) { whole = false; continue; }
     const patch: BoardPatch = { t: 'patch', pageId: pg.id, rev: ++patchRev, ops };
     if (pg.grid !== base.grid) patch.grid = pg.grid;
     if (pg.backgroundColor !== base.backgroundColor) patch.backgroundColor = pg.backgroundColor ?? null;
-    baselines.set(pg.id, { elements: pg.elements, grid: pg.grid, backgroundColor: pg.backgroundColor });
-    if (ops.length > 0 || patch.grid !== undefined || patch.backgroundColor !== undefined) send(patch);
+    if ((pg.coordLabels !== false) !== base.coordLabels) patch.coordLabels = pg.coordLabels !== false;
+    baselines.set(pg.id, { elements: pg.elements, grid: pg.grid, backgroundColor: pg.backgroundColor, coordLabels: pg.coordLabels !== false });
+    if (ops.length > 0 || patch.grid !== undefined || patch.backgroundColor !== undefined || patch.coordLabels !== undefined) send(patch);
   }
   return whole;
 }
@@ -315,14 +316,16 @@ function applyIncomingPatch(p: BoardPatch): void {
   const page: Page | undefined = state.project.pages.find(pg => pg.id === p.pageId);
   if (!page) return;
   const next = applyBoardPatch(page, p);
-  const same = next.elements === page.elements && next.grid === page.grid && next.backgroundColor === page.backgroundColor;
+  const same = next.elements === page.elements && next.grid === page.grid && next.backgroundColor === page.backgroundColor && next.coordLabels === page.coordLabels;
   if (!same) {
     page.elements = next.elements;
     page.grid = next.grid;
     if (next.backgroundColor === undefined) delete page.backgroundColor;
     else page.backgroundColor = next.backgroundColor;
+    if (next.coordLabels === false) page.coordLabels = false;
+    else delete page.coordLabels;
   }
-  baselines.set(page.id, { elements: page.elements, grid: page.grid, backgroundColor: page.backgroundColor });
+  baselines.set(page.id, { elements: page.elements, grid: page.grid, backgroundColor: page.backgroundColor, coordLabels: page.coordLabels !== false });
   if (same) return;
   // автор сохраняет и чужие правки; у гостя доска — чужая, сохранять нечего
   if (role === 'host') touchProject();

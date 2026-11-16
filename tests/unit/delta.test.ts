@@ -130,6 +130,15 @@ describe('applyBoardPatch', () => {
     expect(applyBoardPatch(base, patch([], { grid: 'мусор' as never })).grid).toBe('square');
     expect(applyBoardPatch(base, patch([])).backgroundColor).toBe('#ffffff');
   });
+
+  it('деления координатной плоскости: false скрывает, true возвращает значение по умолчанию', () => {
+    const base = page([]);
+    const hidden = applyBoardPatch(base, patch([], { coordLabels: false }));
+    expect(hidden.coordLabels).toBe(false);
+    expect(applyBoardPatch(hidden, patch([])).coordLabels).toBe(false);
+    expect(applyBoardPatch(hidden, patch([], { coordLabels: true }))).not.toHaveProperty('coordLabels');
+    expect(applyBoardPatch(base, patch([], { coordLabels: 'нет' as never }))).not.toHaveProperty('coordLabels');
+  });
 });
 
 describe('isBoardPatch', () => {
@@ -144,5 +153,7 @@ describe('isBoardPatch', () => {
     expect(isBoardPatch(patch([{ op: 'order', ids: [1] } as never]))).toBe(false);
     expect(isBoardPatch(patch([{ op: 'ломать' } as never]))).toBe(false);
     expect(isBoardPatch(patch([], { grid: 'x' as never }))).toBe(false);
+    expect(isBoardPatch(patch([], { coordLabels: false }))).toBe(true);
+    expect(isBoardPatch(patch([], { coordLabels: 'да' as never }))).toBe(false);
   });
 });

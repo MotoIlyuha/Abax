@@ -90,7 +90,7 @@ const FLASH_COLOR = '#ff9f1c';
 const FLASH_R = 4; // толщина контура подсветки, px экрана
 const GUIDE_COLOR = '#f2357b';
 
-function drawGrid(ctx: CanvasRenderingContext2D, cam: Camera, w: number, h: number, mode: GridMode): void {
+function drawGrid(ctx: CanvasRenderingContext2D, cam: Camera, w: number, h: number, mode: GridMode, labels = true): void {
   const z = cam.zoom;
   let step = GRID_STEP;
   while (step * z < 18) step *= 4; // LOD: не рисуем чаще ~18px на экране
@@ -145,11 +145,11 @@ function drawGrid(ctx: CanvasRenderingContext2D, cam: Camera, w: number, h: numb
     ctx.strokeStyle = '#dfe3ea';
     ctx.stroke();
   }
-  if (mode === 'coord') drawCoordAxes(ctx, cam, w, h);
+  if (mode === 'coord') drawCoordAxes(ctx, cam, w, h, labels);
 }
 
 /** Оси координат через сцену (0,0): линии, стрелки, риски, подписи. */
-function drawCoordAxes(ctx: CanvasRenderingContext2D, cam: Camera, w: number, h: number): void {
+function drawCoordAxes(ctx: CanvasRenderingContext2D, cam: Camera, w: number, h: number, labels: boolean): void {
   const z = cam.zoom;
   const ox = (0 - cam.x) * z; // экранная позиция оси Y (сцена x=0)
   const oy = (0 - cam.y) * z; // экранная позиция оси X (сцена y=0)
@@ -209,7 +209,7 @@ function drawCoordAxes(ctx: CanvasRenderingContext2D, cam: Camera, w: number, h:
   ctx.stroke();
   // числовые деления в математических единицах (клетка = 1):
   // наименьший удобочитаемый шаг, минимум 0.25 единицы (четверть клетки)
-  if (!state.settings.coordLabels) return;
+  if (!labels) return;
   let lstep = GRID_STEP / 4; // 0.25 единицы
   while (lstep * z < 34 && lstep < GRID_STEP * 4096) lstep *= 2;
   const fmt = (v: number): string => {
@@ -747,7 +747,7 @@ function drawPageLink(ctx: CanvasRenderingContext2D, el: ImageEl): void {
       ctx.save();
       ctx.translate(el.x, el.y);
       ctx.scale(1 / outer, 1 / outer);
-      drawGrid(ctx, { x: view.x0, y: view.y0, zoom: s * outer }, el.w * outer, el.h * outer, page.grid);
+      drawGrid(ctx, { x: view.x0, y: view.y0, zoom: s * outer }, el.w * outer, el.h * outer, page.grid, page.coordLabels !== false);
       ctx.restore();
     }
     ctx.translate(el.x, el.y);
@@ -781,7 +781,7 @@ function linkStamp(els: readonly Element[]): unknown[] {
   const out: unknown[] = [];
   for (const l of pageLinksIn(els)) {
     const p = linkedPage(l.page!);
-    out.push(p?.elements, p?.grid);
+    out.push(p?.elements, p?.grid, p?.coordLabels);
   }
   return out;
 }
@@ -797,7 +797,7 @@ const seenScenes = new WeakSet<Element[]>();
 export function renderScene(
   ctx: CanvasRenderingContext2D, elements: Element[],
   cam: Camera, wCss: number, hCss: number, dpr: number, grid: GridMode,
-  exclude?: Set<string>, transparent = false, backgroundColor = '#ffffff',
+  exclude?: Set<string>, transparent = false, backgroundColor = '#ffffff', coordLabels = true,
 ): void {
   drawDpr = dpr;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -806,7 +806,7 @@ export function renderScene(
     ctx.fillStyle = backgroundColor;
     ctx.fillRect(0, 0, wCss, hCss);
   }
-  if (grid !== 'none') drawGrid(ctx, cam, wCss, hCss, grid);
+  if (grid !== 'none') drawGrid(ctx, cam, wCss, hCss, grid, coordLabels);
 
   const zx = dpr * cam.zoom;
   ctx.setTransform(zx, 0, 0, zx, -cam.x * zx, -cam.y * zx);
@@ -919,7 +919,7 @@ class SceneCache {
     if (!c || c.x !== cam.x || c.y !== cam.y || c.zoom !== cam.zoom || w !== this.w || h !== this.h || dpr !== this.dpr) {
       this.stale = true;
     }
-    if ((this.board.backgroundColor ?? '#ffffff') !== this.backgroundColor || this.board.grid !== this.grid || state.settings.coordLabels !== this.coordLabels || state.liveEdit !== this.liveEdit
+    if ((this.board.backgroundColor ?? '#ffffff') !== this.backgroundColor || this.board.grid !== this.grid || (this.board.coordLabels !== false) !== this.coordLabels || state.liveEdit !== this.liveEdit
       || this.recursionEpoch !== recursionEpoch || this.recursionEnabled !== state.settings.recursionEnabled || state.hideElId !== this.hideId || state.dragHidden !== this.dragHidden || this.pageId !== this.dragPage || state.hideTextId !== this.hideTextId || imgEpoch !== this.imgEpoch) this.stale = true;
     // страницы на холсте показывают другие страницы: те поменялись — перерисовать
     if (!sameStamp(linkStamp(this.board.elements), this.links)) this.stale = true;
@@ -944,7 +944,7 @@ class SceneCache {
       if (state.hideElId) excl.add(state.hideElId);
       if (state.dragHidden?.pageId === this.pageId) for (const id of state.dragHidden.ids) excl.add(id);
     }
-    renderScene(this.ctx!, this.board.elements, cam, w, h, dpr, this.board.grid, excl.size ? excl : undefined, false, this.board.backgroundColor);
+    renderScene(this.ctx!, this.board.elements, cam, w, h, dpr, this.board.grid, excl.size ? excl : undefined, false, this.board.backgroundColor, this.board.coordLabels !== false);
     this.cam = { ...cam };
     this.w = w;
     this.h = h;
@@ -952,7 +952,7 @@ class SceneCache {
     this.arr = this.board.elements;
     this.grid = this.board.grid;
     this.backgroundColor = this.board.backgroundColor ?? '#ffffff';
-    this.coordLabels = state.settings.coordLabels;
+    this.coordLabels = this.board.coordLabels !== false;
     this.liveEdit = state.liveEdit;
     this.hideId = state.hideElId;
     this.dragHidden = state.dragHidden;
@@ -1019,7 +1019,7 @@ class SceneCache {
         if (state.hideElId) exclude.add(state.hideElId);
         if (state.dragHidden?.pageId === this.pageId) for (const id of state.dragHidden.ids) exclude.add(id);
       }
-      renderScene(ctx, this.board.elements, cam, w, h, dpr, this.board.grid, exclude.size ? exclude : undefined, false, this.board.backgroundColor);
+      renderScene(ctx, this.board.elements, cam, w, h, dpr, this.board.grid, exclude.size ? exclude : undefined, false, this.board.backgroundColor, this.board.coordLabels !== false);
       ctx.restore();
     }
   }
@@ -1259,7 +1259,7 @@ function drawGuides(ctx: CanvasRenderingContext2D, cam: Camera): void {
 function drawContent(ctx: CanvasRenderingContext2D, cache: SceneCache, cam: Camera, w: number, h: number, dpr: number): void {
   drawDpr = dpr;
   if (state.layerPreview) {
-    renderScene(ctx, state.layerPreview, cam, w, h, dpr, state.board.grid);
+    renderScene(ctx, state.layerPreview, cam, w, h, dpr, state.board.grid, undefined, false, state.board.backgroundColor, state.board.coordLabels !== false);
   } else if (cache.cam) {
     cache.blit(ctx, cam, w, h, dpr);
     // во время перетаскивания выделенное исключено из кэша — рисуем поверх;
@@ -1295,7 +1295,7 @@ function drawContent(ctx: CanvasRenderingContext2D, cache: SceneCache, cam: Came
     const at = state.board.elements.findIndex(el => el.layerPin === 'top');
     const stroke: Element = { id: '', type: 'stroke', tool: ls.tool, color: ls.color,
       width: ls.tool === 'highlighter' ? ls.width * 3.2 : ls.width, opacity: ls.opacity, pts: ls.pts };
-    renderScene(ctx, [...state.board.elements.slice(0, at), stroke, ...state.board.elements.slice(at)], cam, w, h, dpr, state.board.grid);
+    renderScene(ctx, [...state.board.elements.slice(0, at), stroke, ...state.board.elements.slice(at)], cam, w, h, dpr, state.board.grid, undefined, false, state.board.backgroundColor, state.board.coordLabels !== false);
   } else if (state.liveStroke) {
     const ls = state.liveStroke;
     const base = ls.tool === 'highlighter' ? ls.width * 3.2 : ls.width;

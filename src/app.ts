@@ -4,7 +4,7 @@ import type {
   ToolId, ToolbarPos, WheelMode,
 } from './types';
 import {
-  state, update, onChange, undo, redo, canUndo, canRedo, setTool, setGrid, setStyleColor,
+  state, update, onChange, undo, redo, canUndo, canRedo, setTool, setGrid, setCoordLabels, setStyleColor,
   setStyleWidth, setStyleOpacity, pickTool, setNoteColor, selectPreset, presetKind, addElement, replaceElements, pushHistory, uid,
   applyStyleToSelection, colorElement, setSettings, setView, switchPage, addPage, deletePage, renamePage, setSelection,
   openProject, blankProject, blankPage, projectMeta, groupSelected, ungroupSelected, movePage,
@@ -109,6 +109,14 @@ const GRID_ICONS: Record<GridMode, string> = {
   coord: svg('<path d="M5 19V5M5 19h14"/><path d="M5 5l-2 3M5 5l2 3M19 19l-3-2M19 19l-3 2"/><circle cx="12" cy="12" r="1"/>'),
 };
 
+/** Иконка координатной плоскости с нулём в начале координат — когда деления включены. */
+const COORD_ICON_ZERO = svg('<path d="M5 19V5M5 19h14"/><path d="M5 5l-2 3M5 5l2 3M19 19l-3-2M19 19l-3 2"/><circle cx="12" cy="12" r="1"/><ellipse class="coord-zero" cx="2.6" cy="20.8" rx="1.3" ry="1.9" stroke-width="1.3"/>');
+
+/** Иконка фона; у координатной плоскости ноль виден, пока деления не скрыты. */
+function gridIcon(g: GridMode, coordLabels = true): string {
+  return g === 'coord' && coordLabels ? COORD_ICON_ZERO : GRID_ICONS[g];
+}
+
 /** Последний выбранный инструмент группы (по id группы) — его иконку показывает кнопка группы. */
 const lastGroupTool: Record<string, ToolId> = {};
 
@@ -193,7 +201,6 @@ function restoreSettings(): void {
     if (v && pos.includes(v.toolbarPos)) {
       state.settings = {
         toolbarPos: v.toolbarPos as ToolbarPos,
-        coordLabels: typeof v.coordLabels === 'boolean' ? v.coordLabels : true,
         snapToGrid: typeof v.snapToGrid === 'boolean' ? v.snapToGrid : false,
         wheelMode: v.wheelMode === 'zoom' ? 'zoom' : 'scroll',
         pageTransition: PAGE_TRANSITIONS.some(t => t.mode === v.pageTransition) ? v.pageTransition : 'slide',
@@ -1972,6 +1979,28 @@ const GRID_LABELS: Record<GridMode, string> = {
   coord: 'Координатная плоскость',
 };
 
+/** Переключатель «Показать деления»: только для координатной плоскости, меняет фон страницы у всех участников. */
+function coordLabelsSwitch(): HTMLElement | null {
+  if (state.board.grid !== 'coord') return null;
+  const label = document.createElement('label');
+  label.className = 'grid-switch';
+  const text = document.createElement('span');
+  text.textContent = 'Показать деления';
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  input.setAttribute('role', 'switch');
+  input.className = 'switch-input';
+  input.checked = state.board.coordLabels !== false;
+  input.addEventListener('change', () => {
+    setCoordLabels(input.checked);
+    void saveNow();
+  });
+  const track = document.createElement('span');
+  track.className = 'switch-track';
+  label.append(text, input, track);
+  return label;
+}
+
 function gridButton(): HTMLElement {
   return document.getElementById('grid-mode')!;
 }
@@ -1984,10 +2013,17 @@ function gridMenu(): HTMLElement {
 function renderGridButton(): void {
   const btn = gridButton();
   const g = state.board.grid;
-  document.getElementById('view-grid-icon')!.innerHTML = GRID_ICONS[g];
-  if (btn.dataset.value === g) return;
-  btn.dataset.value = g;
-  btn.innerHTML = GRID_ICONS[g];
+  const shown = state.board.coordLabels !== false;
+  const icon = gridIcon(g, shown);
+  const viewIcon = document.getElementById('view-grid-icon')!;
+  if (viewIcon.dataset.icon !== icon) {
+    viewIcon.dataset.icon = icon;
+    viewIcon.innerHTML = icon;
+  }
+  const key = `${g}:${shown}`;
+  if (btn.dataset.value === key) return;
+  btn.dataset.value = key;
+  btn.innerHTML = icon;
   const label = document.createElement('span');
   label.textContent = GRID_LABELS[g];
   btn.append(label);
@@ -2016,13 +2052,15 @@ function openGridMenu(): void {
     item.dataset.grid = g;
     item.setAttribute('role', 'option');
     item.setAttribute('aria-selected', String(g === state.board.grid));
-    item.innerHTML = GRID_ICONS[g];
+    item.innerHTML = gridIcon(g, state.board.coordLabels !== false);
     const label = document.createElement('span');
     label.textContent = GRID_LABELS[g];
     item.append(label);
     item.addEventListener('click', () => pickGrid(g));
     menu.appendChild(item);
   }
+  const coordSwitch = coordLabelsSwitch();
+  if (coordSwitch) menu.appendChild(coordSwitch);
   menu.hidden = false;
   const btn = gridButton();
   btn.setAttribute('aria-expanded', 'true');
@@ -2186,19 +2224,6 @@ function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
     row.appendChild(b);
   }
   pop.appendChild(row);
-  const lbl2 = document.createElement('label');
-  lbl2.className = 'ctx-check';
-  const cb = document.createElement('input');
-  cb.type = 'checkbox';
-  cb.checked = state.settings.coordLabels;
-  cb.addEventListener('change', () => {
-    setSettings({ coordLabels: cb.checked });
-    persistSettings();
-  });
-  const span = document.createElement('span');
-  span.textContent = 'Деления координатной плоскости';
-  lbl2.append(cb, span);
-  pop.appendChild(lbl2);
   const lbl3 = document.createElement('label');
   lbl3.className = 'ctx-check';
   const cb3 = document.createElement('input');
@@ -3136,7 +3161,7 @@ interface PageCard {
   num: HTMLElement;
   grid: HTMLElement;
   name: HTMLElement;
-  gridMode: GridMode | null;
+  gridMode: string | null;
   /** С чего снято превью: массивы элементов иммутабельны — сравниваем по ссылке. */
   shot: { elements: Element[]; grid: GridMode; epoch: number; recursion: boolean } | null;
 }
@@ -3367,9 +3392,10 @@ function renderPages(): void {
       card.el.style.setProperty('--i', String(i));
       card.num.textContent = String(i + 1);
       if (card.name.textContent !== page.name) card.name.textContent = page.name;
-      if (card.gridMode !== page.grid) {
-        card.gridMode = page.grid;
-        card.grid.innerHTML = GRID_ICONS[page.grid];
+      const pageGridKey = `${page.grid}:${page.coordLabels !== false}`;
+      if (card.gridMode !== pageGridKey) {
+        card.gridMode = pageGridKey;
+        card.grid.innerHTML = gridIcon(page.grid, page.coordLabels !== false);
       }
       // превью рисуются только у открытого списка
       if (pagesOpen) syncPageThumb(card, page);
@@ -3385,9 +3411,10 @@ function renderPages(): void {
       card.num.textContent = 'Ч';
       card.num.title = 'Черновик';
       if (card.name.textContent !== draft.name) card.name.textContent = draft.name;
-      if (card.gridMode !== draft.grid) {
-        card.gridMode = draft.grid;
-        card.grid.innerHTML = GRID_ICONS[draft.grid];
+      const draftGridKey = `${draft.grid}:${draft.coordLabels !== false}`;
+      if (card.gridMode !== draftGridKey) {
+        card.gridMode = draftGridKey;
+        card.grid.innerHTML = gridIcon(draft.grid, draft.coordLabels !== false);
       }
       if (pagesOpen) syncPageThumb(card, draft);
     });
@@ -4733,9 +4760,11 @@ function wireZoomInput(): void {
       ${row('data-view="custom"', zoomIcon, 'Другой масштаб…')}`;
     const options = menu.querySelector<HTMLElement>('#view-grid-options')!;
     for (const g of Object.keys(GRID_LABELS) as GridMode[]) {
-      const b = document.createElement('button'); b.innerHTML = `${GRID_ICONS[g]}<span>${GRID_LABELS[g]}</span>${g === state.board.grid ? '✓' : ''}`;
+      const b = document.createElement('button'); b.innerHTML = `${gridIcon(g, state.board.coordLabels !== false)}<span>${GRID_LABELS[g]}</span>${g === state.board.grid ? '✓' : ''}`;
       b.addEventListener('click', () => { setGrid(g); void saveNow(); close(); }); options.append(b);
     }
+    const coordSwitch = coordLabelsSwitch();
+    if (coordSwitch) options.append(coordSwitch);
   };
   const group = document.querySelector<HTMLElement>('.view-group')!;
   const positionMenu = () => {
