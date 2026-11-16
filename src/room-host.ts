@@ -20,6 +20,9 @@ const DEFAULT_AWAY_MS = 45000;
 /** Причина отказа гостю в бесплатной комнате. */
 export const FREE_LIMIT_REASON = 'free-limit-reached';
 
+/** Что изменило состояние проекта в комнате. */
+export type ChangeKind = 'patch' | 'project' | 'task-draft' | 'task-submit' | 'react' | 'comment';
+
 /** Права участника: по умолчанию и по страницам. */
 export interface UserRights { default: PageRight; pages: Record<string, PageRight> }
 
@@ -45,8 +48,13 @@ export interface RoomHubOptions {
   maxGuests?: number;
   /** Сколько участников (с автором) могут одновременно быть редакторами; по умолчанию — по тарифу. */
   maxEditors?: number;
-  /** Можно ли гостям копировать; по умолчанию — из прав проекта (allowCopy и forbidClone). */
-  allowCopy?: boolean;
+  /** Можно ли гостям копировать; по умолчанию — из прав проекта (allowCopy и forbidClone). Функция — значение может меняться. */
+  allowCopy?: boolean | (() => boolean);
+  /**
+   * Состояние проекта в комнате изменилось (серверная комната сохраняет его в базу). Не вызывается из pushProject:
+   * его делает сам владелец комнаты. kind — что произошло: patch, project, task-draft, task-submit, react, comment.
+   */
+  onChange?: (project: Project, kind: ChangeKind) => void;
   /** Через сколько молчания участник считается «отошедшим». */
   awayMs?: number;
   /** Часы (для тестов). */
@@ -58,6 +66,8 @@ export interface AttachOptions {
   name?: string;
   /** Участник понимает пакеты t: 'patch'; иначе ему шлются полные проекты. Также включается сообщением { t: 'caps', patches: true }. */
   patches?: boolean;
+  /** Права гостя вместо прав по умолчанию (например, из ссылки-приглашения). */
+  rights?: UserRights;
 }
 
 type Rec = Record<string, unknown>;
@@ -177,7 +187,7 @@ function projectPagesForGuest(pages: Page[]): Page[] {
 }
 
 /** Элемент от участника поверх известного автору: у задания принимается только ввод ученика (черновик и попытки). */
-function guardedElement(known: Element | undefined, incoming: Element): Element {
+export function guardedElement(known: Element | undefined, incoming: Element): Element {
   if (!isTask(incoming) || !known || !isTask(known)) return incoming;
   return mergeGuestTask(known, incoming) as Element;
 }
@@ -190,7 +200,7 @@ function guardedPage(known: Page, incoming: Page): Page {
 }
 
 /** Элемент от автора поверх известного: ввод ученика в задании остаётся хабу. */
-function hostElement(known: Element | undefined, incoming: Element): Element {
+export function hostElement(known: Element | undefined, incoming: Element): Element {
   if (!isTask(incoming) || !known || !isTask(known)) return incoming;
   return mergeHostTask(known, incoming) as Element;
 }
@@ -323,7 +333,7 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
   const planNow = (): PlanTier => options.plan ?? planOf(room.project);
   const maxEditors = () => options.maxEditors ?? PLAN_LIMITS[planNow()].maxEditors;
   const allowCopy = () => {
-    if (options.allowCopy !== undefined) return options.allowCopy;
+    if (options.allowCopy !== undefined) return typeof options.allowCopy === 'function' ? options.allowCopy() : options.allowCopy;
     const perms = effectivePermissions(room.project);
     return perms.allowCopy !== false && perms.forbidClone !== true;
   };
@@ -362,7 +372,15 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
     return { default: options.openEdit ? 'edit' : 'view', pages };
   }
 
-  function attach(sock: RoomSocket, { isHost = false, name = '', patches = false }: AttachOptions = {}): number | null {
+  /** Права из параметров подключения: только известные значения; нет прав — по умолчанию. */
+  function cleanRights(r: UserRights | undefined): UserRights | null {
+    if (!r || !isPageRight(r.default)) return null;
+    const pages: Record<string, PageRight> = {};
+    for (const [id, v] of Object.entries(r.pages ?? {})) if (isPageRight(v)) pages[id] = v;
+    return { default: r.default, pages };
+  }
+
+  function attach(sock: RoomSocket, { isHost = false, name = '', patches = false, rights }: AttachOptions = {}): number | null {
     if (isHost && [...room.clients.values()].some(c => c.host && c.sock.readyState === 1)) {
       sock.close(4409, 'host already connected');
       return null;
@@ -380,7 +398,7 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
       last: now(), cursor: null, pageId: null, selection: [], patches,
     };
     room.clients.set(sock, info);
-    room.rights.set(uid, isHost ? { default: 'edit', pages: {} } : initialRights());
+    room.rights.set(uid, isHost ? { default: 'edit', pages: {} } : cleanRights(rights) ?? initialRights());
 
     sendTo(sock, initFor(info));
     broadcastUsers(); // остальные сразу видят нового участника
@@ -460,6 +478,7 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
     for (const c of room.clients.values()) {
       if (c.sock !== info.sock) sendTo(c.sock, { t: 'project', project: projectFor(c), by: info.uid });
     }
+    if (room.project) options.onChange?.(room.project, 'project');
   }
 
   /** Указка не хранится: чистое сообщение уходит всем остальным, кто видит страницу. */
@@ -478,7 +497,7 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
     ops.map(op => (op.op === 'put' && isTask(op.el) ? { op: 'put', el: projectTaskForRole(op.el, 'guest') as Element } : op));
 
   /** Применить очищенный патч к странице хаба и разослать; skip — отправитель, которому его же правку возвращать не нужно. */
-  function commitPatch(patch: BoardPatch, by: number, skip: RoomSocket | null): void {
+  function commitPatch(patch: BoardPatch, by: number, skip: RoomSocket | null, kind: ChangeKind = 'patch'): void {
     const project = room.project!;
     const rev = (room.revs.get(patch.pageId) ?? 0) + 1;
     room.revs.set(patch.pageId, rev);
@@ -494,6 +513,7 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
       if (c.patches) sendTo(c.sock, { ...clean, ops: c.host ? clean.ops : opsForGuest(clean.ops), by });
       else sendTo(c.sock, { t: 'project', project: projectFor(c), by });
     }
+    options.onChange?.(room.project, kind);
   }
 
   /** Принять патч страницы от участника: нужен edit на ней. Применяется к странице хаба и уходит остальным. */
@@ -533,7 +553,7 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
       next = res.updated === el ? el : updateStudentDraft(res.updated, '');
     }
     if (next === el) return;
-    commitPatch({ t: 'patch', pageId: page.id, rev: 0, ops: [{ op: 'put', el: next as Element }] }, -1, null);
+    commitPatch({ t: 'patch', pageId: page.id, rev: 0, ops: [{ op: 'put', el: next as Element }] }, -1, null, kind === 'draft' ? 'task-draft' : 'task-submit');
   }
 
   /** Реакция участника на элемент: ставится или снимается; результат — правка элемента от хаба (её получают все). */
@@ -545,7 +565,7 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
     if (!el) return;
     const next = toggleElementReaction(el, m.emoji, cleanUserId(m.userId) ?? `u${info.uid}`);
     if (next === el) return;
-    commitPatch({ t: 'patch', pageId: page.id, rev: 0, ops: [{ op: 'put', el: next }] }, -1, null);
+    commitPatch({ t: 'patch', pageId: page.id, rev: 0, ops: [{ op: 'put', el: next }] }, -1, null, 'react');
   }
 
   /** Комментарии: создать ветку, ответить, закрыть. Имя автора — имя участника в комнате, а не присланное. */
@@ -573,6 +593,7 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
     for (const c of room.clients.values()) {
       if (room.userPageRight(c.uid, page.id) !== 'hidden') sendTo(c.sock, msg);
     }
+    options.onChange?.(room.project, 'comment');
   }
 
   function pushRights(uid: number): void {

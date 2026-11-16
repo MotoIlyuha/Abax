@@ -1,4 +1,5 @@
 import type { Element, Page, Project } from './types';
+import type { ApiClient } from './api-client';
 
 // Тяжёлые картинки (data:image/… в base64) выносятся из JSON проекта в хранилище по хэшу содержимого:
 // одинаковые картинки занимают одно место и по сети не гоняются дважды.
@@ -189,4 +190,80 @@ async function mapPages(pages: Page[], f: (el: Element) => Promise<Element>): Pr
     out.push(pageChanged ? { ...page, elements: els } : page);
   }
   return changed ? out : pages;
+}
+
+
+// ----- Обмен с облачным сервером -----
+
+/** Какие картинки сервер уже получил в этой сессии (чтобы не слать их снова при каждом сохранении). */
+const uploaded = new Set<string>();
+
+/** Для тестов и смены сервера: забыть, что уже отправлено. */
+export function resetUploadedAssets(): void {
+  uploaded.clear();
+}
+
+/** Хэши всех вынесенных картинок (asset://…) проекта. */
+export function collectAssetHashes(project: Project): string[] {
+  const out = new Set<string>();
+  for (const page of project.pages) {
+    for (const el of page.elements) {
+      if (el.type !== 'image') continue;
+      const h = assetHashOf(el.src);
+      if (h) out.add(h);
+    }
+  }
+  return [...out];
+}
+
+/** Выполняет f над элементами с ограничением числа одновременных запросов. */
+async function pool<T>(items: readonly T[], limit: number, f: (item: T) => Promise<void>): Promise<void> {
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) await f(items[next++]);
+  });
+  await Promise.all(workers);
+}
+
+/**
+ * Отправляет на сервер картинки (хэш → data URL), которых он ещё не получал в этой сессии. Повторная
+ * отправка того, что на сервере уже есть, безвредна (дедупликация по хэшу). При ошибке бросает её —
+ * вызывающий решает, повторять ли; удачно отправленные запоминаются.
+ */
+export async function uploadMissingAssets(assets: Record<string, string>, api: ApiClient): Promise<number> {
+  const todo = Object.entries(assets).filter(([hash]) => !uploaded.has(hash));
+  await pool(todo, 3, async ([hash, dataUrl]) => {
+    const res = await api.request<{ hash: string }>('POST', '/api/assets', { dataUrl });
+    // сервер посчитал другой хэш — значит, строка по пути изменилась; не запоминаем
+    if (res?.hash === hash) uploaded.add(hash);
+  });
+  return todo.length;
+}
+
+/** Забыть, что эти картинки отправлены (сервер сообщил, что их у него нет, — например, его базу сбросили). */
+export function forgetUploadedAssets(hashes: Iterable<string>): void {
+  for (const h of hashes) uploaded.delete(h);
+}
+
+/** Запомнить, что сервер уже знает эти картинки (пришли с него или он сам попросил догрузить не их). */
+export function markAssetsUploaded(hashes: Iterable<string>): void {
+  for (const h of hashes) uploaded.add(h);
+}
+
+/**
+ * Докачивает с сервера картинки проекта, которых нет в локальном хранилище, и кладёт их туда. Строка
+ * проверяется по хэшу: чужая подмена не попадёт в хранилище. Возвращает хэши, которых получить не удалось.
+ */
+export async function fetchMissingAssets(project: Project, store: AssetStore, api: ApiClient): Promise<string[]> {
+  const failed: string[] = [];
+  const need: string[] = [];
+  for (const hash of collectAssetHashes(project)) if (!(await store.has(hash))) need.push(hash);
+  await pool(need, 4, async hash => {
+    try {
+      const text = await api.request<string>('GET', `/api/assets/${hash}?format=dataUrl`, undefined, { anonymous: true, text: true });
+      if (typeof text === 'string' && (await computeAssetHash(text)) === hash) { await store.put(hash, text); uploaded.add(hash); }
+      else failed.push(hash);
+    } catch { failed.push(hash); }
+  });
+  return failed;
 }

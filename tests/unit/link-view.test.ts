@@ -90,7 +90,7 @@ describe('cloneProjectForViewer', () => {
     expect(el).not.toHaveProperty('solutionMd');
     expect(el).not.toHaveProperty('attempts');
     expect(el).not.toHaveProperty('studentDraft');
-    expect(el.markedHard).toBe(true);
+    expect(el).not.toHaveProperty('markedHard');
     // исходник не менялся
     expect((src.pages[0].elements[0] as typeof t).answer).toBe('42');
     expect(src.id).toBe('p1');

@@ -1,6 +1,6 @@
-import type { Element, Page, PlanTier, Project } from './types';
+import type { Page, Project } from './types';
 import { buildBoardUrl, pagesVisibleForRoute, type RouteMatch } from './router';
-import { projectTaskForRole } from './task-element';
+import { cloneProjectForViewer } from './project-access';
 
 // Просмотр доски по ссылке: какой проект и какие страницы показать, как собрать ссылку и как клонировать.
 // Только данные — интерфейс в link-view-ui.ts.
@@ -65,30 +65,4 @@ export function resolveViewProject(route: RouteMatch, loaded: Project | null, bl
   return { project: { ...loaded, pages }, pageId: pages[0].id, notice, missing: false };
 }
 
-/** Элемент клона: у задания нет ответа, ввода и попыток ученика. */
-function cloneElement(el: Element): Element {
-  if (el.type !== 'task') return el;
-  const { attempts: _a, studentDraft: _d, ...rest } = projectTaskForRole(el, 'guest');
-  return rest as Element;
-}
-
-/**
- * Полная копия проекта для зрителя: новый id, тариф и права нового владельца, без комментариев,
- * скрытых страниц (их в проекте зрителя уже нет), ответов и ввода заданий.
- */
-export function cloneProjectForViewer(project: Project, opts: { plan: PlanTier; id: string; now?: number }): Project {
-  const now = opts.now ?? Date.now();
-  const { permissions: _p, pinned: _pin, ...rest } = project;
-  return {
-    ...rest,
-    id: opts.id,
-    name: `${project.name} (копия)`,
-    createdAt: now,
-    updatedAt: now,
-    ownerPlan: opts.plan,
-    pages: project.pages.map(pg => {
-      const { comments: _c, ...page } = pg;
-      return { ...page, elements: page.elements.map(cloneElement) };
-    }),
-  };
-}
+export { cloneProjectForViewer };

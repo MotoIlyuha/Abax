@@ -368,7 +368,10 @@ describe('совместная работа', () => {
 
   it('запуск, повторный запуск, тестовое окно гостя и остановка', async () => {
     const r = await invoke('share:start');
-    expect(r).toMatchObject({ ok: true, port: Number(process.env.DOSKA_SHARE_PORT), maxEditors: 4, users: [] });
+    expect(r).toMatchObject({ ok: true, maxEditors: 4, users: [] });
+    // порт могли занять параллельные тесты (временные порты из того же диапазона) — тогда берётся ближайший свободный
+    expect(r.port).toBeGreaterThanOrEqual(Number(process.env.DOSKA_SHARE_PORT));
+    expect(r.port).toBeLessThan(Number(process.env.DOSKA_SHARE_PORT) + 20);
     expect(r.code).toMatch(/^[A-Z0-9]{6}$/);
     expect(r.hostKey).toEqual(expect.any(String));
     expect(r.url).toBe(`http://${r.url.split('//')[1].split(':')[0]}:${r.port}/?room=${r.code}`);
@@ -391,8 +394,9 @@ describe('совместная работа', () => {
 
   it('занятый порт — берётся следующий свободный', async () => {
     const busy = Number(process.env.DOSKA_SHARE_PORT);
-    const blocker = net.createServer().listen(busy);
-    await new Promise(r => blocker.once('listening', r));
+    // порт мог уже занять чужой соединяющийся сокет (параллельные тесты) — для проверки это то же самое «занят»
+    const blocker = net.createServer();
+    await new Promise<void>(r => { blocker.once('listening', () => r()); blocker.once('error', () => r()); blocker.listen(busy); });
     try {
       const r = await invoke('share:start');
       expect(r.ok).toBe(true);

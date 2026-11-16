@@ -11,8 +11,20 @@ import { startUpdateChecks } from './update-notice';
 import { initAppIcon } from './app-icon';
 import { linkModeOf, parseBoardUrl } from './router';
 import { enterLinkView, startLinkViewCamera } from './link-view-ui';
+import { joinCloudInvite, watchOwnerRoom } from './cloud-room';
+import { cloudEnabled } from './api-client';
 import { localGuestTransport, localRoomCode } from './local-transport';
 import { startLocalRoom } from './browser-host';
+import { syncPlanFromServer } from './api-client';
+import { initCloudSync, mergeRemoteMetas, openFresh, startBackgroundSync } from './cloud-sync';
+
+/** Уведомление гостю, когда комната закрылась или отказала. */
+function watchGuestClose(): void {
+  document.addEventListener('doska:collab-closed', ev => {
+    const notice = closedNotice((ev as CustomEvent<CollabClosedDetail>).detail.code);
+    showCollabNotice(notice.title, notice.text);
+  });
+}
 
 async function boot(): Promise<void> {
   initTooltips();
@@ -31,10 +43,7 @@ async function boot(): Promise<void> {
     // который блокирует boot в Electron BrowserWindow
     const name = q.get('name') || invite?.name || `Гость ${Math.floor(Math.random() * 90 + 10)}`;
     // подписка до подключения: отказ может прийти сразу после открытия канала
-    document.addEventListener('doska:collab-closed', ev => {
-      const notice = closedNotice((ev as CustomEvent<CollabClosedDetail>).detail.code);
-      showCollabNotice(notice.title, notice.text);
-    });
+    watchGuestClose();
     const localCode = localRoomCode(roomCode);
     if (invite) await connectCollab(cloudTransport(invite.relayUrl, invite.room, invite.key, name, relayNotice), false);
     else if (localCode) await connectCollab(localGuestTransport(localCode, name), false);
@@ -55,21 +64,47 @@ async function boot(): Promise<void> {
 
   // ссылка просмотра: /p/…, ?route=project|page — без своей доски на запуске и без записи на устройство
   const route = parseBoardUrl(location.href);
-  if (route.mode === 'collab' && route.token) {
-    showCollabNotice('Ссылка не поддерживается', 'Приглашения по коду пока не работают. Попросите автора прислать ссылку заново.');
-  }
-  const viewRoute = linkModeOf(route) ? route : null;
+  let viewRoute = linkModeOf(route) ? route : null;
+
+  // облако (если настроено): проекты устройства уходят на сервер, серверные появляются в списке
+  initCloudSync({
+    onRemoteProjects: remote => {
+      state.projects = mergeRemoteMetas(state.projects, remote);
+      document.dispatchEvent(new CustomEvent('doska:projects-changed'));
+    },
+  });
 
   let metas = await storage.list();
   if (viewRoute) {
     state.projects = metas;
     await enterLinkView(viewRoute);
-  } else {
+  } else if (route.mode === 'collab' && route.token) {
+    if (!cloudEnabled()) {
+      showCollabNotice('Ссылка не поддерживается', 'Приглашения по коду пока не работают. Попросите автора прислать ссылку заново.');
+    } else {
+      // приглашение /j/:token: гость входит в облачную комнату; не вышло — проект для чтения; не открылось — обычная доска
+      state.projects = metas;
+      watchGuestClose();
+      const outcome = await joinCloudInvite(route.token, q.get('name') || `Гость ${Math.floor(Math.random() * 90 + 10)}`);
+      if (outcome === 'room') {
+        setStorage(netStorage);
+        initRenderer(canvas);
+        initApp(canvas);
+        initController(canvas);
+        onChange(() => requestRender());
+        document.body.classList.add('collab-guest');
+        (window as unknown as Record<string, unknown>).__doska = { state, undo, redo, requestRender };
+        return;
+      }
+      if (outcome === 'view') viewRoute = { mode: 'view-project', projectId: state.project.id };
+    }
+  }
+  if (!viewRoute) {
     let last: { pid?: string; pageId?: string } = {};
     try {
       last = JSON.parse(localStorage.getItem('doska.last') || '{}');
     } catch { /* нет сохранённой позиции */ }
-    let project = last.pid ? await storage.load(last.pid) : null;
+    let project = last.pid ? await openFresh(last.pid) : null;
     if (!project && metas.length > 0) project = await storage.load(metas[0].id);
     if (!project) {
       project = blankProject('Проект 1');
@@ -88,6 +123,10 @@ async function boot(): Promise<void> {
   onChange(() => requestRender());
   // обновления — только здесь: гость совместной работы (ветка выше) открыл приложение автора
   startUpdateChecks();
+  // тариф с сервера и начальная синхронизация проектов (без настроенного облака — ничего не делают)
+  void syncPlanFromServer().then(() => startBackgroundSync());
+  // автор подключается к облачной комнате своего проекта, пока у проекта есть приглашение
+  if (!viewRoute) watchOwnerRoom();
   if (viewRoute) {
     startLinkViewCamera(viewRoute);
     // из просмотра в просмотр — без перезагрузки; во всё остальное (своя доска, совместная работа) — с ней

@@ -187,6 +187,15 @@ describe('комната и пересылка', () => {
   });
 });
 
+describe('keepalive автора', () => {
+  it('на {t:"ping"} от автора отвечает {t:"pong"}', async () => {
+    await start();
+    const { host } = await openRoom();
+    sendJson(host, { t: 'ping' });
+    await until(() => lastControl(host, 'pong'));
+  });
+});
+
 describe('начало сессии автора', () => {
   it('первое сообщение не open — 4400', async () => {
     await start();

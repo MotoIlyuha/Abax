@@ -489,9 +489,9 @@ test.describe('указка', () => {
     expect((await board.state()).flashes).toBeGreaterThanOrEqual(1);
 
     expect(await board.count()).toBe(1);
-    // выделение не трогали, но выбор инструмента (указка из группы) его снял: прямоугольник уже не выделен
+    // выбор инструмента указки снимает выделение (a7acadb), и сама указка его не меняет
     expect((await board.state()).selection).toEqual([]);
-    expect((await board.elements()).map(e => e.id)).toEqual([r.id]);
+    expect((await board.elements())[0].id).toBe(r.id);
     // след гаснет сам
     await expect.poll(async () => (await board.state()).fadeStrokes, { timeout: 3000 }).toBe(0);
   });
