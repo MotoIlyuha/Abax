@@ -42,6 +42,8 @@ test.describe('перетаскивание инструментов на хол
     await page.locator('#btn-shapes').click();
     const tool = page.locator('#ctx-layer .ctx-panel [data-shape="triangle"]');
     await expect(tool).toBeVisible();
+    // панель вытягивается из кнопки: берём кнопку, когда она встала на место
+    await expect.poll(() => page.locator('#ctx-layer .ctx-panel').evaluate(el => (el as HTMLElement).style.transform)).toBe('');
     await dragToBoard(page, tool, 680, 420);
     const els = await board.elements();
     expect(els).toHaveLength(1);

@@ -222,6 +222,8 @@ test.describe('панель цвета и толщины', () => {
     await page.mouse.down();
     const panel = page.locator('.ctx-panel[data-kind="shapes"]');
     await expect(panel).toBeVisible();
+    // панель вытягивается из кнопки: кнопки встают на места, когда вытягивание закончилось
+    await expect.poll(() => panel.evaluate(el => (el as HTMLElement).style.transform)).toBe('');
     const target = (await panel.locator('[data-shape="ellipse"]').boundingBox())!;
     await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 5 });
     await expect(panel.locator('[data-shape="ellipse"]')).toHaveClass(/gesture-hover/);
@@ -241,6 +243,8 @@ test.describe('панель цвета и толщины', () => {
     const panel = page.locator('.ctx-panel[data-kind="shapes"]');
     const grip = panel.locator('.ctx-grip');
     await board.settled();
+    // панель вытягивается из кнопки: ручку берём, когда она встала на место
+    await expect.poll(() => panel.evaluate(el => (el as HTMLElement).style.transform)).toBe('');
     const g = (await grip.boundingBox())!;
     await page.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
     await page.mouse.down();

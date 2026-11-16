@@ -748,7 +748,7 @@ body:not(.no-motion) #pages-dock.mt-showing #pages-tray { visibility: visible; }
 .goo-fx { position: absolute; filter: url(#goo) drop-shadow(0 0 0.6px rgba(16, 24, 40, 0.45)) drop-shadow(0 3px 8px rgba(16, 24, 40, 0.12)); }
 .goo-blob { position: absolute; left: 0; top: 0; background: var(--panel); will-change: transform; }
 .goo-drop { width: 34px; height: 34px; border-radius: 50%; }
-/* панель группы открывает Goo, а не всплытие; при «Motion анимации» выкл. — прежнее всплытие */
+/* панель группы вытягивается из кнопки (stretch.ts), а не всплывает; при «Motion анимации» выкл. — прежнее всплытие */
 body:not(.no-motion) .ctx-panel[data-kind="shapes"] { animation: none; }
 /* пока идёт Goo, у панели нет своей рамки и тени — иначе поверх контура пятна видна вторая рамка */
 .ctx-panel.goo-anim, .goo-ghost.goo-anim { border-color: transparent; box-shadow: none; }
@@ -824,7 +824,7 @@ body:not(.no-motion) .ctx-panel[data-kind="shapes"] { animation: none; }
 /* ----- Контекстные панели ----- */
 /* общий слой: свой контекст наложения, внутри — порядок «кого трогали последним» через z-index */
 #ctx-layer { position: absolute; inset: 0; pointer-events: none; z-index: 9; }
-.ctx-panel, .goo-ghost {
+.ctx-panel, .stretch-ghost, .goo-ghost {
   position: absolute;
   pointer-events: auto;
   display: flex;
@@ -839,9 +839,9 @@ body:not(.no-motion) .ctx-panel[data-kind="shapes"] { animation: none; }
 /* заголовки групп и подписи панелей, кнопки тулбара и меню выделения мышью не выделяются */
 .ctx-panel, #toolbar, #quick-menu { user-select: none; -webkit-user-select: none; }
 .ctx-panel input { user-select: text; -webkit-user-select: text; }
-.ctx-panel[data-kind="shapes"], .goo-ghost { width: auto; padding: 10px; }
+.ctx-panel[data-kind="shapes"], .stretch-ghost, .goo-ghost { width: auto; padding: 10px; }
 /* заголовок группы не заезжает под ручку и кнопки в углу */
-.ctx-panel[data-kind="shapes"] .ctx-title, .goo-ghost .ctx-title { padding-right: 24px; }
+.ctx-panel[data-kind="shapes"] .ctx-title, .stretch-ghost .ctx-title, .goo-ghost .ctx-title { padding-right: 24px; }
 .ctx-panel[data-kind="shapes"].detached .ctx-title { padding-right: 72px; }
 /* у панели стиля сверху слайдер — опускаем его под ручку */
 .ctx-panel[data-kind="style"] { padding-top: 30px; }

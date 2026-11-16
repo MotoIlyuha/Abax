@@ -45,7 +45,7 @@ import { closeIconPicker, openIconPicker } from './icon-picker';
 import { capitalize, dayLabel, pagesLabel } from './format';
 import { buildCustomColorPicker } from './color-picker';
 import { copySelection, duplicateSelection as duplicateInPlace, pasteFromMemory, pasteFromSystem } from './clipboard';
-import { gooCancel, gooClose, gooOpen } from './goo';
+import { stretchCancel, stretchClose, stretchOpen } from './stretch';
 import { morphLeave } from './morph-tooltip';
 import { initMorphPages, morphPagesOpen, morphPagesReset, morphPagesSync } from './morph-pages';
 import { hideHeldTooltip, showHeldTooltip } from './tooltip';
@@ -722,8 +722,8 @@ function closePanel(cp: CtxPanel): void {
   const i = ctxPanels.indexOf(cp);
   if (i < 0) return;
   ctxPanels.splice(i, 1);
-  // группа с панели инструментов втягивается в кнопку (Goo); остальные панели и откреплённые — как раньше
-  if (isGroupPanel(cp) && !cp.detached) gooClose(cp.el, ctxAnchor(cp));
+  // группа с панели инструментов втягивается в кнопку (src/stretch.ts); остальные панели и откреплённые — как раньше
+  if (isGroupPanel(cp) && !cp.detached) stretchClose(cp.el, ctxAnchor(cp));
   cp.el.remove();
   syncCtxButtons();
 }
@@ -753,7 +753,7 @@ function openCtxPanel(kind: CtxKind, source: CtxSource): void {
   el.appendChild(buildCtxBar(cp));
   positionCtxPanel(cp);
   syncCtxButtons();
-  if (isGroupPanel(cp)) gooOpen(el, ctxAnchor(cp));
+  if (isGroupPanel(cp)) stretchOpen(el, ctxAnchor(cp));
 }
 
 /** Клик по кнопке-вызову: открытую ею (или откреплённую) панель закрывает, иначе открывает. */
@@ -765,7 +765,7 @@ function toggleCtxPanel(kind: CtxKind, source: CtxSource): void {
 
 function setCtxDetached(cp: CtxPanel, v: boolean): void {
   cp.detached = v;
-  if (v) gooCancel(cp.el);
+  if (v) stretchCancel(cp.el);
   cp.el.classList.toggle('detached', v);
   syncCtxButtons();
 }
@@ -4367,7 +4367,8 @@ function buildToolbar(): void {
           window.removeEventListener('pointermove', move);
           window.removeEventListener('pointerup', finish);
           window.removeEventListener('pointercancel', finish);
-          const id = hitTool(event)?.dataset.shape as ToolId | undefined;
+          // без движения отпускание — это клик по кнопке группы: вытягивающаяся из неё панель ещё может оказаться под курсором, и её кнопка не должна выбираться
+          const id = (moved ? hitTool(event) : null)?.dataset.shape as ToolId | undefined;
           highlight(null);
           if (event.type === 'pointerup' && id) {
             suppressClick = true;
