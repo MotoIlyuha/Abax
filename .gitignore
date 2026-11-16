@@ -13,3 +13,4 @@ playwright-report/
 # настройки ретранслятора на сервере (образец — relay/.env.example)
 relay/.env
 .data/
+dist-server/

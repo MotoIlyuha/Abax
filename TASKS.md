@@ -16,7 +16,7 @@
   - Установить `better-sqlite3`, `@types/better-sqlite3` (devDependencies); добавить `server` в `tsconfig.test.json`; скрипты `dev:cloud`, `server`, `server:build`, `server:plan` (заготовки).
   - **Тесты**: `tests/unit/plan-limits.test.ts` (правка), новый `tests/unit/relay-host.test.ts`, дополнение `tests/server/relay.test.ts`; E2E «переключатель лимитов» — через `doska.devMode`.
 
-- [ ] **TASK-02: Ядро `server/`, схема SQLite, авторизация**
+- [x] **TASK-02: Ядро `server/`, схема SQLite, авторизация**
   - **Файлы**: `server/db.ts`, `server/auth.ts`, `server/app.ts`, `server/index.ts`, `server/http.ts`, `src/api-client.ts`, `src/plan.ts`, `src/project-access.ts` (заготовка).
   - Миграции пяти таблиц, JWT HS256, `POST /api/auth/anon|telegram|logout`, `GET /api/me`, слияние аккаунтов, истечение `plan_expires_at`, rate limit анонимов, CORS.
   - Клиент: `src/api-client.ts` (адрес API, `fetch` внедряется, без адреса — нет запросов) и синхронизация тарифа в `src/plan.ts`.

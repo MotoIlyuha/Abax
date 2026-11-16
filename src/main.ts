@@ -13,6 +13,7 @@ import { linkModeOf, parseBoardUrl } from './router';
 import { enterLinkView, startLinkViewCamera } from './link-view-ui';
 import { localGuestTransport, localRoomCode } from './local-transport';
 import { startLocalRoom } from './browser-host';
+import { syncPlanFromServer } from './api-client';
 
 async function boot(): Promise<void> {
   initTooltips();
@@ -88,6 +89,8 @@ async function boot(): Promise<void> {
   onChange(() => requestRender());
   // обновления — только здесь: гость совместной работы (ветка выше) открыл приложение автора
   startUpdateChecks();
+  // тариф с сервера (без настроенного облака — ничего не делает)
+  void syncPlanFromServer();
   if (viewRoute) {
     startLinkViewCamera(viewRoute);
     // из просмотра в просмотр — без перезагрузки; во всё остальное (своя доска, совместная работа) — с ней
