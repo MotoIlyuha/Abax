@@ -21,7 +21,7 @@ test.describe('Motion: панель страниц', () => {
     });
     await page.locator('#pages-list .page-item').first().click();
     await expect(page.locator('#pages-list .page-item').first()).toHaveClass(/active/);
-    await expect.poll(async () => { const r = await ring(), c = await card(0); return Math.abs(r.x - c.x) + Math.abs(r.w - c.w); }).toBeLessThan(1.5);
+    await expect.poll(async () => { const r = await ring(), c = await card(0); return Math.abs(r.x - c.x) + Math.abs(r.w - 4 - c.w); }).toBeLessThan(1.5);
     expect((await ring()).o).toBe(1);
     // у карточки своей рамки нет — акцентный цвет только у общей рамки
     const border = await page.locator('#pages-list .page-item').first().evaluate(el => getComputedStyle(el).borderTopColor);
@@ -33,8 +33,8 @@ test.describe('Motion: панель страниц', () => {
     // по пути рамка растягивается: шире одной карточки
     let widest = 0;
     for (let i = 0; i < 25; i++) { widest = Math.max(widest, (await ring()).w); await page.waitForTimeout(16); }
-    expect(widest).toBeGreaterThan((await card(2)).w + 4);
-    await expect.poll(async () => { const r = await ring(), c = await card(2); return Math.abs(r.x - c.x) + Math.abs(r.w - c.w); }).toBeLessThan(1.5);
+    expect(widest).toBeGreaterThan((await card(2)).w + 8);
+    await expect.poll(async () => { const r = await ring(), c = await card(2); return Math.abs(r.x - c.x) + Math.abs(r.w - 4 - c.w); }).toBeLessThan(1.5);
   });
 
   test('список закрывается и открывается на пружинах: лоток скрывается, когда всё успокоилось', async ({ page }) => {
