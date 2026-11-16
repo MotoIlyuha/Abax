@@ -41,7 +41,7 @@
   - Подготовка E2E: профиль в `addInitScript`.
   - **Тесты**: `tests/unit/onboarding.test.ts`.
 
-- [ ] **TASK-07: Настройки → «Профиль», кнопка профиля**
+- [x] **TASK-07: Настройки → «Профиль», кнопка профиля**
   - **Файлы**: `src/app.ts`, `src/profile-settings.ts`, `src/style.css`.
   - Имя, сетка курсоров, вход/привязка/выход, кнопка профиля на домашнем экране (§10).
   - **Тесты**: `tests/unit/profile-settings.test.ts`.

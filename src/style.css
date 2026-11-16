@@ -2953,3 +2953,40 @@ body.link-view #project-icon { pointer-events: none; }
   .cp-marquee { display: none; }
   .cp-pointer { left: 170px; }
 }
+
+/* ----- Кнопка профиля на домашнем экране и раздел «Профиль» (Ночь №4) ----- */
+.home-profile {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 200px;
+  height: 36px;
+  padding: 0 12px 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  background: var(--panel);
+  color: var(--fg);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.home-profile:hover { border-color: var(--border-strong); background: var(--hover); }
+.home-profile-cursor { display: grid; width: 22px; height: 22px; line-height: 0; }
+.home-profile-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ps { display: grid; gap: 22px; max-width: 560px; }
+.ps-field { display: grid; gap: 6px; }
+.ps-caption { font-size: 13px; font-weight: 600; color: var(--fg-label); }
+.ps-block > .ps-caption { margin-bottom: 8px; }
+.ps-hint { font-size: 12px; color: var(--fg-tertiary); }
+.ps-text { margin: 0 0 10px; font-size: 14px; line-height: 1.45; color: var(--fg-secondary); }
+.ps-providers { display: flex; flex-wrap: wrap; gap: 6px; }
+.ps-methods { display: grid; gap: 4px; margin-bottom: 10px; }
+.ps-method { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 4px 10px; border-radius: 10px; background: var(--surface-sunken); }
+.ps-method .ob-icon { color: var(--fg-secondary); }
+.ps-method[data-provider="telegram"] .ob-icon { color: #229ed9; }
+.ps-method[data-provider="google"] .ob-icon { color: #4285f4; }
+.ps-method-name { font-weight: 600; font-size: 14px; }
+.ps-method-detail { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--fg-tertiary); }
+.ps-logout { margin-top: 6px; min-height: 36px; font-size: 14px; color: var(--danger); }
+.ps .ob-email { max-width: 420px; }

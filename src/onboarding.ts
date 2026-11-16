@@ -19,7 +19,7 @@ import { account, pushProfile, signedIn } from './profile-sync';
 export const NO_LOGIN_NOTE = 'Без входа доступны рисование, экспорт, участие по ссылкам и хранение досок в этом браузере. '
   + 'Вход нужен для облачной синхронизации между устройствами, сохранения досок при очистке браузера и подписки Pro';
 
-const ICONS = {
+export const PROVIDER_ICONS = {
   email: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3.5 7l8.5 6 8.5-6"/></svg>',
   telegram: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 4L3 11l6 2.5M21 4l-3 16-9-6.5M21 4L9 13.5V19l3-3.5"/></svg>',
   google: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M20 12.2h-8M20 12.2A8 8 0 1 1 17.4 6.3"/></svg>',
@@ -27,7 +27,7 @@ const ICONS = {
 } as const;
 
 type Provider = 'email' | 'telegram' | 'google';
-const PROVIDER_NAMES: Record<Provider, string> = { email: 'Почта', telegram: 'Telegram', google: 'Google' };
+export const PROVIDER_NAMES: Record<Provider, string> = { email: 'Почта', telegram: 'Telegram', google: 'Google' };
 
 export interface OnboardingOptions {
   /** С какого шага открыть (после возврата от провайдера — 2). */
@@ -66,7 +66,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
   return e;
 }
 
-function button(cls: string, text: string, icon?: string): HTMLButtonElement {
+export function button(cls: string, text: string, icon?: string): HTMLButtonElement {
   const b = el('button', cls);
   b.type = 'button';
   if (icon) {
@@ -78,8 +78,8 @@ function button(cls: string, text: string, icon?: string): HTMLButtonElement {
   return b;
 }
 
-/** Окно с формой входа по почте: адрес → код. done — вошли. */
-function emailForm(mode: AuthMode, say: (text: string, kind?: 'error' | 'info') => void, done: () => void): HTMLElement {
+/** Форма входа по почте: адрес → код. done — вошли (общая с разделом «Профиль»). */
+export function emailForm(mode: AuthMode, say: (text: string, kind?: 'error' | 'info') => void, done: () => void): HTMLElement {
   const form = el('form', 'ob-email');
   form.noValidate = true;
   const email = el('input', 'ob-input');
@@ -146,7 +146,7 @@ function emailForm(mode: AuthMode, say: (text: string, kind?: 'error' | 'info') 
 }
 
 /** Нажали способ входа: проверки (облако, платформа, сервер), затем почта — форма, остальные — переход. */
-async function chooseProvider(p: Provider, mode: AuthMode, resume: () => AuthResume, say: (t: string, k?: 'error' | 'info') => void, showEmail: () => void): Promise<void> {
+export async function chooseProvider(p: Provider, mode: AuthMode, resume: () => AuthResume, say: (t: string, k?: 'error' | 'info') => void, showEmail: () => void): Promise<void> {
   if (!getApi()) { say(authErrorText('no-cloud'), 'error'); return; }
   if (p !== 'email' && !canRedirectAuth()) { say(authErrorText('native'), 'error'); return; }
   const providers = await authProviders();
@@ -179,7 +179,7 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
   closeBtn.type = 'button';
   closeBtn.title = 'Закрыть';
   closeBtn.setAttribute('aria-label', 'Закрыть');
-  closeBtn.innerHTML = ICONS.close;
+  closeBtn.innerHTML = PROVIDER_ICONS.close;
   const viewport = el('div', 'ob-viewport');
   const track = el('div', 'ob-track');
   viewport.appendChild(track);
@@ -201,7 +201,7 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
   const say1 = (text: string, kind: 'error' | 'info' = 'error') => { msg1.hidden = false; msg1.textContent = text; msg1.dataset.kind = kind; fitHeight(); };
   const emailHost = el('div', 'ob-email-host');
   for (const p of ['email', 'telegram', 'google'] as const) {
-    const b = button(`ob-btn ob-provider ob-${p}`, PROVIDER_NAMES[p], ICONS[p]);
+    const b = button(`ob-btn ob-provider ob-${p}`, PROVIDER_NAMES[p], PROVIDER_ICONS[p]);
     b.dataset.provider = p;
     b.addEventListener('click', () => {
       void chooseProvider(p, 'login', () => ({ where: 'onboarding', name: nameInput.value, cursorId: choice.saved, placeholder }), say1, () => {
@@ -277,7 +277,7 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
     const row = el('div', 'ob-link-row');
     const form = el('div', 'ob-email-host');
     for (const p of missing) {
-      const b = button(`ob-btn ob-chip ob-${p}`, PROVIDER_NAMES[p], ICONS[p]);
+      const b = button(`ob-btn ob-chip ob-${p}`, PROVIDER_NAMES[p], PROVIDER_ICONS[p]);
       b.dataset.provider = p;
       b.addEventListener('click', () => {
         void chooseProvider(p, 'link', () => ({ where: 'onboarding', name: nameInput.value, cursorId: choice.saved, placeholder }), say2, () => {
