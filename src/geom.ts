@@ -412,7 +412,7 @@ export function pointInPoly(x: number, y: number, pts: { x: number; y: number }[
   return inside;
 }
 
-const ROT_HANDLE_OFF_PX = 30; // отступ ручки поворота над фигурой, px экрана
+const ROT_HANDLE_OFF_PX = 20; // отступ ручки поворота от левого верхнего угла по каждой оси, px экрана
 const MIN_SHAPE_SIZE = 4;
 const MIN_NOTE_W = 80;
 const MIN_NOTE_H = 60;
@@ -452,7 +452,7 @@ export function elementHandles(el: Element, zoom: number): HandlePos[] {
         const lx = dx * s.w / 2, ly = dy * s.h / 2;
         out.push({ h: { kind: 'resize', dx: dx as -1 | 0 | 1, dy: dy as -1 | 0 | 1 }, x: cx + lx * cos - ly * sin, y: cy + lx * sin + ly * cos });
       }
-      const lx = 0, ly = -s.h / 2 - ROT_HANDLE_OFF_PX / zoom;
+      const lx = -s.w / 2 - ROT_HANDLE_OFF_PX / zoom, ly = -s.h / 2 - ROT_HANDLE_OFF_PX / zoom;
       out.push({ h: { kind: 'rotate' }, x: cx + lx * cos - ly * sin, y: cy + lx * sin + ly * cos });
       return out;
     }
@@ -497,7 +497,7 @@ export function elementHandles(el: Element, zoom: number): HandlePos[] {
         out.push({ h: { kind: 'resize', dx: dx as -1 | 0 | 1, dy: dy as -1 | 0 | 1 }, x: cx + lx * cos - ly * sin, y: cy + lx * sin + ly * cos });
       }
       if (el.page) return out;
-      const lx = 0, ly = -el.h / 2 - ROT_HANDLE_OFF_PX / zoom;
+      const lx = -el.w / 2 - ROT_HANDLE_OFF_PX / zoom, ly = -el.h / 2 - ROT_HANDLE_OFF_PX / zoom;
       out.push({ h: { kind: 'rotate' }, x: cx + lx * cos - ly * sin, y: cy + lx * sin + ly * cos });
       return out;
     }
@@ -570,7 +570,7 @@ export function applyHandle(el: Element, h: Handle, pt: Pt, mods?: ResizeMods, r
     }
     if (h.kind === 'rotate') {
       const cx = s.x + s.w / 2, cy = s.y + s.h / 2;
-      let ang = rotateAngle !== undefined ? rotateAngle : Math.atan2(pt.y - cy, pt.x - cx) + Math.PI / 2;
+      let ang = rotateAngle !== undefined ? rotateAngle : Math.atan2(pt.y - cy, pt.x - cx) - Math.atan2(-s.h, -s.w);
       for (let k = 0; k < 8; k++) {
         const target = (k * Math.PI) / 4;
         let diff = ang - target;
@@ -609,7 +609,7 @@ export function applyHandle(el: Element, h: Handle, pt: Pt, mods?: ResizeMods, r
   if (el.type === 'image' && (h.kind === 'resize' || h.kind === 'rotate')) {
     if (h.kind === 'rotate') {
       const cx = el.x + el.w / 2, cy = el.y + el.h / 2;
-      let ang = rotateAngle !== undefined ? rotateAngle : Math.atan2(pt.y - cy, pt.x - cx) + Math.PI / 2;
+      let ang = rotateAngle !== undefined ? rotateAngle : Math.atan2(pt.y - cy, pt.x - cx) - Math.atan2(-el.h, -el.w);
       for (let k = 0; k < 8; k++) {
         const target = (k * Math.PI) / 4;
         let diff = ang - target;

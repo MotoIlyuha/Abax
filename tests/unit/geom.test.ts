@@ -335,12 +335,12 @@ describe('elementHandles', () => {
     ]);
   });
 
-  it('прямоугольник — 8 ручек размера и ручка поворота над фигурой', () => {
+  it('прямоугольник — 8 ручек размера и ручка поворота у левого верхнего угла', () => {
     const hs = elementHandles(rect(), 2);
     expect(hs).toHaveLength(9);
     const rot = hs.find(h => h.h.kind === 'rotate')!;
-    expect(rot.x).toBeCloseTo(50);
-    expect(rot.y).toBeCloseTo(-15); // 30px экрана при zoom=2
+    expect(rot.x).toBeCloseTo(-10); // 20px экрана при zoom=2 влево от угла
+    expect(rot.y).toBeCloseTo(-10); // и вверх
   });
 
   it('ломаная — узлы и середины рёбер', () => {
@@ -429,9 +429,9 @@ describe('applyHandle', () => {
   });
 
   it('поворот по позиции курсора нормализуется в (-π, π]', () => {
-    // курсор справа от центра => угол atan2 = 0, +π/2
+    // курсор справа от центра => atan2 = 0, минус направление на левый верхний угол
     const r = applyHandle(rect(), { kind: 'rotate' }, pt(200, 25)) as ShapeEl;
-    expect(r.rot).toBeCloseTo(Math.PI / 2);
+    expect(r.rot).toBeCloseTo(Math.PI - Math.atan(0.5));
     const big = applyHandle(rect(), { kind: 'rotate' }, pt(0, 0), undefined, 3 * Math.PI / 2 + 0.3) as ShapeEl;
     expect(big.rot).toBeCloseTo(-Math.PI / 2 + 0.3);
   });
