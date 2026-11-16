@@ -120,19 +120,19 @@ test.describe('окно «Все настройки»', () => {
 test.describe('настройка панели инструментов', () => {
   test('порядок кнопок меняется перетаскиванием и сохраняется', async ({ board, page }) => {
     await openToolbarSettings(page);
-    expect((await toolbarOrder(page)).slice(0, 3)).toEqual(['select', 'pan', 'pen']);
+    expect((await toolbarOrder(page)).slice(0, 3)).toEqual(['select', 'pen', 'highlighter']);
     await drag(page, row(page, 'pen'), row(page, 'select'), 0.1);
     await expect(editor(page).locator('.tbe-list[data-list="items"] > .tbe-entry').first()).toHaveAttribute('data-tool', 'pen');
-    expect((await toolbarOrder(page)).slice(0, 3)).toEqual(['pen', 'select', 'pan']);
+    expect((await toolbarOrder(page)).slice(0, 3)).toEqual(['pen', 'select', 'highlighter']);
     // нижний край строки — вставка после неё
-    await drag(page, row(page, 'pen'), row(page, 'pan'), 0.9);
-    expect((await toolbarOrder(page)).slice(0, 3)).toEqual(['select', 'pan', 'pen']);
+    await drag(page, row(page, 'pen'), row(page, 'highlighter'), 0.9);
+    expect((await toolbarOrder(page)).slice(0, 3)).toEqual(['select', 'highlighter', 'pen']);
     await drag(page, row(page, 'select'), row(page, 'pen'), 0.9);
-    expect((await toolbarOrder(page)).slice(0, 3)).toEqual(['pan', 'pen', 'select']);
+    expect((await toolbarOrder(page)).slice(0, 3)).toEqual(['highlighter', 'pen', 'select']);
 
     await page.reload();
     await board.ready();
-    expect((await toolbarOrder(page)).slice(0, 3)).toEqual(['pan', 'pen', 'select']);
+    expect((await toolbarOrder(page)).slice(0, 3)).toEqual(['highlighter', 'pen', 'select']);
   });
 
   test('инструмент, брошенный на другой, образует именованную группу', async ({ board, page }) => {
@@ -173,7 +173,7 @@ test.describe('настройка панели инструментов', () => 
     // разгруппировать — инструменты встают на место группы
     await editor(page).locator('.tbe-group', { hasText: 'Пишем' }).locator('.tbe-ungroup').click();
     await expect(editor(page).locator('.tbe-group', { hasText: 'Пишем' })).toHaveCount(0);
-    expect((await toolbarOrder(page)).slice(0, 5)).toEqual(['select', 'pan', 'pen', 'eraser', 'highlighter']);
+    expect((await toolbarOrder(page)).slice(0, 5)).toEqual(['select', 'pen', 'eraser', 'highlighter', 'partEraser']);
   });
 
   test('новая группа кнопкой, инструмент перетаскивается в неё', async ({ page }) => {
