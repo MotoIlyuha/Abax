@@ -13,6 +13,8 @@ import {
   addDraft, deleteDraft, onDraft, realPageId,
   canCopyCurrentBoard, canCloneCurrentProject, canAddPageTo, PAGE_LIMIT_TEXT, projectPlan,
 } from './state';
+import { readClipboardText, type PastedText } from './paste-text';
+import { remapRuns } from './text-runs';
 import type { PresetKind, StylePatch, StyleValue } from './state';
 import { doskaApi, storage } from './storage';
 import { isNativeApp, sharePng } from './native';
@@ -430,13 +432,21 @@ function syncLiveText(): void {
     // без id: надпись фигуры с этим id не рисуется (её показывает редактор)
     state.liveText = { ...editedShape(e), id: '', text };
   } else if (e.el) {
-    state.liveText = { ...editedEl(e), text };
+    const ed = editedEl<TextEl | NoteEl>(e);
+    state.liveText = ed.type === 'text' ? withRuns(ed, text) : { ...ed, text };
   } else if (e.target === 'text') {
     state.liveText = { id: '', ...newTextProps(e), text };
   } else {
     const n = state.liveNote;
     state.liveText = n ? { id: '', type: 'note', x: n.x, y: n.y, w: n.w, h: n.h, text, color: n.color } : null;
   }
+}
+
+/** Текстовый блок с новым текстом: смешанное форматирование переезжает вместе с неизменённым текстом. */
+function withRuns(el: TextEl, text: string): TextEl {
+  const { runs: _old, ...rest } = el;
+  const runs = remapRuns(el.runs, el.text, text);
+  return runs ? { ...rest, text, runs } : { ...rest, text };
 }
 
 /** Новый текст по черновику: место, кегль, начертание и текущий цвет. */
@@ -549,7 +559,7 @@ export function closeEditor(commit: boolean): void {
     // элемент успели удалить или текст не изменился — в истории нечего записывать
     if (!cur || cur.text === text) { update(); return; }
     pushHistory(state.board.elements);
-    replaceElements(state.board.elements.map(x => (x.id === cur.id ? ({ ...cur, text } as Element) : x)));
+    replaceElements(state.board.elements.map(x => (x.id === cur.id ? (cur.type === 'text' ? withRuns(cur, text) : { ...cur, text }) as Element : x)));
   } else if (e.target === 'text') {
     const id = uid();
     addElement({ id, ...newTextProps(e), text });
@@ -2709,6 +2719,26 @@ export function duplicateSelection(): void {
   duplicateInPlace();
 }
 
+/** Вставляет текст из буфера обмена на холст в центр видимой области. */
+function pasteTextOnBoard(pt: PastedText): void {
+  const v = viewRect();
+  const size = Math.round(Math.min(120, Math.max(8, pt.size ?? 20)));
+  const longest = pt.text.split('\n').reduce((m, l) => Math.max(m, l.length), 0);
+  const w = longest > 50 ? Math.min(560, (v.x1 - v.x0) * 0.7) : undefined;
+  const el: TextEl = {
+    id: uid(), type: 'text', text: pt.text,
+    x: (v.x0 + v.x1) / 2 - (w ?? 0) / 2, y: (v.y0 + v.y1) / 2 - size * 1.25 / 2,
+    size, color: pt.color ?? state.style.color,
+  };
+  if (w) el.w = w;
+  if (pt.bold) el.bold = true;
+  if (pt.italic) el.italic = true;
+  if (pt.runs) el.runs = pt.runs;
+  pushHistory(state.board.elements);
+  replaceElements([...state.board.elements, el]);
+  selectInserted(el.id);
+}
+
 function wireImageInput(): void {
   document.getElementById('btn-image')!.addEventListener('click', () => { void insertImage(); });
   // Ctrl+C / Ctrl+X / Ctrl+V: элементы доски и картинки из буфера обмена
@@ -2736,6 +2766,9 @@ function wireImageInput(): void {
         }
       }
     }
+    // текст из буфера: ложится на холст с абзацами, списками, жирным/курсивом, цветом и размером
+    const pt = readClipboardText(e.clipboardData);
+    if (pt) { e.preventDefault(); pasteTextOnBoard(pt); return; }
     if (pasteFromMemory(viewRect())) e.preventDefault();
   });
   // перетаскивание файла на доску
@@ -5183,6 +5216,8 @@ function refresh(): void {
   document.body.classList.toggle('on-draft', onDraft());
   (document.getElementById('btn-undo') as HTMLButtonElement).disabled = !canUndo();
   (document.getElementById('btn-redo') as HTMLButtonElement).disabled = !canRedo();
+  // режим просмотра (ссылка или гость без права правки): группа отмены скрывается целиком, а не остаётся пустой плашкой
+  document.querySelector<HTMLElement>('.undo-group')!.style.display = canEditBoard() ? '' : 'none';
   document.getElementById('zoom-label')!.textContent = `${Math.round(state.camera.zoom * 100)}%`;
   renderGridButton();
   const nameInput = document.getElementById('page-name') as HTMLInputElement;

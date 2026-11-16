@@ -1,6 +1,7 @@
 import type { Camera, Element, Guide, Handle, HandlePos, ImageEl, PolyEl, Pt, ShapeEl, StrokeEl, TextAlign, TextEl, TextVAlign } from './types';
 import { applySolidParam, solidGeometry, solidHandles } from './solid';
 import { widthAt } from './stroke';
+import { styledSegments } from './text-runs';
 
 export interface AABB { x0: number; y0: number; x1: number; y1: number }
 
@@ -13,33 +14,65 @@ function mctx(): CanvasRenderingContext2D {
 export const TEXT_FONT = (size: number, bold = false, italic = false) =>
   `${italic ? 'italic ' : ''}${bold ? '700 ' : ''}${size}px "Segoe UI", "Inter", system-ui, sans-serif`;
 
-export function textSize(el: TextEl): { w: number; h: number } {
-  const lines = textLines(el);
-  const ctx = mctx();
-  ctx.font = TEXT_FONT(el.size, el.bold, el.italic);
+/** Строка текстового блока и смещение её первого символа в `el.text` (нужно для смешанного форматирования). */
+export interface TextSpan { text: string; start: number }
+
+/** Ширина куска [from, to) текста блока с учётом фрагментов разного начертания. */
+function measureRange(ctx: CanvasRenderingContext2D, el: TextEl, from: number, to: number): number {
+  if (!el.runs) {
+    ctx.font = TEXT_FONT(el.size, el.bold, el.italic);
+    return ctx.measureText(el.text.slice(from, to)).width;
+  }
   let w = 0;
-  for (const l of lines) w = Math.max(w, ctx.measureText(l || ' ').width);
-  return { w: el.w ?? w, h: lines.length * el.size * 1.25 };
+  for (const seg of styledSegments(el, from, to)) {
+    ctx.font = TEXT_FONT(el.size, seg.style.bold, seg.style.italic);
+    w += ctx.measureText(el.text.slice(seg.from, seg.to)).width;
+  }
+  return w;
+}
+
+export function textSize(el: TextEl): { w: number; h: number } {
+  const spans = textSpans(el);
+  const ctx = mctx();
+  let w = 0;
+  for (const l of spans) w = Math.max(w, l.text ? measureRange(ctx, el, l.start, l.start + l.text.length) : measureRange(ctx, { ...el, text: ' ', runs: undefined }, 0, 1));
+  return { w: el.w ?? w, h: spans.length * el.size * 1.25 };
 }
 
 export function textLines(el: TextEl): string[] {
-  if (el.w === undefined) return el.text.split('\n');
+  return textSpans(el).map(l => l.text);
+}
+
+/** Строки блока (с переносом по ширине, если она задана) вместе со смещениями в тексте. */
+export function textSpans(el: TextEl): TextSpan[] {
+  const result: TextSpan[] = [];
+  let pos = 0;
+  const paragraphs = el.text.split('\n');
+  if (el.w === undefined) {
+    for (const par of paragraphs) { result.push({ text: par, start: pos }); pos += par.length + 1; }
+    return result;
+  }
   const ctx = mctx();
-  ctx.font = TEXT_FONT(el.size, el.bold, el.italic);
-  const result: string[] = [];
-  for (const paragraph of el.text.split('\n')) {
-    if (!paragraph) { result.push(''); continue; }
-    let line = '';
+  for (const paragraph of paragraphs) {
+    if (!paragraph) { result.push({ text: '', start: pos }); pos += 1; continue; }
+    let lineStart = -1; // смещение первого символа строки; -1 — строка пуста
+    let end = pos;      // смещение за последним символом строки
+    const flush = () => { result.push({ text: lineStart < 0 ? '' : el.text.slice(lineStart, end).trimEnd(), start: lineStart < 0 ? end : lineStart }); lineStart = -1; };
+    let at = pos;
     for (const part of paragraph.match(/\s+|\S+/g) || []) {
-      if (line && ctx.measureText(line + part).width > el.w && !/^\s+$/.test(part)) {
-        result.push(line.trimEnd()); line = '';
-      }
+      const partEnd = at + part.length;
+      if (lineStart >= 0 && measureRange(ctx, el, lineStart, partEnd) > el.w && !/^\s+$/.test(part)) flush();
+      let i = at;
       for (const char of part) {
-        if (line && ctx.measureText(line + char).width > el.w) { result.push(line.trimEnd()); line = ''; }
-        if (line || !/\s/.test(char)) line += char;
+        const next = i + char.length;
+        if (lineStart >= 0 && measureRange(ctx, el, lineStart, next) > el.w) flush();
+        if (lineStart >= 0 || !/\s/.test(char)) { if (lineStart < 0) lineStart = i; end = next; }
+        i = next;
       }
+      at = partEnd;
     }
-    result.push(line);
+    flush();
+    pos += paragraph.length + 1;
   }
   return result;
 }
