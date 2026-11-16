@@ -97,6 +97,7 @@ function build(mode: 'open' | 'close', panel: HTMLElement, anchor: HTMLElement, 
   });
   host.appendChild(layer);
   const fade = [panel.querySelector<HTMLElement>('.ctx-title'), ...tools].filter((e): e is HTMLElement => !!e);
+  panel.classList.add('goo-anim'); // собственная рамка панели скрыта: контур рисует общее пятно
   const anim: Anim = { mode, panel, ghost, layer, origin, main, M, drops, fade, rect: p, t: 0 };
   anims.add(anim);
   render();
@@ -125,6 +126,7 @@ export function gooClose(panel: HTMLElement, anchor: HTMLElement | null): void {
   ghostEl.className = 'goo-ghost';
   ghostEl.removeAttribute('data-kind');
   ghostEl.removeAttribute('data-from');
+  ghostEl.classList.remove('goo-anim');
   ghostEl.setAttribute('inert', '');
   ghostEl.style.pointerEvents = 'none';
   for (const k of ['mask-image', 'mask-repeat', 'mask-position', 'mask-size']) ghostEl.style.removeProperty(k);
@@ -137,6 +139,7 @@ export function gooClose(panel: HTMLElement, anchor: HTMLElement | null): void {
     const a = rel(anchor, wr);
     running.mode = 'close';
     running.ghost = true;
+    ghostEl.classList.add('goo-anim');
     running.panel = ghostEl;
     running.fade = [ghostEl.querySelector<HTMLElement>('.ctx-title'), ...ghostEl.querySelectorAll<HTMLElement>('.ctx-shapes .tool')].filter((e): e is HTMLElement => !!e);
     running.t = 0;
@@ -169,6 +172,7 @@ function finish(a: Anim): void {
   anims.delete(a);
   a.layer.remove();
   if (a.ghost) { a.panel.remove(); return; }
+  a.panel.classList.remove('goo-anim');
   for (const k of ['mask-image', 'mask-repeat', 'mask-position', 'mask-size']) a.panel.style.removeProperty(k);
   for (const e of a.fade) e.style.removeProperty('opacity');
 }

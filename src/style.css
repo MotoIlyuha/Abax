@@ -750,6 +750,8 @@ body:not(.no-motion) #pages-dock.mt-showing #pages-tray { visibility: visible; }
 .goo-drop { width: 34px; height: 34px; border-radius: 50%; }
 /* панель группы открывает Goo, а не всплытие; при «Motion анимации» выкл. — прежнее всплытие */
 body:not(.no-motion) .ctx-panel[data-kind="shapes"] { animation: none; }
+/* пока идёт Goo, у панели нет своей рамки и тени — иначе поверх контура пятна видна вторая рамка */
+.ctx-panel.goo-anim, .goo-ghost.goo-anim { border-color: transparent; box-shadow: none; }
 
 /* ----- Панель инструментов: позиция из настроек ----- */
 #toolbar {
