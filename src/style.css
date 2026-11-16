@@ -91,6 +91,7 @@
   --spring-soft: 260 24; /* крупные сдвиги и смена размера */
   --spring-fade: 420 32; /* прозрачность и мелкие сдвиги надписей */
   --spring-pop: 520 16; /* «нажатие» иконки при клике */
+  --spring-settle: 280 22; /* приземление на значение: один небольшой перелёт (раскрытие списка страниц) */
   --toast-bg: #141917; /* тост */
   --toast-fg: #f3f1e7; /* текст тоста */
   --toast-link: #9ed9ff; /* ссылка в тосте */
@@ -696,6 +697,44 @@ body.tool-dragging, body.tool-dragging * { cursor: grabbing !important; }
 /* «Анимация меню и панелей» выключена в настройках */
 body.no-ui-anim :is(#btn-pages, .pages-chev, #pages-tray, #pages-dock.open #pages-tray, .page-item, .page-add) { transition: none; }
 body.no-ui-anim #pages-dock.open :is(.page-item, .page-add) { animation: none; }
+
+/* ----- Motion на панели страниц: пружины (src/morph-pages.ts); без «Motion анимаций» — прежний CSS ----- */
+@property --sel-x { syntax: '<length>'; inherits: true; initial-value: 0px; }
+@property --sel-y { syntax: '<length>'; inherits: true; initial-value: 0px; }
+@property --sel-w { syntax: '<length>'; inherits: true; initial-value: 0px; }
+@property --sel-h { syntax: '<length>'; inherits: true; initial-value: 0px; }
+@property --sel-o { syntax: '<number>'; inherits: true; initial-value: 0; }
+@property --sel-s { syntax: '<number>'; inherits: true; initial-value: 1; }
+/* рамка выбранной страницы — одна на список: перетекает от карточки к карточке */
+#pages-list::before {
+  content: '';
+  display: none;
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 1;
+  box-sizing: border-box;
+  width: var(--sel-w);
+  height: var(--sel-h);
+  border: 1px solid var(--accent);
+  border-radius: 14px;
+  box-shadow: 0 0 0 1.5px var(--accent);
+  opacity: var(--sel-o);
+  transform: translate(var(--sel-x), var(--sel-y)) scale(var(--sel-s));
+  transform-origin: calc(var(--sel-w) / 2) calc(var(--sel-h) / 2);
+  pointer-events: none;
+}
+body:not(.no-motion) #pages-list::before { display: block; }
+/* карточку тащат — рамка ждёт, потом перетечёт на её новое место */
+body.reordering #pages-list::before { opacity: 0; }
+/* у выбранной карточки собственной рамки нет и подъёма при наведении тоже: рамка стоит на месте */
+body:not(.no-motion) .page-item.active:not(.dragging) { border-color: var(--border); box-shadow: var(--shadow); }
+body:not(.no-motion) .page-item.active:not(.dragging):hover { transform: none; }
+/* раскрытие списка ведут пружины: CSS-переходы и въезд карточек выключены, лоток виден, пока идёт движение */
+body:not(.no-motion) :is(#pages-tray, #pages-dock.open #pages-tray, .pages-chev) { transition: none; }
+body:not(.no-motion) #btn-pages { transition: box-shadow 0.15s ease, border-color 0.15s ease; }
+body:not(.no-motion) #pages-dock.open :is(.page-item, .page-add, .page-divider) { animation: none; }
+body:not(.no-motion) #pages-dock.mt-showing #pages-tray { visibility: visible; }
 
 /* ----- Панель инструментов: позиция из настроек ----- */
 #toolbar {

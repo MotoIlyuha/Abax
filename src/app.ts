@@ -46,6 +46,7 @@ import { capitalize, dayLabel, pagesLabel } from './format';
 import { buildCustomColorPicker } from './color-picker';
 import { copySelection, duplicateSelection as duplicateInPlace, pasteFromMemory, pasteFromSystem } from './clipboard';
 import { morphLeave } from './morph-tooltip';
+import { initMorphPages, morphPagesOpen, morphPagesReset, morphPagesSync } from './morph-pages';
 import { hideHeldTooltip, showHeldTooltip } from './tooltip';
 import { LIMIT_PROJECTS_TEXT, copyBoardLink, currentBoardLink, registerLinkViewHooks } from './link-view-ui';
 import { canCreateProject, isOverPageLimit, isOverProjectLimit, PLAN_LIMITS } from './limits';
@@ -235,6 +236,7 @@ function applyMotionAnimations(): void {
   const on = state.settings.motionAnimations;
   document.body.classList.toggle('no-motion', !on);
   if (!on) morphLeave(true);
+  morphPagesReset(pagesOpen);
 }
 
 /** Кнопки отмены/повтора в шапке прячутся вместе с разделителями вокруг них (см. style.css). */
@@ -3380,6 +3382,7 @@ function renderPages(): void {
       revealedPageId = state.pageId;
       revealActivePage(true);
     }
+    morphPagesSync();
   } catch (err) { console.error('[doska] renderPages failed:', err); }
 }
 
@@ -3428,6 +3431,7 @@ function setPagesOpen(open: boolean): void {
     revealedPageId = state.pageId;
     revealActivePage(false);
   }
+  morphPagesOpen(open);
 }
 
 /** Показать или скрыть список страниц (кнопка «Страницы», клавиша B). */
@@ -3441,6 +3445,14 @@ function pagesButtonAdds(): boolean {
 }
 
 function wirePagesDock(): void {
+  initMorphPages({
+    dock: document.getElementById('pages-dock')!,
+    tray: document.getElementById('pages-tray')!,
+    list: document.getElementById('pages-list')!,
+    button: document.getElementById('btn-pages')!,
+    atTop: pagesAtTop,
+    active: () => pageCards.get(state.pageId)?.el ?? null,
+  });
   // Alt и долгое нажатие на «Страница +» создают черновик
   const pagesBtn = document.getElementById('btn-pages')!;
   wireCreate(pagesBtn, pagesButtonAdds, () => {});

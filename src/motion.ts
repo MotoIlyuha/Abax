@@ -10,6 +10,12 @@ export function reduceMotion(): boolean {
   try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
 }
 
+/** «Motion анимации» включены в настройках (выключенные — класс no-motion на body). */
+export const motionEnabled = (): boolean => !document.body.classList.contains('no-motion');
+
+/** «Анимация меню и панелей» выключена: пружины встают на цель сразу. */
+export const uiAnimOff = (): boolean => document.body.classList.contains('no-ui-anim');
+
 export const S = (x: number, k = 400, c = 30): Spring => ({ x, v: 0, t: x, k, c });
 
 /** Меняет жёсткость и затухание; при «уменьшить движение» затухание критическое — без перелёта. */

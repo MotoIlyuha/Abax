@@ -8,7 +8,7 @@
 // Подсказка рисуется в слое #morph-tip (position: fixed), подсветка — внутри #toolbar.
 // Подписи только через textContent: текст приходит из title кнопок, но не доверяем ему.
 
-import { S, atRest, clamp, register, snap, spring, step, tune, wake, type Spring } from './motion';
+import { S, atRest, clamp, register, snap, spring, step, tune, uiAnimOff, wake, type Spring } from './motion';
 
 type Side = 'top' | 'bottom' | 'left' | 'right';
 type Axis = 'x' | 'y';
@@ -330,8 +330,6 @@ export function morphPop(target: EventTarget | null): void {
 }
 
 // ----- цикл анимации -----
-
-const uiAnimOff = (): boolean => document.body.classList.contains('no-ui-anim');
 
 function frame(dt: number): void {
   if (uiAnimOff()) {
