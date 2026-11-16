@@ -2168,20 +2168,23 @@ function profileButton(): HTMLButtonElement {
 }
 
 /** Сообщение о входе для раздела «Профиль» (вернулись от провайдера в настройки). */
-let profileNotice: { text: string; kind: 'error' | 'info' } | null = null;
+let profileNotice: { text: string; kind: 'error' | 'info'; until: number } | null = null;
 
-/** Забрать сообщение о входе (показывается один раз). */
+/**
+ * Сообщение о входе для «Профиля»: живёт несколько секунд — раздел перерисовывается, когда после запуска
+ * приходит ответ сервера об аккаунте, и сообщение не должно пропасть.
+ */
 export function takeProfileNotice(): { text: string; kind: 'error' | 'info' } | null {
-  const n = profileNotice;
-  profileNotice = null;
-  return n;
+  if (!profileNotice || profileNotice.until < Date.now()) { profileNotice = null; return null; }
+  return { text: profileNotice.text, kind: profileNotice.kind };
 }
 
 /** Вернулись от провайдера входа, начатого в настройках: открыть «Профиль» и показать итог. */
 export function openProfileAfterAuth(outcome: AuthOutcome): void {
+  const until = Date.now() + 8000;
   profileNotice = outcome.ok
-    ? { text: outcome.mode === 'link' ? 'Способ входа привязан' : 'Вы вошли в аккаунт', kind: 'info' }
-    : { text: authErrorText(outcome.error ?? 'auth-failed'), kind: 'error' };
+    ? { text: outcome.mode === 'link' ? 'Способ входа привязан' : 'Вы вошли в аккаунт', kind: 'info', until }
+    : { text: authErrorText(outcome.error ?? 'auth-failed'), kind: 'error', until };
   openAllSettings('profile');
 }
 

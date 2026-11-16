@@ -46,6 +46,6 @@
   - Имя, сетка курсоров, вход/привязка/выход, кнопка профиля на домашнем экране (§10).
   - **Тесты**: `tests/unit/profile-settings.test.ts`.
 
-- [ ] **TASK-08: E2E и финальная проверка**
+- [x] **TASK-08: E2E и финальная проверка**
   - `e2e/night4-onboarding.spec.ts`, `e2e/night4-cursors.spec.ts`, `e2e/night4-cloud-auth.spec.ts`.
   - Два полных прогона Playwright подряд, `npm run build`, `npm run server:build`; итог в `NIGHT_LOG.md`.
