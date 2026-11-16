@@ -37,7 +37,7 @@
   - `POST/GET/DELETE /api/invites`, `GET /j/:token` (JSON); просмотр по ссылке — сначала сервер, потом `storage.load`; клонирование через сервер.
   - **Тесты**: `tests/server/invites.test.ts`, `tests/unit/link-view-cloud.test.ts`.
 
-- [ ] **TASK-06: Клиентская облачная синхронизация**
+- [x] **TASK-06: Клиентская облачная синхронизация**
   - **Файлы**: `src/cloud-sync.ts`, `src/storage.ts`, `src/main.ts`, `src/app.ts`.
   - Обёртка над `storage`: PUT с дебаунсом, вынос ассетов, `lastSyncedRev`, начальная синхронизация, объединённый список проектов, `DELETE`.
   - **Тесты**: `tests/unit/cloud-sync.test.ts`.

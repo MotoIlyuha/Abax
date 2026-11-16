@@ -662,6 +662,8 @@ describe('ввод ученика в задание', () => {
     host.inbox.length = 0;
     for (const d of ['1', '12', '123']) collab.sendTaskDraft('pg1', 'task', d);
     await until(() => (server.room.project!.pages[0].elements[0] as never as { studentDraft?: string }).studentDraft === '123');
+    // сообщение автору может прийти чуть позже, чем хаб обновил своё состояние
+    await until(() => host.inbox.filter(m => m.t === 'patch').at(-1)?.ops[0].el.studentDraft === '123');
     const drafts = host.inbox.filter(m => m.t === 'patch');
     expect(drafts.length).toBeLessThanOrEqual(3);
     expect(drafts.at(-1)!.ops[0].el.studentDraft).toBe('123');

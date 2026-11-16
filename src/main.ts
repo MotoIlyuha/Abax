@@ -14,6 +14,7 @@ import { enterInvite, enterLinkView, startLinkViewCamera } from './link-view-ui'
 import { localGuestTransport, localRoomCode } from './local-transport';
 import { startLocalRoom } from './browser-host';
 import { syncPlanFromServer } from './api-client';
+import { initCloudSync, mergeRemoteMetas, openFresh, startBackgroundSync } from './cloud-sync';
 
 async function boot(): Promise<void> {
   initTooltips();
@@ -58,6 +59,14 @@ async function boot(): Promise<void> {
   const route = parseBoardUrl(location.href);
   let viewRoute = linkModeOf(route) ? route : null;
 
+  // облако (если настроено): проекты устройства уходят на сервер, серверные появляются в списке
+  initCloudSync({
+    onRemoteProjects: remote => {
+      state.projects = mergeRemoteMetas(state.projects, remote);
+      document.dispatchEvent(new CustomEvent('doska:projects-changed'));
+    },
+  });
+
   let metas = await storage.list();
   if (viewRoute) {
     state.projects = metas;
@@ -72,7 +81,7 @@ async function boot(): Promise<void> {
     try {
       last = JSON.parse(localStorage.getItem('doska.last') || '{}');
     } catch { /* нет сохранённой позиции */ }
-    let project = last.pid ? await storage.load(last.pid) : null;
+    let project = last.pid ? await openFresh(last.pid) : null;
     if (!project && metas.length > 0) project = await storage.load(metas[0].id);
     if (!project) {
       project = blankProject('Проект 1');
@@ -91,8 +100,8 @@ async function boot(): Promise<void> {
   onChange(() => requestRender());
   // обновления — только здесь: гость совместной работы (ветка выше) открыл приложение автора
   startUpdateChecks();
-  // тариф с сервера (без настроенного облака — ничего не делает)
-  void syncPlanFromServer();
+  // тариф с сервера и начальная синхронизация проектов (без настроенного облака — ничего не делают)
+  void syncPlanFromServer().then(() => startBackgroundSync());
   if (viewRoute) {
     startLinkViewCamera(viewRoute);
     // из просмотра в просмотр — без перезагрузки; во всё остальное (своя доска, совместная работа) — с ней

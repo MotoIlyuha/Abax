@@ -240,6 +240,11 @@ export async function uploadMissingAssets(assets: Record<string, string>, api: A
   return todo.length;
 }
 
+/** Забыть, что эти картинки отправлены (сервер сообщил, что их у него нет, — например, его базу сбросили). */
+export function forgetUploadedAssets(hashes: Iterable<string>): void {
+  for (const h of hashes) uploaded.delete(h);
+}
+
 /** Запомнить, что сервер уже знает эти картинки (пришли с него или он сам попросил догрузить не их). */
 export function markAssetsUploaded(hashes: Iterable<string>): void {
   for (const h of hashes) uploaded.add(h);
