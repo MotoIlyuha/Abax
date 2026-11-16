@@ -22,7 +22,7 @@
   - Клиент: `src/api-client.ts` (адрес API, `fetch` внедряется, без адреса — нет запросов) и синхронизация тарифа в `src/plan.ts`.
   - **Тесты**: `tests/server/auth.test.ts`.
 
-- [ ] **TASK-03: Хранилище ассетов**
+- [x] **TASK-03: Хранилище ассетов**
   - **Файлы**: `server/asset-storage.ts`, `server/assets.ts`, `server/app.ts`, `src/asset-store.ts`.
   - `LocalFsAssetBackend`, `S3AssetBackend` (SigV4), `POST/GET /api/assets`, `uploadMissingAssets`, `fetchMissingAssets`.
   - **Тесты**: `tests/server/assets.test.ts`, `tests/unit/asset-store.test.ts` (дополнение).

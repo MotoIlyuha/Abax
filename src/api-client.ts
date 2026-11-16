@@ -39,6 +39,8 @@ export interface RequestOptions {
   /** Без сессии (по умолчанию — с сессией). */
   anonymous?: boolean;
   headers?: Record<string, string>;
+  /** Ответ — текст, а не JSON (например, data URL картинки). */
+  text?: boolean;
 }
 
 export interface ApiClient {
@@ -96,7 +98,7 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
   const doFetch = options.fetch ?? ((...a: Parameters<typeof fetch>) => fetch(...a));
   let loginInFlight: Promise<string> | null = null;
 
-  async function send<T>(method: string, path: string, body: unknown, headers: Record<string, string>): Promise<T> {
+  async function send<T>(method: string, path: string, body: unknown, headers: Record<string, string>, asText = false): Promise<T> {
     let res: Response;
     try {
       res = await doFetch(base + path, {
@@ -105,7 +107,11 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       });
     } catch { throw new ApiError(0, 'network'); }
     let data: unknown = null;
-    try { const text = await res.text(); if (text) data = JSON.parse(text); } catch { /* не JSON */ }
+    try {
+      const text = await res.text();
+      if (asText && res.ok) data = text;
+      else if (text) data = JSON.parse(text);
+    } catch { /* не JSON */ }
     if (!res.ok) {
       const code = typeof data === 'object' && data !== null && typeof (data as { error?: unknown }).error === 'string'
         ? (data as { error: string }).error : 'http-error';
@@ -130,10 +136,10 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
     base,
     ensureSession: async () => store(SESSION_KEY) ?? login(),
     async request<T>(method: string, path: string, body?: unknown, opts: RequestOptions = {}): Promise<T> {
-      if (opts.anonymous) return send<T>(method, path, body, opts.headers ?? {});
+      if (opts.anonymous) return send<T>(method, path, body, opts.headers ?? {}, opts.text);
       const attempt = async (): Promise<T> => {
         const token = await client.ensureSession();
-        return send<T>(method, path, body, { ...opts.headers, Authorization: `Bearer ${token}` });
+        return send<T>(method, path, body, { ...opts.headers, Authorization: `Bearer ${token}` }, opts.text);
       };
       try {
         return await attempt();

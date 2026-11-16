@@ -1,5 +1,6 @@
 import { join, resolve } from 'node:path';
 import { createAppServer } from './app';
+import { S3AssetBackend } from './asset-storage';
 import { loadJwtSecret, truthy } from './config';
 
 // Запуск сервера из окружения. Переменные: PORT, HOST, DATA_DIR, JWT_SECRET, TELEGRAM_BOT_TOKEN,
@@ -8,6 +9,13 @@ import { loadJwtSecret, truthy } from './config';
 async function main(): Promise<void> {
   const env = process.env;
   const dataDir = resolve(env.DATA_DIR || '.data');
+  // S3-совместимое хранилище, если заданы адрес и бакет; иначе файлы в DATA_DIR/assets
+  const assetBackend = env.S3_ENDPOINT && env.S3_BUCKET
+    ? new S3AssetBackend({
+      endpoint: env.S3_ENDPOINT, bucket: env.S3_BUCKET, region: env.S3_REGION || 'ru-central1',
+      accessKeyId: env.S3_ACCESS_KEY_ID || '', secretAccessKey: env.S3_SECRET_ACCESS_KEY || '',
+    })
+    : undefined;
   const srv = createAppServer({
     dbPath: join(dataDir, 'abax.db'),
     assetsDir: join(dataDir, 'assets'),
@@ -18,6 +26,7 @@ async function main(): Promise<void> {
     staticDir: env.STATIC_DIR ? resolve(env.STATIC_DIR) : null,
     trustProxy: truthy(env.TRUST_PROXY),
     secureCookies: env.NODE_ENV === 'production',
+    assetBackend,
     log: m => console.log(m),
   });
   const { url } = await srv.listen(Number(env.PORT) || 8787, env.HOST || '127.0.0.1');

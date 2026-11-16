@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { LocalFsAssetBackend, type AssetStorageBackend } from './asset-storage';
+import { registerAssetRoutes } from './assets';
 import { authenticate, registerAuthRoutes } from './auth';
 import type { AppContext, ResolvedOptions } from './context';
 import { openDb, type Db } from './db';
@@ -111,6 +112,7 @@ export function createAppServer(options: AppOptions, extraRoutes: RouteModule[] 
   };
   const router = new Router();
   registerAuthRoutes(router);
+  registerAssetRoutes(router);
   for (const mod of extraRoutes) mod(router, app);
 
   const upgradeHandlers: Parameters<AppServer['onUpgrade']>[0][] = [];
