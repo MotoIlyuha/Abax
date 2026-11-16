@@ -5,7 +5,7 @@
 // Кнопки панели инструментов (#toolbar) обслуживает «морфящаяся» подсказка — morph-tooltip.ts:
 // одна на всю панель, перетекает от кнопки к кнопке. Остальные элементы — обычный пузырь ниже.
 
-import { morphActive, morphHideTip, morphLeave, morphOver, morphPop, splitTipText } from './morph-tooltip';
+import { MORPH_SCOPE, morphActive, morphHideTip, morphLeave, morphOver, morphPop, splitTipText } from './morph-tooltip';
 
 type Side = 'top' | 'bottom' | 'left' | 'right';
 
@@ -165,7 +165,7 @@ export function initTooltips(): void {
     if (e.buttons) { hide(); morphLeave(true); return; }
     // панель инструментов: своя подсказка; в щели между кнопками остаётся предыдущая
     // (если «Motion анимации» выключены в настройках — обычный пузырь, как у остальных кнопок)
-    if (!document.body.classList.contains('no-motion') && e.target instanceof Element && e.target.closest('#toolbar')) {
+    if (!document.body.classList.contains('no-motion') && e.target instanceof Element && e.target.closest(MORPH_SCOPE)) {
       hide();
       if (t) morphOver(t, t.dataset.tip ?? '');
       return;
@@ -180,7 +180,7 @@ export function initTooltips(): void {
   });
   document.addEventListener('pointerout', (e) => {
     const out = e.relatedTarget;
-    if (morphActive() && !(out instanceof Element && out.closest('#toolbar'))) morphLeave();
+    if (morphActive() && !(out instanceof Element && out.closest(MORPH_SCOPE))) morphLeave();
     if (!target) return;
     const to = e.relatedTarget;
     if (to instanceof Node && target.contains(to)) return;

@@ -39,4 +39,25 @@ test.describe('Motion: Goo групп панели', () => {
     await page.locator('#btn-shapes').click();
     await expect(page.locator('.ctx-panel')).toHaveCount(0);
   });
+
+  test('внутри группы те же Motion hover и подсказка: подсветка и пузырь перетекают между кнопками', async ({ page }) => {
+    await page.locator('#btn-solids').click();
+    const panel = page.locator('.ctx-panel[data-kind="shapes"]');
+    await expect(page.locator('#goo-layer .goo-fx')).toHaveCount(0, { timeout: 4000 });
+    const tools = panel.locator('.ctx-shapes .tool');
+    await tools.nth(0).hover();
+    const lab = page.locator('#morph-tip .mt-lab.cur');
+    await expect(lab).toContainText('Куб');
+    await expect(page.locator('#morph-tip .mt-tip')).toBeVisible();
+    // подсветка лежит в сетке группы, а не в панели инструментов
+    await expect(panel.locator('.ctx-shapes > .mt-hl')).toHaveCount(1);
+    await tools.nth(1).hover();
+    await expect(lab).toContainText('Параллелепипед');
+    await expect(page.locator('#morph-tip .mt-tip')).toBeVisible();
+    // обычного пузыря нет
+    await expect(page.locator('#tooltip')).toBeHidden();
+    // уход с панели — подсказка уходит
+    await page.mouse.move(900, 300);
+    await expect(page.locator('#morph-tip .mt-tip')).toBeHidden();
+  });
 });

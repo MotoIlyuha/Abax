@@ -63,7 +63,7 @@ let curC = 0;                           // её центр вдоль оси
 let side: Side = 'right';
 let axis: Axis = 'y';
 let hlBtn: HTMLElement | null = null;
-let hlC = 0;
+let hlC = { x: 0, y: 0 };
 let intentT = 0;
 let hideT = 0;
 
@@ -134,10 +134,14 @@ function remeasure(): void {
   }
 }
 
-const barOf = (btn: HTMLElement): HTMLElement | null => btn.closest<HTMLElement>('#toolbar');
+/** Где живёт подсказка: панель инструментов или раскрытая панель её группы (кнопки внутри тоже морфятся). */
+export const MORPH_SCOPE = '#toolbar, .ctx-panel[data-kind="shapes"]';
+const barOf = (btn: HTMLElement): HTMLElement | null => btn.closest<HTMLElement>(MORPH_SCOPE);
 
 function preferredSide(bar: HTMLElement): Side {
-  switch (bar.dataset.pos) {
+  // у панели группы сторона та же, что у самой панели инструментов: пузырь снаружи, не закрывая кнопки
+  const pos = (bar.id === 'toolbar' ? bar : document.getElementById('toolbar'))?.dataset.pos;
+  switch (pos) {
     case 'right': return 'left';
     case 'top': return 'bottom';
     case 'bottom': return 'top';
@@ -241,19 +245,23 @@ function hideTip(): void {
 function pointHl(btn: HTMLElement): void {
   const bar = barOf(btn);
   if (!bar) return;
-  if (hlEl.parentElement !== bar) bar.prepend(hlEl);
-  const br = bar.getBoundingClientRect();
+  // подсветка живёт в самой панели; у группы — в сетке кнопок (она position: relative)
+  const holder = bar.id === 'toolbar' ? bar : bar.querySelector<HTMLElement>('.ctx-shapes') ?? bar;
+  const moved = hlEl.parentElement !== holder; // перешли в другую панель: подсветка возникает на месте
+  if (moved) holder.prepend(hlEl);
+  const br = holder.getBoundingClientRect();
   const r = btn.getBoundingClientRect();
-  const ax: Axis = bar.dataset.pos === 'top' || bar.dataset.pos === 'bottom' ? 'x' : 'y';
-  const x = r.left - br.left - bar.clientLeft;
-  const y = r.top - br.top - bar.clientTop;
-  const c = ax === 'x' ? r.left + r.width / 2 : r.top + r.height / 2;
-  const fresh = H.x < 0.3 || !hlBtn?.isConnected;
+  const x = r.left - br.left - holder.clientLeft;
+  const y = r.top - br.top - holder.clientTop;
+  const c = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  // в сетке группы можно уйти и по строке, и по столбцу: ось — та, где сдвиг больше
+  const ax: Axis = Math.abs(c.x - hlC.x) >= Math.abs(c.y - hlC.y) ? 'x' : 'y';
+  const fresh = H.x < 0.3 || !hlBtn?.isConnected || moved;
   if (fresh) {
     HL.t = x; HR.t = x + r.width; HT.t = y; HB.t = y + r.height;
     hlSprings().forEach(snap);
   } else {
-    const fwd = c >= hlC;
+    const fwd = ax === 'x' ? c.x >= hlC.x : c.y >= hlC.y;
     const [lead, trail, cross] = ax === 'x'
       ? [fwd ? HR : HL, fwd ? HL : HR, [HT, HB]]
       : [fwd ? HB : HT, fwd ? HT : HB, [HL, HR]];
@@ -317,7 +325,7 @@ export function morphActive(): boolean {
 
 /** Клик по кнопке панели: иконка «нажимается» и пружинит обратно. */
 export function morphPop(target: EventTarget | null): void {
-  const btn = target instanceof Element ? target.closest<HTMLElement>('#toolbar .tool') : null;
+  const btn = target instanceof Element ? target.closest<HTMLElement>('#toolbar .tool, .ctx-panel[data-kind="shapes"] .tool') : null;
   if (!btn) return;
   ensure();
   let s = pops.get(btn);

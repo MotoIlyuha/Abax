@@ -2383,8 +2383,9 @@ body.collab-guest.readonly-mode #toolbar { display: none; }
   pointer-events: none;
   will-change: transform, width, height, opacity;
 }
-#toolbar .tool { position: relative; z-index: 1; }
-body:not(.no-motion) #toolbar .tool:hover:not(.active) { background: transparent; }
+#toolbar .tool, .ctx-shapes .tool { position: relative; z-index: 1; }
+.ctx-shapes { position: relative; }
+body:not(.no-motion) :is(#toolbar .tool, .ctx-shapes .tool):hover:not(.active):not(.gesture-hover) { background: transparent; }
 body.no-motion .mt-hl { display: none; }
 
 /* ----- Плавное появление меню и панелей ----- */
