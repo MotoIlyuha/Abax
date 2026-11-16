@@ -85,6 +85,17 @@
   --draft-paper: #fbfaf4; /* карточка страницы-черновика */
   /* Тёмные плашки и фирменные */
   --tooltip-bg: #1e2026; /* подсказка */
+  /* Пружины движения «жёсткость затухание» (designbookmark.com/motion): их читает src/motion.ts */
+  --spring-lead: 620 36; /* растягивающийся край, обращённый к цели */
+  --spring-trail: 190 19; /* отстающий край: из-за него пузырь тянется */
+  --spring-soft: 260 24; /* крупные сдвиги и смена размера */
+  --spring-fade: 420 32; /* прозрачность и мелкие сдвиги надписей */
+  --spring-pop: 520 16; /* «нажатие» иконки при клике */
+  --goo-out: 230 15; /* Goo: капли вылетают */
+  --goo-in: 520 34; /* Goo: капли и карточка возвращаются */
+  --goo-toast: 260 17; /* Goo: кнопка вырастает в карточку панели */
+  --goo-stagger: 45; /* Goo: мс между каплями */
+  --spring-settle: 280 22; /* приземление на значение: один небольшой перелёт (раскрытие списка страниц) */
   --toast-bg: #141917; /* тост */
   --toast-fg: #f3f1e7; /* текст тоста */
   --toast-link: #9ed9ff; /* ссылка в тосте */
@@ -691,6 +702,57 @@ body.tool-dragging, body.tool-dragging * { cursor: grabbing !important; }
 body.no-ui-anim :is(#btn-pages, .pages-chev, #pages-tray, #pages-dock.open #pages-tray, .page-item, .page-add) { transition: none; }
 body.no-ui-anim #pages-dock.open :is(.page-item, .page-add) { animation: none; }
 
+/* ----- Motion на панели страниц: пружины (src/morph-pages.ts); без «Motion анимаций» — прежний CSS ----- */
+@property --sel-x { syntax: '<length>'; inherits: true; initial-value: 0px; }
+@property --sel-y { syntax: '<length>'; inherits: true; initial-value: 0px; }
+@property --sel-w { syntax: '<length>'; inherits: true; initial-value: 0px; }
+@property --sel-h { syntax: '<length>'; inherits: true; initial-value: 0px; }
+@property --sel-o { syntax: '<number>'; inherits: true; initial-value: 0; }
+@property --sel-s { syntax: '<number>'; inherits: true; initial-value: 1; }
+/* рамка выбранной страницы — одна на список: перетекает от карточки к карточке */
+#pages-list::before {
+  content: '';
+  display: none;
+  position: absolute;
+  left: -2px;
+  top: -2px;
+  z-index: 1;
+  box-sizing: border-box;
+  /* рамка целиком снаружи карточки (на 2px шире): выбранная карточка при наведении поднимается над ней, и кнопка удаления остаётся сверху */
+  width: calc(var(--sel-w) + 4px);
+  height: calc(var(--sel-h) + 4px);
+  border: 2px solid var(--accent);
+  border-radius: 16px;
+  opacity: var(--sel-o);
+  transform: translate(var(--sel-x), var(--sel-y)) scale(var(--sel-s));
+  transform-origin: calc((var(--sel-w) + 4px) / 2) calc((var(--sel-h) + 4px) / 2);
+  pointer-events: none;
+}
+body:not(.no-motion) #pages-list::before { display: block; }
+/* карточку тащат — рамка ждёт, потом перетечёт на её новое место */
+body.reordering #pages-list::before { opacity: 0; }
+/* у выбранной карточки собственной рамки нет и подъёма при наведении тоже: рамка стоит на месте */
+body:not(.no-motion) .page-item.active:not(.dragging) { border-color: var(--border); box-shadow: var(--shadow); }
+body:not(.no-motion) .page-item.active:not(.dragging):hover { transform: none; z-index: 2; }
+/* раскрытие списка ведут пружины: CSS-переходы и въезд карточек выключены, лоток виден, пока идёт движение */
+body:not(.no-motion) :is(#pages-tray, #pages-dock.open #pages-tray, .pages-chev) { transition: none; }
+body:not(.no-motion) #btn-pages { transition: box-shadow 0.15s ease, border-color 0.15s ease; }
+body:not(.no-motion) #pages-dock.open :is(.page-item, .page-add, .page-divider) { animation: none; }
+body:not(.no-motion) #pages-dock.mt-showing #pages-tray { visibility: visible; }
+
+/* ----- Goo-эффект групп панели инструментов (src/goo.ts) ----- */
+.goo-defs { position: absolute; }
+/* слой капель под панелью инструментов (у неё z-index 5) */
+#goo-layer { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
+/* после склейки — тень по контуру: белое пятно на светлой доске иначе почти не видно */
+.goo-fx { position: absolute; filter: url(#goo) drop-shadow(0 0 0.6px rgba(16, 24, 40, 0.45)) drop-shadow(0 3px 8px rgba(16, 24, 40, 0.12)); }
+.goo-blob { position: absolute; left: 0; top: 0; background: var(--panel); will-change: transform; }
+.goo-drop { width: 34px; height: 34px; border-radius: 50%; }
+/* панель группы вытягивается из кнопки (stretch.ts), а не всплывает; при «Motion анимации» выкл. — прежнее всплытие */
+body:not(.no-motion) .ctx-panel[data-kind="shapes"] { animation: none; }
+/* пока идёт Goo, у панели нет своей рамки и тени — иначе поверх контура пятна видна вторая рамка */
+.ctx-panel.goo-anim, .goo-ghost.goo-anim { border-color: transparent; box-shadow: none; }
+
 /* ----- Панель инструментов: позиция из настроек ----- */
 #toolbar {
   position: absolute;
@@ -762,7 +824,7 @@ body.no-ui-anim #pages-dock.open :is(.page-item, .page-add) { animation: none; }
 /* ----- Контекстные панели ----- */
 /* общий слой: свой контекст наложения, внутри — порядок «кого трогали последним» через z-index */
 #ctx-layer { position: absolute; inset: 0; pointer-events: none; z-index: 9; }
-.ctx-panel {
+.ctx-panel, .stretch-ghost, .goo-ghost {
   position: absolute;
   pointer-events: auto;
   display: flex;
@@ -777,9 +839,9 @@ body.no-ui-anim #pages-dock.open :is(.page-item, .page-add) { animation: none; }
 /* заголовки групп и подписи панелей, кнопки тулбара и меню выделения мышью не выделяются */
 .ctx-panel, #toolbar, #quick-menu { user-select: none; -webkit-user-select: none; }
 .ctx-panel input { user-select: text; -webkit-user-select: text; }
-.ctx-panel[data-kind="shapes"] { width: auto; padding: 10px; }
+.ctx-panel[data-kind="shapes"], .stretch-ghost, .goo-ghost { width: auto; padding: 10px; }
 /* заголовок группы не заезжает под ручку и кнопки в углу */
-.ctx-panel[data-kind="shapes"] .ctx-title { padding-right: 24px; }
+.ctx-panel[data-kind="shapes"] .ctx-title, .stretch-ghost .ctx-title, .goo-ghost .ctx-title { padding-right: 24px; }
 .ctx-panel[data-kind="shapes"].detached .ctx-title { padding-right: 72px; }
 /* у панели стиля сверху слайдер — опускаем его под ручку */
 .ctx-panel[data-kind="style"] { padding-top: 30px; }
@@ -2271,6 +2333,64 @@ body.collab-guest.readonly-mode #toolbar { display: none; }
 #tooltip[data-side="left"]::before { left: 100%; top: var(--arrow); margin-top: -5px; border-left-color: var(--tip-bg); }
 #tooltip[data-side="bottom"]::before { bottom: 100%; left: var(--arrow); margin-left: -5px; border-bottom-color: var(--tip-bg); }
 #tooltip[data-side="top"]::before { top: 100%; left: var(--arrow); margin-left: -5px; border-top-color: var(--tip-bg); }
+
+/* ----- Подсказка панели инструментов: пузырь перетекает от кнопки к кнопке (src/morph-tooltip.ts) ----- */
+#morph-tip { position: fixed; inset: 0; z-index: 1000; pointer-events: none; visibility: hidden; }
+.mt-tip {
+  position: absolute; left: 0; top: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--tooltip-bg);
+  color: var(--fg-inverse);
+  opacity: 0;
+  will-change: transform, width, height, opacity;
+}
+/* пузырь вырастает из стороны, обращённой к панели */
+.mt-tip[data-side="top"] { transform-origin: 50% 140%; }
+.mt-tip[data-side="bottom"] { transform-origin: 50% -40%; }
+.mt-tip[data-side="left"] { transform-origin: 140% 50%; }
+.mt-tip[data-side="right"] { transform-origin: -40% 50%; }
+.mt-lab {
+  position: absolute; left: 50%; top: 50%;
+  display: flex; align-items: center; gap: 8px;
+  width: max-content; max-width: 260px;
+  padding: 6px 10px;
+  font-size: 12px; font-weight: 500; line-height: 1.35;
+  white-space: normal;
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  will-change: transform, opacity;
+}
+.mt-kbd {
+  flex: none;
+  display: grid; place-items: center;
+  min-width: 20px; height: 20px; padding: 0 5px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.14);
+  font: inherit; font-size: 11px; font-weight: 600;
+  white-space: nowrap;
+}
+.mt-tail {
+  position: absolute; left: 0; top: 0;
+  width: 12px; height: 12px;
+  border-radius: 2px;
+  background: var(--tooltip-bg);
+  opacity: 0;
+  will-change: transform, opacity;
+}
+/* подсветка кнопки под курсором: тянется от кнопки к кнопке; под кнопками, поэтому кнопки выше (z-index) */
+.mt-hl {
+  position: absolute; left: 0; top: 0; z-index: 0;
+  border-radius: 9px;
+  background: var(--hover);
+  opacity: 0;
+  pointer-events: none;
+  will-change: transform, width, height, opacity;
+}
+#toolbar .tool, .ctx-shapes .tool { position: relative; z-index: 1; }
+.ctx-shapes { position: relative; }
+body:not(.no-motion) :is(#toolbar .tool, .ctx-shapes .tool):hover:not(.active):not(.gesture-hover) { background: transparent; }
+body.no-motion .mt-hl { display: none; }
 
 /* ----- Плавное появление меню и панелей ----- */
 /* только появление: закрываются мгновенно. Плавающее меню выделения на холсте не анимируем —

@@ -45,6 +45,9 @@ import { closeIconPicker, openIconPicker } from './icon-picker';
 import { capitalize, dayLabel, pagesLabel } from './format';
 import { buildCustomColorPicker } from './color-picker';
 import { copySelection, duplicateSelection as duplicateInPlace, pasteFromMemory, pasteFromSystem } from './clipboard';
+import { stretchCancel, stretchClose, stretchOpen } from './stretch';
+import { morphLeave } from './morph-tooltip';
+import { initMorphPages, morphPagesOpen, morphPagesReset, morphPagesSync } from './morph-pages';
 import { hideHeldTooltip, showHeldTooltip } from './tooltip';
 import { LIMIT_PROJECTS_TEXT, copyBoardLink, currentBoardLink, registerLinkViewHooks } from './link-view-ui';
 import { canCreateProject, isOverPageLimit, isOverProjectLimit, PLAN_LIMITS } from './limits';
@@ -197,6 +200,7 @@ function restoreSettings(): void {
         mouseBindings: Object.fromEntries(['1', '3', '4'].map(key => { const b = v.mouseBindings?.[key]; return [key, b && typeof b.action === 'string' && typeof b.label === 'string' ? { action: b.action, label: b.label } : null]; })) as BoardSettings['mouseBindings'],
         newPageKey: DEFAULT_NEW_PAGE_KEY,
         uiAnimations: typeof v.uiAnimations === 'boolean' ? v.uiAnimations : true,
+        motionAnimations: typeof v.motionAnimations === 'boolean' ? v.motionAnimations : true,
         hideUndoRedo: typeof v.hideUndoRedo === 'boolean' ? v.hideUndoRedo : false,
         keepImageAspect: typeof v.keepImageAspect === 'boolean' ? v.keepImageAspect : true,
         alignGuides: typeof v.alignGuides === 'boolean' ? v.alignGuides : true,
@@ -228,6 +232,14 @@ function persistSettings(): void {
 /** Анимации появления панелей живут в CSS; выключенные — класс на body их гасит. */
 function applyUiAnimations(): void {
   document.body.classList.toggle('no-ui-anim', !state.settings.uiAnimations);
+}
+
+/** Motion-анимации (пружины): выключенные — класс на body, подсказка панели снова обычная, без подсветки и «нажатия» иконок. */
+function applyMotionAnimations(): void {
+  const on = state.settings.motionAnimations;
+  document.body.classList.toggle('no-motion', !on);
+  if (!on) morphLeave(true);
+  morphPagesReset(pagesOpen);
 }
 
 /** Кнопки отмены/повтора в шапке прячутся вместе с разделителями вокруг них (см. style.css). */
@@ -706,10 +718,14 @@ function panelOf(kind: CtxKind): CtxPanel | undefined {
   return ctxPanels.find(cp => cp.kind === kind);
 }
 
+const isGroupPanel = (cp: CtxPanel): boolean => cp.el.dataset.kind === 'shapes' && cp.source === 'toolbar';
+
 function closePanel(cp: CtxPanel): void {
   const i = ctxPanels.indexOf(cp);
   if (i < 0) return;
   ctxPanels.splice(i, 1);
+  // группа с панели инструментов втягивается в кнопку (src/stretch.ts); остальные панели и откреплённые — как раньше
+  if (isGroupPanel(cp) && !cp.detached) stretchClose(cp.el, ctxAnchor(cp));
   cp.el.remove();
   syncCtxButtons();
 }
@@ -739,6 +755,7 @@ function openCtxPanel(kind: CtxKind, source: CtxSource): void {
   el.appendChild(buildCtxBar(cp));
   positionCtxPanel(cp);
   syncCtxButtons();
+  if (isGroupPanel(cp)) stretchOpen(el, ctxAnchor(cp));
 }
 
 /** Клик по кнопке-вызову: открытую ею (или откреплённую) панель закрывает, иначе открывает. */
@@ -750,6 +767,7 @@ function toggleCtxPanel(kind: CtxKind, source: CtxSource): void {
 
 function setCtxDetached(cp: CtxPanel, v: boolean): void {
   cp.detached = v;
+  if (v) stretchCancel(cp.el);
   cp.el.classList.toggle('detached', v);
   syncCtxButtons();
 }
@@ -2262,6 +2280,8 @@ function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
   span6.textContent = 'Анимация меню и панелей';
   lbl6.append(cb6, span6);
   pop.appendChild(lbl6);
+  pop.appendChild(settingCheck('motionAnimations', 'Motion анимации',
+    'Подсказка панели инструментов плавно перетекает от кнопки к кнопке, иконки пружинят при нажатии', applyMotionAnimations));
   const lbl7 = document.createElement('label');
   lbl7.className = 'ctx-check';
   lbl7.title = macKeys('Отмена и повтор по-прежнему работают на Ctrl+Z и Ctrl+Y');
@@ -2279,7 +2299,7 @@ function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
   pop.appendChild(lbl7);
 }
 
-type BoolSetting = 'alignGuides' | 'closePagesOnPick' | 'thumbViewport' | 'pageLinks' | 'recursionEnabled';
+type BoolSetting = 'motionAnimations' | 'alignGuides' | 'closePagesOnPick' | 'thumbViewport' | 'pageLinks' | 'recursionEnabled';
 
 /** Флажок настройки доски: меняет и сразу сохраняет. */
 function settingCheck(key: BoolSetting, text: string, hint?: string, after?: () => void): HTMLElement {
@@ -3371,6 +3391,7 @@ function renderPages(): void {
       revealedPageId = state.pageId;
       revealActivePage(true);
     }
+    morphPagesSync();
   } catch (err) { console.error('[doska] renderPages failed:', err); }
 }
 
@@ -3419,6 +3440,7 @@ function setPagesOpen(open: boolean): void {
     revealedPageId = state.pageId;
     revealActivePage(false);
   }
+  morphPagesOpen(open);
 }
 
 /** Показать или скрыть список страниц (кнопка «Страницы», клавиша B). */
@@ -3432,6 +3454,14 @@ function pagesButtonAdds(): boolean {
 }
 
 function wirePagesDock(): void {
+  initMorphPages({
+    dock: document.getElementById('pages-dock')!,
+    tray: document.getElementById('pages-tray')!,
+    list: document.getElementById('pages-list')!,
+    button: document.getElementById('btn-pages')!,
+    atTop: pagesAtTop,
+    active: () => pageCards.get(state.pageId)?.el ?? null,
+  });
   // Alt и долгое нажатие на «Страница +» создают черновик
   const pagesBtn = document.getElementById('btn-pages')!;
   wireCreate(pagesBtn, pagesButtonAdds, () => {});
@@ -4340,7 +4370,8 @@ function buildToolbar(): void {
           window.removeEventListener('pointermove', move);
           window.removeEventListener('pointerup', finish);
           window.removeEventListener('pointercancel', finish);
-          const id = hitTool(event)?.dataset.shape as ToolId | undefined;
+          // без движения отпускание — это клик по кнопке группы: вытягивающаяся из неё панель ещё может оказаться под курсором, и её кнопка не должна выбираться
+          const id = (moved ? hitTool(event) : null)?.dataset.shape as ToolId | undefined;
           highlight(null);
           if (event.type === 'pointerup' && id) {
             suppressClick = true;
@@ -5230,6 +5261,7 @@ export function initApp(c: HTMLCanvasElement): void {
   restoreStyle();
   restoreSettings();
   applyUiAnimations();
+  applyMotionAnimations();
   applyUndoRedoVisibility();
   restoreToolbar();
   buildToolbar();

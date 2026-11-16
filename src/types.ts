@@ -336,6 +336,8 @@ export interface BoardSettings {
   newPageKey: string | null;
   /** Плавное появление меню и панелей (кроме плавающего меню выделения). */
   uiAnimations: boolean;
+  /** Motion-анимации на пружинах: подсказка панели инструментов перетекает от кнопки к кнопке (morph-tooltip.ts). */
+  motionAnimations: boolean;
   /** Скрыть кнопки «Отменить» и «Повторить» в шапке (Ctrl+Z / Ctrl+Y работают). */
   hideUndoRedo: boolean;
   /** Изображения (и страницы PDF) меняют размер только пропорционально — без Shift и Ctrl. */

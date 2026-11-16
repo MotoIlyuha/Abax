@@ -2,6 +2,10 @@
 // Работает через делегирование — подхватывает любой элемент с атрибутом title,
 // включая созданные динамически. title переносится в data-tip, чтобы браузер
 // не показывал свою подсказку поверх нашей.
+// Кнопки панели инструментов (#toolbar) обслуживает «морфящаяся» подсказка — morph-tooltip.ts:
+// одна на всю панель, перетекает от кнопки к кнопке. Остальные элементы — обычный пузырь ниже.
+
+import { MORPH_SCOPE, morphActive, morphHideTip, morphLeave, morphOver, morphPop, splitTipText } from './morph-tooltip';
 
 type Side = 'top' | 'bottom' | 'left' | 'right';
 
@@ -48,14 +52,14 @@ function findTarget(start: EventTarget | null): HTMLElement | null {
 /** «Отменить (Ctrl+Z)» → текст + хоткей отдельным приглушённым фрагментом. */
 function render(el: HTMLDivElement, text: string): void {
   el.textContent = '';
-  const m = /^(.+?)\s+\(((?:Ctrl|Cmd|Shift|Alt|Del|[A-Z0-9])[^()]*)\)$/.exec(text);
+  const { label: text1, key } = splitTipText(text);
   const label = document.createElement('span');
-  label.textContent = m ? m[1] : text;
+  label.textContent = text1;
   el.appendChild(label);
-  if (m) {
+  if (key) {
     const kbd = document.createElement('span');
     kbd.className = 'tooltip-kbd';
-    kbd.textContent = m[2];
+    kbd.textContent = key;
     el.appendChild(kbd);
   }
 }
@@ -63,6 +67,7 @@ function render(el: HTMLDivElement, text: string): void {
 function preferredSide(el: HTMLElement): Side {
   const explicit = el.closest<HTMLElement>('[data-tip-side]')?.dataset.tipSide;
   if (explicit === 'top' || explicit === 'bottom' || explicit === 'left' || explicit === 'right') return explicit;
+  // кнопки панели инструментов (при выключенных Motion-анимациях): пузырь со стороны, противоположной краю экрана
   const toolbar = el.closest<HTMLElement>('#toolbar');
   if (toolbar) {
     const pos = toolbar.dataset.pos;
@@ -157,7 +162,15 @@ export function initTooltips(): void {
     const t = findTarget(e.target);
     // При удержании кнопки (например, выборе инструмента из группы) подсказка
     // не должна перекрывать панель. title уже снят, чтобы не всплыла нативная.
-    if (e.buttons) { hide(); return; }
+    if (e.buttons) { hide(); morphLeave(true); return; }
+    // панель инструментов: своя подсказка; в щели между кнопками остаётся предыдущая
+    // (если «Motion анимации» выключены в настройках — обычный пузырь, как у остальных кнопок)
+    if (!document.body.classList.contains('no-motion') && e.target instanceof Element && e.target.closest(MORPH_SCOPE)) {
+      hide();
+      if (t) morphOver(t, t.dataset.tip ?? '');
+      return;
+    }
+    morphLeave();
     if (t === target) return;
     const warm = visible || performance.now() - hiddenAt < WARM_WINDOW;
     hide();
@@ -166,15 +179,19 @@ export function initTooltips(): void {
     showTimer = window.setTimeout(show, warm ? WARM_DELAY : SHOW_DELAY);
   });
   document.addEventListener('pointerout', (e) => {
+    const out = e.relatedTarget;
+    if (morphActive() && !(out instanceof Element && out.closest(MORPH_SCOPE))) morphLeave();
     if (!target) return;
     const to = e.relatedTarget;
     if (to instanceof Node && target.contains(to)) return;
     hide();
   });
   // нажатие, прокрутка, клавиатура — подсказка больше не нужна
-  document.addEventListener('pointerdown', () => { hide(); hiddenAt = -Infinity; }, true);
-  document.addEventListener('wheel', hide, { capture: true, passive: true });
-  document.addEventListener('keydown', hide, true);
-  window.addEventListener('blur', hide);
-  window.addEventListener('resize', hide);
+  document.addEventListener('pointerdown', () => { hide(); morphHideTip(); hiddenAt = -Infinity; }, true);
+  document.addEventListener('click', (e) => { if (!document.body.classList.contains('no-motion')) morphPop(e.target); }, true);
+  const hideAll = (): void => { hide(); morphLeave(true); };
+  document.addEventListener('wheel', hideAll, { capture: true, passive: true });
+  document.addEventListener('keydown', () => { hide(); morphHideTip(); }, true);
+  window.addEventListener('blur', hideAll);
+  window.addEventListener('resize', hideAll);
 }

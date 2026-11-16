@@ -60,8 +60,17 @@
     </div>
     <button id="grid-mode" title="Фон страницы" aria-haspopup="listbox" aria-expanded="false" hidden></button>
   </div>
+  <svg class="goo-defs" width="0" height="0" aria-hidden="true" focusable="false">
+    <filter id="goo" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="7" result="b"/>
+      <feColorMatrix in="b" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -10" result="g"/>
+      <feComposite in="SourceGraphic" in2="g" operator="atop"/>
+    </filter>
+  </svg>
   <div id="main">
     <div id="canvas-wrap">
+      <!-- капли Goo-эффекта групп панели инструментов (src/goo.ts): под панелью, выплывают из-за неё -->
+      <div id="goo-layer" aria-hidden="true"></div>
       <div id="toolbar"></div>
       <canvas id="board"></canvas>
       <div id="overlay"></div>

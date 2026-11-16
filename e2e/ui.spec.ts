@@ -222,6 +222,8 @@ test.describe('панель цвета и толщины', () => {
     await page.mouse.down();
     const panel = page.locator('.ctx-panel[data-kind="shapes"]');
     await expect(panel).toBeVisible();
+    // панель вытягивается из кнопки: кнопки встают на места, когда вытягивание закончилось
+    await expect.poll(() => panel.evaluate(el => (el as HTMLElement).style.transform)).toBe('');
     const target = (await panel.locator('[data-shape="ellipse"]').boundingBox())!;
     await page.mouse.move(target.x + target.width / 2, target.y + target.height / 2, { steps: 5 });
     await expect(panel.locator('[data-shape="ellipse"]')).toHaveClass(/gesture-hover/);
@@ -241,6 +243,8 @@ test.describe('панель цвета и толщины', () => {
     const panel = page.locator('.ctx-panel[data-kind="shapes"]');
     const grip = panel.locator('.ctx-grip');
     await board.settled();
+    // панель вытягивается из кнопки: ручку берём, когда она встала на место
+    await expect.poll(() => panel.evaluate(el => (el as HTMLElement).style.transform)).toBe('');
     const g = (await grip.boundingBox())!;
     await page.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
     await page.mouse.down();
@@ -529,15 +533,61 @@ test.describe('страница', () => {
 });
 
 test.describe('подсказки', () => {
-  test('наведение на кнопку показывает подсказку с хоткеем', async ({ page }) => {
+  test('наведение на кнопку панели показывает морфящуюся подсказку с хоткеем', async ({ page }) => {
     await page.locator('.tool[data-tool="pen"]').hover();
-    const tip = page.locator('#tooltip');
+    const tip = page.locator('#morph-tip .mt-tip');
     await expect(tip).toBeVisible();
-    await expect(tip).toContainText('Перо');
-    await expect(tip.locator('.tooltip-kbd')).toHaveText('P');
+    const lab = page.locator('#morph-tip .mt-lab.cur');
+    await expect(lab).toContainText('Перо');
+    await expect(lab.locator('.mt-kbd')).toHaveText('P');
     await expect(tip).toHaveAttribute('data-side', 'right');
     await page.mouse.move(900, 500);
     await expect(tip).toBeHidden();
+  });
+
+  test('подсказка перетекает к соседней кнопке: не гаснет и меняет надпись', async ({ page }) => {
+    await page.locator('.tool[data-tool="pen"]').hover();
+    await expect(page.locator('#morph-tip .mt-lab.cur')).toContainText('Перо');
+    const before = (await page.locator('#morph-tip .mt-tip').boundingBox())!;
+    await page.locator('.tool[data-tool="eraser"]').hover();
+    await expect(page.locator('#morph-tip .mt-lab.cur')).toContainText('Ластик');
+    await expect(page.locator('#morph-tip .mt-tip')).toBeVisible();
+    // пузырь поехал вдоль панели вниз, и стоит напротив новой кнопки
+    const btn = (await page.locator('.tool[data-tool="eraser"]').boundingBox())!;
+    await expect.poll(async () => {
+      const b = (await page.locator('#morph-tip .mt-tip').boundingBox())!;
+      return Math.abs(b.y + b.height / 2 - (btn.y + btn.height / 2));
+    }).toBeLessThan(2);
+    expect((await page.locator('#morph-tip .mt-tip').boundingBox())!.y).toBeGreaterThan(before.y);
+  });
+
+  test('переключатель «Motion анимации»: по умолчанию включён, выключенный возвращает обычный пузырь', async ({ board, page }) => {
+    expect((await board.state()).settings.motionAnimations).toBe(true);
+    await page.keyboard.press('Control+Comma');
+    const cb = page.locator('.sd-general label', { hasText: 'Motion анимации' }).locator('input');
+    await expect(cb).toBeChecked();
+    await cb.uncheck();
+    expect((await board.state()).settings.motionAnimations).toBe(false);
+    await page.keyboard.press('Escape');
+    await page.locator('.tool[data-tool="pen"]').hover();
+    await expect(page.locator('#tooltip')).toBeVisible();
+    await expect(page.locator('#morph-tip .mt-tip')).toBeHidden();
+
+    await page.reload();
+    await board.ready();
+    expect((await board.state()).settings.motionAnimations).toBe(false);
+    await page.keyboard.press('Control+Comma');
+    await page.locator('.sd-general label', { hasText: 'Motion анимации' }).locator('input').check();
+    await page.keyboard.press('Escape');
+    await page.mouse.move(900, 500);
+    await page.locator('.tool[data-tool="pen"]').hover();
+    await expect(page.locator('#morph-tip .mt-tip')).toBeVisible();
+  });
+
+  test('обычный пузырь вне панели инструментов работает как раньше', async ({ page }) => {
+    await page.locator('#btn-pages').hover();
+    await expect(page.locator('#tooltip')).toBeVisible();
+    await expect(page.locator('#morph-tip .mt-tip')).toBeHidden();
   });
 });
 
