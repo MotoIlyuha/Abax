@@ -25,7 +25,7 @@
   - `cursorId` при подключении по всем путям, белый список в хабах, `{t:'profile'}`, проверка тарифа в Cloud Room, имена из профиля, постоянные DOM-курсоры с бейджем и эффектами, цвета чужих выделений (§5).
   - **Тесты**: дополнения `collab.test.ts`, `room.test.ts`, `room-pointer.test.ts` (паритет белого списка), `cloud-room.test.ts`.
 
-- [ ] **TASK-04: Сервер — профиль, миграция V2**
+- [x] **TASK-04: Сервер — профиль, миграция V2**
   - **Файлы**: `server/db.ts`, `server/users.ts`, `server/auth.ts`, `server/app.ts`, `src/api-client.ts`, `src/profile-sync.ts`.
   - Миграция V2, `PATCH /api/me`, `userInfo` с профилем и способами входа, имя провайдера не затирает пользовательское, синхронизация профиля на клиенте (§6, §8).
   - **Тесты**: `tests/server/profile.test.ts`, `tests/unit/profile-sync.test.ts`.

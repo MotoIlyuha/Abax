@@ -52,6 +52,7 @@ export class Router {
   post(pattern: string, handler: Handler, opts?: { maxBody?: number }): void { this.add('POST', pattern, handler, opts); }
   put(pattern: string, handler: Handler, opts?: { maxBody?: number }): void { this.add('PUT', pattern, handler, opts); }
   delete(pattern: string, handler: Handler, opts?: { maxBody?: number }): void { this.add('DELETE', pattern, handler, opts); }
+  patch(pattern: string, handler: Handler, opts?: { maxBody?: number }): void { this.add('PATCH', pattern, handler, opts); }
 
   /** Маршрут и его параметры; 'method' — путь известен, но метод не подходит; null — пути нет. */
   match(method: string, path: string): { route: Route; params: Record<string, string> } | 'method' | null {

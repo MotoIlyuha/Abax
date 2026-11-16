@@ -3,7 +3,9 @@ import type { IncomingMessage } from 'node:http';
 import type { AppContext } from './context';
 import type { UserRow } from './db';
 import { HttpError, type Ctx, type Reply, type Router } from './router';
-import { createUser, findByDevice, findByTelegram, getUser, meResponse, mergeUsers, sha256Hex } from './users';
+import { createUser, effectivePlan, findByDevice, findByTelegram, getUser, meResponse, mergeUsers, sha256Hex } from './users';
+import { canUseCursor, isCursorId } from '../src/cursors';
+import { normalizeName } from '../src/room-host';
 
 // Сессии (JWT HS256 на node:crypto), анонимный вход по токену устройства и проверка Telegram Login Widget.
 
@@ -129,7 +131,8 @@ export function signTelegramPayload(fields: Record<string, string | number>, bot
   return createHmac('sha256', createHash('sha256').update(botToken).digest()).update(lines.join('\n')).digest('hex');
 }
 
-const cleanName = (s: string): string => Array.from(s.replace(/[\p{Cc}\u2028\u2029\u202A-\u202E\u2066-\u2069]/gu, ' ').replace(/\s+/g, ' ').trim()).slice(0, 60).join('');
+/** Имя от провайдера входа: те же правила, что у имени участника комнаты (до MAX_NAME = 40 символов). */
+const cleanName = (s: string): string => normalizeName(s);
 
 // ----- Маршруты -----
 
@@ -177,13 +180,14 @@ export function registerAuthRoutes(router: Router): void {
     const anon = current && current.tg_id === null ? current : null;
 
     let user = findByTelegram(app.db, tgId);
+    // имя из Telegram — только если пользователь не задавал своё (name_custom)
     if (user) {
-      app.db.prepare('UPDATE users SET tg_username = ?, display_name = ?, avatar_url = ?, updated_at = ? WHERE id = ?')
+      app.db.prepare('UPDATE users SET tg_username = ?, display_name = CASE WHEN name_custom = 1 THEN display_name ELSE ? END, avatar_url = ?, updated_at = ? WHERE id = ?')
         .run(profile.tg_username, profile.display_name, profile.avatar_url, now, user.id);
       if (anon) mergeUsers(app.db, anon.id, user.id, now);
     } else if (anon) {
       // аноним становится Telegram-пользователем на месте: проекты и приглашения остаются при нём
-      app.db.prepare('UPDATE users SET tg_id = ?, tg_username = ?, display_name = ?, avatar_url = ?, updated_at = ? WHERE id = ?')
+      app.db.prepare('UPDATE users SET tg_id = ?, tg_username = ?, display_name = CASE WHEN name_custom = 1 THEN display_name ELSE ? END, avatar_url = ?, updated_at = ? WHERE id = ?')
         .run(tgId, profile.tg_username, profile.display_name, profile.avatar_url, now, anon.id);
       user = anon;
     } else {
@@ -198,4 +202,27 @@ export function registerAuthRoutes(router: Router): void {
     const user = requireUser(ctx);
     return { json: meResponse(user, ctx.app.now(), ctx.app.opts.enforceLimits) };
   });
+
+  // профиль: своё имя и персональный курсор (SPEC_NIGHT4 §6)
+  router.patch('/api/me', async ctx => {
+    const app = ctx.app;
+    const user = requireUser(ctx);
+    const body = await ctx.body() as { displayName?: unknown; cursorId?: unknown } | undefined;
+    if (!body || typeof body !== 'object') throw new HttpError(400, 'bad-request');
+    const now = app.now();
+    let name: string | null = null;
+    let cursor: string | null = null;
+    if (body.displayName !== undefined) {
+      name = normalizeName(body.displayName);
+      if (!name) throw new HttpError(400, 'bad-name');
+    }
+    if (body.cursorId !== undefined) {
+      if (!isCursorId(body.cursorId)) throw new HttpError(400, 'bad-cursor');
+      if (!app.opts.devAuth && !canUseCursor(body.cursorId, effectivePlan(user, now))) throw new HttpError(403, 'plan-cursor');
+      cursor = body.cursorId;
+    }
+    if (name !== null) app.db.prepare('UPDATE users SET display_name = ?, name_custom = 1, updated_at = ? WHERE id = ?').run(name, now, user.id);
+    if (cursor !== null) app.db.prepare('UPDATE users SET cursor_id = ?, updated_at = ? WHERE id = ?').run(cursor, now, user.id);
+    return { json: meResponse(getUser(app.db, user.id)!, now, app.opts.enforceLimits) };
+  }, { maxBody: 4096 });
 }

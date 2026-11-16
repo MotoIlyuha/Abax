@@ -10,6 +10,8 @@ export interface ResolvedOptions {
   telegramBotToken: string | null;
   /** Лимиты тарифов действуют (ABAX_ENFORCE_LIMITS). */
   enforceLimits: boolean;
+  /** Dev-провайдеры входа (ABAX_DEV_AUTH): только для разработки. */
+  devAuth: boolean;
   /** Адрес веб-клиента для ссылок-приглашений. */
   publicWebUrl: string;
   /** Каталог собранного клиента (dist) для раздачи; нет — только API. */

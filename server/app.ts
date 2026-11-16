@@ -20,6 +20,8 @@ export interface AppOptions {
   jwtSecret: string;
   telegramBotToken?: string | null;
   enforceLimits?: boolean;
+  /** Dev-провайдеры входа (ABAX_DEV_AUTH): код почты в ответе, мгновенный вход тестовыми Telegram/Google. */
+  devAuth?: boolean;
   publicWebUrl?: string;
   /** Каталог собранного клиента (dist): раздаётся тем же сервером. */
   staticDir?: string | null;
@@ -60,7 +62,7 @@ export interface AppServer {
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-Asset-Hash',
-  'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
   'Access-Control-Max-Age': '600',
 };
 
@@ -86,6 +88,7 @@ function resolveOptions(o: AppOptions): ResolvedOptions {
     jwtSecret: o.jwtSecret,
     telegramBotToken: o.telegramBotToken || null,
     enforceLimits: o.enforceLimits === true,
+    devAuth: o.devAuth === true,
     publicWebUrl: (o.publicWebUrl ?? '').replace(/\/+$/, ''),
     staticDir: o.staticDir ?? null,
     trustProxy: o.trustProxy === true,

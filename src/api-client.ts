@@ -27,8 +27,15 @@ export interface ServerLimits {
   canDisableCopy: boolean;
 }
 
+/** Пользователь, как его отдаёт сервер (/api/me, вход). */
+export interface MeUser {
+  id: string; displayName: string; tgUsername: string | null; avatarUrl: string | null; isAnonymous: boolean; plan: PlanTier;
+  /** Профиль (Ночь №4): курсор, своё ли имя, привязанные способы входа. Старый сервер их не присылает. */
+  cursorId?: string; nameCustom?: boolean; email?: string | null; telegram?: boolean; google?: boolean;
+}
+
 export interface MeResponse {
-  user: { id: string; displayName: string; tgUsername: string | null; avatarUrl: string | null; isAnonymous: boolean; plan: PlanTier };
+  user: MeUser;
   plan: PlanTier;
   planExpiresAt: number | null;
   limitsEnforced: boolean;

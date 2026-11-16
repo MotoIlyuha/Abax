@@ -15,9 +15,9 @@ import { joinCloudInvite, watchOwnerRoom } from './cloud-room';
 import { cloudEnabled } from './api-client';
 import { localGuestTransport, localRoomCode } from './local-transport';
 import { startLocalRoom } from './browser-host';
-import { syncPlanFromServer } from './api-client';
 import { initCloudSync, mergeRemoteMetas, openFresh, startBackgroundSync } from './cloud-sync';
 import { myCursorId, profileName } from './profile';
+import { startProfileSync, syncAccount } from './profile-sync';
 
 /** Уведомление гостю, когда комната закрылась или отказала. */
 function watchGuestClose(): void {
@@ -125,7 +125,8 @@ async function boot(): Promise<void> {
   // обновления — только здесь: гость совместной работы (ветка выше) открыл приложение автора
   startUpdateChecks();
   // тариф с сервера и начальная синхронизация проектов (без настроенного облака — ничего не делают)
-  void syncPlanFromServer().then(() => startBackgroundSync());
+  // тариф и профиль аккаунта (SPEC_NIGHT4 §8), затем фоновая синхронизация проектов
+  void syncAccount().then(() => { startBackgroundSync(); startProfileSync(); });
   // автор подключается к облачной комнате своего проекта, пока у проекта есть приглашение
   if (!viewRoute) watchOwnerRoom();
   if (viewRoute) {

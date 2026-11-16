@@ -31,3 +31,12 @@
 - Правка теста (точечно): `collab.test.ts › имя участника с разметкой…` проверял `borderColor` старой точки `<i>`; теперь — цвет стрелки `i.rc-arrow`.
 - Наблюдение: `collab.test.ts › чужой патч применяется без сброса отмены и выделения` один раз упал при полном прогоне под нагрузкой (отложенная отправка патча), затем 3 полных прогона и 3 отдельных подряд — зелёные; с курсорами не связан, перепроверяю в TASK-08.
 - Тесты: `room-host.test.ts` (+3), `collab.test.ts` (+3), `room-pointer.test.ts` (+1), `cloud-room.test.ts` (+1). Всего 1023.
+
+## TASK-04 — сервер: профиль, миграция V2 (готово)
+- `server/db.ts`: миграция V2 — `users.cursor_id` (по умолчанию `default`), `users.name_custom`, `users.email`, `users.google_sub` (уникальные индексы; NULL допускается многократно), таблицы `email_codes` и `auth_flows` (для TASK-05). Типы `EmailCodeRow`, `AuthFlowRow`.
+- `server/users.ts`: `isAnonymousUser` (нет ни `tg_id`, ни `email`, ни `google_sub`); `userInfo` отдаёт `cursorId`, `nameCustom`, `email`, `telegram`, `google`.
+- `PATCH /api/me { displayName?, cursorId? }`: имя — `normalizeName` (пустое → 400 `bad-name`) и `name_custom = 1`; курсор не из каталога → 400 `bad-cursor`; Pro без тарифа → 403 `plan-cursor` (кроме `devAuth`); ответ — как `/api/me`. В роутер добавлен метод `patch`, в CORS — `PATCH`. Опция `devAuth` заведена уже сейчас (нужна `PATCH`), провайдеры — в TASK-05.
+- Telegram-вход обновляет `display_name` только при `name_custom = 0`; имя провайдера — через `normalizeName` (до 40 символов вместо 60). Облачная комната берёт имя из аккаунта, если пользователь не аноним или задал имя сам.
+- Клиент: `MeUser` с полями профиля; новый `src/profile-sync.ts` — `account()`, `signedIn()`, `onAccountChange`, `setAccount` (тариф + правило §8.1: вошёл и `nameCustom` → профиль из аккаунта, иначе, если знакомство пройдено, — профиль на сервер), `syncAccount`, `pushProfile` (одинаковое не шлёт; при `plan-cursor` повторяет только с именем), `startProfileSync` (изменения профиля → `PATCH` с паузой 400 мс). `main.ts` вместо `syncPlanFromServer` вызывает `syncAccount`, затем фоновую синхронизацию проектов и `startProfileSync`.
+- Правка теста (точечно): `auth.test.ts › база: … все таблицы` — список таблиц пополнился `auth_flows`, `email_codes`.
+- Тесты: `tests/server/profile.test.ts` (9), `tests/unit/profile-sync.test.ts` (8, настоящий сервер в памяти). Всего 1040.
