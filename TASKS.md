@@ -8,7 +8,7 @@
 
 ---
 
-- [ ] **TASK-01: Гигиена, долги Ночи №2, пакеты сервера**
+- [x] **TASK-01: Гигиена, долги Ночи №2, пакеты сервера**
   - **Файлы**: `.gitignore`, `src/state.ts` (`projectPlan`), `src/plan.ts`, `src/experimental.ts`, `src/relay-host.ts`, `relay/server.cjs`, `package.json`, `tsconfig.test.json`.
   - `.gitignore`: добавить `.data/`.
   - `projectPlan` = `planOf`; тариф пользователя — dev-переопределение → серверный кэш → `free` (Решения 7–9); `limitsEnforced()` учитывает значение сервера (10).

@@ -197,7 +197,10 @@ function createRelay(options = {}) {
       }
       let m; try { m = JSON.parse(String(data)); } catch { return; }
       if (!m || typeof m !== 'object') return;
-      if (m.t === 'kick') {
+      if (m.t === 'ping') {
+        // автор в браузере не умеет слать ping-кадры WebSocket: проверяет живость сообщением
+        control(ws, { t: 'pong' });
+      } else if (m.t === 'kick') {
         const guest = room.guests.get(m.conn);
         const code = Number.isInteger(m.code) && m.code >= 4000 && m.code <= 4999 ? m.code : 4000;
         if (guest) closeHard(guest, code, safeReason(m.reason));

@@ -456,6 +456,8 @@ test.describe('реакции и комментарии', () => {
 test.describe('лимиты тарифов', () => {
   const enforce = (page: Page, plan?: string) => page.addInitScript((p) => {
     localStorage.setItem('doska.enforceLimits', '1');
+    // выбор тарифа вручную — только в режиме разработки: в релизе тариф приходит с сервера
+    localStorage.setItem('doska.devMode', '1');
     if (p) localStorage.setItem('doska.plan', p);
   }, plan);
 
@@ -523,7 +525,7 @@ test.describe('лимиты тарифов', () => {
 
   test('переключатель лимитов и тарифа есть в «Экспериментальных»', async ({ board, page }) => {
     await board.open();
-    await page.evaluate(() => localStorage.setItem('doska.experiments', '1'));
+    await page.evaluate(() => { localStorage.setItem('doska.experiments', '1'); localStorage.setItem('doska.devMode', '1'); });
     await page.keyboard.press('Control+Comma');
     const nav = page.locator('.sd-nav-item[data-section="experimental"]');
     await nav.click();
