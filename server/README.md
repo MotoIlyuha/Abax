@@ -49,6 +49,34 @@ npm run server:plan -- <userId | tg:<id>> pro 30    # выдать тариф н
 - Картинки отдаются с `nosniff` и `Content-Security-Policy: default-src 'none'; sandbox`; SVG — только как скачивание.
 - Создание анонимных пользователей ограничено по адресу (30 в час), подключения к комнатам — 120 в минуту.
 
+## Вход через Google
+
+Используется OpenID Connect (Authorization Code + PKCE S256 + `nonce`) по документации Google
+([OpenID Connect](https://developers.google.com/identity/openid-connect/openid-connect),
+[OAuth 2.0 для веб-серверов](https://developers.google.com/identity/protocols/oauth2/web-server)); браузер уходит на
+`accounts.google.com`, код меняется на токены сервером (`oauth2.googleapis.com/token`, с `client_secret`), в `id_token`
+проверяются `iss`, `aud`, `exp`, `nonce`; пользователь определяется по `sub` (не по почте — так советует Google).
+
+1. [Google Cloud Console → Branding](https://console.developers.google.com/auth/branding): название приложения, почта поддержки
+   (экран согласия). Пока приложение в режиме тестирования, войти могут только тестовые пользователи (Audience → Test users).
+   Области `openid email profile` — несенситивные, проверка Google для них не нужна.
+2. [Clients → Create client](https://console.developers.google.com/auth/clients), тип **Web application**.
+   **Authorized redirect URIs** — точный адрес (схема, хост, порт, путь):
+   - разработка: `http://localhost:5173/api/auth/google/callback` (открывайте приложение именно по `localhost`, не `127.0.0.1`);
+   - прод: `https://<домен API>/api/auth/google/callback` (только https и доменное имя, не IP).
+   Секрет показывается один раз — сохраните его.
+3. Разработка: в корне репозитория файл `.env.local` (в git не попадает):
+   ```
+   GOOGLE_CLIENT_ID=….apps.googleusercontent.com
+   GOOGLE_CLIENT_SECRET=…
+   ```
+   и `npm run dev:cloud` — кнопка «Google» ведёт на настоящий Google (Telegram и почта остаются dev-заглушками, если их ключей нет).
+4. Прод: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `PUBLIC_API_URL=https://<домен API>` (из него строится redirect URI),
+   `PUBLIC_WEB_URL` (или `ALLOWED_ORIGINS`) — адрес веб-клиента, куда возвращать после входа.
+
+Ошибка `redirect_uri_mismatch` на странице Google — адрес в консоли не совпадает символ в символ с
+`<PUBLIC_API_URL или адрес, по которому открыт сервер>/api/auth/google/callback`.
+
 ## Тарифы и лимиты
 
 Лимиты тарифа (3 проекта, 3 страницы в проекте, один гость в комнате) сервер применяет при `ABAX_ENFORCE_LIMITS=1`.

@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 import type { AppContext } from './context';
 import type { AuthFlowRow, EmailCodeRow } from './db';
@@ -104,6 +104,14 @@ function startableFlow(ctx: Ctx, provider: string): AuthFlowRow {
   const flow = getFlow(ctx.app, ctx.query.get('flow'));
   if (!flow || flow.provider !== provider || flow.expires_at <= ctx.app.now()) throw new HttpError(400, 'bad-flow');
   return flow;
+}
+
+/**
+ * nonce для Google (защита от повтора id_token): HMAC секрета сессий от id потока — его не нужно хранить,
+ * а без секрета сервера его не подобрать. Google возвращает его в id_token, сервер сверяет.
+ */
+export function googleNonce(app: AppContext, flowId: string): string {
+  return createHmac('sha256', app.opts.jwtSecret).update(`google-nonce:${flowId}`).digest('base64url');
 }
 
 /** Полезная нагрузка JWT без проверки подписи (id_token получен напрямую от Google по TLS). */
@@ -247,6 +255,7 @@ export function registerAuthFlowRoutes(router: Router): void {
       response_type: 'code',
       scope: 'openid email profile',
       state: flow.id,
+      nonce: googleNonce(app, flow.id),
       code_challenge: challenge,
       code_challenge_method: 'S256',
       prompt: 'select_account',
@@ -275,7 +284,8 @@ export function registerAuthFlowRoutes(router: Router): void {
       const data = await res.json() as { id_token?: unknown };
       const claims = res.ok ? jwtPayload(data.id_token) : null;
       const valid = !!claims && claims.aud === app.opts.googleClientId && GOOGLE_ISSUERS.has(String(claims.iss))
-        && typeof claims.exp === 'number' && claims.exp * 1000 > app.now() && typeof claims.sub === 'string' && /^[\w-]{1,255}$/.test(claims.sub);
+        && typeof claims.exp === 'number' && claims.exp * 1000 > app.now() && typeof claims.sub === 'string' && /^[\w-]{1,255}$/.test(claims.sub)
+        && claims.nonce === googleNonce(app, flow.id);
       if (!valid) throw new Error('неверный id_token');
       settleFlow(app, flow, { provider: 'google', subject: claims!.sub as string, displayName: normalizeName(claims!.name) || undefined });
     } catch (e) {

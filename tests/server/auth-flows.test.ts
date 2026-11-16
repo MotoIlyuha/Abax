@@ -1,7 +1,7 @@
 // Вход через Telegram и Google с переходом на сайт провайдера, dev-провайдеры, привязка (SPEC_NIGHT4 §7.3).
 import { afterEach, describe, expect, it } from 'vitest';
 import { signTelegramPayload } from '../../server/auth';
-import { allowedReturn, DEV_GOOGLE, DEV_TELEGRAM } from '../../server/auth-flows';
+import { allowedReturn, DEV_GOOGLE, DEV_TELEGRAM, googleNonce } from '../../server/auth-flows';
 import { BOT_TOKEN, anon, call, closeApps, makeApp, putProject, proj, type TestApp } from './helpers';
 
 afterEach(closeApps);
@@ -130,15 +130,23 @@ describe('способы входа сервера', () => {
     expect(toGoogle.searchParams.get('code_challenge_method')).toBe('S256');
     expect(toGoogle.searchParams.get('redirect_uri')).toBe('https://api.abax.example/api/auth/google/callback');
     expect(toGoogle.searchParams.get('state')).toBe(f.body.flowId);
-    claims = { iss: 'https://accounts.google.com', aud: 'gid', sub: 'g-123', exp, name: 'Гугл Пользователь', email: 'g@gmail.com' };
+    expect(toGoogle.searchParams.get('scope')).toBe('openid email profile');
+    // nonce (обязателен по документации Google) — в запросе и обратно в id_token
+    const nonce = toGoogle.searchParams.get('nonce');
+    expect(nonce).toBe(googleNonce(app.app, f.body.flowId));
+    claims = { iss: 'https://accounts.google.com', aud: 'gid', sub: 'g-123', exp, nonce, name: 'Гугл Пользователь', email: 'g@gmail.com' };
     expect(await follow(`${app.base}/api/auth/google/callback?state=${f.body.flowId}&code=c0de`)).toBe(`${RETURN}#abaxAuth=${f.body.flowId}`);
     expect(calls[0].body.get('code_verifier')).toBeTruthy();
     expect(calls[0].body.get('client_secret')).toBe('gsecret');
     const done = await call(app, 'POST', '/api/auth/flow/complete', { flowId: f.body.flowId, secret: f.body.secret });
     expect(done.body.user).toMatchObject({ google: true, displayName: 'Гугл Пользователь', email: null });
+    // id_token с nonce другого потока (повтор) — вход не засчитывается
+    const n = await flow(app, { provider: 'google' });
+    await follow(`${app.base}/api/auth/google/callback?state=${n.body.flowId}&code=c0de`);
+    expect((await call(app, 'POST', '/api/auth/flow/complete', { flowId: n.body.flowId, secret: n.body.secret })).body.error).toBe('google-failed');
     // чужой aud — вход не засчитывается
     const g = await flow(app, { provider: 'google' });
-    claims = { ...claims, aud: 'someone-else' };
+    claims = { ...claims, nonce: googleNonce(app.app, g.body.flowId), aud: 'someone-else' };
     await follow(`${app.base}/api/auth/google/callback?state=${g.body.flowId}&code=c0de`);
     expect((await call(app, 'POST', '/api/auth/flow/complete', { flowId: g.body.flowId, secret: g.body.secret })).body.error).toBe('google-failed');
     // пользователь отказался на сайте Google

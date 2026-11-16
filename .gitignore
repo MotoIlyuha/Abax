@@ -12,5 +12,7 @@ playwright-report/
 
 # настройки ретранслятора на сервере (образец — relay/.env.example)
 relay/.env
+# локальные ключи для npm run dev:cloud (Google, Telegram, почта)
+.env.local
 .data/
 dist-server/
