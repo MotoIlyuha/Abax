@@ -188,6 +188,7 @@ function sanitizePage(raw: unknown): Page | null {
   out.name = isStr(raw.name) ? raw.name : 'Страница';
   out.grid = GRIDS.includes(raw.grid as GridMode) ? raw.grid : 'square';
   if ('backgroundColor' in out && !isStr(out.backgroundColor)) delete out.backgroundColor;
+  if (out.coordLabels !== false) delete out.coordLabels;
   const elements: Element[] = [];
   if (Array.isArray(raw.elements)) {
     for (const el of raw.elements) {

@@ -184,6 +184,7 @@ function validPatch(p) {
   if (!Array.isArray(p.ops) || p.ops.length > MAX_PATCH_OPS) return false;
   if (p.grid !== undefined && !GRIDS.includes(p.grid)) return false;
   if (p.backgroundColor !== undefined && p.backgroundColor !== null && typeof p.backgroundColor !== 'string') return false;
+  if (p.coordLabels !== undefined && typeof p.coordLabels !== 'boolean') return false;
   return p.ops.every(o => {
     if (!isObj(o)) return false;
     if (o.op === 'put') return isObj(o.el) && isId(o.el.id) && typeof o.el.type === 'string';
@@ -219,6 +220,8 @@ function applyPatchToPage(page, patch) {
   if (patch.grid !== undefined) out.grid = patch.grid;
   if (patch.backgroundColor === null) delete out.backgroundColor;
   else if (typeof patch.backgroundColor === 'string') out.backgroundColor = patch.backgroundColor;
+  if (patch.coordLabels === false) out.coordLabels = false;
+  else if (patch.coordLabels === true) delete out.coordLabels;
   return out;
 }
 

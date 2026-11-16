@@ -20,6 +20,8 @@ export interface BoardPatch {
   grid?: GridMode;
   /** Новый цвет фона; null — убрать. */
   backgroundColor?: string | null;
+  /** Подписи делений координатной плоскости: false — скрыть, true — показать. */
+  coordLabels?: boolean;
 }
 
 /** Больше операций в одном патче не принимаем: дальше дешевле отправить страницу целиком. */
@@ -106,6 +108,8 @@ export function applyBoardPatch(board: Page, patch: BoardPatch): Page {
   if (patch.grid !== undefined && GRIDS.includes(patch.grid)) out.grid = patch.grid;
   if (patch.backgroundColor === null) delete out.backgroundColor;
   else if (typeof patch.backgroundColor === 'string') out.backgroundColor = patch.backgroundColor;
+  if (patch.coordLabels === false) out.coordLabels = false;
+  else if (patch.coordLabels === true) delete out.coordLabels;
   return out;
 }
 
@@ -118,6 +122,7 @@ export function isBoardPatch(raw: unknown): raw is BoardPatch {
   if (!Array.isArray(p.ops) || p.ops.length > MAX_PATCH_OPS) return false;
   if (p.grid !== undefined && !GRIDS.includes(p.grid as string)) return false;
   if (p.backgroundColor !== undefined && p.backgroundColor !== null && typeof p.backgroundColor !== 'string') return false;
+  if (p.coordLabels !== undefined && typeof p.coordLabels !== 'boolean') return false;
   return p.ops.every(o => {
     if (typeof o !== 'object' || o === null) return false;
     const op = o as Record<string, unknown>;

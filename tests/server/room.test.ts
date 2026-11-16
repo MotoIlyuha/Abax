@@ -236,6 +236,10 @@ describe('дельта-патчи', () => {
     host.recv(patch({ ops: [{ op: 'del', id: 'b' }], backgroundColor: null }));
     expect(hub.room.project.pages[0].elements.map((e: Msg) => e.id)).toEqual(['a']);
     expect(hub.room.project.pages[0]).not.toHaveProperty('backgroundColor');
+    host.recv(patch({ ops: [], coordLabels: false }));
+    expect(hub.room.project.pages[0]).toMatchObject({ coordLabels: false });
+    host.recv(patch({ ops: [], coordLabels: true }));
+    expect(hub.room.project.pages[0]).not.toHaveProperty('coordLabels');
     const before = hub.room.project;
     for (const bad of [
       { ops: 'нет' }, { ops: [{ op: 'put', el: { type: 'x' } }] }, { ops: [{ op: 'взлом' }] }, { grid: 'круги' }, { rev: 'x' },

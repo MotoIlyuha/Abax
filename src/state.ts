@@ -176,7 +176,7 @@ export const state: AppState = {
   },
   noteColor: '#ffe066',
   settings: {
-    toolbarPos: 'left', coordLabels: true, snapToGrid: false, wheelMode: 'scroll', pageTransition: 'slide',
+    toolbarPos: 'left', snapToGrid: false, wheelMode: 'scroll', pageTransition: 'slide',
     pageKeyMod: 'alt', mouseMode: 'pages', mouseBindings: { '1': null, '3': null, '4': null }, newPageKey: DEFAULT_NEW_PAGE_KEY, uiAnimations: true, motionAnimations: true, hideUndoRedo: false,
     keepImageAspect: true, alignGuides: true, closePagesOnPick: false, thumbViewport: true, pageLinks: false, recursionEnabled: false,
   },
@@ -620,6 +620,13 @@ export function setNoteColor(color: string): void { state.noteColor = color; upd
 
 export function setGrid(grid: GridMode): void {
   state.board.grid = grid;
+  update(true);
+}
+
+/** Подписи делений координатной плоскости — часть фона страницы, видны всем участникам. */
+export function setCoordLabels(show: boolean): void {
+  if (show) delete state.board.coordLabels;
+  else state.board.coordLabels = false;
   update(true);
 }
 

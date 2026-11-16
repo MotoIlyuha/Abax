@@ -217,6 +217,8 @@ export interface Page {
   name: string;
   grid: GridMode;
   backgroundColor?: string;
+  /** Подписи делений координатной плоскости; false — скрыты, по умолчанию показаны. Часть фона страницы. */
+  coordLabels?: boolean;
   elements: Element[];
   /** Ветки комментариев к странице. */
   comments?: CommentThread[];
@@ -332,8 +334,6 @@ export type PageKeyMod = 'ctrl' | 'alt';
 
 export interface BoardSettings {
   toolbarPos: ToolbarPos;
-  /** Подписи делений на координатной плоскости. */
-  coordLabels: boolean;
   /** Привязка перемещения/размеров к видимому шагу сетки. */
   snapToGrid: boolean;
   /** Колёсико без модификаторов: прокрутка или масштаб. */
