@@ -710,18 +710,18 @@ body.no-ui-anim #pages-dock.open :is(.page-item, .page-add) { animation: none; }
   content: '';
   display: none;
   position: absolute;
-  left: 0;
-  top: 0;
+  left: -2px;
+  top: -2px;
   z-index: 1;
   box-sizing: border-box;
-  width: var(--sel-w);
-  height: var(--sel-h);
-  border: 1px solid var(--accent);
-  border-radius: 14px;
-  box-shadow: 0 0 0 1.5px var(--accent);
+  /* рамка целиком снаружи карточки (на 2px шире): выбранная карточка при наведении поднимается над ней, и кнопка удаления остаётся сверху */
+  width: calc(var(--sel-w) + 4px);
+  height: calc(var(--sel-h) + 4px);
+  border: 2px solid var(--accent);
+  border-radius: 16px;
   opacity: var(--sel-o);
   transform: translate(var(--sel-x), var(--sel-y)) scale(var(--sel-s));
-  transform-origin: calc(var(--sel-w) / 2) calc(var(--sel-h) / 2);
+  transform-origin: calc((var(--sel-w) + 4px) / 2) calc((var(--sel-h) + 4px) / 2);
   pointer-events: none;
 }
 body:not(.no-motion) #pages-list::before { display: block; }
@@ -729,7 +729,7 @@ body:not(.no-motion) #pages-list::before { display: block; }
 body.reordering #pages-list::before { opacity: 0; }
 /* у выбранной карточки собственной рамки нет и подъёма при наведении тоже: рамка стоит на месте */
 body:not(.no-motion) .page-item.active:not(.dragging) { border-color: var(--border); box-shadow: var(--shadow); }
-body:not(.no-motion) .page-item.active:not(.dragging):hover { transform: none; }
+body:not(.no-motion) .page-item.active:not(.dragging):hover { transform: none; z-index: 2; }
 /* раскрытие списка ведут пружины: CSS-переходы и въезд карточек выключены, лоток виден, пока идёт движение */
 body:not(.no-motion) :is(#pages-tray, #pages-dock.open #pages-tray, .pages-chev) { transition: none; }
 body:not(.no-motion) #btn-pages { transition: box-shadow 0.15s ease, border-color 0.15s ease; }
