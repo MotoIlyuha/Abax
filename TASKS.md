@@ -8,12 +8,12 @@
 
 ---
 
-- [ ] **TASK-01: Каталог курсоров, профиль, смешные имена**
+- [x] **TASK-01: Каталог курсоров, профиль, смешные имена**
   - **Файлы**: `src/cursors.ts`, `src/profile.ts`, `src/funny-names.ts`, `src/onboarding-logic.ts`.
   - Пресеты (6 free + 8 Pro), `cursorSvg`, `cursorCss`, `cleanCursorId`, `canUseCursor`, `contrastRatio` (SPEC §3).
   - Профиль в `doska.profile`, подписка на изменения, `myCursorId`, `mySelectionColor`, `cursorEntitled` (§2.1).
   - ≥ 40 имён (§2.2, Решение 35), `tabFill`, `resolveName` (§2.3, Решение 34).
-  - **Тесты**: `tests/unit/cursors.test.ts` (белый список, контраст, SVG без чужих данных, право по тарифу), `tests/unit/profile.test.ts`, `tests/unit/onboarding-logic.test.ts`.
+  - **Тесты**: `tests/unit/cursors.test.ts` (белый список, контраст, SVG без чужих данных, право по тарифу), `tests/unit/profile.test.ts` (вместе с логикой поля имени и смешными именами).
 
 - [ ] **TASK-02: Курсор, выделение и иконка у себя; слой эффектов**
   - **Файлы**: `src/controller.ts`, `src/renderer.ts`, `src/toolbar.ts`, `src/app.ts`, `src/cursor-fx.ts`, `src/style.css`, `index.html`.
