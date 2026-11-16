@@ -13,6 +13,7 @@ import {
   addDraft, deleteDraft, onDraft, realPageId,
   canCopyCurrentBoard, canCloneCurrentProject, canAddPageTo, PAGE_LIMIT_TEXT, projectPlan,
 } from './state';
+import { readClipboardText, type PastedText } from './paste-text';
 import type { PresetKind, StylePatch, StyleValue } from './state';
 import { doskaApi, storage } from './storage';
 import { isNativeApp, sharePng } from './native';
@@ -2707,6 +2708,25 @@ export function duplicateSelection(): void {
   duplicateInPlace();
 }
 
+/** Вставляет текст из буфера обмена на холст в центр видимой области. */
+function pasteTextOnBoard(pt: PastedText): void {
+  const v = viewRect();
+  const size = Math.round(Math.min(120, Math.max(8, pt.size ?? 20)));
+  const longest = pt.text.split('\n').reduce((m, l) => Math.max(m, l.length), 0);
+  const w = longest > 50 ? Math.min(560, (v.x1 - v.x0) * 0.7) : undefined;
+  const el: TextEl = {
+    id: uid(), type: 'text', text: pt.text,
+    x: (v.x0 + v.x1) / 2 - (w ?? 0) / 2, y: (v.y0 + v.y1) / 2 - size * 1.25 / 2,
+    size, color: pt.color ?? state.style.color,
+  };
+  if (w) el.w = w;
+  if (pt.bold) el.bold = true;
+  if (pt.italic) el.italic = true;
+  pushHistory(state.board.elements);
+  replaceElements([...state.board.elements, el]);
+  selectInserted(el.id);
+}
+
 function wireImageInput(): void {
   document.getElementById('btn-image')!.addEventListener('click', () => { void insertImage(); });
   // Ctrl+C / Ctrl+X / Ctrl+V: элементы доски и картинки из буфера обмена
@@ -2734,6 +2754,9 @@ function wireImageInput(): void {
         }
       }
     }
+    // текст из буфера: ложится на холст с абзацами, списками, жирным/курсивом, цветом и размером
+    const pt = readClipboardText(e.clipboardData);
+    if (pt) { e.preventDefault(); pasteTextOnBoard(pt); return; }
     if (pasteFromMemory(viewRect())) e.preventDefault();
   });
   // перетаскивание файла на доску
