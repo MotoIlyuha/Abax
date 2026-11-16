@@ -69,7 +69,7 @@ test.describe('перо и маркер', () => {
   });
 
   test('выбор инструмента кликом по тулбару', async ({ board, page }) => {
-    for (const id of ['select', 'pan', 'highlighter', 'eraser', 'partEraser', 'text', 'pen']) {
+    for (const id of ['select', 'highlighter', 'eraser', 'partEraser', 'text', 'pen']) {
       await page.locator(`.tool[data-tool="${id}"]`).click();
       expect((await board.state()).tool).toBe(id);
       await expect(page.locator(`.tool[data-tool="${id}"]`)).toHaveClass(/active/);
@@ -444,7 +444,7 @@ test.describe('указка', () => {
     await board.tool('v');
     await board.click({ x: 450, y: 350 });
     expect((await board.state()).selection).toHaveLength(1);
-    await page.locator('#toolbar .tool[data-tool="pan"]').click();
+    await page.locator('#toolbar .tool[data-tool="pen"]').click();
     expect((await board.state()).selection).toHaveLength(0);
     await board.tool('v');
     await board.click({ x: 450, y: 350 });

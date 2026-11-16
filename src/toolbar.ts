@@ -134,12 +134,13 @@ export function defaultToolbar(): ToolbarConfig {
   const tool = (id: ToolId): ToolbarItem => ({ type: 'tool', id });
   return {
     items: [
-      tool('select'), tool('pan'), tool('pen'), tool('highlighter'), tool('eraser'), tool('partEraser'), tool('text'), tool('note'), tool('spread'), tool('task'),
+      tool('select'), tool('pen'), tool('highlighter'), tool('eraser'), tool('partEraser'), tool('text'), tool('note'), tool('spread'), tool('task'),
       { type: 'group', id: 'shapes', name: 'Фигуры', tools: ['rect', 'ellipse', 'triangle', 'line', 'arrow', 'poly'] },
       { type: 'group', id: 'solids', name: 'Стереометрия', tools: ['cube', 'box', 'prism', 'pyramid', 'truncPyramid', 'cylinder', 'cone', 'truncCone', 'sphere'] },
       { type: 'group', id: 'pointer', name: 'Указка', tools: ['laser', 'fadePen', 'flash'] },
     ],
-    hidden: [],
+    // «Панорама» убрана с панели по умолчанию; включается горячей клавишей H
+    hidden: [tool('pan')],
     keys: { ...DEFAULT_KEYS },
   };
 }
@@ -200,6 +201,10 @@ export function sanitizeToolbar(raw: unknown): ToolbarConfig {
   };
   readList(r.items, cfg.items);
   readList(r.hidden, cfg.hidden);
+  // инструменты, которых нет в сохранённой настройке и которые по умолчанию скрыты, остаются скрытыми
+  for (const it of def.hidden) {
+    if (it.type === 'tool' && !seen.has(it.id)) { seen.add(it.id); cfg.hidden.push(it); }
+  }
   for (const [i, it] of def.items.entries()) {
     if (it.type === 'tool') {
       if (seen.has(it.id)) continue;

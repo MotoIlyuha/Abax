@@ -28,7 +28,7 @@ describe('настройка по умолчанию', () => {
     const cfg = defaultToolbar();
     expect(allTools(cfg).sort()).toEqual(TOOL_DEFS.map(t => t.id).sort());
     expect(cfg.items.filter(it => it.type === 'group').map(g => g.id)).toEqual(['shapes', 'solids', 'pointer']);
-    expect(cfg.hidden).toEqual([]);
+    expect(cfg.hidden.map(it => it.type === 'tool' ? it.id : it.id)).toEqual(['pan']);
     expect(cfg.keys.pen).toBe('KeyP');
     expect(cfg.keys.cube).toBeUndefined();
   });
@@ -37,6 +37,22 @@ describe('настройка по умолчанию', () => {
     const cfg = defaultToolbar();
     expect(layout(cfg).indexOf('spread')).toBe(layout(cfg).indexOf('note') + 1);
     expect(cfg.keys.spread).toBe('KeyS');
+  });
+});
+
+describe('панорама по умолчанию', () => {
+  it('скрыта с панели, но остаётся в каталоге и доступна горячей клавишей H', () => {
+    const cfg = defaultToolbar();
+    expect(layout(cfg)).not.toContain('pan');
+    expect(layout(cfg, 'hidden')).toEqual(['pan']);
+    expect(cfg.keys.pan).toBe('KeyH');
+  });
+
+  it('сохранённая настройка без «Панорамы» — она остаётся скрытой, а не пропадает', () => {
+    const cfg = sanitizeToolbar({ items: [{ type: 'tool', id: 'select' }], hidden: [] });
+    expect(allTools(cfg).sort()).toEqual(TOOL_DEFS.map(t => t.id).sort());
+    expect(layout(cfg, 'hidden')).toContain('pan');
+    expect(layout(cfg)).not.toContain('pan');
   });
 });
 
@@ -72,7 +88,7 @@ describe('sanitizeToolbar', () => {
     const shapes = cfg.items.find(it => it.type === 'group' && it.id === 'shapes');
     // недостающие фигуры дописаны в существующую группу «shapes», без повторов
     expect(shapes).toMatchObject({ name: 'Мои фигуры', tools: ['rect', 'ellipse', 'triangle', 'line', 'arrow', 'poly'] });
-    expect(layout(cfg, 'hidden')).toEqual(['eraser']);
+    expect(layout(cfg, 'hidden')).toEqual(['eraser', 'pan']);
     // групп «solids» и «pointer» нет — их инструменты встают на панель по одному
     expect(layout(cfg)).toContain('cube');
     expect(layout(cfg)).toContain('laser');
@@ -154,10 +170,10 @@ describe('клавиши', () => {
 
 describe('операции', () => {
   it('moveEntry: перестановка на панели', () => {
-    const cfg = moveEntry(defaultToolbar(), { tool: 'pan' }, { list: 'items', before: { tool: 'select' } });
-    expect(layout(cfg).slice(0, 3)).toEqual(['pan', 'select', 'pen']);
-    const end = moveEntry(cfg, { tool: 'pan' }, { list: 'items', before: null });
-    expect(layout(end).at(-1)).toBe('pan');
+    const cfg = moveEntry(defaultToolbar(), { tool: 'pen' }, { list: 'items', before: { tool: 'select' } });
+    expect(layout(cfg).slice(0, 3)).toEqual(['pen', 'select', 'highlighter']);
+    const end = moveEntry(cfg, { tool: 'pen' }, { list: 'items', before: null });
+    expect(layout(end).at(-1)).toBe('pen');
   });
 
   it('moveEntry: инструмент в группу и из группы', () => {
@@ -172,7 +188,7 @@ describe('операции', () => {
   it('moveEntry: группа целиком в скрытые; группу в группу нельзя', () => {
     const base = defaultToolbar();
     const cfg = moveEntry(base, { group: 'solids' }, { list: 'hidden', before: null });
-    expect(layout(cfg, 'hidden')).toEqual(['solids[cube,box,prism,pyramid,truncPyramid,cylinder,cone,truncCone,sphere]']);
+    expect(layout(cfg, 'hidden')).toEqual(['pan', 'solids[cube,box,prism,pyramid,truncPyramid,cylinder,cone,truncCone,sphere]']);
     expect(moveEntry(base, { group: 'solids' }, { list: 'items', group: 'shapes', before: null })).toBe(base);
     expect(moveEntry(base, { tool: 'pen' }, { list: 'items', before: { tool: 'pen' } })).toBe(base);
   });
@@ -181,7 +197,7 @@ describe('операции', () => {
     const base = defaultToolbar();
     const r = combineTools(base, 'pen', 'eraser', 'Рисование');
     expect(r.group).toBeTruthy();
-    expect(layout(r.cfg).slice(0, 6)).toEqual(['select', 'pan', `${r.group}[pen,eraser]`, 'highlighter', 'partEraser', 'text']);
+    expect(layout(r.cfg).slice(0, 6)).toEqual(['select', `${r.group}[pen,eraser]`, 'highlighter', 'partEraser', 'text', 'note']);
     expect(r.cfg.items.find(it => it.type === 'group' && it.id === r.group)).toMatchObject({ name: 'Рисование' });
     // из группы тоже можно
     const r2 = combineTools(base, 'select', 'ellipse', 'Г');
@@ -213,13 +229,13 @@ describe('операции', () => {
 
   it('setEntryHidden: скрыть и вернуть', () => {
     let cfg = setEntryHidden(defaultToolbar(), { tool: 'ellipse' }, true);
-    expect(layout(cfg, 'hidden')).toEqual(['ellipse']);
+    expect(layout(cfg, 'hidden')).toEqual(['pan', 'ellipse']);
     expect(layout(cfg)).toContain('shapes[rect,triangle,line,arrow,poly]');
     expect(setEntryHidden(cfg, { tool: 'ellipse' }, true)).toBe(cfg);
     cfg = setEntryHidden(cfg, { tool: 'ellipse' }, false);
     expect(layout(cfg).at(-1)).toBe('ellipse');
     cfg = setEntryHidden(cfg, { group: 'shapes' }, true);
-    expect(layout(cfg, 'hidden')).toEqual(['shapes[rect,triangle,line,arrow,poly]']);
+    expect(layout(cfg, 'hidden')).toEqual(['pan', 'shapes[rect,triangle,line,arrow,poly]']);
   });
 });
 
@@ -241,7 +257,7 @@ describe('текущая настройка', () => {
     again.restoreToolbar();
     expect(again.toolByKey('KeyQ')).toBe('cube');
     expect(again.toolByKey('KeyP')).toBeNull(); // снятая клавиша не вернулась к умолчанию
-    expect(layout(again.toolbarConfig(), 'hidden')).toEqual(['pen']);
+    expect(layout(again.toolbarConfig(), 'hidden')).toEqual(['pan', 'pen']);
   });
 
   it('битое значение в localStorage — настройка по умолчанию', async () => {
