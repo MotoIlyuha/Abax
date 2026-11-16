@@ -93,9 +93,16 @@ discovery — `https://oauth.telegram.org/.well-known/openid-configuration`), б
    ES256K запрещают scope `profile`, без него не будет имени и `id` — вход не пройдёт.
 2. Переменные: `TELEGRAM_CLIENT_SECRET` (обязательно), `TELEGRAM_CLIENT_ID` (если не задан — берётся из `TELEGRAM_BOT_TOKEN`,
    часть до «:»), `PUBLIC_API_URL` (из него строится redirect URI), `PUBLIC_WEB_URL` / `ALLOWED_ORIGINS`.
-3. Разработка: те же переменные в `.env.local` и `npm run dev:cloud`. Документация не говорит, принимает ли Telegram
-   `http://localhost` в Allowed URLs; если нет — откройте dev-сервер через https-туннель и укажите его адрес в
-   `PUBLIC_API_URL`, `ALLOWED_ORIGINS` и Allowed URLs.
+3. Разработка: Telegram не принимает `http://localhost` в Allowed URLs («Domain is invalid») — нужен https-домен.
+   Покупать его не обязательно: бесплатный туннель, например ngrok со статическим доменом бесплатного тарифа
+   (`ngrok http 5173 --url=<имя>.ngrok-free.app`). В `.env.local`:
+   ```
+   PUBLIC_API_URL=https://<имя>.ngrok-free.app
+   TELEGRAM_CLIENT_SECRET=…
+   ```
+   `npm run dev:cloud` сам разрешит этот хост в Vite и использует его как адрес облака и адрес возврата;
+   в @BotFather → Login Widget → Allowed URLs — `https://<имя>.ngrok-free.app` и
+   `https://<имя>.ngrok-free.app/api/auth/telegram/callback`. Открывайте приложение по адресу туннеля.
 
 Старый `POST /api/auth/telegram` (данные Login Widget с подписью HMAC от `TELEGRAM_BOT_TOKEN`) оставлен для совместимости.
 

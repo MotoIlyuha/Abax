@@ -7,6 +7,9 @@ const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 
 // облачный сервер: apiUrl из package.json, DOSKA_API_URL перекрывает (пустая строка — облако выключено)
 const apiUrl = (process.env.DOSKA_API_URL ?? (pkg.apiUrl || '')).trim();
 let apiOrigin = '';
+/** Внешнее имя dev-сервера за https-туннелем (для входа через Telegram/Google нужен настоящий https-домен). */
+let tunnelHost = '';
+try { tunnelHost = process.env.PUBLIC_API_URL ? new URL(process.env.PUBLIC_API_URL).hostname : ''; } catch { /* неверный адрес */ }
 try { apiOrigin = apiUrl ? new URL(apiUrl).origin : ''; } catch { /* неверный адрес — облако выключено на клиенте */ }
 
 /**
@@ -74,7 +77,8 @@ export default defineConfig({
   }],
   base: './',
   build: { target: 'es2022', outDir: 'dist' },
-  server: { port: 5173, strictPort: true },
+  // через https-туннель (PUBLIC_API_URL=https://….ngrok-free.app) dev-сервер должен принимать его имя хоста
+  server: { port: 5173, strictPort: true, allowedHosts: tunnelHost ? [tunnelHost] : [] },
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
     __DEFAULT_API_URL__: JSON.stringify(apiUrl),
