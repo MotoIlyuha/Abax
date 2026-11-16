@@ -134,9 +134,8 @@ describe('отправка на сервер', () => {
     expect(serverRow('a')).toBeUndefined();
     up = true;
     await until(() => serverRow('a')); // повтор по таймеру
-    await c.flush();
-    expect(isDirty('a')).toBe(false);
-    expect(getSyncedRev('a')).toBe(1);
+    await until(() => getSyncedRev('a') === 1 && !isDirty('a'));
+    expect(serverRow('a')!.rev).toBe(1);
   });
 
   it('сервер забыл картинки (базу сбросили): 409 missing-assets — догрузка и повтор', async () => {

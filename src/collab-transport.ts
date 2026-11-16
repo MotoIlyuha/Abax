@@ -58,6 +58,35 @@ export function wsTransport(url: string): CollabTransport {
   return t;
 }
 
+/**
+ * Транспорт до облачной комнаты на сервере Abax: WebSocket …/ws/room/<комната>. Сообщения — обычный JSON
+ * (серверу нужно их понимать, он хранит проект и проверяет ответы), без шифрования ключом комнаты.
+ * Первым сообщением представляемся: версия протокола, имя и доступ — приглашение (гость) или сессия (автор).
+ */
+export function cloudRoomTransport(apiBase: string, roomCode: string, hello: { name: string; invite?: string; session?: string }): CollabTransport {
+  const ws = new WebSocket(`${apiBase.replace(/^http/i, 'ws')}/ws/room/${encodeURIComponent(roomCode)}`);
+  const t: CollabTransport = {
+    send(data) {
+      if (ws.readyState !== 1) return false;
+      ws.send(data);
+      return true;
+    },
+    close() {
+      try { ws.close(); } catch { /* уже закрыт */ }
+    },
+    onopen: null,
+    onmessage: null,
+    onclose: null,
+  };
+  ws.onopen = () => {
+    ws.send(JSON.stringify({ t: 'hello', proto: PROTO, ...hello }));
+    t.onopen?.();
+  };
+  ws.onmessage = ev => { if (typeof ev.data === 'string') t.onmessage?.(ev.data); };
+  ws.onclose = ev => t.onclose?.(ev.code, ev.reason);
+  return t;
+}
+
 /** Уведомление ретранслятора гостю: автор пропал и ретранслятор ждёт его / автор вернулся. */
 export type RelayEvent = 'host-away' | 'host-back';
 

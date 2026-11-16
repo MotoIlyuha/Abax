@@ -50,6 +50,7 @@ import { LIMIT_PROJECTS_TEXT, copyBoardLink, currentBoardLink, registerLinkViewH
 import { canCreateProject, isOverPageLimit, isOverProjectLimit, PLAN_LIMITS } from './limits';
 import { limitsEnforced, userPlan } from './plan';
 import { openFresh } from './cloud-sync';
+import { createInviteBox, refreshInviteBox } from './invite-ui';
 import { addGestureProbe } from './gesture';
 import { initTaskOverlay, isTeacher } from './task-overlay';
 import { annotationButtons, initCommentsUi } from './comments-ui';
@@ -4966,6 +4967,8 @@ async function openShareDialog(): Promise<void> {
   dlg = document.createElement('div');
   dlg.id = 'share-dialog';
   document.body.appendChild(dlg);
+  // блок облачной ссылки-приглашения живёт между перерисовками окна (иначе каждые 2 с — запрос к серверу)
+  const inviteBox = createInviteBox();
   const render = async () => {
     const status = await api.shareStatus();
     shareInfo = status; void shareInfo; // доступно другим частям UI
@@ -5070,6 +5073,8 @@ async function openShareDialog(): Promise<void> {
         dlg!.appendChild(hint);
       }
     }
+    dlg!.appendChild(inviteBox);
+    refreshInviteBox(inviteBox);
     const close = document.createElement('button');
     close.className = 'ctx-custom-btn';
     close.textContent = 'Закрыть';

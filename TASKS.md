@@ -42,7 +42,7 @@
   - Обёртка над `storage`: PUT с дебаунсом, вынос ассетов, `lastSyncedRev`, начальная синхронизация, объединённый список проектов, `DELETE`.
   - **Тесты**: `tests/unit/cloud-sync.test.ts`.
 
-- [ ] **TASK-07: Cloud Rooms**
+- [x] **TASK-07: Cloud Rooms**
   - **Файлы**: `server/cloud-room-manager.ts`, `server/app.ts`, `src/room-host.ts`, `src/collab.ts`, `src/browser-host.ts`, `src/main.ts`, `src/app.ts`.
   - WS `/ws/room/:projectId`, автосохранение, комната без автора на pro/tutor, кнопка «Ссылка-приглашение», маскировка заданий.
   - **Тесты**: `tests/server/cloud-room.test.ts`.

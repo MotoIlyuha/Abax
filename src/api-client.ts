@@ -38,6 +38,8 @@ export interface MeResponse {
 export interface RequestOptions {
   /** Без сессии (по умолчанию — с сессией). */
   anonymous?: boolean;
+  /** Только уже имеющаяся сессия: нет её — запрос уходит без входа (гостю по ссылке учётная запись не нужна). */
+  optionalAuth?: boolean;
   headers?: Record<string, string>;
   /** Ответ — текст, а не JSON (например, data URL картинки). */
   text?: boolean;
@@ -137,6 +139,17 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
     ensureSession: async () => store(SESSION_KEY) ?? login(),
     async request<T>(method: string, path: string, body?: unknown, opts: RequestOptions = {}): Promise<T> {
       if (opts.anonymous) return send<T>(method, path, body, opts.headers ?? {}, opts.text);
+      if (opts.optionalAuth) {
+        const have = store(SESSION_KEY);
+        if (!have) return send<T>(method, path, body, opts.headers ?? {}, opts.text);
+        try {
+          return await send<T>(method, path, body, { ...opts.headers, Authorization: `Bearer ${have}` }, opts.text);
+        } catch (e) {
+          // сессия просрочена — для гостя это не помеха
+          if (e instanceof ApiError && e.status === 401) { storeSet(SESSION_KEY, null); return send<T>(method, path, body, opts.headers ?? {}, opts.text); }
+          throw e;
+        }
+      }
       const attempt = async (): Promise<T> => {
         const token = await client.ensureSession();
         return send<T>(method, path, body, { ...opts.headers, Authorization: `Bearer ${token}` }, opts.text);

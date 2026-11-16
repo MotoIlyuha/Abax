@@ -5,6 +5,8 @@ import { gestureActive } from './gesture';
 import { sanitizeComments } from './file';
 import { clientId } from './identity';
 import { setStorage, storage, type BoardsStorage } from './storage';
+import { getApi } from './api-client';
+import { hydrateFromCloud } from './cloud-assets';
 import {
   CLOSE_BAD_CODE, CLOSE_BAD_REQUEST, CLOSE_FREE_LIMIT, CLOSE_HOST_OFFLINE, CLOSE_PROTOCOL_MISMATCH, CLOSE_RATE_LIMITED,
   CLOSE_ROOM_CLOSED, CLOSE_ROOM_FULL, CLOSE_ROOM_NOT_FOUND, CLOSE_TOO_SLOW, PROTO,
@@ -76,59 +78,121 @@ export function startCollab(wsUrl: string, asHost: boolean, name: string): Promi
 export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void> {
   role = asHost ? 'host' : 'guest';
   state.collabRole = role;
+  // прежний канал (например, облачная комната, когда автор включил совместную работу в своей вкладке) закрывается
+  const old = transport;
+  if (old && old !== t) {
+    try { old.close(); } catch { /* уже закрыт */ }
+    document.dispatchEvent(new CustomEvent('doska:collab-replaced'));
+  }
   transport = t;
   hubPatches = false;
   baselines.clear();
   incoming.length = 0;
+  startReady();
   watchBoard();
   // события от прежнего, уже заменённого канала не должны трогать текущее состояние
   const current = () => transport === t;
+
+  const handle = (data: string): void => {
+    let m: Record<string, unknown>;
+    try { m = JSON.parse(data); } catch { return; }
+    if (m.t === 'init') {
+      // сервер другой версии: дальнейшие сообщения могут значить не то, что мы думаем
+      if (typeof m.proto === 'number' && m.proto !== PROTO) {
+        closeWith(CLOSE_PROTOCOL_MISMATCH, 'protocol mismatch');
+        return;
+      }
+      myUserId = m.userId as number;
+      myRights = (m.rights as typeof myRights) || myRights;
+      if (Array.isArray(m.users)) users = m.users as CollabUser[];
+      // хаб умеет патчи — сообщаем, что мы тоже: до ответа он шлёт полные проекты
+      hubPatches = m.patches === true;
+      if (hubPatches) send({ t: 'caps', patches: true });
+      if (m.project) applyRemoteProject(m.project as Project);
+      renderRemoteCursors();
+      settleReady(true);
+    } else if (m.t === 'users') {
+      users = m.users as CollabUser[];
+      renderRemoteCursors();
+    } else if (m.t === 'rights') {
+      myRights = (m.rights as typeof myRights) || myRights;
+      // перерисовываем UI — тулбар и список страниц зависят от прав
+      setSelection([...state.selection]);
+    } else if (m.t === 'project') {
+      if ((m.by as number) !== myUserId) applyRemoteProject(m.project as Project);
+    } else if (m.t === 'patch') {
+      if ((m.by as number) !== myUserId && isBoardPatch(m)) receivePatch(m);
+    } else if (m.t === 'comments') {
+      applyIncomingComments(m.pageId, m.comments);
+    } else if (m.t === 'pointer') {
+      applyIncomingPointer(m);
+    }
+  };
+
+  // сообщения облачной комнаты со ссылками asset://… ждут загрузки картинок; остальные не отстают от них
+  let waiting = 0;
+  let queue: Promise<void> = Promise.resolve();
   return new Promise(resolve => {
     t.onopen = () => { if (!current()) return; connected = true; resolve(); };
     t.onmessage = data => {
       if (!current()) return;
-      let m: Record<string, unknown>;
-      try { m = JSON.parse(data); } catch { return; }
-      if (m.t === 'init') {
-        // сервер другой версии: дальнейшие сообщения могут значить не то, что мы думаем
-        if (typeof m.proto === 'number' && m.proto !== PROTO) {
-          closeWith(CLOSE_PROTOCOL_MISMATCH, 'protocol mismatch');
-          return;
-        }
-        myUserId = m.userId as number;
-        myRights = (m.rights as typeof myRights) || myRights;
-        if (Array.isArray(m.users)) users = m.users as CollabUser[];
-        // хаб умеет патчи — сообщаем, что мы тоже: до ответа он шлёт полные проекты
-        hubPatches = m.patches === true;
-        if (hubPatches) send({ t: 'caps', patches: true });
-        if (m.project) applyRemoteProject(m.project as Project);
-        renderRemoteCursors();
-      } else if (m.t === 'users') {
-        users = m.users as CollabUser[];
-        renderRemoteCursors();
-      } else if (m.t === 'rights') {
-        myRights = (m.rights as typeof myRights) || myRights;
-        // перерисовываем UI — тулбар и список страниц зависят от прав
-        setSelection([...state.selection]);
-      } else if (m.t === 'project') {
-        if ((m.by as number) !== myUserId) applyRemoteProject(m.project as Project);
-      } else if (m.t === 'patch') {
-        if ((m.by as number) !== myUserId && isBoardPatch(m)) receivePatch(m);
-      } else if (m.t === 'comments') {
-        applyIncomingComments(m.pageId, m.comments);
-      } else if (m.t === 'pointer') {
-        applyIncomingPointer(m);
-      }
+      if (waiting === 0 && !(data.includes('asset://') && getApi())) { handle(data); return; }
+      waiting++;
+      queue = queue.then(async () => {
+        try {
+          const ready = current() ? await hydrateMessage(data) : data;
+          if (current()) handle(ready);
+        } catch { /* испорченное сообщение пропускаем */ } finally { waiting--; }
+      });
     };
     t.onclose = (code, reason) => {
       if (!current()) return;
       connected = false;
       dropRemotePointers();
       renderRemoteCursors();
+      settleReady(false);
       notifyClosed(code, reason);
       resolve(); // не открылся вовсе — не держим запуск приложения
     };
   });
+}
+
+/** Картинки asset://… в проекте или патче заменяются на содержимое (докачивается с сервера). */
+async function hydrateMessage(data: string): Promise<string> {
+  const api = getApi();
+  if (!api) return data;
+  const m = JSON.parse(data) as Record<string, unknown>;
+  if (m.project && typeof m.project === 'object') {
+    m.project = await hydrateFromCloud(m.project as Project, api);
+  } else if (m.t === 'patch' && Array.isArray(m.ops)) {
+    const ops = m.ops as { op: string; el?: Element }[];
+    const puts = ops.filter(o => o.op === 'put' && o.el);
+    if (puts.length > 0) {
+      const probe: Project = { id: 'p', name: '', createdAt: 0, updatedAt: 0, pages: [{ id: 'p', name: '', grid: 'none', elements: puts.map(o => o.el!) }] };
+      const done = await hydrateFromCloud(probe, api);
+      puts.forEach((o, i) => { o.el = done.pages[0].elements[i]; });
+    }
+  } else return data;
+  return JSON.stringify(m);
+}
+
+// ----- Готовность: первое состояние комнаты получено (init) или канал закрылся, так и не дав его -----
+
+let readySettle: ((ok: boolean) => void) | null = null;
+let readyPromise: Promise<boolean> = Promise.resolve(false);
+
+function startReady(): void {
+  readyPromise = new Promise<boolean>(resolve => { readySettle = resolve; });
+}
+
+function settleReady(ok: boolean): void {
+  readySettle?.(ok);
+  readySettle = null;
+}
+
+/** После connectCollab: true — комната прислала состояние (init), false — закрылась раньше. */
+export function collabReady(): Promise<boolean> {
+  return readyPromise;
 }
 
 function notifyClosed(code: number, reason: string): void {
@@ -143,6 +207,7 @@ function closeWith(code: number, reason: string): void {
   t?.close();
   dropRemotePointers();
   renderRemoteCursors();
+  settleReady(false);
   notifyClosed(code, reason);
 }
 
@@ -675,14 +740,26 @@ export async function connectHost(t: CollabTransport): Promise<void> {
   finishHostConnection();
 }
 
-function finishHostConnection(): void {
+/**
+ * Автор подключается к своей облачной комнате на сервере: состояние проекта берётся у сервера (в комнате без автора
+ * его могли изменить гости), поэтому локальный проект в комнату не отправляется — дальше уходят только правки.
+ * true — комната прислала состояние.
+ */
+export async function connectCloudHost(t: CollabTransport): Promise<boolean> {
+  await connectCollab(t, true);
+  if (!(await collabReady())) return false;
+  finishHostConnection(false);
+  return true;
+}
+
+function finishHostConnection(initialSend = true): void {
   // правки автора уходят гостям тем же путём, что и автосохранение
   if (!hostLocalStorage) {
     const local = storage;
     hostLocalStorage = local;
     setStorage({ ...local, save: async project => { await local.save(project); sendProject(project); } });
   }
-  sendProject(state.project);
+  if (initialSend) sendProject(state.project);
 }
 
 export function stopCollab(): void {
@@ -691,6 +768,7 @@ export function stopCollab(): void {
   transport = null;
   t?.close();
   connected = false;
+  settleReady(false);
   hubPatches = false;
   dropRemotePointers();
   for (const d of draftSends.values()) clearTimeout(d.timer);

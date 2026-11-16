@@ -54,8 +54,8 @@ interface WriteArgs {
   project: Project;
   authorId: string | null;
   pageId?: string | null;
-  /** Содержимое журнала ревизий (patch_json). */
-  revision: unknown;
+  /** Содержимое журнала ревизий (patch_json); null — ревизия растёт, а запись в журнал не добавляется. */
+  revision: unknown | null;
 }
 
 /** Одна запись проекта: строка, ревизия, подрезка журнала — в одной транзакции. Возвращает новую ревизию. */
@@ -63,8 +63,8 @@ export function writeProject(app: AppContext, a: WriteArgs): number {
   const perms: ProjectPermissions = a.project.permissions ?? {};
   const now = app.now();
   const rev = a.existing ? a.existing.rev + 1 : 1;
-  let revJson = JSON.stringify(a.revision);
-  if (revJson.length > MAX_REVISION_JSON) revJson = JSON.stringify({ kind: 'large', bytes: revJson.length });
+  let revJson = a.revision === null ? null : JSON.stringify(a.revision);
+  if (revJson !== null && revJson.length > MAX_REVISION_JSON) revJson = JSON.stringify({ kind: 'large', bytes: revJson.length });
   app.db.transaction(() => {
     const cols = [a.project.name, rev, serializeProject(a.project), perms.forbidClone ? 1 : 0, perms.allowCopy === false ? 0 : 1, JSON.stringify(perms.pageRights ?? {}), now] as const;
     if (a.existing) {
@@ -74,8 +74,10 @@ export function writeProject(app: AppContext, a: WriteArgs): number {
       app.db.prepare('INSERT INTO projects (title, rev, data_json, forbid_clone, allow_copy, page_rights_json, updated_at, id, owner_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
         .run(...cols, a.project.id, a.ownerId, now);
     }
-    app.db.prepare('INSERT INTO project_revisions (project_id, rev, page_id, author_id, patch_json, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(a.project.id, rev, a.pageId ?? null, a.authorId, revJson, now);
+    if (revJson !== null) {
+      app.db.prepare('INSERT INTO project_revisions (project_id, rev, page_id, author_id, patch_json, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(a.project.id, rev, a.pageId ?? null, a.authorId, revJson, now);
+    }
     app.db.prepare(`DELETE FROM project_revisions WHERE project_id = ? AND id NOT IN
       (SELECT id FROM project_revisions WHERE project_id = ? ORDER BY rev DESC LIMIT ${MAX_REVISIONS_PER_PROJECT})`).run(a.project.id, a.project.id);
   })();

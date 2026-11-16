@@ -2,6 +2,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from 'node:net';
 import { LocalFsAssetBackend, type AssetStorageBackend } from './asset-storage';
 import { registerAssetRoutes } from './assets';
+import { createCloudRooms, type CloudRooms } from './cloud-room-manager';
 import { registerInviteRoutes } from './invite-routes';
 import { registerProjectRoutes } from './projects';
 import { authenticate, registerAuthRoutes } from './auth';
@@ -26,6 +27,8 @@ export interface AppOptions {
   secureCookies?: boolean;
   anonRateMax?: number;
   anonRateWindowMs?: number;
+  roomSaveMs?: number;
+  roomIdleMs?: number;
   assetBackend?: AssetStorageBackend;
   now?: () => number;
   log?: (msg: string) => void;
@@ -49,6 +52,8 @@ export interface AppServer {
   close(): Promise<void>;
   /** Дополнительные действия при закрытии (комнаты и т. п.). */
   onClose(fn: () => void | Promise<void>): void;
+  /** Облачные комнаты (WebSocket /ws/room/:проект). */
+  rooms: CloudRooms;
   readonly url: string;
 }
 
@@ -87,6 +92,8 @@ function resolveOptions(o: AppOptions): ResolvedOptions {
     secureCookies: o.secureCookies === true,
     anonRateMax: o.anonRateMax ?? 30,
     anonRateWindowMs: o.anonRateWindowMs ?? 3600_000,
+    roomSaveMs: o.roomSaveMs ?? 500,
+    roomIdleMs: o.roomIdleMs ?? 60_000,
   };
 }
 
@@ -183,9 +190,11 @@ export function createAppServer(options: AppOptions, extraRoutes: RouteModule[] 
     }
   });
 
+  const rooms = createCloudRooms(app, { onUpgrade: fn => { upgradeHandlers.push(fn); }, onClose: fn => { closers.push(fn); } });
+
   let url = '';
   return {
-    server, db, app, router, handler,
+    server, db, app, router, handler, rooms,
     onUpgrade: fn => { upgradeHandlers.push(fn); },
     handleUpgrade,
     onClose: fn => { closers.push(fn); },

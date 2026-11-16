@@ -2,7 +2,7 @@ import type { Project } from './types';
 import { blankPage, canCloneCurrentProject, onDraft, openProject, projectMeta, setTool, state, uid } from './state';
 import { doskaApi, storage } from './storage';
 import { getApi } from './api-client';
-import { cloneOnServer, loadCloudView, loadInvite } from './link-view-cloud';
+import { cloneOnServer, loadCloudView, loadInvite, type InviteView } from './link-view-cloud';
 import { setSyncedRev } from './sync-state';
 import { showCollabNotice } from './collab';
 import { isNativeApp } from './native';
@@ -102,8 +102,8 @@ export async function enterLinkView(route: RouteMatch): Promise<void> {
   if (res.notice && !res.missing) showToast(res.notice);
 }
 
-const NOTICE_INVITE_GONE = ['Приглашение недействительно', 'Ссылка отозвана или устарела. Попросите автора прислать новую.'] as const;
-const NOTICE_INVITE_OFFLINE = ['Нет связи с сервером', 'Не удалось открыть приглашение. Проверьте подключение и откройте ссылку ещё раз.'] as const;
+export const NOTICE_INVITE_GONE = ['Приглашение недействительно', 'Ссылка отозвана или устарела. Попросите автора прислать новую.'] as const;
+export const NOTICE_INVITE_OFFLINE = ['Нет связи с сервером', 'Не удалось открыть приглашение. Проверьте подключение и откройте ссылку ещё раз.'] as const;
 
 /**
  * Открывает приглашение /j/:token. true — проект открыт (пока только для чтения; подключение к комнате — в collab-guest),
@@ -121,8 +121,13 @@ export async function enterInvite(token: string): Promise<boolean> {
     showCollabNotice(title, text);
     return false;
   }
-  const inv = res.value;
-  if (inv.isOwner) return false;
+  if (res.value.isOwner) return false;
+  openInviteView(res.value, token);
+  return true;
+}
+
+/** Приглашение открывается как просмотр: проект с сервера, только чтение (если в комнату подключиться не удалось). */
+export function openInviteView(inv: InviteView, token: string): void {
   fromCloud = true;
   viaInvite = token;
   missing = false;
@@ -131,7 +136,6 @@ export async function enterInvite(token: string): Promise<boolean> {
   setTool('pan');
   applyBodyClasses();
   renderBanner();
-  return true;
 }
 
 /** Выйти из режима просмотра (после клонирования). */

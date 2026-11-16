@@ -53,7 +53,7 @@ export interface InviteView {
 /** Приглашение /j/:token: права, комната и проект (отфильтрованный сервером). */
 export async function loadInvite(api: ApiClient, token: string, store: AssetStore = assetStore): Promise<CloudResult<InviteView>> {
   try {
-    const r = await api.request<InviteView>('GET', `/api/invites/${encodeURIComponent(token)}`);
+    const r = await api.request<InviteView>('GET', `/api/invites/${encodeURIComponent(token)}`, undefined, { optionalAuth: true });
     return { ok: true, value: { ...r, project: await hydrateFromCloud(r.project, api, store) } };
   } catch (e) { return failure(e); }
 }
