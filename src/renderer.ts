@@ -1120,26 +1120,13 @@ function drawHandles(ctx: CanvasRenderingContext2D, cam: Camera): void {
       continue;
     }
     if (h.kind === 'rotate' && (el.type === 'shape' || el.type === 'image')) {
-      // линия от центра верхней грани ФИГУРЫ (с учётом её поворота), не от AABB
-      const rot = el.rot ?? 0;
-      let anchorX = el.x + el.w / 2;
-      let anchorY = el.y;
-      if (rot) {
-        const cx = el.x + el.w / 2, cy = el.y + el.h / 2;
-        const cos = Math.cos(rot), sin = Math.sin(rot);
-        anchorX = cx + (el.h / 2) * sin;
-        anchorY = cy - (el.h / 2) * cos;
-      }
-      const topX = (anchorX - cam.x) * cam.zoom;
-      const topY = (anchorY - cam.y) * cam.zoom;
+      // кнопка у левого верхнего угла: белый круг с иконкой «дуга со стрелками»
+      const R = 11;
       ctx.beginPath();
-      ctx.moveTo(topX, topY);
-      ctx.lineTo(sx, sy);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.arc(sx, sy, 4.5, 0, Math.PI * 2);
+      ctx.arc(sx, sy, R, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
+      drawRotateIcon(ctx, sx, sy);
       continue;
     }
     // end/node
@@ -1148,6 +1135,34 @@ function drawHandles(ctx: CanvasRenderingContext2D, cam: Camera): void {
     ctx.fill();
     ctx.stroke();
   }
+}
+
+/** Иконка поворота: дуга с наконечниками стрелок на обоих концах. */
+function drawRotateIcon(ctx: CanvasRenderingContext2D, cx: number, cy: number): void {
+  const r = 5.5;
+  const a0 = Math.PI * 1.15, a1 = Math.PI * 1.85; // дуга над центром
+  ctx.save();
+  ctx.strokeStyle = '#3273f5';
+  ctx.fillStyle = '#3273f5';
+  ctx.lineWidth = 1.5;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.arc(cx, cy + 2, r, a0, a1);
+  ctx.stroke();
+  // наконечники по касательной к концам дуги, смотрят наружу
+  for (const [ang, dir] of [[a0, -1], [a1, 1]] as const) {
+    const px = cx + r * Math.cos(ang), py = cy + 2 + r * Math.sin(ang);
+    const tx = -Math.sin(ang) * dir, ty = Math.cos(ang) * dir; // направление движения
+    const nx = -ty, ny = tx;
+    const L = 3.2, W = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(px + tx * L, py + ty * L);
+    ctx.lineTo(px - tx * 0.6 + nx * W, py - ty * 0.6 + ny * W);
+    ctx.lineTo(px - tx * 0.6 - nx * W, py - ty * 0.6 - ny * W);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
 }
 
 /** Ручки общего прямоугольника выделения — квадратики по углам и серединам сторон. */

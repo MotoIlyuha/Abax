@@ -1931,10 +1931,10 @@ function quickMenuTarget(wr: DOMRect): { sx: number; sy: number; sw: number; top
     x1 = Math.max(x1, a.x1); y1 = Math.max(y1, a.y1);
   }
   if (x0 === Infinity) return null;
-  // над bbox может торчать ручка поворота (~44px) — оставляем ей место
+  // ручка поворота у левого верхнего угла чуть выступает над bbox — оставляем ей немного места
   const hasRotateHandle = state.selection.size === 1 && state.board.elements.some(e =>
     state.selection.has(e.id) && ((e.type === 'shape' && e.shape !== 'line' && e.shape !== 'arrow') || e.type === 'image'));
-  return { sx: (x0 - cam.x) * cam.zoom, sy: (y0 - cam.y) * cam.zoom, sw: (x1 - x0) * cam.zoom, topGap: 10 + (hasRotateHandle ? 44 : 0) };
+  return { sx: (x0 - cam.x) * cam.zoom, sy: (y0 - cam.y) * cam.zoom, sw: (x1 - x0) * cam.zoom, topGap: 10 + (hasRotateHandle ? 22 : 0) };
 }
 
 function positionQuickMenu(): void {
