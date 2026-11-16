@@ -489,8 +489,9 @@ test.describe('указка', () => {
     expect((await board.state()).flashes).toBeGreaterThanOrEqual(1);
 
     expect(await board.count()).toBe(1);
-    // выделение — то же: прямоугольник выделился, когда его нарисовали
-    expect((await board.state()).selection).toEqual([r.id]);
+    // выбор инструмента указки снимает выделение (a7acadb), и сама указка его не меняет
+    expect((await board.state()).selection).toEqual([]);
+    expect((await board.elements())[0].id).toBe(r.id);
     // след гаснет сам
     await expect.poll(async () => (await board.state()).fadeStrokes, { timeout: 3000 }).toBe(0);
   });

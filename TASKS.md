@@ -47,7 +47,7 @@
   - WS `/ws/room/:projectId`, автосохранение, комната без автора на pro/tutor, кнопка «Ссылка-приглашение», маскировка заданий.
   - **Тесты**: `tests/server/cloud-room.test.ts`.
 
-- [ ] **TASK-08: E2E и финальная проверка**
+- [x] **TASK-08: E2E и финальная проверка**
   - **Файлы**: `e2e/night3-cloud.spec.ts`, `vite.config.ts` (dev-плагин), `package.json`.
   - Сценарии 1–3 из `SPEC_NIGHT3.md` в изолированных контекстах с собственным `createAppServer`.
   - Финал: `npm run typecheck && npm run typecheck:tests && npm test && npx playwright test` (дважды), `npm run build`, `npm run server:build`.

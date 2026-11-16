@@ -8,6 +8,7 @@
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "vite",
+    "dev:cloud": "node scripts/dev-cloud.mjs",
     "app:dev": "node scripts/electron-dev.mjs",
     "icons": "node scripts/icons.mjs",
     "emoji": "node scripts/emoji.mjs",
