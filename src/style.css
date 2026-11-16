@@ -91,6 +91,10 @@
   --spring-soft: 260 24; /* крупные сдвиги и смена размера */
   --spring-fade: 420 32; /* прозрачность и мелкие сдвиги надписей */
   --spring-pop: 520 16; /* «нажатие» иконки при клике */
+  --goo-out: 230 15; /* Goo: капли вылетают */
+  --goo-in: 520 34; /* Goo: капли и карточка возвращаются */
+  --goo-toast: 260 17; /* Goo: кнопка вырастает в карточку панели */
+  --goo-stagger: 45; /* Goo: мс между каплями */
   --spring-settle: 280 22; /* приземление на значение: один небольшой перелёт (раскрытие списка страниц) */
   --toast-bg: #141917; /* тост */
   --toast-fg: #f3f1e7; /* текст тоста */
@@ -736,6 +740,17 @@ body:not(.no-motion) #btn-pages { transition: box-shadow 0.15s ease, border-colo
 body:not(.no-motion) #pages-dock.open :is(.page-item, .page-add, .page-divider) { animation: none; }
 body:not(.no-motion) #pages-dock.mt-showing #pages-tray { visibility: visible; }
 
+/* ----- Goo-эффект групп панели инструментов (src/goo.ts) ----- */
+.goo-defs { position: absolute; }
+/* слой капель под панелью инструментов (у неё z-index 5) */
+#goo-layer { position: absolute; inset: 0; z-index: 4; pointer-events: none; }
+/* после склейки — тень по контуру: белое пятно на светлой доске иначе почти не видно */
+.goo-fx { position: absolute; filter: url(#goo) drop-shadow(0 0 0.6px rgba(16, 24, 40, 0.45)) drop-shadow(0 3px 8px rgba(16, 24, 40, 0.12)); }
+.goo-blob { position: absolute; left: 0; top: 0; background: var(--panel); will-change: transform; }
+.goo-drop { width: 34px; height: 34px; border-radius: 50%; }
+/* панель группы открывает Goo, а не всплытие; при «Motion анимации» выкл. — прежнее всплытие */
+body:not(.no-motion) .ctx-panel[data-kind="shapes"] { animation: none; }
+
 /* ----- Панель инструментов: позиция из настроек ----- */
 #toolbar {
   position: absolute;
@@ -807,7 +822,7 @@ body:not(.no-motion) #pages-dock.mt-showing #pages-tray { visibility: visible; }
 /* ----- Контекстные панели ----- */
 /* общий слой: свой контекст наложения, внутри — порядок «кого трогали последним» через z-index */
 #ctx-layer { position: absolute; inset: 0; pointer-events: none; z-index: 9; }
-.ctx-panel {
+.ctx-panel, .goo-ghost {
   position: absolute;
   pointer-events: auto;
   display: flex;
@@ -822,9 +837,9 @@ body:not(.no-motion) #pages-dock.mt-showing #pages-tray { visibility: visible; }
 /* заголовки групп и подписи панелей, кнопки тулбара и меню выделения мышью не выделяются */
 .ctx-panel, #toolbar, #quick-menu { user-select: none; -webkit-user-select: none; }
 .ctx-panel input { user-select: text; -webkit-user-select: text; }
-.ctx-panel[data-kind="shapes"] { width: auto; padding: 10px; }
+.ctx-panel[data-kind="shapes"], .goo-ghost { width: auto; padding: 10px; }
 /* заголовок группы не заезжает под ручку и кнопки в углу */
-.ctx-panel[data-kind="shapes"] .ctx-title { padding-right: 24px; }
+.ctx-panel[data-kind="shapes"] .ctx-title, .goo-ghost .ctx-title { padding-right: 24px; }
 .ctx-panel[data-kind="shapes"].detached .ctx-title { padding-right: 72px; }
 /* у панели стиля сверху слайдер — опускаем его под ручку */
 .ctx-panel[data-kind="style"] { padding-top: 30px; }

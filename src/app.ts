@@ -45,6 +45,7 @@ import { closeIconPicker, openIconPicker } from './icon-picker';
 import { capitalize, dayLabel, pagesLabel } from './format';
 import { buildCustomColorPicker } from './color-picker';
 import { copySelection, duplicateSelection as duplicateInPlace, pasteFromMemory, pasteFromSystem } from './clipboard';
+import { gooCancel, gooClose, gooOpen } from './goo';
 import { morphLeave } from './morph-tooltip';
 import { initMorphPages, morphPagesOpen, morphPagesReset, morphPagesSync } from './morph-pages';
 import { hideHeldTooltip, showHeldTooltip } from './tooltip';
@@ -715,10 +716,14 @@ function panelOf(kind: CtxKind): CtxPanel | undefined {
   return ctxPanels.find(cp => cp.kind === kind);
 }
 
+const isGroupPanel = (cp: CtxPanel): boolean => cp.el.dataset.kind === 'shapes' && cp.source === 'toolbar';
+
 function closePanel(cp: CtxPanel): void {
   const i = ctxPanels.indexOf(cp);
   if (i < 0) return;
   ctxPanels.splice(i, 1);
+  // группа с панели инструментов втягивается в кнопку (Goo); остальные панели и откреплённые — как раньше
+  if (isGroupPanel(cp) && !cp.detached) gooClose(cp.el, ctxAnchor(cp));
   cp.el.remove();
   syncCtxButtons();
 }
@@ -748,6 +753,7 @@ function openCtxPanel(kind: CtxKind, source: CtxSource): void {
   el.appendChild(buildCtxBar(cp));
   positionCtxPanel(cp);
   syncCtxButtons();
+  if (isGroupPanel(cp)) gooOpen(el, ctxAnchor(cp));
 }
 
 /** Клик по кнопке-вызову: открытую ею (или откреплённую) панель закрывает, иначе открывает. */
@@ -759,6 +765,7 @@ function toggleCtxPanel(kind: CtxKind, source: CtxSource): void {
 
 function setCtxDetached(cp: CtxPanel, v: boolean): void {
   cp.detached = v;
+  if (v) gooCancel(cp.el);
   cp.el.classList.toggle('detached', v);
   syncCtxButtons();
 }
