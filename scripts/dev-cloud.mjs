@@ -1,9 +1,12 @@
 // Dev-сервер с облачным бэкендом: Vite + сервер Abax в одном процессе (см. abaxDevServer в vite.config.ts).
 // Клиент смотрит на сам dev-сервер, поэтому ничего настраивать вручную не нужно: `npm run dev:cloud`.
-// Нужные переменные можно задать снаружи: ABAX_ENFORCE_LIMITS=1, TELEGRAM_BOT_TOKEN=…, DATA_DIR=…
+// Нужные переменные можно задать снаружи: ABAX_ENFORCE_LIMITS=1, TELEGRAM_BOT_TOKEN=…, GOOGLE_CLIENT_ID=…, DATA_DIR=…
 
 process.env.DOSKA_API_URL ??= 'http://localhost:5173';
 process.env.ABAX_DEV_SERVER ??= '1';
+// dev-провайдеры входа (код почты в ответе и в консоли, мгновенный вход тестовыми Telegram/Google), если настоящих
+// ключей Telegram и Google нет; провайдер с настоящим ключом работает по-настоящему. ABAX_DEV_AUTH=0 — выключить.
+if (!(process.env.TELEGRAM_BOT_TOKEN && process.env.GOOGLE_CLIENT_ID)) process.env.ABAX_DEV_AUTH ??= '1';
 
 const { createServer } = await import('vite');
 const server = await createServer();

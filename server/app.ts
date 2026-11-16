@@ -6,6 +6,8 @@ import { createCloudRooms, type CloudRooms } from './cloud-room-manager';
 import { registerInviteRoutes } from './invite-routes';
 import { registerProjectRoutes } from './projects';
 import { authenticate, registerAuthRoutes } from './auth';
+import { registerAuthFlowRoutes } from './auth-flows';
+import type { Mailer } from './mailer';
 import type { AppContext, ResolvedOptions } from './context';
 import { openDb, type Db } from './db';
 import { RateLimiter } from './rate-limit';
@@ -22,6 +24,14 @@ export interface AppOptions {
   enforceLimits?: boolean;
   /** Dev-провайдеры входа (ABAX_DEV_AUTH): код почты в ответе, мгновенный вход тестовыми Telegram/Google. */
   devAuth?: boolean;
+  /** Почта для кодов входа (server/mailer.ts). */
+  mailer?: Mailer | null;
+  googleClientId?: string | null;
+  googleClientSecret?: string | null;
+  publicApiUrl?: string;
+  allowedOrigins?: string[];
+  /** fetch для запросов к провайдерам входа (тесты). */
+  fetch?: typeof fetch;
   publicWebUrl?: string;
   /** Каталог собранного клиента (dist): раздаётся тем же сервером. */
   staticDir?: string | null;
@@ -89,6 +99,10 @@ function resolveOptions(o: AppOptions): ResolvedOptions {
     telegramBotToken: o.telegramBotToken || null,
     enforceLimits: o.enforceLimits === true,
     devAuth: o.devAuth === true,
+    googleClientId: o.googleClientId || null,
+    googleClientSecret: o.googleClientSecret || null,
+    publicApiUrl: (o.publicApiUrl ?? '').replace(/\/+$/, ''),
+    allowedOrigins: (o.allowedOrigins ?? []).map(s => { try { return new URL(s).origin; } catch { return ''; } }).filter(Boolean),
     publicWebUrl: (o.publicWebUrl ?? '').replace(/\/+$/, ''),
     staticDir: o.staticDir ?? null,
     trustProxy: o.trustProxy === true,
@@ -122,6 +136,8 @@ export function createAppServer(options: AppOptions, extraRoutes: RouteModule[] 
     db,
     opts: resolveOptions(options),
     assets: options.assetBackend ?? new LocalFsAssetBackend(options.assetsDir),
+    mailer: options.mailer ?? null,
+    fetch: options.fetch ?? ((...a: Parameters<typeof fetch>) => fetch(...a)),
     now,
     log,
     rateLimit: (key, max, windowMs) => limiter.take(key, max, windowMs),
@@ -132,6 +148,7 @@ export function createAppServer(options: AppOptions, extraRoutes: RouteModule[] 
   };
   const router = new Router();
   registerAuthRoutes(router);
+  registerAuthFlowRoutes(router);
   registerAssetRoutes(router);
   registerProjectRoutes(router);
   registerInviteRoutes(router);

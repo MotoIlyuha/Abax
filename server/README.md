@@ -31,7 +31,8 @@ npm run server:plan -- <userId | tg:<id>> pro 30    # выдать тариф н
 
 | Область | Маршруты |
 | --- | --- |
-| Вход | `POST /api/auth/anon` (токен устройства), `POST /api/auth/telegram` (Telegram Login Widget, подпись HMAC), `POST /api/auth/logout`, `GET /api/me` |
+| Вход | `POST /api/auth/anon` (токен устройства), `POST /api/auth/telegram` (Telegram Login, подпись HMAC), `POST /api/auth/logout`, `GET /api/me`, `PATCH /api/me` (имя и курсор) |
+| Способы входа (Ночь №4) | `GET /api/auth/providers`; почта — `POST /api/auth/email/start` и `/verify` (6-значный код, 10 минут, 5 попыток); Telegram и Google — `POST /api/auth/flow` → переход на сайт провайдера → возврат `#abaxAuth=` / `#tgAuthResult=` → `POST /api/auth/flow/complete`; режимы `login` (вход, слияние анонима) и `link` (привязка к текущему аккаунту, `409 identity-taken`, если способ у другого). Dev-провайдеры — `ABAX_DEV_AUTH=1` (в `npm run dev:cloud` включены, если нет ключей) |
 | Проекты | `GET /api/projects`, `GET/PUT/DELETE /api/projects/:id`, `POST /api/projects/:id/patch`, `POST /api/projects/:id/clone` |
 | Картинки | `POST /api/assets` (`{dataUrl}`), `GET /api/assets/:hash` (по хэшу SHA-256 от строки data URL) |
 | Приглашения | `POST /api/invites`, `GET /api/invites?projectId=`, `DELETE /api/invites/:token`, `GET /api/invites/:token` и `GET /j/:token` (JSON) |

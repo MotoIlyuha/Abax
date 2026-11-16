@@ -26,7 +26,10 @@ function abaxDevServer(): Plugin {
       let started: Promise<{ handler: (req: unknown, res: unknown) => void; handleUpgrade: (req: unknown, socket: unknown, head: unknown) => boolean; close: () => Promise<void> }> | null = null;
       const start = () => (started ??= (async () => {
         const { createAppServer } = await server.ssrLoadModule('/server/app.ts') as { createAppServer: (o: Record<string, unknown>) => any };
-        const { loadJwtSecret, truthy } = await server.ssrLoadModule('/server/config.ts') as { loadJwtSecret: (e: NodeJS.ProcessEnv, d: string) => string; truthy: (v?: string) => boolean };
+        const { loadJwtSecret, truthy, listEnv } = await server.ssrLoadModule('/server/config.ts') as { loadJwtSecret: (e: NodeJS.ProcessEnv, d: string) => string; truthy: (v?: string) => boolean; listEnv: (v?: string) => string[] };
+        const { mailerFromEnv, consoleMailer } = await server.ssrLoadModule('/server/mailer.ts') as { mailerFromEnv: (e: NodeJS.ProcessEnv) => unknown; consoleMailer: (log: (m: string) => void) => unknown };
+        const log = (m: string) => server.config.logger.info(`[abax] ${m}`);
+        const devAuth = truthy(process.env.ABAX_DEV_AUTH);
         const dataDir = resolve(process.env.DATA_DIR || '.data');
         const srv = createAppServer({
           dbPath: join(dataDir, 'abax.db'),
@@ -35,7 +38,14 @@ function abaxDevServer(): Plugin {
           telegramBotToken: process.env.TELEGRAM_BOT_TOKEN,
           enforceLimits: truthy(process.env.ABAX_ENFORCE_LIMITS),
           publicWebUrl: process.env.PUBLIC_WEB_URL || 'http://localhost:5173',
-          log: (m: string) => server.config.logger.info(`[abax] ${m}`),
+          // dev-провайдеры входа (npm run dev:cloud включает их, если нет настоящих ключей Telegram/Google)
+          devAuth,
+          mailer: mailerFromEnv(process.env) ?? (devAuth ? consoleMailer(log) : null),
+          googleClientId: process.env.GOOGLE_CLIENT_ID,
+          googleClientSecret: process.env.GOOGLE_CLIENT_SECRET,
+          publicApiUrl: process.env.PUBLIC_API_URL || '',
+          allowedOrigins: listEnv(process.env.ALLOWED_ORIGINS),
+          log,
         });
         server.config.logger.info(`[abax] сервер Abax подключён к dev-серверу, данные: ${dataDir}`);
         return srv;

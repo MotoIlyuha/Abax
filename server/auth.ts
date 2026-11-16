@@ -3,7 +3,8 @@ import type { IncomingMessage } from 'node:http';
 import type { AppContext } from './context';
 import type { UserRow } from './db';
 import { HttpError, type Ctx, type Reply, type Router } from './router';
-import { createUser, effectivePlan, findByDevice, findByTelegram, getUser, meResponse, mergeUsers, sha256Hex } from './users';
+import { createUser, effectivePlan, findByDevice, getUser, meResponse, sha256Hex } from './users';
+import { resolveIdentity, type Identity } from './identity';
 import { canUseCursor, isCursorId } from '../src/cursors';
 import { normalizeName } from '../src/room-host';
 
@@ -136,7 +137,24 @@ const cleanName = (s: string): string => normalizeName(s);
 
 // ----- Маршруты -----
 
-function sessionReply(app: AppContext, user: UserRow, status = 200): Reply {
+/**
+ * Данные Telegram Login (подпись уже проверена) → способ входа: id, имя (имя и фамилия, иначе username),
+ * username и аватар (только https).
+ */
+export function telegramIdentity(p: TelegramPayload): Identity {
+  const tgId = String(p.id);
+  if (!/^\d{1,20}$/.test(tgId)) throw new HttpError(400, 'bad-telegram-id');
+  const name = cleanName([p.first_name, p.last_name].filter((s): s is string => typeof s === 'string').join(' '))
+    || (typeof p.username === 'string' ? cleanName(p.username) : '') || 'Пользователь Telegram';
+  return {
+    provider: 'telegram', subject: tgId, displayName: name,
+    tgUsername: typeof p.username === 'string' ? cleanName(p.username) || null : null,
+    avatarUrl: typeof p.photo_url === 'string' && /^https:\/\//.test(p.photo_url) ? p.photo_url.slice(0, 500) : null,
+  };
+}
+
+/** Ответ входа: токен сессии, cookie и то же, что /api/me. */
+export function sessionReply(app: AppContext, user: UserRow, status = 200): Reply {
   const token = signSession(app.opts.jwtSecret, user.id, app.now());
   return {
     status,
@@ -167,33 +185,8 @@ export function registerAuthRoutes(router: Router): void {
     const payload = await ctx.body();
     if (!verifyTelegramLogin(payload, botToken, app.now())) throw new HttpError(401, 'bad-telegram-signature');
     const p = payload as TelegramPayload;
-    const tgId = String(p.id);
-    if (!/^\d{1,20}$/.test(tgId)) throw new HttpError(400, 'bad-telegram-id');
-    const name = cleanName([p.first_name, p.last_name].filter((s): s is string => typeof s === 'string').join(' ')) || (typeof p.username === 'string' ? cleanName(p.username) : '') || 'Пользователь Telegram';
-    const profile = {
-      tg_username: typeof p.username === 'string' ? cleanName(p.username) || null : null,
-      display_name: name,
-      avatar_url: typeof p.photo_url === 'string' && /^https:\/\//.test(p.photo_url) ? p.photo_url.slice(0, 500) : null,
-    };
-    const now = app.now();
-    const current = ctx.user; // анонимная сессия этого устройства, если есть
-    const anon = current && current.tg_id === null ? current : null;
-
-    let user = findByTelegram(app.db, tgId);
-    // имя из Telegram — только если пользователь не задавал своё (name_custom)
-    if (user) {
-      app.db.prepare('UPDATE users SET tg_username = ?, display_name = CASE WHEN name_custom = 1 THEN display_name ELSE ? END, avatar_url = ?, updated_at = ? WHERE id = ?')
-        .run(profile.tg_username, profile.display_name, profile.avatar_url, now, user.id);
-      if (anon) mergeUsers(app.db, anon.id, user.id, now);
-    } else if (anon) {
-      // аноним становится Telegram-пользователем на месте: проекты и приглашения остаются при нём
-      app.db.prepare('UPDATE users SET tg_id = ?, tg_username = ?, display_name = CASE WHEN name_custom = 1 THEN display_name ELSE ? END, avatar_url = ?, updated_at = ? WHERE id = ?')
-        .run(tgId, profile.tg_username, profile.display_name, profile.avatar_url, now, anon.id);
-      user = anon;
-    } else {
-      user = createUser(app.db, now, { tg_id: tgId, ...profile });
-    }
-    return sessionReply(app, getUser(app.db, user.id)!);
+    const user = resolveIdentity(app.db, telegramIdentity(p), 'login', ctx.user, app.now());
+    return sessionReply(app, user);
   });
 
   router.post('/api/auth/logout', ctx => ({ json: { ok: true }, headers: { 'Set-Cookie': clearedCookie(ctx.app) } }));

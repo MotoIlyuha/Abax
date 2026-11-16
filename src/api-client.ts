@@ -180,6 +180,11 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
   return client;
 }
 
+/** Запомнить токен сессии после входа через провайдера (null — забыть). */
+export function saveSession(token: string | null): void {
+  storeSet(SESSION_KEY, token);
+}
+
 /** Токен сессии, если он уже есть (без входа). */
 export function currentSession(): string | null {
   return store(SESSION_KEY);

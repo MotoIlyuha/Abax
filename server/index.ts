@@ -1,10 +1,12 @@
 import { join, resolve } from 'node:path';
 import { createAppServer } from './app';
 import { S3AssetBackend } from './asset-storage';
-import { loadJwtSecret, truthy } from './config';
+import { listEnv, loadJwtSecret, truthy } from './config';
+import { consoleMailer, mailerFromEnv } from './mailer';
 
 // Запуск сервера из окружения. Переменные: PORT, HOST, DATA_DIR, JWT_SECRET, TELEGRAM_BOT_TOKEN,
-// PUBLIC_WEB_URL, ABAX_ENFORCE_LIMITS, STATIC_DIR, TRUST_PROXY (подробнее — server/.env.example).
+// PUBLIC_WEB_URL, PUBLIC_API_URL, ABAX_ENFORCE_LIMITS, ABAX_DEV_AUTH, GOOGLE_CLIENT_ID/SECRET, MAIL_WEBHOOK_URL, SMTP_*,
+// ALLOWED_ORIGINS, STATIC_DIR, TRUST_PROXY (подробнее — server/.env.example).
 
 async function main(): Promise<void> {
   const env = process.env;
@@ -22,6 +24,13 @@ async function main(): Promise<void> {
     jwtSecret: loadJwtSecret(env, dataDir),
     telegramBotToken: env.TELEGRAM_BOT_TOKEN,
     enforceLimits: truthy(env.ABAX_ENFORCE_LIMITS),
+    // dev-провайдеры входа — только по явному флагу и никогда в продакшене
+    devAuth: truthy(env.ABAX_DEV_AUTH) && env.NODE_ENV !== 'production',
+    mailer: mailerFromEnv(env) ?? (truthy(env.ABAX_DEV_AUTH) && env.NODE_ENV !== 'production' ? consoleMailer(m => console.log(m)) : null),
+    googleClientId: env.GOOGLE_CLIENT_ID,
+    googleClientSecret: env.GOOGLE_CLIENT_SECRET,
+    publicApiUrl: env.PUBLIC_API_URL || '',
+    allowedOrigins: listEnv(env.ALLOWED_ORIGINS),
     publicWebUrl: env.PUBLIC_WEB_URL || 'https://motoilyuha.github.io/Abax',
     staticDir: env.STATIC_DIR ? resolve(env.STATIC_DIR) : null,
     trustProxy: truthy(env.TRUST_PROXY),

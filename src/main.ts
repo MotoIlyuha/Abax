@@ -127,6 +127,8 @@ async function boot(): Promise<void> {
   // тариф с сервера и начальная синхронизация проектов (без настроенного облака — ничего не делают)
   // тариф и профиль аккаунта (SPEC_NIGHT4 §8), затем фоновая синхронизация проектов
   void syncAccount().then(() => { startBackgroundSync(); startProfileSync(); });
+  // вошли или вышли без перезагрузки (почта, выход) — проекты аккаунта появляются в списке
+  document.addEventListener('doska:account-changed', () => startBackgroundSync());
   // автор подключается к облачной комнате своего проекта, пока у проекта есть приглашение
   if (!viewRoute) watchOwnerRoom();
   if (viewRoute) {

@@ -30,7 +30,7 @@
   - Миграция V2, `PATCH /api/me`, `userInfo` с профилем и способами входа, имя провайдера не затирает пользовательское, синхронизация профиля на клиенте (§6, §8).
   - **Тесты**: `tests/server/profile.test.ts`, `tests/unit/profile-sync.test.ts`.
 
-- [ ] **TASK-05: Способы входа: почта, Telegram, Google, dev-провайдеры**
+- [x] **TASK-05: Способы входа: почта, Telegram, Google, dev-провайдеры**
   - **Файлы**: `server/mailer.ts`, `server/identity.ts`, `server/auth-flows.ts`, `server/auth.ts`, `server/app.ts`, `server/index.ts`, `server/config.ts`, `vite.config.ts`, `scripts/dev-cloud.mjs`, `server/.env.example`, `server/README.md`, `src/auth.ts`, `src/api-client.ts`.
   - `resolveIdentity`, `GET /api/auth/providers`, код по почте, потоки перехода (Google PKCE, Telegram OAuth, dev), `flow/complete`, разрешённые `returnTo`, клиент `src/auth.ts` (§7).
   - **Тесты**: `tests/server/mailer.test.ts` (поддельный SMTP), `tests/server/auth-email.test.ts`, `tests/server/auth-flows.test.ts`, `tests/unit/auth.test.ts`.
