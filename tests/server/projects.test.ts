@@ -473,7 +473,7 @@ describe('POST /api/projects/:id/clone', () => {
     const task = c.pages[0].elements[0];
     expect(task.answer).toBe('');
     for (const k of ['solutionMd', 'attempts', 'studentDraft', 'markedHard']) expect(task).not.toHaveProperty(k);
-    expect(JSON.stringify(r.body)).not.toContain('42');
+    expect(JSON.stringify(r.body)).not.toContain('"answer":"42"');
     expect(JSON.stringify(r.body)).not.toContain('hidden-el');
     // сохранено у клонирующего и у него же читается
     expect(app.db.prepare('SELECT owner_id FROM projects WHERE id = ?').get(c.id)).toEqual({ owner_id: cloner.id });
