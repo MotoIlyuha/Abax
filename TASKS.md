@@ -15,10 +15,10 @@
   - ≥ 40 имён (§2.2, Решение 35), `tabFill`, `resolveName` (§2.3, Решение 34).
   - **Тесты**: `tests/unit/cursors.test.ts` (белый список, контраст, SVG без чужих данных, право по тарифу), `tests/unit/profile.test.ts` (вместе с логикой поля имени и смешными именами).
 
-- [ ] **TASK-02: Курсор, выделение и иконка у себя; слой эффектов**
+- [x] **TASK-02: Курсор, выделение и иконка у себя; слой эффектов**
   - **Файлы**: `src/controller.ts`, `src/renderer.ts`, `src/toolbar.ts`, `src/app.ts`, `src/cursor-fx.ts`, `src/style.css`, `index.html`.
   - Курсор `select` над холстом; `mySelectionColor()` в рамках, ручках и рамке выделения области; динамическая иконка `select` и перестройка панели при смене профиля; `cursor-fx` (лимит частиц, `no-motion`, reduced motion) (§4).
-  - **Тесты**: `tests/unit/cursor-fx.test.ts`, дополнения тестов панели и рендерера.
+  - **Тесты**: `tests/unit/cursor-fx.test.ts` (слой эффектов и иконка `select`).
 
 - [ ] **TASK-03: Курсоры в совместной работе**
   - **Файлы**: `src/room-host.ts`, `electron/room.cjs`, `electron/share.cjs`, `electron/cloud-link.cjs`, `src/collab.ts`, `src/collab-transport.ts`, `src/relay-host.ts`, `src/local-transport.ts`, `src/browser-host.ts`, `src/cloud-room.ts`, `src/main.ts`, `src/app.ts`, `server/cloud-room-manager.ts`.

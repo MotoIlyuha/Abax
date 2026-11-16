@@ -791,6 +791,8 @@ body:not(.no-motion) .ctx-panel[data-kind="shapes"] { animation: none; }
 .tool:hover { background: var(--hover); }
 .tool.active { background: var(--accent-soft); color: var(--accent); }
 .tool svg { width: 19px; height: 19px; }
+/* персональный курсор на кнопке «Выделение»: цветной, чуть крупнее контурных иконок, кончик — в левый верхний угол */
+.tool svg.cursor-icon, svg.cursor-icon { width: 22px; height: 22px; transform: translate(2px, 1px); }
 /* индикатор «цвет + толщина»: кружок с точкой текущего цвета, размер точки — толщина */
 .style-ind {
   display: flex;
@@ -2268,6 +2270,7 @@ body.no-ui-anim #icon-picker { animation: none; }
 .share-user-head i { width: 10px; height: 10px; border-radius: 50%; flex: none; }
 .share-user select { font: inherit; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); }
 
+#cursor-fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9; }
 #remote-cursors { position: absolute; inset: 0; pointer-events: none; z-index: 9; }
 .remote-cursor {
   position: absolute;

@@ -14,6 +14,9 @@ import { collabActive, noteCursor, sendFadeStroke, sendFlash, sendLaser } from '
 import { addGestureProbe } from './gesture';
 import { annotationClick } from './comments-ui';
 import { isNativeApp } from './native';
+import { cursorCss } from './cursors';
+import { myCursorId, onProfileChange } from './profile';
+import { fxForget, fxMove } from './cursor-fx';
 import { settingsDialogOpen } from './settings-dialog';
 import { partEraseRadius, presenting, requestRender, renderScene } from './renderer';
 import { fitSolid, SOLID_CLICK_SIZE, solidKeepsAspect } from './solid';
@@ -47,6 +50,10 @@ const CURSORS: Record<ToolId, string> = {
   cube: 'crosshair', box: 'crosshair', prism: 'crosshair', pyramid: 'crosshair', truncPyramid: 'crosshair',
   cylinder: 'crosshair', cone: 'crosshair', truncCone: 'crosshair', sphere: 'crosshair',
 };
+/** Курсор инструмента над холстом: у «Выделения» — персональный курсор пользователя (SPEC_NIGHT4 §4). */
+function cursorFor(tool: ToolId): string {
+  return tool === 'select' ? cursorCss(myCursorId()) : CURSORS[tool];
+}
 const MOVE_THRESHOLD_PX = 3;
 const AUTO_PAN_EDGE = 64;
 const AUTO_PAN_SPEED = 600; // px экрана в секунду у самого края
@@ -159,7 +166,9 @@ export function initController(canvas: HTMLCanvasElement): void {
   }
 
 
-  onChange(() => { canvas.style.cursor = spacePan ? 'grab' : CURSORS[state.tool]; });
+  onChange(() => { canvas.style.cursor = spacePan ? 'grab' : cursorFor(state.tool); });
+  // сменили курсор в профиле (или тариф) — курсор над холстом и цвет выделения меняются сразу
+  onProfileChange(() => { canvas.style.cursor = spacePan ? 'grab' : cursorFor(state.tool); requestRender(); });
 
   // clientX - rect вместо offsetX: одинаковая семантика, но работает с pointer capture
   // за пределами канваса и не зависит от способа создания события.
@@ -485,7 +494,7 @@ export function initController(canvas: HTMLCanvasElement): void {
         update();
         break;
       case 'pan':
-        canvas.style.cursor = CURSORS[activeTool()];
+        canvas.style.cursor = cursorFor(activeTool());
         update();
         break;
     }
@@ -783,6 +792,8 @@ export function initController(canvas: HTMLCanvasElement): void {
     const ptr = pointers.get(e.pointerId);
     if (ptr) { ptr.x = lp.x; ptr.y = lp.y; }
     state.hover = { x: lp.x, y: lp.y };
+    // шлейф или искры Pro-курсора (только мышь и только у «Выделения», где виден персональный курсор)
+    if (e.pointerType === 'mouse' && state.tool === 'select' && !spacePan) fxMove('me', lp.x, lp.y, myCursorId());
     if (collabActive()) noteCursor(lp.x / state.camera.zoom + state.camera.x, lp.y / state.camera.zoom + state.camera.y);
     if (state.tool === 'partEraser') update(); // кружок ластика под курсором
     else if (state.tool === 'spread' || presenting()) requestRender(); // линия разреза под курсором, курсор в окне демонстрации
@@ -1081,6 +1092,7 @@ export function initController(canvas: HTMLCanvasElement): void {
 
   function onPointerLeave(): void {
     state.hover = null;
+    fxForget('me');
     if (state.tool === 'partEraser' || state.tool === 'laser' || state.tool === 'spread') update();
     else if (presenting()) requestRender();
   }
@@ -1324,7 +1336,7 @@ export function initController(canvas: HTMLCanvasElement): void {
     }
     if (e.code === 'Space') {
       spacePan = false;
-      canvas.style.cursor = CURSORS[state.tool];
+      canvas.style.cursor = cursorFor(state.tool);
     }
   }
 

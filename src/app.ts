@@ -33,6 +33,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker&inline';
 import { collabActive, isHost, myColor, noteSelection, readOnly, startHostConnection, stopCollab } from './collab';
 import { closePresent, openPresent, presentOpen } from './present';
+import { myCursorId, onProfileChange } from './profile';
 import { type ToolbarGroup, onToolbarChange, restoreToolbar, svg, toolDef, toolTip, toolUsesColor, toolbarConfig } from './toolbar';
 import { canDropTool, toolDropElement } from './tool-drop';
 import {
@@ -5349,6 +5350,16 @@ export function initApp(c: HTMLCanvasElement): void {
   document.addEventListener('focusout', () => queueMicrotask(syncShapeCaret));
   try { refresh(); } catch (err) { console.error('[doska] refresh failed:', err); }
   onToolbarChange(() => {
+    buildToolbar();
+    syncGroupPanels();
+    refresh();
+    positionCtxPanels(true);
+  });
+  // кнопка «Выделение» показывает персональный курсор: сменился курсор (или право на него) — перестроить панель
+  let shownCursor = myCursorId();
+  onProfileChange(() => {
+    if (myCursorId() === shownCursor) return;
+    shownCursor = myCursorId();
     buildToolbar();
     syncGroupPanels();
     refresh();

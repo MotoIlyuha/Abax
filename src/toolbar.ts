@@ -3,6 +3,8 @@
 // Операции над настройкой чистые: возвращают новую настройку, старую не трогают.
 
 import type { ToolId } from './types';
+import { cursorSvg } from './cursors';
+import { myCursorId } from './profile';
 
 export const svg = (paths: string) =>
   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
@@ -23,7 +25,8 @@ export const ERASER_TIP = { x: 6, y: 18 };
 
 /** Все инструменты в порядке по умолчанию. */
 export const TOOL_DEFS: ToolDef[] = [
-  { id: 'select', title: 'Выделение и перемещение', icon: svg('<path d="M5 3l15 8-6.4 1.7L11 20z"/>') },
+  // вместо стандартной стрелки — персональный курсор пользователя (SPEC_NIGHT4 §4); разметка — из каталога
+  { id: 'select', title: 'Выделение и перемещение', get icon() { return cursorSvg(myCursorId(), { size: 24, className: 'cursor-icon' }); } },
   { id: 'pan', title: 'Панорама', icon: svg('<path d="M12 3v18M3 12h18"/><path d="M9.5 5.5L12 3l2.5 2.5M9.5 18.5L12 21l2.5-2.5M5.5 9.5L3 12l2.5 2.5M18.5 9.5L21 12l-2.5 2.5"/>') },
   { id: 'pen', title: 'Перо', icon: svg('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>') },
   { id: 'highlighter', title: 'Маркер', icon: svg('<path d="M9 11l-6 6v3h3l6-6"/><path d="M17.5 2.5l4 4L11 17l-4-4z"/>') },

@@ -1,6 +1,7 @@
 import type { Camera, Element, GridMode, ImageEl, LaserPt, Page, ShapeEl, SolidEl, TaskEl } from './types';
 import { EXAM_LABELS, SUBJECT_LABELS, TASK_STATUS_LABEL, taskStatus } from './task-element';
 import { foreignSelections, readOnly } from './collab';
+import { mySelectionColor } from './profile';
 import { PILL_H, layoutPills, layoutPins } from './annotations';
 import { clientId } from './identity';
 import {
@@ -1087,7 +1088,7 @@ function drawHandles(ctx: CanvasRenderingContext2D, cam: Camera): void {
   // у штриха собственных ручек нет — масштабируем за общую рамку
   if (hs.length === 0) { drawBoxHandles(ctx, cam, elementAABB(el)); return; }
   // направляющие параметров (высота, радиус) — под ручками
-  ctx.strokeStyle = '#3273f5';
+  ctx.strokeStyle = selColor;
   ctx.lineWidth = 1;
   ctx.setLineDash([4, 3]);
   ctx.beginPath();
@@ -1100,7 +1101,7 @@ function drawHandles(ctx: CanvasRenderingContext2D, cam: Camera): void {
   ctx.setLineDash([]);
   for (const { from } of hs) {
     if (!from) continue;
-    ctx.fillStyle = '#3273f5';
+    ctx.fillStyle = selColor;
     ctx.beginPath();
     ctx.arc((from.x - cam.x) * cam.zoom, (from.y - cam.y) * cam.zoom, 2.5, 0, Math.PI * 2);
     ctx.fill();
@@ -1109,12 +1110,12 @@ function drawHandles(ctx: CanvasRenderingContext2D, cam: Camera): void {
     const sx = (x - cam.x) * cam.zoom;
     const sy = (y - cam.y) * cam.zoom;
     ctx.fillStyle = '#ffffff';
-    ctx.strokeStyle = '#3273f5';
+    ctx.strokeStyle = selColor;
     ctx.lineWidth = 1.5;
     if (h.kind === 'insert') {
       ctx.beginPath();
       ctx.arc(sx, sy, 2.5, 0, Math.PI * 2);
-      ctx.fillStyle = '#3273f5';
+      ctx.fillStyle = selColor;
       ctx.fill();
       continue;
     }
@@ -1129,7 +1130,7 @@ function drawHandles(ctx: CanvasRenderingContext2D, cam: Camera): void {
       // параметр тела — залитая точка, отличается от ручек размера и узлов
       ctx.beginPath();
       ctx.arc(sx, sy, 5.5, 0, Math.PI * 2);
-      ctx.fillStyle = '#3273f5';
+      ctx.fillStyle = selColor;
       ctx.fill();
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 2;
@@ -1159,8 +1160,8 @@ function drawRotateIcon(ctx: CanvasRenderingContext2D, cx: number, cy: number): 
   const r = 5.5;
   const a0 = Math.PI * 1.15, a1 = Math.PI * 1.85; // дуга над центром
   ctx.save();
-  ctx.strokeStyle = '#3273f5';
-  ctx.fillStyle = '#3273f5';
+  ctx.strokeStyle = selColor;
+  ctx.fillStyle = selColor;
   ctx.lineWidth = 1.5;
   ctx.lineCap = 'round';
   ctx.beginPath();
@@ -1185,7 +1186,7 @@ function drawRotateIcon(ctx: CanvasRenderingContext2D, cx: number, cy: number): 
 /** Ручки общего прямоугольника выделения — квадратики по углам и серединам сторон. */
 function drawBoxHandles(ctx: CanvasRenderingContext2D, cam: Camera, box: AABB): void {
   ctx.fillStyle = '#ffffff';
-  ctx.strokeStyle = '#3273f5';
+  ctx.strokeStyle = selColor;
   ctx.lineWidth = 1.5;
   for (const { x, y } of boxHandles(box, cam.zoom)) {
     const sx = (x - cam.x) * cam.zoom;
@@ -1359,11 +1360,15 @@ function drawContent(ctx: CanvasRenderingContext2D, cache: SceneCache, cam: Came
   if (state.fadeStrokes.length > 0) drawFadeStrokes(ctx);
 }
 
+/** Цвет своего выделения на этот кадр: задаётся курсором пользователя (SPEC_NIGHT4 §4). */
+let selColor = '#3273f5';
+
 const mainFlash: FlashScratch = { shape: document.createElement('canvas'), ring: document.createElement('canvas') };
 
 function draw(): void {
   if (!ctx || !canvas) return;
   const cam = state.camera;
+  selColor = mySelectionColor();
   if (cam !== lastCamRef) {
     lastCamRef = cam;
     lastCamChange = performance.now();
@@ -1393,7 +1398,7 @@ function draw(): void {
     ctx.setLineDash([]);
   }
   if (state.selection.size > 0) {
-    ctx.strokeStyle = '#3273f5';
+    ctx.strokeStyle = selColor;
     ctx.lineWidth = 1.5;
     const selected = state.board.elements.filter(el => state.selection.has(el.id) && el.id !== state.hideElId);
     if (selected.length > 1) {
@@ -1415,8 +1420,8 @@ function draw(): void {
   if (state.guides.length > 0) drawGuides(ctx, cam);
   if (state.marquee) {
     const m = state.marquee;
-    ctx.strokeStyle = '#3273f5';
-    ctx.fillStyle = 'rgba(50,115,245,0.06)';
+    ctx.strokeStyle = selColor;
+    ctx.fillStyle = hexA(selColor, 0.06);
     ctx.lineWidth = 1;
     const x = Math.min(m.x0, m.x1);
     const y = Math.min(m.y0, m.y1);
