@@ -2328,7 +2328,8 @@ body.collab-guest.readonly-mode #toolbar { display: none; }
   will-change: transform, width, height, opacity;
 }
 #toolbar .tool { position: relative; z-index: 1; }
-#toolbar .tool:hover:not(.active) { background: transparent; }
+body:not(.no-motion) #toolbar .tool:hover:not(.active) { background: transparent; }
+body.no-motion .mt-hl { display: none; }
 
 /* ----- Плавное появление меню и панелей ----- */
 /* только появление: закрываются мгновенно. Плавающее меню выделения на холсте не анимируем —

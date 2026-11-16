@@ -70,6 +70,18 @@ describe('подсказки', () => {
     expect(['top', 'bottom']).toContain(tip()!.dataset.side);
   });
 
+  it('при выключенных Motion-анимациях у кнопок панели обычный пузырь со стороны от края', () => {
+    document.body.classList.add('no-motion');
+    try {
+      over(document.getElementById('t1')!);
+      vi.advanceTimersByTime(500);
+      expect(shown()).toBe(true);
+      expect(tip()!.dataset.side).toBe('right');
+    } finally {
+      document.body.classList.remove('no-motion');
+    }
+  });
+
   it('кнопки панели инструментов не показывают обычный пузырь: у них своя подсказка', () => {
     over(document.getElementById('t1')!);
     vi.advanceTimersByTime(1000);

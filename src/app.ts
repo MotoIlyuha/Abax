@@ -45,6 +45,7 @@ import { closeIconPicker, openIconPicker } from './icon-picker';
 import { capitalize, dayLabel, pagesLabel } from './format';
 import { buildCustomColorPicker } from './color-picker';
 import { copySelection, duplicateSelection as duplicateInPlace, pasteFromMemory, pasteFromSystem } from './clipboard';
+import { morphLeave } from './morph-tooltip';
 import { hideHeldTooltip, showHeldTooltip } from './tooltip';
 import { LIMIT_PROJECTS_TEXT, copyBoardLink, currentBoardLink, registerLinkViewHooks } from './link-view-ui';
 import { canCreateProject, isOverPageLimit, isOverProjectLimit, PLAN_LIMITS } from './limits';
@@ -195,6 +196,7 @@ function restoreSettings(): void {
         mouseBindings: Object.fromEntries(['1', '3', '4'].map(key => { const b = v.mouseBindings?.[key]; return [key, b && typeof b.action === 'string' && typeof b.label === 'string' ? { action: b.action, label: b.label } : null]; })) as BoardSettings['mouseBindings'],
         newPageKey: DEFAULT_NEW_PAGE_KEY,
         uiAnimations: typeof v.uiAnimations === 'boolean' ? v.uiAnimations : true,
+        motionAnimations: typeof v.motionAnimations === 'boolean' ? v.motionAnimations : true,
         hideUndoRedo: typeof v.hideUndoRedo === 'boolean' ? v.hideUndoRedo : false,
         keepImageAspect: typeof v.keepImageAspect === 'boolean' ? v.keepImageAspect : true,
         alignGuides: typeof v.alignGuides === 'boolean' ? v.alignGuides : true,
@@ -226,6 +228,13 @@ function persistSettings(): void {
 /** Анимации появления панелей живут в CSS; выключенные — класс на body их гасит. */
 function applyUiAnimations(): void {
   document.body.classList.toggle('no-ui-anim', !state.settings.uiAnimations);
+}
+
+/** Motion-анимации (пружины): выключенные — класс на body, подсказка панели снова обычная, без подсветки и «нажатия» иконок. */
+function applyMotionAnimations(): void {
+  const on = state.settings.motionAnimations;
+  document.body.classList.toggle('no-motion', !on);
+  if (!on) morphLeave(true);
 }
 
 /** Кнопки отмены/повтора в шапке прячутся вместе с разделителями вокруг них (см. style.css). */
@@ -2260,6 +2269,8 @@ function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
   span6.textContent = 'Анимация меню и панелей';
   lbl6.append(cb6, span6);
   pop.appendChild(lbl6);
+  pop.appendChild(settingCheck('motionAnimations', 'Motion анимации',
+    'Подсказка панели инструментов плавно перетекает от кнопки к кнопке, иконки пружинят при нажатии', applyMotionAnimations));
   const lbl7 = document.createElement('label');
   lbl7.className = 'ctx-check';
   lbl7.title = macKeys('Отмена и повтор по-прежнему работают на Ctrl+Z и Ctrl+Y');
@@ -2277,7 +2288,7 @@ function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
   pop.appendChild(lbl7);
 }
 
-type BoolSetting = 'alignGuides' | 'closePagesOnPick' | 'thumbViewport' | 'pageLinks' | 'recursionEnabled';
+type BoolSetting = 'motionAnimations' | 'alignGuides' | 'closePagesOnPick' | 'thumbViewport' | 'pageLinks' | 'recursionEnabled';
 
 /** Флажок настройки доски: меняет и сразу сохраняет. */
 function settingCheck(key: BoolSetting, text: string, hint?: string, after?: () => void): HTMLElement {
@@ -5221,6 +5232,7 @@ export function initApp(c: HTMLCanvasElement): void {
   restoreStyle();
   restoreSettings();
   applyUiAnimations();
+  applyMotionAnimations();
   applyUndoRedoVisibility();
   restoreToolbar();
   buildToolbar();

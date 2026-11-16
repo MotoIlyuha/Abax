@@ -67,6 +67,14 @@ function render(el: HTMLDivElement, text: string): void {
 function preferredSide(el: HTMLElement): Side {
   const explicit = el.closest<HTMLElement>('[data-tip-side]')?.dataset.tipSide;
   if (explicit === 'top' || explicit === 'bottom' || explicit === 'left' || explicit === 'right') return explicit;
+  // кнопки панели инструментов (при выключенных Motion-анимациях): пузырь со стороны, противоположной краю экрана
+  const toolbar = el.closest<HTMLElement>('#toolbar');
+  if (toolbar) {
+    const pos = toolbar.dataset.pos;
+    if (pos === 'left') return 'right';
+    if (pos === 'right') return 'left';
+    if (pos === 'bottom') return 'top';
+  }
   return 'bottom';
 }
 
@@ -156,7 +164,8 @@ export function initTooltips(): void {
     // не должна перекрывать панель. title уже снят, чтобы не всплыла нативная.
     if (e.buttons) { hide(); morphLeave(true); return; }
     // панель инструментов: своя подсказка; в щели между кнопками остаётся предыдущая
-    if (e.target instanceof Element && e.target.closest('#toolbar')) {
+    // (если «Motion анимации» выключены в настройках — обычный пузырь, как у остальных кнопок)
+    if (!document.body.classList.contains('no-motion') && e.target instanceof Element && e.target.closest('#toolbar')) {
       hide();
       if (t) morphOver(t, t.dataset.tip ?? '');
       return;
@@ -179,7 +188,7 @@ export function initTooltips(): void {
   });
   // нажатие, прокрутка, клавиатура — подсказка больше не нужна
   document.addEventListener('pointerdown', () => { hide(); morphHideTip(); hiddenAt = -Infinity; }, true);
-  document.addEventListener('click', (e) => morphPop(e.target), true);
+  document.addEventListener('click', (e) => { if (!document.body.classList.contains('no-motion')) morphPop(e.target); }, true);
   const hideAll = (): void => { hide(); morphLeave(true); };
   document.addEventListener('wheel', hideAll, { capture: true, passive: true });
   document.addEventListener('keydown', () => { hide(); morphHideTip(); }, true);

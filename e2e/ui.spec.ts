@@ -557,6 +557,29 @@ test.describe('подсказки', () => {
     expect((await page.locator('#morph-tip .mt-tip').boundingBox())!.y).toBeGreaterThan(before.y);
   });
 
+  test('переключатель «Motion анимации»: по умолчанию включён, выключенный возвращает обычный пузырь', async ({ board, page }) => {
+    expect((await board.state()).settings.motionAnimations).toBe(true);
+    await page.keyboard.press('Control+Comma');
+    const cb = page.locator('.sd-general label', { hasText: 'Motion анимации' }).locator('input');
+    await expect(cb).toBeChecked();
+    await cb.uncheck();
+    expect((await board.state()).settings.motionAnimations).toBe(false);
+    await page.keyboard.press('Escape');
+    await page.locator('.tool[data-tool="pen"]').hover();
+    await expect(page.locator('#tooltip')).toBeVisible();
+    await expect(page.locator('#morph-tip .mt-tip')).toBeHidden();
+
+    await page.reload();
+    await board.ready();
+    expect((await board.state()).settings.motionAnimations).toBe(false);
+    await page.keyboard.press('Control+Comma');
+    await page.locator('.sd-general label', { hasText: 'Motion анимации' }).locator('input').check();
+    await page.keyboard.press('Escape');
+    await page.mouse.move(900, 500);
+    await page.locator('.tool[data-tool="pen"]').hover();
+    await expect(page.locator('#morph-tip .mt-tip')).toBeVisible();
+  });
+
   test('обычный пузырь вне панели инструментов работает как раньше', async ({ page }) => {
     await page.locator('#btn-pages').hover();
     await expect(page.locator('#tooltip')).toBeVisible();
