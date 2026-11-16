@@ -35,7 +35,7 @@
   - `resolveIdentity`, `GET /api/auth/providers`, код по почте, потоки перехода (Google PKCE, Telegram OAuth, dev), `flow/complete`, разрешённые `returnTo`, клиент `src/auth.ts` (§7).
   - **Тесты**: `tests/server/mailer.test.ts` (поддельный SMTP), `tests/server/auth-email.test.ts`, `tests/server/auth-flows.test.ts`, `tests/unit/auth.test.ts`.
 
-- [ ] **TASK-06: Визард первого входа**
+- [x] **TASK-06: Визард первого входа**
   - **Файлы**: `src/onboarding.ts`, `src/cursor-picker.ts`, `src/main.ts`, `src/style.css`, `e2e/fixtures.ts`, `e2e/collab.spec.ts`, `e2e/collab-cloud.spec.ts`, `e2e/electron-api.spec.ts`.
   - Два шага со «слайдом», сообщения без API, форма почты, Tab/Продолжить, сетка и превью, Pro-плашка, блок привязки, возврат после перехода, ✕/Esc (§9).
   - Подготовка E2E: профиль в `addInitScript`.

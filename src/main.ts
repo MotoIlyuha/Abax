@@ -18,6 +18,9 @@ import { startLocalRoom } from './browser-host';
 import { initCloudSync, mergeRemoteMetas, openFresh, startBackgroundSync } from './cloud-sync';
 import { myCursorId, profileName } from './profile';
 import { startProfileSync, syncAccount } from './profile-sync';
+import { completePendingAuth, type AuthOutcome } from './auth';
+import { needsOnboarding, openOnboarding } from './onboarding';
+import { openProfileAfterAuth } from './app';
 
 /** Уведомление гостю, когда комната закрылась или отказала. */
 function watchGuestClose(): void {
@@ -74,6 +77,9 @@ async function boot(): Promise<void> {
       document.dispatchEvent(new CustomEvent('doska:projects-changed'));
     },
   });
+
+  // вернулись от провайдера входа (#abaxAuth=… / #tgAuthResult=…) — завершить вход до открытия доски
+  const authOutcome = viewRoute ? null : await completePendingAuth();
 
   let metas = await storage.list();
   if (viewRoute) {
@@ -152,12 +158,33 @@ async function boot(): Promise<void> {
 
   // отладочный доступ для smoke-тестов
   (window as unknown as Record<string, unknown>).__doska = { state, undo, redo, requestRender, importPdfFromDataUrl, startLocalRoom };
+
+  // окно первого входа — на обычной доске (не в просмотре по ссылке), когда интерфейс уже показан
+  if (!viewRoute) afterStartup = () => startOnboarding(authOutcome);
+}
+
+/** Что сделать, когда экран загрузки скрыт. */
+let afterStartup: (() => void) | null = null;
+
+/** Окно первого входа: возврат от провайдера (шаг 2 или ошибка на шаге 1), раздел «Профиль» или первое знакомство. */
+function startOnboarding(outcome: AuthOutcome | null): void {
+  const resume = outcome?.resume ?? null;
+  if (outcome && resume?.where === 'onboarding') {
+    openOnboarding({ step: outcome.ok ? 2 : 1, resume, error: outcome.ok ? null : outcome.error });
+  } else if (outcome && resume?.where === 'settings') {
+    openProfileAfterAuth(outcome);
+  } else if (needsOnboarding()) {
+    openOnboarding();
+  }
 }
 
 void boot().then(() => {
   // Дождаться отрисовки холста, прежде чем открывать готовый интерфейс.
   requestAnimationFrame(() => requestAnimationFrame(() => {
     document.getElementById('startup')!.hidden = true;
+    const next = afterStartup;
+    afterStartup = null;
+    next?.();
   }));
 }).catch((error: unknown) => {
   console.error('Не удалось запустить приложение', error);

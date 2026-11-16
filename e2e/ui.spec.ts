@@ -696,7 +696,13 @@ test.describe('изображения', () => {
     expect(img2.w).toBeCloseTo(300, 0);
     expect(img2.h).toBeCloseTo(150, 0);
     const cx = img2.x + img2.w / 2, cy = img2.y + img2.h / 2;
-    await board.drag([{ x: cx, y: img2.y - 30 }, { x: cx + 100, y: cy - 60 }, { x: cx + 200, y: cy }], { steps: 10 });
+    // ручка поворота — у левого верхнего угла, на 20 px экрана по каждой оси (PR #41); угол считается
+    // от направления «центр → левый верхний угол», поворот на 90° — точка в направлении (h, −w) от центра
+    const off = 20 / (await board.state()).camera.zoom;
+    const hx = img2.x - off, hy = img2.y - off;
+    const r = Math.hypot(img2.w, img2.h);
+    const tx = cx + (img2.h / r) * 200, ty = cy - (img2.w / r) * 200;
+    await board.drag([{ x: hx, y: hy }, { x: (hx + tx) / 2 + 40, y: (hy + ty) / 2 - 40 }, { x: tx, y: ty }], { steps: 10 });
     expect((await board.elements())[0].rot).toBeCloseTo(Math.PI / 2, 2);
   });
 

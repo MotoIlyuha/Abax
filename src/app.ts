@@ -33,6 +33,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker&inline';
 import { collabActive, isHost, myColor, noteSelection, readOnly, startHostConnection, stopCollab } from './collab';
 import { closePresent, openPresent, presentOpen } from './present';
+import { authErrorText, type AuthOutcome } from './auth';
 import { myCursorId, onProfileChange, profileName } from './profile';
 import { type ToolbarGroup, onToolbarChange, restoreToolbar, svg, toolDef, toolTip, toolUsesColor, toolbarConfig } from './toolbar';
 import { canDropTool, toolDropElement } from './tool-drop';
@@ -2143,6 +2144,24 @@ function openSettings(): void {
   const br = (btn.closest('.topbar-group') ?? btn).getBoundingClientRect();
   pop.style.left = `${Math.max(8, br.right - pop.offsetWidth)}px`;
   pop.style.top = `${br.bottom + 6}px`;
+}
+
+/** Сообщение о входе для раздела «Профиль» (вернулись от провайдера в настройки). */
+let profileNotice: { text: string; kind: 'error' | 'info' } | null = null;
+
+/** Забрать сообщение о входе (показывается один раз). */
+export function takeProfileNotice(): { text: string; kind: 'error' | 'info' } | null {
+  const n = profileNotice;
+  profileNotice = null;
+  return n;
+}
+
+/** Вернулись от провайдера входа, начатого в настройках: открыть «Профиль» и показать итог. */
+export function openProfileAfterAuth(outcome: AuthOutcome): void {
+  profileNotice = outcome.ok
+    ? { text: outcome.mode === 'link' ? 'Способ входа привязан' : 'Вы вошли в аккаунт', kind: 'info' }
+    : { text: authErrorText(outcome.error ?? 'auth-failed'), kind: 'error' };
+  openAllSettings('profile');
 }
 
 /** Окно «Все настройки»; section — раздел, с которого открыть (по умолчанию — последний открытый). */
