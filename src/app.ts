@@ -5176,6 +5176,8 @@ function refresh(): void {
   document.body.classList.toggle('on-draft', onDraft());
   (document.getElementById('btn-undo') as HTMLButtonElement).disabled = !canUndo();
   (document.getElementById('btn-redo') as HTMLButtonElement).disabled = !canRedo();
+  // режим просмотра (ссылка или гость без права правки): группа отмены скрывается целиком, а не остаётся пустой плашкой
+  document.querySelector<HTMLElement>('.undo-group')!.style.display = canEditBoard() ? '' : 'none';
   document.getElementById('zoom-label')!.textContent = `${Math.round(state.camera.zoom * 100)}%`;
   renderGridButton();
   const nameInput = document.getElementById('page-name') as HTMLInputElement;
