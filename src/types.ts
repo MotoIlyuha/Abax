@@ -81,6 +81,14 @@ export interface PolyEl extends BaseEl {
   pts: Pt[];
 }
 
+/** Фрагмент текста со своим начертанием/цветом: n символов подряд; неуказанное берётся у блока. */
+export interface TextRun {
+  n: number;
+  bold?: boolean;
+  italic?: boolean;
+  color?: string;
+}
+
 export interface TextEl extends BaseEl {
   type: 'text';
   /** x,y — левый верхний угол текстового блока. */
@@ -93,6 +101,8 @@ export interface TextEl extends BaseEl {
   opacity?: number;
   bold?: boolean;
   italic?: boolean;
+  /** Смешанное форматирование: фрагменты идут подряд по `text`; символы после последнего — в стиле блока. */
+  runs?: TextRun[];
 }
 export interface NoteEl extends BaseEl {
   type: 'note';

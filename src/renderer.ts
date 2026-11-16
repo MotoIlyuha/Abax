@@ -5,9 +5,10 @@ import { PILL_H, layoutPills, layoutPins } from './annotations';
 import { clientId } from './identity';
 import {
   type AABB, type Caption, boxHandles, cornerRadius, elementAABB, elementHandles, imageFrame, pageLinkView, presentCamera, shapeCaption,
-  shapeHoldsText, wrapText, textLines, TEXT_FONT, NOTE_PAD, NOTE_FONT, NOTE_TEXT_COLOR,
+  shapeHoldsText, wrapText, textLines, textSpans, TEXT_FONT, NOTE_PAD, NOTE_FONT, NOTE_TEXT_COLOR,
 } from './geom';
 import { ribbonPath } from './stroke';
+import { styledSegments } from './text-runs';
 import { fitSolid, solidGeometry, type SolidPrim } from './solid';
 import { state } from './state';
 import { ERASER_PATHS, ERASER_TIP } from './toolbar';
@@ -386,6 +387,22 @@ function drawElementBody(ctx: CanvasRenderingContext2D, el: Element, c: ElCacheE
       ctx.fillStyle = el.color;
       ctx.textBaseline = 'alphabetic';
       const lh = el.size * 1.25;
+      if (el.runs) {
+        // смешанное форматирование: строка рисуется отрезками своего начертания и цвета
+        const spans = textSpans(el);
+        for (let i = 0; i < spans.length; i++) {
+          let x = el.x;
+          const sp = spans[i];
+          for (const seg of styledSegments(el, sp.start, sp.start + sp.text.length)) {
+            ctx.font = TEXT_FONT(el.size, seg.style.bold, seg.style.italic);
+            ctx.fillStyle = seg.style.color;
+            const part = el.text.slice(seg.from, seg.to);
+            ctx.fillText(part, x, el.y + el.size + i * lh);
+            x += ctx.measureText(part).width;
+          }
+        }
+        break;
+      }
       const lines = textLines(el);
       for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], el.x, el.y + el.size + i * lh);
       break;

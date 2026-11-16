@@ -1,3 +1,4 @@
+import { clearRunField } from './text-runs';
 import type {
   BoardSettings, Camera, Element, PlanTier, FadeStroke, Flash, GridMode, Guide, LaserPt, RemoteLaser, NoteEl, Page, Project, ProjectMeta, Pt, ShapeEl, SolidKind,
   TextAlign, TextEl, TextVAlign, ToolId,
@@ -506,6 +507,14 @@ function styledElement(el: Element, p: StylePatch): Element {
       if (p.italic !== undefined) set.italic = p.italic;
     }
     if (el.type === 'text' && p.size) set.size = p.size;
+    // общий цвет/начертание блока перекрывают отдельные фрагменты
+    if (el.type === 'text' && el.runs) {
+      let runs = el.runs;
+      if (p.color !== undefined) runs = clearRunField(runs, 'color', el.text.length) ?? [];
+      if (p.bold !== undefined) runs = clearRunField(runs, 'bold', el.text.length) ?? [];
+      if (p.italic !== undefined) runs = clearRunField(runs, 'italic', el.text.length) ?? [];
+      if (runs !== el.runs) set.runs = runs.length > 0 ? runs : undefined;
+    }
     if (caption) {
       if (p.size !== undefined) set.textSize = p.size;
       if (p.align !== undefined) set.align = p.align;
@@ -524,6 +533,7 @@ function styledElement(el: Element, p: StylePatch): Element {
   // значения по умолчанию не храним
   if (typeof out.opacity === 'number' && out.opacity >= 1) delete out.opacity;
   if (out.radius === 0) delete out.radius;
+  if ('runs' in out && out.runs === undefined) delete out.runs;
   if (out.fill === null) delete out.fill;
   if (el.type === 'shape') {
     if (out.textSize === 0) delete out.textSize;

@@ -2,6 +2,7 @@ import type { TaskAttempt, CommentMessage, CommentThread, Element, GridMode, Pag
 import { MAX_AUTHOR_NAME, MAX_COMMENT_TEXT, MAX_REACTION_LEN } from './comments';
 import { EXAM_TYPES, MAX_ATTEMPTS, MAX_DRAFT, SUBJECTS } from './task-element';
 import { isPageRight, isPlanTier } from './limits';
+import { sanitizeRuns } from './text-runs';
 
 // Проверка данных на границе: файл, localStorage, сеть. Неизвестные поля сохраняются (проект из
 // более новой версии не теряет данные), поля известных имён с неверным типом отбрасываются.
@@ -61,7 +62,7 @@ const SPECS: Record<string, { req: Record<string, Check>; opt: Record<string, Ch
   },
   text: {
     req: { x: isNum, y: isNum, text: isStr, size: isNum, color: isStr },
-    opt: { w: isNum, opacity: isNum, bold: isBool, italic: isBool },
+    opt: { w: isNum, opacity: isNum, bold: isBool, italic: isBool, runs: v => Array.isArray(v) },
   },
   note: {
     req: { x: isNum, y: isNum, w: isNum, h: isNum, text: isStr, color: isStr },
@@ -130,6 +131,11 @@ export function sanitizeElement(rawInput: unknown): Element | null {
     const pts = sanitizePts(raw.pts);
     if (!pts) return null;
     out.pts = pts;
+  }
+  if (raw.type === 'text' && 'runs' in out) {
+    const runs = sanitizeRuns(out.runs, (out.text as string).length);
+    if (runs) out.runs = runs;
+    else delete out.runs;
   }
   if (raw.type === 'task') {
     if ('attempts' in out) {
