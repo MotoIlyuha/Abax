@@ -33,7 +33,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker&inline';
 import { collabActive, isHost, myColor, noteSelection, readOnly, startHostConnection, stopCollab } from './collab';
 import { closePresent, openPresent, presentOpen } from './present';
-import { myCursorId, onProfileChange } from './profile';
+import { myCursorId, onProfileChange, profileName } from './profile';
 import { type ToolbarGroup, onToolbarChange, restoreToolbar, svg, toolDef, toolTip, toolUsesColor, toolbarConfig } from './toolbar';
 import { canDropTool, toolDropElement } from './tool-drop';
 import {
@@ -5084,7 +5084,7 @@ async function openShareDialog(): Promise<void> {
           await render();
           return;
         }
-        if (!r.connected) await startHostConnection(r.port!, r.code!, r.hostKey!, 'Автор');
+        if (!r.connected) await startHostConnection(r.port!, r.code!, r.hostKey!, profileName() || 'Автор');
         await render();
       });
       dlg!.appendChild(start);

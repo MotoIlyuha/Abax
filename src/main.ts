@@ -17,6 +17,7 @@ import { localGuestTransport, localRoomCode } from './local-transport';
 import { startLocalRoom } from './browser-host';
 import { syncPlanFromServer } from './api-client';
 import { initCloudSync, mergeRemoteMetas, openFresh, startBackgroundSync } from './cloud-sync';
+import { myCursorId, profileName } from './profile';
 
 /** Уведомление гостю, когда комната закрылась или отказала. */
 function watchGuestClose(): void {
@@ -41,12 +42,12 @@ async function boot(): Promise<void> {
   if (roomCode || invite) {
     // имя из URL (тестовое окно) или автогенерация — БЕЗ window.prompt,
     // который блокирует boot в Electron BrowserWindow
-    const name = q.get('name') || invite?.name || `Гость ${Math.floor(Math.random() * 90 + 10)}`;
+    const name = q.get('name') || invite?.name || profileName() || `Гость ${Math.floor(Math.random() * 90 + 10)}`;
     // подписка до подключения: отказ может прийти сразу после открытия канала
     watchGuestClose();
     const localCode = localRoomCode(roomCode);
-    if (invite) await connectCollab(cloudTransport(invite.relayUrl, invite.room, invite.key, name, relayNotice), false);
-    else if (localCode) await connectCollab(localGuestTransport(localCode, name), false);
+    if (invite) await connectCollab(cloudTransport(invite.relayUrl, invite.room, invite.key, name, relayNotice, myCursorId()), false);
+    else if (localCode) await connectCollab(localGuestTransport(localCode, name, undefined, myCursorId()), false);
     else await startCollab(`ws://${location.host}/ws?code=${encodeURIComponent(roomCode!)}`, false, name);
     setStorage(netStorage);
     initRenderer(canvas);
@@ -85,7 +86,7 @@ async function boot(): Promise<void> {
       // приглашение /j/:token: гость входит в облачную комнату; не вышло — проект для чтения; не открылось — обычная доска
       state.projects = metas;
       watchGuestClose();
-      const outcome = await joinCloudInvite(route.token, q.get('name') || `Гость ${Math.floor(Math.random() * 90 + 10)}`);
+      const outcome = await joinCloudInvite(route.token, q.get('name') || profileName() || `Гость ${Math.floor(Math.random() * 90 + 10)}`);
       if (outcome === 'room') {
         setStorage(netStorage);
         initRenderer(canvas);

@@ -20,7 +20,7 @@
   - Курсор `select` над холстом; `mySelectionColor()` в рамках, ручках и рамке выделения области; динамическая иконка `select` и перестройка панели при смене профиля; `cursor-fx` (лимит частиц, `no-motion`, reduced motion) (§4).
   - **Тесты**: `tests/unit/cursor-fx.test.ts` (слой эффектов и иконка `select`).
 
-- [ ] **TASK-03: Курсоры в совместной работе**
+- [x] **TASK-03: Курсоры в совместной работе**
   - **Файлы**: `src/room-host.ts`, `electron/room.cjs`, `electron/share.cjs`, `electron/cloud-link.cjs`, `src/collab.ts`, `src/collab-transport.ts`, `src/relay-host.ts`, `src/local-transport.ts`, `src/browser-host.ts`, `src/cloud-room.ts`, `src/main.ts`, `src/app.ts`, `server/cloud-room-manager.ts`.
   - `cursorId` при подключении по всем путям, белый список в хабах, `{t:'profile'}`, проверка тарифа в Cloud Room, имена из профиля, постоянные DOM-курсоры с бейджем и эффектами, цвета чужих выделений (§5).
   - **Тесты**: дополнения `collab.test.ts`, `room.test.ts`, `room-pointer.test.ts` (паритет белого списка), `cloud-room.test.ts`.

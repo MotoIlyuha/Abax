@@ -68,7 +68,7 @@ export function memoryChannel(): { client: CollabTransport; socket: RoomSocket }
 // ----- BroadcastChannel -----
 
 type Wire =
-  | { k: 'hello'; cid: string; name: string }
+  | { k: 'hello'; cid: string; name: string; cursorId?: string }
   | { k: 'welcome'; cid: string }
   | { k: 'msg'; cid: string; data: string }
   | { k: 'bye'; cid: string }
@@ -92,7 +92,7 @@ export function listenLocalGuests(code: string, attach: (sock: RoomSocket, opts:
       guests.set(m.cid, sock);
       sock.on('close', () => { guests.delete(m.cid); });
       ch.postMessage({ k: 'welcome', cid: m.cid } satisfies Wire);
-      attach(sock, { isHost: false, name: typeof m.name === 'string' ? m.name : '' });
+      attach(sock, { isHost: false, name: typeof m.name === 'string' ? m.name : '', cursorId: m.cursorId });
     } else if (m.k === 'msg') {
       guests.get(m.cid)?.emit('message', m.data);
     } else if (m.k === 'bye') {
@@ -108,7 +108,7 @@ export function listenLocalGuests(code: string, attach: (sock: RoomSocket, opts:
 }
 
 /** Гость в другой вкладке. Нет ответа автора за waitMs — канал закрывается кодом «автор не в сети». */
-export function localGuestTransport(code: string, name: string, waitMs = 4000): CollabTransport {
+export function localGuestTransport(code: string, name: string, waitMs = 4000, cursorId?: string): CollabTransport {
   const ch = new BroadcastChannel(channelName(code));
   const cid = crypto.randomUUID();
   const t = emptyTransport();
@@ -140,7 +140,7 @@ export function localGuestTransport(code: string, name: string, waitMs = 4000): 
     clearTimeout(timer);
     ch.close();
   };
-  ch.postMessage({ k: 'hello', cid, name } satisfies Wire);
+  ch.postMessage({ k: 'hello', cid, name, ...(cursorId ? { cursorId } : {}) } satisfies Wire);
   return t;
 }
 

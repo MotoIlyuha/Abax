@@ -636,3 +636,41 @@ describe('указка участников', () => {
     expect(host.last('pointer')).toEqual({ t: 'pointer', k: 'laser', pageId: 'pg1', color: '#ff2d2d', pts: [{ x: 1, y: 2 }], end: false, by: g.uid });
   });
 });
+
+describe('персональные курсоры (Ночь №4)', () => {
+  const userOf = (s: FakeSock, uid: number) => s.last('users')!.users.find((u: Msg) => u.userId === uid);
+
+  it('курсор участника из белого списка попадает в снимок users', () => {
+    const { hub, host } = setup({ plan: 'pro' });
+    const s = new FakeSock();
+    const uid = hub.attach(s, { name: 'Аня', cursorId: 'neon' }) as number;
+    expect(userOf(host, uid)).toMatchObject({ name: 'Аня', cursorId: 'neon' });
+    const bad = new FakeSock();
+    const bid = hub.attach(bad, { name: 'Боря', cursorId: '<svg onload=x>' }) as number;
+    expect(userOf(host, bid)).not.toHaveProperty('cursorId');
+  });
+
+  it('без права Pro-курсор понижается до классического', () => {
+    const { hub, host } = setup({ plan: 'pro' });
+    const s = new FakeSock();
+    const uid = hub.attach(s, { name: 'Аня', cursorId: 'gold', allowProCursor: false }) as number;
+    expect(userOf(host, uid).cursorId).toBe('default');
+    s.recv({ t: 'profile', cursorId: 'flame' });
+    expect(userOf(host, uid).cursorId).toBe('default');
+    s.recv({ t: 'profile', cursorId: 'mint' });
+    expect(userOf(host, uid).cursorId).toBe('mint');
+  });
+
+  it('смена имени и курсора на лету; мусор игнорируется', () => {
+    const { host, join } = setup({ plan: 'pro' });
+    const g = join('Аня');
+    g.s.recv({ t: 'profile', name: '  Бодрый‮ Енот ', cursorId: 'coral' });
+    expect(userOf(host, g.uid)).toMatchObject({ name: 'Бодрый Енот', cursorId: 'coral' });
+    const before = host.all('users').length;
+    g.s.recv({ t: 'profile', name: '', cursorId: 'nope' }); // пустое имя — без изменений
+    g.s.recv({ t: 'profile', name: 'Бодрый Енот', cursorId: 'coral' }); // то же самое — без рассылки
+    expect(host.all('users').length).toBe(before);
+    g.s.recv({ t: 'profile', cursorId: 'nope' }); // неизвестный курсор — прежний
+    expect(userOf(host, g.uid).cursorId).toBe('coral');
+  });
+});

@@ -7,6 +7,7 @@ import { PLAN_LIMITS, canCreatePage, canGuestJoinRoom, effectivePermissions, isP
 import { applyBoardPatch, isBoardPatch, type BoardPatch, type ElementOp } from './delta';
 import { sanitizeElement } from './file';
 import { CLOSE_FREE_LIMIT, PROTO } from './collab-transport';
+import { cleanCursorId } from './cursors';
 import { addCommentReply, createCommentThread, resolveCommentThread, toggleElementReaction } from './comments';
 import { mergeGuestTask, mergeHostTask, projectTaskForRole, submitTaskAttempt, updateStudentDraft } from './task-element';
 
@@ -68,6 +69,10 @@ export interface AttachOptions {
   patches?: boolean;
   /** Права гостя вместо прав по умолчанию (например, из ссылки-приглашения). */
   rights?: UserRights;
+  /** Персональный курсор участника (идентификатор из каталога src/cursors.ts). */
+  cursorId?: unknown;
+  /** Можно ли участнику Pro-курсор (по умолчанию да: тариф проверяет только облачная комната). */
+  allowProCursor?: boolean;
 }
 
 type Rec = Record<string, unknown>;
@@ -83,6 +88,8 @@ interface Client {
   pageId: string | null;
   selection: string[];
   patches: boolean;
+  cursorId?: string;
+  allowProCursor: boolean;
 }
 
 export interface UserSnapshot {
@@ -95,6 +102,8 @@ export interface UserSnapshot {
   pageId: string | null;
   selection: string[];
   rights: { default: string; pages: Record<string, string> };
+  /** Персональный курсор (нет — участник со старой версией: курсор классический, бейдж цвета color). */
+  cursorId?: string;
 }
 
 /**
@@ -322,6 +331,7 @@ export class Room {
         away: now - c.last > this.opts.awayMs,
         cursor: c.cursor, pageId: c.pageId, selection: c.selection,
         rights: { default: c.host ? 'edit' : (r?.default || 'view'), pages: c.host ? {} : (r?.pages || {}) },
+        ...(c.cursorId ? { cursorId: c.cursorId } : {}),
       };
     });
   }
@@ -380,7 +390,7 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
     return { default: r.default, pages };
   }
 
-  function attach(sock: RoomSocket, { isHost = false, name = '', patches = false, rights }: AttachOptions = {}): number | null {
+  function attach(sock: RoomSocket, { isHost = false, name = '', patches = false, rights, cursorId, allowProCursor = true }: AttachOptions = {}): number | null {
     if (isHost && [...room.clients.values()].some(c => c.host && c.sock.readyState === 1)) {
       sock.close(4409, 'host already connected');
       return null;
@@ -396,6 +406,7 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
       name: normalizeName(name) || (isHost ? 'Автор' : `Гость ${uid}`),
       color: isHost ? '#e03131' : COLORS[uid % COLORS.length],
       last: now(), cursor: null, pageId: null, selection: [], patches,
+      cursorId: cleanCursorId(cursorId, allowProCursor), allowProCursor,
     };
     room.clients.set(sock, info);
     room.rights.set(uid, isHost ? { default: 'edit', pages: {} } : cleanRights(rights) ?? initialRights());
@@ -424,6 +435,16 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
       }
       if (m.t === 'caps') {
         info.patches = m.patches === true;
+        return;
+      }
+      if (m.t === 'profile') {
+        // смена имени и курсора на лету: имя — как при входе, курсор — по белому списку (и тарифу)
+        const nextName = m.name === undefined ? info.name : normalizeName(m.name);
+        const nextCursor = m.cursorId === undefined ? info.cursorId : cleanCursorId(m.cursorId, info.allowProCursor) ?? info.cursorId;
+        if (!nextName || (nextName === info.name && nextCursor === info.cursorId)) return;
+        info.name = nextName;
+        info.cursorId = nextCursor;
+        broadcastUsers();
         return;
       }
       if (m.t === 'project') {

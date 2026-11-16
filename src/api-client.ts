@@ -173,6 +173,11 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
   return client;
 }
 
+/** Токен сессии, если он уже есть (без входа). */
+export function currentSession(): string | null {
+  return store(SESSION_KEY);
+}
+
 // ----- Общий клиент приложения -----
 
 let override: ApiClient | null | undefined;

@@ -7,6 +7,7 @@ import { linkBaseUrl } from './link-view';
 import { limitsEnforced } from './plan';
 import { planOf } from './limits';
 import { state } from './state';
+import { myCursorId, profileName } from './profile';
 
 // Автор в браузере: комната живёт прямо во вкладке (хаб room-host.ts), автор подключён к ней через память,
 // гости приходят через облачный ретранслятор или из соседних вкладок (для тестов).
@@ -34,14 +35,14 @@ function newCode(): string {
 }
 
 /** Открывает комнату во вкладке и подключает к ней автора. */
-export async function startBrowserHost(name = 'Автор'): Promise<string> {
+export async function startBrowserHost(name = profileName() || 'Автор'): Promise<string> {
   if (active) return active.code;
   const code = newCode();
   const hub = createRoomHub({ code, ...hubLimits() });
   active = { hub, code, relay: null, stopLocal: null };
   const { client, socket } = memoryChannel();
   const connected = connectHost(client);
-  hub.attach(socket, { isHost: true, name });
+  hub.attach(socket, { isHost: true, name, cursorId: myCursorId() });
   await connected;
   return code;
 }

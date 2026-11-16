@@ -2277,25 +2277,28 @@ body.no-ui-anim #icon-picker { animation: none; }
   pointer-events: none;
   transition: left 40ms linear, top 40ms linear;
 }
-.remote-cursor i {
+/* стрелка 24×24 из каталога курсоров: кончик (3, 2 в сетке 32) — в точке курсора */
+.remote-cursor .rc-arrow {
   position: absolute;
-  left: -3px;
-  top: -3px;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  border: 2px solid var(--fg-inverse);
+  left: -2.25px;
+  top: -1.5px;
+  width: 24px;
+  height: 24px;
+  line-height: 0;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.25));
 }
+.remote-cursor.glow .rc-arrow { filter: drop-shadow(0 0 4px currentColor); }
+.remote-cursor.away .rc-arrow { opacity: 0.5; filter: none; }
 .remote-cursor span {
   position: absolute;
-  left: 10px;
-  top: 8px;
-  color: var(--fg-inverse);
+  left: 14px;
+  top: 19px;
   font-size: 11px;
   font-weight: 600;
   padding: 2px 7px;
   border-radius: 99px;
   white-space: nowrap;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
 }
 body.collab-guest .page-add { display: none; }
 body.collab-guest .page-del { display: none !important; }

@@ -16,6 +16,12 @@ const MAX_ID = 128;
 const MAX_SELECTION = 10000;
 /** Длина имени участника в символах. */
 const MAX_NAME = 40;
+/**
+ * Белый список персональных курсоров — зеркало каталога src/cursors.ts (паритет проверяет
+ * tests/server/room-pointer.test.ts). Тариф гостя комната на компьютере автора не знает — разрешены все.
+ */
+const CURSOR_IDS = ['default', 'graphite', 'mint', 'coral', 'lavender', 'amber', 'geometry', 'cosmos', 'neon', 'hologram', 'pixel', 'gold', 'flame', 'aurora'];
+const cleanCursorId = v => (typeof v === 'string' && CURSOR_IDS.includes(v) ? v : undefined);
 
 /**
  * Имя участника приходит от него самого и уходит всем остальным: управляющие символы и
@@ -102,6 +108,7 @@ class Room {
       away: Date.now() - c.last > AWAY_MS,
       cursor: c.cursor || null, pageId: c.pageId || null,
       selection: c.selection || [], rights: { default: c.host ? 'edit' : (this.rights.get(c.uid)?.default || 'view'), pages: c.host ? {} : (this.rights.get(c.uid)?.pages || {}) },
+      ...(c.cursorId ? { cursorId: c.cursorId } : {}),
     }));
   }
 }
@@ -284,10 +291,10 @@ function createRoomHub({ code, openEdit = false }) {
   /**
    * Подключить участника. Проверку доступа (код комнаты, ключ автора) делает транспорт до вызова.
    * @param {RoomSocket} sock
-   * @param {{ isHost?: boolean, name?: string, patches?: boolean }} [opts] patches — участник понимает патчи без caps
+   * @param {{ isHost?: boolean, name?: string, patches?: boolean, cursorId?: unknown }} [opts] patches — участник понимает патчи без caps; cursorId — персональный курсор
    * @returns {number | null} uid участника или null, если подключение отклонено
    */
-  function attach(sock, { isHost = false, name = '', patches = false } = {}) {
+  function attach(sock, { isHost = false, name = '', patches = false, cursorId } = {}) {
     if (isHost && [...room.clients.values()].some(c => c.host)) { sock.close(4409, 'host already connected'); return null; }
     const uid = isHost ? 0 : room.nextUid++;
     const info = {
@@ -295,6 +302,7 @@ function createRoomHub({ code, openEdit = false }) {
       name: normalizeName(name) || (isHost ? 'Автор' : `Гость ${uid}`),
       color: isHost ? '#e03131' : COLORS[uid % COLORS.length],
       last: Date.now(), cursor: null, pageId: null, selection: [], patches,
+      cursorId: cleanCursorId(cursorId),
     };
     room.clients.set(sock, info);
     if (isHost) room.rights.set(0, { default: 'edit', pages: {} });
@@ -316,6 +324,13 @@ function createRoomHub({ code, openEdit = false }) {
         info.selection = m.ids ?? []; info.pageId = m.pageId ?? info.pageId; broadcastUsers(); return;
       }
       if (m.t === 'caps') { info.patches = m.patches === true; return; }
+      if (m.t === 'profile') {
+        // смена имени и курсора на лету (зеркало src/room-host.ts)
+        const nextName = m.name === undefined ? info.name : normalizeName(m.name);
+        const nextCursor = m.cursorId === undefined ? info.cursorId : cleanCursorId(m.cursorId) ?? info.cursorId;
+        if (!nextName || (nextName === info.name && nextCursor === info.cursorId)) return;
+        info.name = nextName; info.cursorId = nextCursor; broadcastUsers(); return;
+      }
       if (m.t === 'patch') { if (validPatch(m)) acceptPatch(info, m); return; }
       // ученик печатает и отправляет ответ даже на странице с правом view; проверяет хаб по настоящему ответу
       if (m.t === 'task-draft') { acceptTaskInput(info, m, 'draft'); return; }
@@ -498,4 +513,4 @@ function createRoomHub({ code, openEdit = false }) {
   };
 }
 
-module.exports = { createRoomHub, Room, PROTO, MAX_EDITORS, MAX_ID, MAX_SELECTION, MAX_NAME, normalizeName, cleanPointer };
+module.exports = { createRoomHub, Room, PROTO, MAX_EDITORS, MAX_ID, MAX_SELECTION, MAX_NAME, CURSOR_IDS, normalizeName, cleanPointer };

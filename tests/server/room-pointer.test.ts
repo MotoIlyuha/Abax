@@ -2,9 +2,10 @@
 import { createRequire } from 'node:module';
 import { describe, expect, it } from 'vitest';
 import { cleanPointer } from '../../src/room-host';
+import { CURSOR_IDS } from '../../src/cursors';
 
 const require = createRequire(import.meta.url);
-const { cleanPointer: cjs } = require('../../electron/room.cjs');
+const { cleanPointer: cjs, CURSOR_IDS: cjsCursorIds } = require('../../electron/room.cjs');
 
 const pts = (n: number) => Array.from({ length: n }, (_, i) => ({ x: i, y: -i, p: 0.3 }));
 const SAMPLES: Record<string, unknown>[] = [
@@ -29,5 +30,11 @@ const SAMPLES: Record<string, unknown>[] = [
 describe('room.cjs очищает указку так же, как room-host.ts', () => {
   it('одинаковый результат на разных сообщениях', () => {
     for (const m of SAMPLES) expect(cjs(m), JSON.stringify(m).slice(0, 80)).toEqual(cleanPointer(m));
+  });
+});
+
+describe('белый список курсоров room.cjs совпадает с каталогом src/cursors.ts', () => {
+  it('те же идентификаторы в том же порядке', () => {
+    expect(cjsCursorIds).toEqual([...CURSOR_IDS]);
   });
 });
