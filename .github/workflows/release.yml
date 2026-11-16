@@ -50,7 +50,11 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      # better-sqlite3 (devDependency сервера) собирается из исходников: node-gyp на Windows
+      # должен увидеть Visual Studio 2022, иначе npm ci падает
       - run: npm ci
+        env:
+          npm_config_msvs_version: '2022'
       # --publish never: electron-builder сам ничего не выкладывает, релиз создаёт задача release
       - run: npm run dist -- --publish never
       - name: Файлы
