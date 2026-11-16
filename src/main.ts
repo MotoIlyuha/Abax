@@ -78,7 +78,7 @@ async function boot(): Promise<void> {
     },
   });
 
-  // вернулись от провайдера входа (#abaxAuth=… / #tgAuthResult=…) — завершить вход до открытия доски
+  // вернулись от провайдера входа (#abaxAuth=…) — завершить вход до открытия доски
   const authOutcome = viewRoute ? null : await completePendingAuth();
 
   let metas = await storage.list();

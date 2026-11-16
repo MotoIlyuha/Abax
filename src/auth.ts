@@ -50,6 +50,7 @@ const TEXTS: Record<string, string> = {
   'bad-flow': 'Не удалось завершить вход — попробуйте ещё раз.',
   'cancelled': 'Вход отменён.',
   'google-failed': 'Google не подтвердил вход — попробуйте ещё раз.',
+  'telegram-failed': 'Telegram не подтвердил вход — попробуйте ещё раз.',
   'bad-telegram-signature': 'Telegram не подтвердил вход — попробуйте ещё раз.',
   'bad-return': 'Вход с этого адреса не разрешён на сервере.',
   'network': 'Нет связи с сервером. Проверьте интернет и попробуйте ещё раз.',
@@ -144,15 +145,6 @@ function readPending(): Pending | null {
   } catch { return null; }
 }
 
-/** Данные Telegram из #tgAuthResult=… (base64 JSON). */
-function decodeTelegram(raw: string): unknown {
-  try {
-    const b = raw.replace(/-/g, '+').replace(/_/g, '/');
-    const bin = atob(b + '='.repeat((4 - (b.length % 4)) % 4));
-    return JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0))));
-  } catch { return null; }
-}
-
 export interface AuthOutcome {
   ok: boolean;
   error: string | null;
@@ -161,26 +153,23 @@ export interface AuthOutcome {
 }
 
 /**
- * На запуске: вернулись от провайдера (#abaxAuth=… или #tgAuthResult=…) и в этой вкладке ждёт поток — завершить вход.
+ * На запуске: вернулись от провайдера (#abaxAuth=…) и в этой вкладке ждёт поток — завершить вход.
  * null — ничего не ждали. Фрагмент адреса убирается в любом случае.
  */
 export async function completePendingAuth(api: ApiClient | null = getApi()): Promise<AuthOutcome | null> {
   const hash = location.hash;
   const abax = /^#abaxAuth=([A-Za-z0-9_-]+)/.exec(hash);
-  const tg = /^#tgAuthResult=([A-Za-z0-9_=+/-]+)/.exec(hash);
-  if (!abax && !tg) return null;
+  if (!abax) return null;
   try { history.replaceState(history.state, '', returnUrl()); } catch { /* адрес не меняется — не страшно */ }
   const pending = readPending();
   try { sessionStorage.removeItem(PENDING_KEY); } catch { /* недоступно */ }
   if (!pending) return null; // чужая ссылка или поток из другой вкладки — молча игнорируем
   const out = (ok: boolean, error: string | null): AuthOutcome => ({ ok, error, resume: pending.resume, mode: pending.mode });
-  if (abax && abax[1] !== pending.flowId) return out(false, 'bad-flow');
-  const telegram = tg ? decodeTelegram(tg[1]) : undefined;
-  if (tg && !telegram) return out(false, 'bad-telegram-signature');
+  if (abax[1] !== pending.flowId) return out(false, 'bad-flow');
   if (!api) return out(false, 'no-cloud');
   try {
     const r = await api.request<{ token: string } & MeResponse>('POST', '/api/auth/flow/complete', {
-      flowId: pending.flowId, secret: pending.secret, ...(telegram ? { telegram } : {}),
+      flowId: pending.flowId, secret: pending.secret,
     }, { optionalAuth: true });
     adopt(r, api);
     return out(true, null);

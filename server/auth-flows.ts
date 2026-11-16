@@ -2,13 +2,14 @@ import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from 
 import type { IncomingMessage } from 'node:http';
 import type { AppContext } from './context';
 import type { AuthFlowRow, EmailCodeRow } from './db';
-import { sessionReply, telegramIdentity, verifyTelegramLogin, requireUser, type TelegramPayload } from './auth';
+import { sessionReply, requireUser } from './auth';
+import { jwksVerifier, type JwksVerifier } from './jwks';
 import { isAuthMode, resolveIdentity, type AuthMode, type Identity } from './identity';
 import { HttpError, type Ctx, type Reply, type Router } from './router';
 import { getUser, sha256Hex } from './users';
 import { normalizeName } from '../src/room-host';
 
-// Вход по почте (код) и через провайдеров с переходом на их сайт (Google, Telegram, dev) — SPEC_NIGHT4 §7.
+// Вход по почте (код) и через провайдеров с переходом на их сайт (Google и Telegram — OpenID Connect, dev) — SPEC_NIGHT4 §7.
 
 export const EMAIL_CODE_TTL_MS = 10 * 60_000;
 export const EMAIL_MAX_ATTEMPTS = 5;
@@ -69,13 +70,18 @@ export function allowedReturn(app: AppContext, raw: unknown): string | null {
 }
 
 /** Провайдер работает через dev-заглушку: dev-режим и нет настоящих ключей. */
+/** Настоящий вход через Telegram (OIDC) настроен: есть Client Secret из @BotFather и Client ID (или токен бота). */
+function telegramConfigured(app: AppContext): boolean {
+  return !!app.opts.telegramClientSecret && !!(app.opts.telegramClientId || app.opts.telegramBotToken);
+}
+
 function devFor(app: AppContext, provider: 'telegram' | 'google'): boolean {
   if (!app.opts.devAuth) return false;
-  return provider === 'telegram' ? !app.opts.telegramBotToken : !app.opts.googleClientId;
+  return provider === 'telegram' ? !telegramConfigured(app) : !app.opts.googleClientId;
 }
 
 function providerEnabled(app: AppContext, provider: 'telegram' | 'google'): boolean {
-  return provider === 'telegram' ? !!app.opts.telegramBotToken || app.opts.devAuth : !!app.opts.googleClientId || app.opts.devAuth;
+  return provider === 'telegram' ? telegramConfigured(app) || app.opts.devAuth : !!app.opts.googleClientId || app.opts.devAuth;
 }
 
 function getFlow(app: AppContext, id: unknown): AuthFlowRow | null {
@@ -114,6 +120,44 @@ export function googleNonce(app: AppContext, flowId: string): string {
   return createHmac('sha256', app.opts.jwtSecret).update(`google-nonce:${flowId}`).digest('base64url');
 }
 
+const TELEGRAM_ISSUER = 'https://oauth.telegram.org';
+const TELEGRAM_AUTH_URL = 'https://oauth.telegram.org/auth';
+const TELEGRAM_TOKEN_URL = 'https://oauth.telegram.org/token';
+const TELEGRAM_JWKS_URL = 'https://oauth.telegram.org/.well-known/jwks.json';
+
+/** Client ID для входа через Telegram (ID бота): из настройки или из токена бота (часть до «:»). */
+export function telegramClientId(app: AppContext): string | null {
+  return app.opts.telegramClientId || (app.opts.telegramBotToken ? app.opts.telegramBotToken.split(':')[0] : null);
+}
+
+const jwksByApp = new WeakMap<AppContext, JwksVerifier>();
+function telegramJwks(app: AppContext): JwksVerifier {
+  let v = jwksByApp.get(app);
+  if (!v) { v = jwksVerifier(TELEGRAM_JWKS_URL, () => app.fetch, () => app.now()); jwksByApp.set(app, v); }
+  return v;
+}
+
+/**
+ * Проверенные (по подписи) утверждения id_token Telegram → способ входа. iss — https://oauth.telegram.org,
+ * aud — ID бота, exp — не истёк. Ключ аккаунта — числовой id пользователя Telegram (claim id, scope profile):
+ * тот же, что у входа через виджет, поэтому прежние аккаунты узнаются.
+ */
+export function telegramOidcIdentity(claims: Record<string, unknown>, clientId: string, now: number): Identity {
+  const aud = Array.isArray(claims.aud) ? claims.aud.map(String) : [String(claims.aud)];
+  if (claims.iss !== TELEGRAM_ISSUER) throw new Error('неверный iss');
+  if (!aud.includes(clientId)) throw new Error('неверный aud');
+  if (typeof claims.exp !== 'number' || claims.exp * 1000 <= now) throw new Error('id_token просрочен');
+  const id = String(claims.id ?? '');
+  if (!/^\d{1,20}$/.test(id)) throw new Error('нет id пользователя Telegram');
+  const username = typeof claims.preferred_username === 'string' ? normalizeName(claims.preferred_username) || null : null;
+  return {
+    provider: 'telegram', subject: id,
+    displayName: normalizeName(claims.name) || username || 'Пользователь Telegram',
+    tgUsername: username,
+    avatarUrl: typeof claims.picture === 'string' && /^https:\/\//.test(claims.picture) ? claims.picture.slice(0, 500) : null,
+  };
+}
+
 /** Полезная нагрузка JWT без проверки подписи (id_token получен напрямую от Google по TLS). */
 function jwtPayload(token: unknown): Record<string, unknown> | null {
   if (typeof token !== 'string') return null;
@@ -128,10 +172,10 @@ export function registerAuthFlowRoutes(router: Router): void {
     return {
       json: {
         email: !!ctx.app.mailer || o.devAuth,
-        telegram: !!o.telegramBotToken || o.devAuth,
+        telegram: telegramConfigured(ctx.app) || o.devAuth,
         google: !!o.googleClientId || o.devAuth,
         dev: o.devAuth,
-        telegramBotId: o.telegramBotToken ? o.telegramBotToken.split(':')[0] : null,
+        telegramBotId: telegramClientId(ctx.app),
       },
     };
   });
@@ -214,7 +258,7 @@ export function registerAuthFlowRoutes(router: Router): void {
     app.db.prepare('DELETE FROM auth_flows WHERE expires_at <= ?').run(now);
     const id = b64url(randomBytes(18));
     const secret = b64url(randomBytes(24));
-    const verifier = provider === 'google' ? b64url(randomBytes(32)) : null;
+    const verifier = b64url(randomBytes(32)); // PKCE: и Google, и Telegram
     app.db.prepare(`INSERT INTO auth_flows (id, secret_hash, provider, mode, user_id, return_to, code_verifier, result_user_id, error, created_at, expires_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`)
       .run(id, sha256Hex(secret), provider, mode, ctx.user?.id ?? null, returnTo, verifier, now, now + FLOW_TTL_MS);
@@ -222,12 +266,8 @@ export function registerAuthFlowRoutes(router: Router): void {
     let url: string;
     if (devFor(app, provider)) {
       url = `${base}/api/auth/dev/start?flow=${id}`;
-    } else if (provider === 'google') {
-      url = `${base}/api/auth/google/start?flow=${id}`;
     } else {
-      // Telegram вернёт пользователя на returnTo с #tgAuthResult=…, клиент завершит поток сам
-      const q = new URLSearchParams({ bot_id: app.opts.telegramBotToken!.split(':')[0], origin: new URL(returnTo).origin, request_access: 'write', return_to: returnTo });
-      url = `https://oauth.telegram.org/auth?${q}`;
+      url = `${base}/api/auth/${provider}/start?flow=${id}`;
     }
     return { json: { flowId: id, secret, url } };
   }, { maxBody: 8192 });
@@ -295,20 +335,68 @@ export function registerAuthFlowRoutes(router: Router): void {
     return backToApp(flow);
   });
 
+  // ----- Telegram: OpenID Connect (core.telegram.org/widgets/login) -----
+
+  router.get('/api/auth/telegram/start', ctx => {
+    const app = ctx.app;
+    const clientId = telegramClientId(app);
+    if (!clientId || !app.opts.telegramClientSecret) throw new HttpError(503, 'provider-disabled');
+    const flow = startableFlow(ctx, 'telegram');
+    const q = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: `${apiOrigin(app, ctx.req)}/api/auth/telegram/callback`,
+      response_type: 'code',
+      scope: 'openid profile',
+      state: flow.id,
+      code_challenge: b64url(createHash('sha256').update(flow.code_verifier ?? '').digest()),
+      code_challenge_method: 'S256',
+    });
+    return { status: 302, headers: { Location: `${TELEGRAM_AUTH_URL}?${q}`, 'Cache-Control': 'no-store' } };
+  });
+
+  router.get('/api/auth/telegram/callback', async ctx => {
+    const app = ctx.app;
+    const flow = getFlow(app, ctx.query.get('state'));
+    if (!flow || flow.provider !== 'telegram' || flow.expires_at <= app.now()) throw new HttpError(400, 'bad-flow');
+    const code = ctx.query.get('code');
+    const clientId = telegramClientId(app);
+    if (!code || ctx.query.get('error') || !clientId || !app.opts.telegramClientSecret) {
+      app.db.prepare('UPDATE auth_flows SET error = ? WHERE id = ?').run('cancelled', flow.id);
+      return backToApp(flow);
+    }
+    try {
+      // обмен кода: Basic base64(client_id:client_secret) + PKCE code_verifier
+      const res = await app.fetch(TELEGRAM_TOKEN_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Authorization: `Basic ${Buffer.from(`${clientId}:${app.opts.telegramClientSecret}`).toString('base64')}`,
+        },
+        body: new URLSearchParams({
+          grant_type: 'authorization_code', code, client_id: clientId,
+          redirect_uri: `${apiOrigin(app, ctx.req)}/api/auth/telegram/callback`, code_verifier: flow.code_verifier ?? '',
+        }).toString(),
+      });
+      const data = await res.json() as { id_token?: unknown };
+      if (!res.ok) throw new Error(`token endpoint ответил ${res.status}`);
+      // подпись id_token проверяется обязательно (ключи — JWKS Telegram), затем iss, aud, exp
+      const claims = await telegramJwks(app).verify(data.id_token);
+      if (!claims) throw new Error('подпись id_token не прошла проверку');
+      settleFlow(app, flow, telegramOidcIdentity(claims, clientId, app.now()));
+    } catch (e) {
+      app.log(`Вход через Telegram не удался: ${e instanceof Error ? e.message : String(e)}`);
+      app.db.prepare('UPDATE auth_flows SET error = ? WHERE id = ?').run('telegram-failed', flow.id);
+    }
+    return backToApp(flow);
+  });
+
   router.post('/api/auth/flow/complete', async ctx => {
     const app = ctx.app;
-    const body = await ctx.body() as { flowId?: unknown; secret?: unknown; telegram?: unknown } | undefined;
-    let flow = getFlow(app, body?.flowId);
+    const body = await ctx.body() as { flowId?: unknown; secret?: unknown } | undefined;
+    const flow = getFlow(app, body?.flowId);
     if (!flow || typeof body?.secret !== 'string' || !safeEqualHex(flow.secret_hash, sha256Hex(body.secret))) throw new HttpError(400, 'bad-flow');
     const done = () => app.db.prepare('DELETE FROM auth_flows WHERE id = ?').run(flow!.id);
     if (flow.expires_at <= app.now()) { done(); throw new HttpError(400, 'flow-expired'); }
-    // Telegram возвращает данные во фрагменте адреса — их приносит клиент; подпись проверяется здесь
-    if (flow.provider === 'telegram' && !flow.result_user_id && !flow.error && body.telegram !== undefined) {
-      const token = app.opts.telegramBotToken;
-      if (!token || !verifyTelegramLogin(body.telegram, token, app.now())) { done(); throw new HttpError(401, 'bad-telegram-signature'); }
-      settleFlow(app, flow, telegramIdentity(body.telegram as TelegramPayload));
-      flow = getFlow(app, flow.id)!;
-    }
     done();
     if (flow.error) throw new HttpError(flow.error === 'identity-taken' ? 409 : 400, flow.error);
     const user = flow.result_user_id ? getUser(app.db, flow.result_user_id) : null;

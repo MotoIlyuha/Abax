@@ -27,6 +27,8 @@ export interface AppOptions {
   /** Почта для кодов входа (server/mailer.ts). */
   mailer?: Mailer | null;
   googleClientId?: string | null;
+  telegramClientId?: string | null;
+  telegramClientSecret?: string | null;
   googleClientSecret?: string | null;
   publicApiUrl?: string;
   allowedOrigins?: string[];
@@ -100,6 +102,8 @@ function resolveOptions(o: AppOptions): ResolvedOptions {
     enforceLimits: o.enforceLimits === true,
     devAuth: o.devAuth === true,
     googleClientId: o.googleClientId || null,
+    telegramClientId: o.telegramClientId || null,
+    telegramClientSecret: o.telegramClientSecret || null,
     googleClientSecret: o.googleClientSecret || null,
     publicApiUrl: (o.publicApiUrl ?? '').replace(/\/+$/, ''),
     allowedOrigins: (o.allowedOrigins ?? []).map(s => { try { return new URL(s).origin; } catch { return ''; } }).filter(Boolean),

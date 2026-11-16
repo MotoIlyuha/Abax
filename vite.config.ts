@@ -42,6 +42,8 @@ function abaxDevServer(): Plugin {
           devAuth,
           mailer: mailerFromEnv(process.env) ?? (devAuth ? consoleMailer(log) : null),
           googleClientId: process.env.GOOGLE_CLIENT_ID,
+          telegramClientId: process.env.TELEGRAM_CLIENT_ID,
+          telegramClientSecret: process.env.TELEGRAM_CLIENT_SECRET,
           googleClientSecret: process.env.GOOGLE_CLIENT_SECRET,
           publicApiUrl: process.env.PUBLIC_API_URL || '',
           allowedOrigins: listEnv(process.env.ALLOWED_ORIGINS),

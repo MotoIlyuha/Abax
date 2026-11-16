@@ -32,7 +32,7 @@ npm run server:plan -- <userId | tg:<id>> pro 30    # выдать тариф н
 | Область | Маршруты |
 | --- | --- |
 | Вход | `POST /api/auth/anon` (токен устройства), `POST /api/auth/telegram` (Telegram Login, подпись HMAC), `POST /api/auth/logout`, `GET /api/me`, `PATCH /api/me` (имя и курсор) |
-| Способы входа (Ночь №4) | `GET /api/auth/providers`; почта — `POST /api/auth/email/start` и `/verify` (6-значный код, 10 минут, 5 попыток); Telegram и Google — `POST /api/auth/flow` → переход на сайт провайдера → возврат `#abaxAuth=` / `#tgAuthResult=` → `POST /api/auth/flow/complete`; режимы `login` (вход, слияние анонима) и `link` (привязка к текущему аккаунту, `409 identity-taken`, если способ у другого). Dev-провайдеры — `ABAX_DEV_AUTH=1` (в `npm run dev:cloud` включены, если нет ключей) |
+| Способы входа (Ночь №4) | `GET /api/auth/providers`; почта — `POST /api/auth/email/start` и `/verify` (6-значный код, 10 минут, 5 попыток); Telegram и Google — `POST /api/auth/flow` → переход на сайт провайдера → возврат `#abaxAuth=` → `POST /api/auth/flow/complete` (оба провайдера — OpenID Connect, Authorization Code + PKCE); режимы `login` (вход, слияние анонима) и `link` (привязка к текущему аккаунту, `409 identity-taken`, если способ у другого). Dev-провайдеры — `ABAX_DEV_AUTH=1` (в `npm run dev:cloud` включены, если нет ключей) |
 | Проекты | `GET /api/projects`, `GET/PUT/DELETE /api/projects/:id`, `POST /api/projects/:id/patch`, `POST /api/projects/:id/clone` |
 | Картинки | `POST /api/assets` (`{dataUrl}`), `GET /api/assets/:hash` (по хэшу SHA-256 от строки data URL) |
 | Приглашения | `POST /api/invites`, `GET /api/invites?projectId=`, `DELETE /api/invites/:token`, `GET /api/invites/:token` и `GET /j/:token` (JSON) |
@@ -76,6 +76,28 @@ npm run server:plan -- <userId | tg:<id>> pro 30    # выдать тариф н
 
 Ошибка `redirect_uri_mismatch` на странице Google — адрес в консоли не совпадает символ в символ с
 `<PUBLIC_API_URL или адрес, по которому открыт сервер>/api/auth/google/callback`.
+
+## Вход через Telegram
+
+OpenID Connect по документации Telegram ([Log In With Telegram](https://core.telegram.org/widgets/login),
+discovery — `https://oauth.telegram.org/.well-known/openid-configuration`), без скрипта виджета (строгий CSP):
+браузер уходит на `https://oauth.telegram.org/auth` (`scope=openid profile`, `state`, PKCE S256), код меняется на токены
+сервером (`https://oauth.telegram.org/token`, `Authorization: Basic base64(client_id:client_secret)`, `code_verifier`).
+Подпись `id_token` проверяется обязательно — по ключам `https://oauth.telegram.org/.well-known/jwks.json` (RS256 по
+умолчанию; ES256 и EdDSA тоже поддержаны), затем `iss = https://oauth.telegram.org`, `aud` = ID бота, `exp`.
+Аккаунт — по числовому `id` пользователя Telegram (claim `id`), поэтому прежние входы через виджет узнаются.
+
+1. В @BotFather откройте мини-приложение, выберите бота → **Login Widget** → добавьте **Allowed URLs**: адрес веб-клиента
+   (`https://<домен>`) и redirect URI `https://<домен API>/api/auth/telegram/callback` (точно этот путь).
+   Там же — **Client ID** (ID бота) и **Client Secret**. Алгоритм подписи по умолчанию (RS256) менять не нужно; EdDSA и
+   ES256K запрещают scope `profile`, без него не будет имени и `id` — вход не пройдёт.
+2. Переменные: `TELEGRAM_CLIENT_SECRET` (обязательно), `TELEGRAM_CLIENT_ID` (если не задан — берётся из `TELEGRAM_BOT_TOKEN`,
+   часть до «:»), `PUBLIC_API_URL` (из него строится redirect URI), `PUBLIC_WEB_URL` / `ALLOWED_ORIGINS`.
+3. Разработка: те же переменные в `.env.local` и `npm run dev:cloud`. Документация не говорит, принимает ли Telegram
+   `http://localhost` в Allowed URLs; если нет — откройте dev-сервер через https-туннель и укажите его адрес в
+   `PUBLIC_API_URL`, `ALLOWED_ORIGINS` и Allowed URLs.
+
+Старый `POST /api/auth/telegram` (данные Login Widget с подписью HMAC от `TELEGRAM_BOT_TOKEN`) оставлен для совместимости.
 
 ## Тарифы и лимиты
 

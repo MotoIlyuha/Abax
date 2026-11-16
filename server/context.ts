@@ -15,6 +15,9 @@ export interface ResolvedOptions {
   devAuth: boolean;
   /** Вход через Google (OAuth): нет client id — выключен (или dev-заглушка при devAuth). */
   googleClientId: string | null;
+  /** Вход через Telegram (OpenID Connect): Client ID (ID бота) и Client Secret из @BotFather → Login Widget. */
+  telegramClientId: string | null;
+  telegramClientSecret: string | null;
   googleClientSecret: string | null;
   /** Адрес самого сервера для ссылок входа (redirect_uri Google); нет — из запроса. */
   publicApiUrl: string;

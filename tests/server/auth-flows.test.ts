@@ -1,4 +1,5 @@
 // Вход через Telegram и Google с переходом на сайт провайдера, dev-провайдеры, привязка (SPEC_NIGHT4 §7.3).
+import { createHash, generateKeyPairSync, sign as cryptoSign } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 import { signTelegramPayload } from '../../server/auth';
 import { allowedReturn, DEV_GOOGLE, DEV_TELEGRAM, googleNonce } from '../../server/auth-flows';
@@ -97,20 +98,65 @@ describe('способы входа сервера', () => {
     expect((await fetch(`${app.base}/api/auth/dev/start?flow=${'a'.repeat(24)}`, { redirect: 'manual' })).status).toBe(404);
   });
 
-  it('настоящий Telegram: ссылка на oauth.telegram.org, данные проверяются по подписи', async () => {
-    const app = await makeApp();
+  it('настоящий Telegram (OIDC): PKCE, обмен кода с Basic, подпись id_token по JWKS, iss/aud/exp', async () => {
+    const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
+    const jwk = { ...publicKey.export({ format: 'jwk' }), kid: 'oidc-1', alg: 'RS256' };
+    const sign = (claims: Record<string, unknown>, key = privateKey, kid = 'oidc-1') => {
+      const part = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
+      const input = `${part({ alg: 'RS256', kid, typ: 'JWT' })}.${part(claims)}`;
+      return `${input}.${cryptoSign('sha256', Buffer.from(input), key).toString('base64url')}`;
+    };
+    let idToken = '';
+    const calls: { url: string; init?: RequestInit }[] = [];
+    const fakeFetch = (async (url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      if (url === 'https://oauth.telegram.org/.well-known/jwks.json') return new Response(JSON.stringify({ keys: [jwk] }), { status: 200 });
+      return new Response(JSON.stringify({ access_token: 'a', token_type: 'Bearer', expires_in: 3600, id_token: idToken }), { status: 200 });
+    }) as unknown as typeof fetch;
+    const app = await makeApp({ telegramClientSecret: 'tg-secret', publicApiUrl: 'https://api.abax.example', fetch: fakeFetch });
+    expect((await call(app, 'GET', '/api/auth/providers')).body).toMatchObject({ telegram: true, telegramBotId: '123456' });
+    const exp = Math.floor(app.clock.t / 1000) + 600;
+    const good = { iss: 'https://oauth.telegram.org', aud: '123456', sub: '777', iat: exp - 600, exp, id: 4242, name: 'Тг Пользователь', preferred_username: 'tg_user', picture: 'https://cdn.telesco.pe/a.jpg' };
+
     const f = await flow(app, { provider: 'telegram' });
-    const u = new URL(f.body.url);
-    expect(u.origin).toBe('https://oauth.telegram.org');
-    expect(u.searchParams.get('bot_id')).toBe('123456');
-    expect(u.searchParams.get('origin')).toBe('https://abax.example');
-    expect(u.searchParams.get('return_to')).toBe(RETURN);
-    const fields = { id: 4242, first_name: 'Тг', auth_date: Math.floor(app.clock.t / 1000) };
-    const forged = await call(app, 'POST', '/api/auth/flow/complete', { flowId: f.body.flowId, secret: f.body.secret, telegram: { ...fields, hash: '0'.repeat(64) } });
-    expect(forged.status).toBe(401);
-    const g = await flow(app, { provider: 'telegram' });
-    const ok = await call(app, 'POST', '/api/auth/flow/complete', { flowId: g.body.flowId, secret: g.body.secret, telegram: { ...fields, hash: signTelegramPayload(fields, BOT_TOKEN) } });
-    expect(ok.body.user).toMatchObject({ telegram: true, displayName: 'Тг' });
+    expect(f.body.url).toBe(`https://api.abax.example/api/auth/telegram/start?flow=${f.body.flowId}`);
+    const toTg = new URL(await follow(`${app.base}/api/auth/telegram/start?flow=${f.body.flowId}`));
+    expect(toTg.origin + toTg.pathname).toBe('https://oauth.telegram.org/auth');
+    expect(Object.fromEntries(toTg.searchParams)).toMatchObject({
+      client_id: '123456', redirect_uri: 'https://api.abax.example/api/auth/telegram/callback', response_type: 'code',
+      scope: 'openid profile', state: f.body.flowId, code_challenge_method: 'S256',
+    });
+    idToken = sign(good);
+    expect(await follow(`${app.base}/api/auth/telegram/callback?state=${f.body.flowId}&code=c0de`)).toBe(`${RETURN}#abaxAuth=${f.body.flowId}`);
+    const tokenCall = calls.find(c => c.url === 'https://oauth.telegram.org/token')!;
+    expect((tokenCall.init!.headers as Record<string, string>).Authorization).toBe(`Basic ${Buffer.from('123456:tg-secret').toString('base64')}`);
+    const body = new URLSearchParams(String(tokenCall.init!.body));
+    expect(body.get('grant_type')).toBe('authorization_code');
+    expect(body.get('code_verifier')).toBeTruthy();
+    expect(createHash('sha256').update(body.get('code_verifier')!).digest('base64url')).toBe(toTg.searchParams.get('code_challenge'));
+    const done = await call(app, 'POST', '/api/auth/flow/complete', { flowId: f.body.flowId, secret: f.body.secret });
+    expect(done.body.user).toMatchObject({ telegram: true, tgUsername: 'tg_user', displayName: 'Тг Пользователь', avatarUrl: 'https://cdn.telesco.pe/a.jpg' });
+    // аккаунт — по числовому id Telegram (тот же, что у входа через виджет)
+    expect(app.db.prepare('SELECT tg_id FROM users WHERE id = ?').get(done.body.user.id)).toEqual({ tg_id: '4242' });
+
+    // плохие токены: чужой ключ, чужой aud, чужой iss, просрочен, нет id
+    const other = generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey;
+    for (const bad of [sign(good, other), sign({ ...good, aud: '999' }), sign({ ...good, iss: 'https://evil' }), sign({ ...good, exp: exp - 1200 }), sign({ ...good, id: undefined })]) {
+      const g = await flow(app, { provider: 'telegram' });
+      idToken = bad;
+      await follow(`${app.base}/api/auth/telegram/callback?state=${g.body.flowId}&code=c0de`);
+      expect((await call(app, 'POST', '/api/auth/flow/complete', { flowId: g.body.flowId, secret: g.body.secret })).body.error).toBe('telegram-failed');
+    }
+    // пользователь не подтвердил вход
+    const h = await flow(app, { provider: 'telegram' });
+    await follow(`${app.base}/api/auth/telegram/callback?state=${h.body.flowId}&error=access_denied`);
+    expect((await call(app, 'POST', '/api/auth/flow/complete', { flowId: h.body.flowId, secret: h.body.secret })).body.error).toBe('cancelled');
+  });
+
+  it('Telegram без Client Secret — выключен (без dev-режима)', async () => {
+    const app = await makeApp();
+    expect((await call(app, 'GET', '/api/auth/providers')).body.telegram).toBe(false);
+    expect((await flow(app, { provider: 'telegram' })).status).toBe(503);
   });
 
   it('настоящий Google: PKCE, обмен кода, проверка id_token', async () => {

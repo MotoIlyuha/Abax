@@ -28,6 +28,8 @@ async function main(): Promise<void> {
     devAuth: truthy(env.ABAX_DEV_AUTH) && env.NODE_ENV !== 'production',
     mailer: mailerFromEnv(env) ?? (truthy(env.ABAX_DEV_AUTH) && env.NODE_ENV !== 'production' ? consoleMailer(m => console.log(m)) : null),
     googleClientId: env.GOOGLE_CLIENT_ID,
+    telegramClientId: env.TELEGRAM_CLIENT_ID,
+    telegramClientSecret: env.TELEGRAM_CLIENT_SECRET,
     googleClientSecret: env.GOOGLE_CLIENT_SECRET,
     publicApiUrl: env.PUBLIC_API_URL || '',
     allowedOrigins: listEnv(env.ALLOWED_ORIGINS),
