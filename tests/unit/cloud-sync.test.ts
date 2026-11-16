@@ -245,6 +245,26 @@ describe('получение с сервера', () => {
     expect(serverRow('a')!.rev).toBe(3);
   });
 
+  it('сервер при слиянии добавил чужой ввод: следующие сохранения его не стирают, а при открытии подтягивается серверная версия', async () => {
+    const { c, base } = make();
+    await c.save({ ...proj('a'), pages: [{ id: 'a-p1', name: 'П', grid: 'square', elements: [taskEl(), rectEl('r1')] }] } as Project);
+    await c.flush();
+    editStored(app, 'a', p => { p.pages[0].elements[0].attempts = [{ value: '42', timestamp: 7, isCorrect: true }]; });
+    await c.save({ ...base.data.get('a')!, name: 'Первая правка' });
+    await c.flush();
+    expect(serverRow('a')!.rev).toBe(3);
+    expect(getSyncedRev('a')).toBe(2); // ответ ученика в нашей копии так и не появился — помним версию до слияния
+    await c.save({ ...base.data.get('a')!, name: 'Вторая правка' });
+    await c.flush();
+    const stored = JSON.parse(serverRow('a')!.data_json);
+    expect(stored.name).toBe('Вторая правка');
+    expect(stored.pages[0].elements[0].attempts).toHaveLength(1);
+    // правок нет — при открытии берётся серверная версия, уже с ответом ученика
+    const opened = (await c.openFresh('a'))!;
+    expect((opened.pages[0].elements[0] as { attempts?: unknown[] }).attempts).toHaveLength(1);
+    expect(getSyncedRev('a')).toBe(serverRow('a')!.rev);
+  });
+
   it('проект удалён на сервере: локальный остаётся и уходит как новый', async () => {
     const { c } = make();
     await c.save(proj('a'));

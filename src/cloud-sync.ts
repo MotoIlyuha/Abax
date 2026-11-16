@@ -46,7 +46,7 @@ export interface CloudStorage extends BoardsStorage {
 }
 
 interface RemoteMeta { id: string; name?: string; title?: string; createdAt: number; updatedAt: number; pageCount: number; pinned?: boolean; icon?: string }
-interface PutResult { id: string; rev: number }
+interface PutResult { id: string; rev: number; /** Сервер добавил к присланному то, чего у клиента нет (ответы, реакции, комментарии). */ merged?: boolean }
 interface OwnView { role: string; rev: number; project: Project }
 
 const metaOfRemote = (r: RemoteMeta): ProjectMeta => ({
@@ -93,9 +93,9 @@ export function createCloudStorage(base: BoardsStorage, opts: CloudStorageOption
   }
 
   /** Отправки одного проекта идут по очереди: следующая уже видит ревизию, полученную предыдущей. */
-  function pushNow(id: string): Promise<PushStatus> {
+  function pushNow(id: string, force = false): Promise<PushStatus> {
     const prev = inflight.get(id) ?? Promise.resolve<PushStatus>('ok');
-    const p = prev.then(() => doPush(id), () => doPush(id));
+    const p = prev.then(() => doPush(id, force), () => doPush(id, force));
     inflight.set(id, p);
     const done = () => { if (inflight.get(id) === p) inflight.delete(id); };
     p.then(done, done);
@@ -122,15 +122,19 @@ export function createCloudStorage(base: BoardsStorage, opts: CloudStorageOption
     }
   }
 
-  async function doPush(id: string): Promise<PushStatus> {
+  async function doPush(id: string, force: boolean): Promise<PushStatus> {
     const api = getClient();
     if (!api || disposed || localOnly.has(id) || activeRoom === id) return 'skipped';
+    // отправка, стоявшая в очереди за предыдущей, могла остаться без дела: всё уже ушло (force — проект без облачной копии)
+    if (!force && !pending.has(id)) return 'skipped';
     const project = pending.get(id) ?? await base.load(id).catch(() => null);
     if (!project) { pending.delete(id); clearDirty(id); return 'skipped'; }
     const version = versions.get(id) ?? 0;
     try {
       const res = await putProject(api, project);
-      setSyncedRev(id, res.rev);
+      // сервер добавил чужой ввод, которого в нашей копии нет: помним предыдущую ревизию — следующее сохранение сольётся снова,
+      // а при открытии (если своих правок нет) подтянется серверная версия
+      setSyncedRev(id, res.merged && res.rev > 1 ? res.rev - 1 : res.rev);
       retryAttempt = 0;
       if ((versions.get(id) ?? 0) === version) { pending.delete(id); clearDirty(id); } else schedule(id);
       return 'ok';
@@ -251,7 +255,7 @@ export function createCloudStorage(base: BoardsStorage, opts: CloudStorageOption
     for (const m of localMetas) {
       if (localOnly.has(m.id) || activeRoom === m.id || pending.has(m.id)) continue;
       if (onServer.has(m.id) && getSyncedRev(m.id) !== null && !isDirty(m.id)) continue; // уже в облаке и без новых правок
-      const status = await pushNow(m.id);
+      const status = await pushNow(m.id, true);
       if (status === 'network') return; // сети нет — остальное в следующий раз
     }
   }

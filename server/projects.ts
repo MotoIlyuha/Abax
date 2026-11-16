@@ -139,6 +139,14 @@ export function mergeStale(current: Project, incoming: Project): Project {
   return { ...incoming, pages };
 }
 
+/** Слепок «живых» полей проекта: то, что меняется мимо автора (реакции, ввод учеников, комментарии). */
+function liveSignature(project: Project): string {
+  return JSON.stringify(project.pages.map(pg => [
+    pg.id, pg.comments ?? null,
+    pg.elements.map(e => [e.id, e.reactions ?? null, e.type === 'task' ? [e.attempts ?? null, e.studentDraft ?? null] : null]),
+  ]));
+}
+
 // ----- Просмотр -----
 
 type Access =
@@ -255,14 +263,20 @@ export function registerProjectRoutes(router: Router): void {
     if (missing.length > 0) throw new HttpError(409, 'missing-assets', { hashes: missing });
 
     let next: Project = { ...incoming, ownerPlan: plan, permissions: sanitizePermissionsForPlan(plan, incoming.permissions ?? {}) };
-    if (existing && (expectedRev === undefined || expectedRev < existing.rev)) next = mergeStale(projectOf(existing), next);
+    // merged — в сохранённом оказалось то, чего автор не присылал (ответы учеников, реакции, комментарии): клиент этой версии ещё не видел
+    let merged = false;
+    if (existing && (expectedRev === undefined || expectedRev < existing.rev)) {
+      const before = liveSignature(next);
+      next = mergeStale(projectOf(existing), next);
+      merged = liveSignature(next) !== before;
+    }
     const rev = writeProject(app, {
       existing: row, ownerId: user.id, project: next, authorId: user.id,
       revision: { kind: existing ? 'put' : 'create', pages: next.pages.length, stale: existing ? expectedRev === undefined || expectedRev < existing.rev : false },
     });
     app.notifyProjectChanged(id, next);
     const updated = getProjectRow(app, id)!;
-    return { json: { id, rev, ownerPlan: plan, permissions: next.permissions, updatedAt: updated.updated_at } };
+    return { json: { id, rev, ownerPlan: plan, permissions: next.permissions, updatedAt: updated.updated_at, merged } };
   }, { maxBody: MAX_PROJECT_BODY });
 
   router.post('/api/projects/:id/patch', async ctx => {

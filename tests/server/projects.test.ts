@@ -203,6 +203,7 @@ describe('устаревшая ревизия: сохранение автора
     mine.pages[0].elements[0].attempts = [{ value: '40', timestamp: 50, isCorrect: false }]; // своя старая попытка автора
     const r = await putProject(app, owner.token, mine, 1);
     expect(r.body.rev).toBe(3);
+    expect(r.body.merged).toBe(true); // сервер добавил то, чего автор не присылал
     const got = (await call(app, 'GET', '/api/projects/a', undefined, { token: owner.token })).body.project;
     expect(got.name).toBe('Переименовал');
     const [task, rect] = got.pages[0].elements;
@@ -218,6 +219,7 @@ describe('устаревшая ревизия: сохранение автора
     const mine = proj('a');
     const r = await putProject(app, owner.token, mine, 2);
     expect(r.body.rev).toBe(3);
+    expect(r.body.merged).toBe(false);
     const got = (await call(app, 'GET', '/api/projects/a', undefined, { token: owner.token })).body.project;
     expect(got.pages[0].elements[0].attempts).toBeUndefined();
     expect(got.pages[0].comments).toBeUndefined();
