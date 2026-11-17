@@ -78,6 +78,12 @@ export function register(c: MotionComponent): void {
   comps.push(c);
 }
 
+/** Снимает компонент с цикла (компонент, который живёт не всё время, например в окне). */
+export function unregister(c: MotionComponent): void {
+  const i = comps.indexOf(c);
+  if (i >= 0) comps.splice(i, 1);
+}
+
 /** Будит цикл: вызывать после любого изменения целей пружин. */
 export function wake(): void {
   if (running) return;

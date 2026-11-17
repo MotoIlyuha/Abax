@@ -15,3 +15,6 @@ export function loadJwtSecret(env: NodeJS.ProcessEnv, dataDir: string): string {
 }
 
 export const truthy = (v: string | undefined): boolean => v === '1' || v?.toLowerCase() === 'true';
+
+/** Список адресов через запятую (ALLOWED_ORIGINS). */
+export const listEnv = (v: string | undefined): string[] => (v ?? '').split(',').map(s => s.trim()).filter(Boolean);

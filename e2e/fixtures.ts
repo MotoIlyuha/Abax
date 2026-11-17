@@ -1,4 +1,4 @@
-import { test as base, expect, type Locator, type Page } from '@playwright/test';
+import { test as base, expect, type BrowserContext, type Locator, type Page } from '@playwright/test';
 
 export type El = Record<string, any>;
 type Pt = { x: number; y: number };
@@ -23,6 +23,20 @@ export interface Snapshot {
   flashes: number;
 }
 
+/**
+ * Окно первого входа (Ночь №4) не мешает старым тестам: до загрузки страницы кладётся готовый профиль
+ * (знакомство пройдено, имени нет — автор по-прежнему «Автор»). Если тест положил свой профиль — он не трогается.
+ */
+export async function skipOnboarding(ctx: BrowserContext): Promise<void> {
+  await ctx.addInitScript(() => {
+    try {
+      if (!localStorage.getItem('doska.profile')) {
+        localStorage.setItem('doska.profile', JSON.stringify({ name: '', cursorId: 'default', onboarded: true, updatedAt: 1 }));
+      }
+    } catch { /* хранилище недоступно */ }
+  });
+}
+
 /** Страница-доска: чтение состояния и рисование в координатах сцены. */
 export class Board {
   readonly canvas: Locator;
@@ -38,6 +52,7 @@ export class Board {
     // (тесты обновлений подставляют свой ответ GitHub, см. e2e/updates.spec.ts); на весь контекст —
     // и ссылки «Скачать», открытые в новой вкладке
     await this.page.context().route(/^https:\/\/(api\.)?github\.com\//, route => route.abort());
+    await skipOnboarding(this.page.context());
     await this.page.goto(path);
     await this.ready();
   }
@@ -133,8 +148,8 @@ export class Board {
     await this.page.keyboard.press(key);
   }
 
-  /** Инструмент из группы тулбара: Фигуры / Стереометрия / Указка. */
-  async groupTool(group: 'shapes' | 'solids' | 'pointer', id: string): Promise<void> {
+  /** Инструмент из группы тулбара: Рисование / Фигуры / Стереометрия / Указка. */
+  async groupTool(group: 'draw' | 'shapes' | 'solids' | 'pointer', id: string): Promise<void> {
     await this.page.locator(`#btn-${group}`).click();
     await this.page.locator(`#ctx-layer .ctx-panel [data-shape="${id}"]`).click();
     await expect.poll(async () => (await this.state()).tool).toBe(id);

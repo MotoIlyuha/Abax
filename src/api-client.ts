@@ -27,8 +27,15 @@ export interface ServerLimits {
   canDisableCopy: boolean;
 }
 
+/** Пользователь, как его отдаёт сервер (/api/me, вход). */
+export interface MeUser {
+  id: string; displayName: string; tgUsername: string | null; avatarUrl: string | null; isAnonymous: boolean; plan: PlanTier;
+  /** Профиль (Ночь №4): курсор, своё ли имя, привязанные способы входа. Старый сервер их не присылает. */
+  cursorId?: string; nameCustom?: boolean; email?: string | null; telegram?: boolean; google?: boolean;
+}
+
 export interface MeResponse {
-  user: { id: string; displayName: string; tgUsername: string | null; avatarUrl: string | null; isAnonymous: boolean; plan: PlanTier };
+  user: MeUser;
   plan: PlanTier;
   planExpiresAt: number | null;
   limitsEnforced: boolean;
@@ -88,10 +95,18 @@ export function normalizeApiUrl(raw: unknown): string {
   } catch { return ''; }
 }
 
-/** Адрес облака: переопределение в localStorage, затем значение из сборки; пусто — облако выключено. */
+/**
+ * Адрес облака: переопределение в localStorage, затем значение из сборки; пусто — облако выключено.
+ * В `npm run dev:cloud` сервер встроен в dev-сервер, поэтому берётся адрес самой страницы: открыли по localhost —
+ * туннель (PUBLIC_API_URL) не нужен, открыли через туннель — запросы идут через него же.
+ */
 export function apiBase(): string {
   const local = normalizeApiUrl(store(API_URL_KEY));
   if (local) return local;
+  if (typeof __API_SAME_ORIGIN__ === 'boolean' && __API_SAME_ORIGIN__ && typeof location !== 'undefined') {
+    const own = normalizeApiUrl(location.origin);
+    if (own) return own;
+  }
   return typeof __DEFAULT_API_URL__ === 'string' ? normalizeApiUrl(__DEFAULT_API_URL__) : '';
 }
 
@@ -171,6 +186,16 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
     },
   };
   return client;
+}
+
+/** Запомнить токен сессии после входа через провайдера (null — забыть). */
+export function saveSession(token: string | null): void {
+  storeSet(SESSION_KEY, token);
+}
+
+/** Токен сессии, если он уже есть (без входа). */
+export function currentSession(): string | null {
+  return store(SESSION_KEY);
 }
 
 // ----- Общий клиент приложения -----

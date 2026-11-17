@@ -5,7 +5,7 @@ import { createRequire } from 'node:module';
 import { describe, expect, it } from 'vitest';
 
 const require = createRequire(import.meta.url);
-const { createRoomHub, PROTO, MAX_SELECTION } = require('../../electron/room.cjs');
+const { createRoomHub, PROTO, MAX_SELECTION, MAX_NAME } = require('../../electron/room.cjs');
 
 type Msg = Record<string, any>;
 
@@ -43,6 +43,14 @@ function setup(opts: Record<string, unknown> = {}) {
   const uid = hub.attach(guest, { name: 'Маша' });
   return { hub, host, guest, uid };
 }
+
+describe('лимит имени участника', () => {
+  it('в Electron тот же лимит, что у клиента и сервера (32 символа)', async () => {
+    const { MAX_NAME: CLIENT_MAX_NAME } = await import('../../src/room-host');
+    expect(MAX_NAME).toBe(CLIENT_MAX_NAME);
+    expect(MAX_NAME).toBe(32);
+  });
+});
 
 describe('подключение через attach', () => {
   it('init с версией протокола, проектом и правами', () => {

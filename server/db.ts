@@ -18,6 +18,36 @@ export interface UserRow {
   plan_expires_at: number | null;
   created_at: number;
   updated_at: number;
+  /** Персональный курсор (миграция V2). */
+  cursor_id: string;
+  /** Имя задал сам пользователь: вход через провайдера его не перезаписывает. */
+  name_custom: number;
+  email: string | null;
+  google_sub: string | null;
+}
+
+/** Код входа по почте (хранится только хеш). */
+export interface EmailCodeRow {
+  email: string;
+  code_hash: string;
+  expires_at: number;
+  attempts: number;
+  created_at: number;
+}
+
+/** Поток входа через провайдера с переходом на его сайт (Google, Telegram, dev). */
+export interface AuthFlowRow {
+  id: string;
+  secret_hash: string;
+  provider: string;
+  mode: string;
+  user_id: string | null;
+  return_to: string;
+  code_verifier: string | null;
+  result_user_id: string | null;
+  error: string | null;
+  created_at: number;
+  expires_at: number;
 }
 
 export interface ProjectRow {
@@ -120,8 +150,40 @@ CREATE TABLE assets (
 );
 `;
 
+/** Ночь №4: профиль (курсор, своё имя), почта и Google, коды входа по почте и потоки входа через провайдера. */
+const SCHEMA_V2 = `
+ALTER TABLE users ADD COLUMN cursor_id TEXT NOT NULL DEFAULT 'default';
+ALTER TABLE users ADD COLUMN name_custom INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN email TEXT;
+ALTER TABLE users ADD COLUMN google_sub TEXT;
+CREATE UNIQUE INDEX idx_users_email ON users(email);
+CREATE UNIQUE INDEX idx_users_google ON users(google_sub);
+
+CREATE TABLE email_codes (
+  email TEXT PRIMARY KEY,
+  code_hash TEXT NOT NULL,
+  expires_at INTEGER NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE auth_flows (
+  id TEXT PRIMARY KEY,
+  secret_hash TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  mode TEXT NOT NULL,
+  user_id TEXT,
+  return_to TEXT NOT NULL,
+  code_verifier TEXT,
+  result_user_id TEXT,
+  error TEXT,
+  created_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+`;
+
 /** Миграции по порядку; номер версии хранится в PRAGMA user_version. */
-const MIGRATIONS: string[] = [SCHEMA_V1];
+const MIGRATIONS: string[] = [SCHEMA_V1, SCHEMA_V2];
 
 export function migrate(db: Db): void {
   const current = db.pragma('user_version', { simple: true }) as number;

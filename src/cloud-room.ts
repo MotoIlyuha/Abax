@@ -1,4 +1,5 @@
-import { ApiError, getApi } from './api-client';
+import { ApiError, currentSession, getApi } from './api-client';
+import { myCursorId, profileName } from './profile';
 import { cloudStorage, setCloudRoomProject } from './cloud-sync';
 import { cloudRoomTransport } from './collab-transport';
 import { collabActive, collabReady, connectCloudHost, connectCollab, stopCollab } from './collab';
@@ -28,7 +29,9 @@ export async function joinCloudInvite(token: string, name: string): Promise<Join
   }
   const inv = res.value;
   if (inv.isOwner) return 'none';
-  await connectCollab(cloudRoomTransport(api.base, inv.roomCode, { name, invite: token }), false);
+  // сессия (если уже есть) нужна комнате только чтобы проверить тариф для Pro-курсора
+  const session = currentSession();
+  await connectCollab(cloudRoomTransport(api.base, inv.roomCode, { name, invite: token, cursorId: myCursorId(), ...(session ? { session } : {}) }), false);
   if (await collabReady()) return 'room';
   // комнаты нет (причину гость уже видит в уведомлении): проект остаётся доступен для чтения
   stopCollab();
@@ -81,7 +84,7 @@ export async function connectOwnerRoom(): Promise<boolean> {
     // пока автор в комнате, проект сохраняет сама комната
     setCloudRoomProject(id);
     ownerRoom = id;
-    const ok = await connectCloudHost(cloudRoomTransport(api.base, `cloud:${id}`, { name: '', session }));
+    const ok = await connectCloudHost(cloudRoomTransport(api.base, `cloud:${id}`, { name: profileName(), session, cursorId: myCursorId() }));
     if (!ok) { ownerRoom = null; setCloudRoomProject(null); stopCollab(); return false; }
     return true;
   } catch {

@@ -4,6 +4,9 @@ import { MAX_PATCH_OPS, applyBoardPatch, diffElements, isBoardPatch, type BoardP
 import { gestureActive } from './gesture';
 import { sanitizeComments } from './file';
 import { clientId } from './identity';
+import { DEFAULT_CURSOR_ID, cursorPreset, cursorSvg, isCursorId } from './cursors';
+import { fxForget, fxMove } from './cursor-fx';
+import { myCursorId, onProfileChange, profileName } from './profile';
 import { setStorage, storage, type BoardsStorage } from './storage';
 import { getApi } from './api-client';
 import { hydrateFromCloud } from './cloud-assets';
@@ -28,6 +31,8 @@ export interface CollabUser {
   pageId: string | null;
   selection: string[];
   rights: { default: string; pages: Record<string, string> };
+  /** Персональный курсор (нет — участник со старой версией). */
+  cursorId?: string;
 }
 
 let transport: CollabTransport | null = null;
@@ -66,6 +71,7 @@ function send(obj: unknown): void {
 export function startCollab(wsUrl: string, asHost: boolean, name: string): Promise<void> {
   const url = new URL(wsUrl);
   url.searchParams.set('name', encodeURIComponent(name || ''));
+  url.searchParams.set('cursor', myCursorId());
   url.searchParams.set('proto', String(PROTO));
   if (asHost) url.searchParams.set('host', '1');
   return connectCollab(wsTransport(url.toString()), asHost);
@@ -687,36 +693,78 @@ export function relayNotice(ev: RelayEvent): void {
 
 // ----- DOM-курсоры удалённых пользователей -----
 let cursorsRoot: HTMLElement | null = null;
+/** Узлы курсоров по участнику: не пересоздаются на каждое сообщение (иначе не работают переходы и шлейф). */
+const cursorNodes = new Map<number, { el: HTMLElement; arrow: HTMLElement; label: HTMLElement; cursorId: string | null; wx: number; wy: number }>();
+
+/** Цвета участника: по его курсору, а у старой версии без курсора — цвет, который выдал хаб. */
+function userColors(u: CollabUser): { selection: string; badgeBg: string; badgeText: string } {
+  if (u.cursorId && isCursorId(u.cursorId)) {
+    const p = cursorPreset(u.cursorId);
+    return { selection: p.selectionColor, badgeBg: p.badgeBg, badgeText: p.badgeText };
+  }
+  const c = /^#[0-9a-fA-F]{6}$/.test(u.color) ? u.color : '#e03131';
+  return { selection: c, badgeBg: c, badgeText: '#ffffff' };
+}
+
+function removeCursorNode(uid: number): void {
+  const n = cursorNodes.get(uid);
+  if (!n) return;
+  n.el.remove();
+  cursorNodes.delete(uid);
+  fxForget(`u${uid}`);
+}
 
 export function renderRemoteCursors(): void {
   const wrap = document.getElementById('canvas-wrap');
   if (!wrap) return;
-  if (!cursorsRoot) {
-    cursorsRoot = document.createElement('div');
+  if (!cursorsRoot || !cursorsRoot.isConnected) {
+    cursorsRoot = document.getElementById('remote-cursors') ?? document.createElement('div');
     cursorsRoot.id = 'remote-cursors';
+    cursorsRoot.textContent = '';
+    cursorNodes.clear();
     wrap.appendChild(cursorsRoot);
   }
   const cam = state.camera;
-  cursorsRoot.textContent = '';
+  const seen = new Set<number>();
   for (const u of users) {
     if (u.userId === myUserId || !u.cursor || u.pageId !== state.pageId) continue;
-    const color = u.away ? '#9aa0ab' : u.color;
+    seen.add(u.userId);
     const sx = (u.cursor.x - cam.x) * cam.zoom;
     const sy = (u.cursor.y - cam.y) * cam.zoom;
-    const el = document.createElement('div');
-    el.className = 'remote-cursor' + (u.away ? ' away' : '');
-    el.style.left = `${sx}px`;
-    el.style.top = `${sy}px`;
+    let n = cursorNodes.get(u.userId);
+    if (!n) {
+      const el = document.createElement('div');
+      // стрелка — разметка из каталога курсоров (только константы), имя — textContent
+      const arrow = document.createElement('i');
+      arrow.className = 'rc-arrow';
+      const label = document.createElement('span');
+      el.append(arrow, label);
+      cursorsRoot.appendChild(el);
+      n = { el, arrow, label, cursorId: null, wx: u.cursor.x, wy: u.cursor.y };
+      cursorNodes.set(u.userId, n);
+    }
+    const id = u.cursorId && isCursorId(u.cursorId) ? u.cursorId : DEFAULT_CURSOR_ID;
+    if (n.cursorId !== id) {
+      n.arrow.innerHTML = cursorSvg(id, { size: 24 });
+      n.cursorId = id;
+    }
+    const colors = userColors(u);
+    n.el.className = 'remote-cursor' + (u.away ? ' away' : '') + (cursorPreset(id).effect === 'glow' ? ' glow' : '');
+    n.el.style.left = `${sx}px`;
+    n.el.style.top = `${sy}px`;
     // имя и цвет приходят от других участников — только textContent и свойства style, без разметки
-    const dot = document.createElement('i');
-    dot.style.background = color;
-    dot.style.borderColor = color;
-    const label = document.createElement('span');
-    label.style.background = color;
-    label.textContent = String(u.name ?? '') + (u.away ? ' · Отошёл' : '');
-    el.append(dot, label);
-    cursorsRoot.appendChild(el);
+    n.arrow.style.color = u.cursorId && isCursorId(u.cursorId) ? cursorPreset(id).effectColor : colors.badgeBg;
+    n.label.style.background = u.away ? '#9aa0ab' : colors.badgeBg;
+    n.label.style.color = u.away ? '#ffffff' : colors.badgeText;
+    n.label.textContent = String(u.name ?? '') + (u.away ? ' · Отошёл' : '');
+    // шлейф — только когда участник сам двигал мышь (панорама камеры не в счёт)
+    const moved = n.wx !== u.cursor.x || n.wy !== u.cursor.y;
+    n.wx = u.cursor.x;
+    n.wy = u.cursor.y;
+    if (u.away) fxForget(`u${u.userId}`);
+    else if (moved) fxMove(`u${u.userId}`, sx, sy, id);
   }
+  for (const uid of [...cursorNodes.keys()]) if (!seen.has(uid)) removeCursorNode(uid);
 }
 
 /** Чужие выделения для отрисовки рамок (только активная страница). */
@@ -724,8 +772,16 @@ export function foreignSelections(): { color: string; ids: string[] }[] {
   if (!connected) return [];
   return users
     .filter(u => u.userId !== myUserId && u.pageId === state.pageId && u.selection.length > 0)
-    .map(u => ({ color: u.away ? '#9aa0ab' : u.color, ids: u.selection }));
+    .map(u => ({ color: u.away ? '#9aa0ab' : userColors(u).selection, ids: u.selection }));
 }
+
+/** Свой профиль поменялся (имя или курсор) — сообщить комнате (хаб разошлёт всем). */
+function sendProfile(): void {
+  if (!connected) return;
+  const name = profileName();
+  send({ t: 'profile', ...(name ? { name } : {}), cursorId: myCursorId() });
+}
+onProfileChange(() => sendProfile());
 
 /** Локальное хранилище автора на время совместной работы (save дополнительно рассылает проект). */
 let hostLocalStorage: BoardsStorage | null = null;

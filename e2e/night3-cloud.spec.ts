@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { createAppServer, type AppServer } from '../server/app';
-import { Board } from './fixtures';
+import { Board, skipOnboarding } from './fixtures';
 
 let srv: AppServer;
 let base = '';
@@ -32,6 +32,7 @@ async function device(browser: Browser): Promise<BrowserContext> {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: 'ru-RU' });
   await ctx.route(/^https:\/\/(api\.)?github\.com\//, r => r.abort());
   await ctx.addInitScript(url => localStorage.setItem('doska.apiUrl', url), base);
+  await skipOnboarding(ctx);
   await ctx.grantPermissions(['clipboard-read', 'clipboard-write']);
   return ctx;
 }

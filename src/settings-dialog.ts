@@ -37,6 +37,11 @@ let lastSection = '';
 
 const CLOSE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 
+/** Раздел, открытый последним ('' — окно ещё не открывали). */
+export function lastSettingsSection(): string {
+  return lastSection;
+}
+
 export function settingsDialogOpen(): boolean {
   return !!dialog;
 }
@@ -111,13 +116,14 @@ export function addSettingsSection(s: SettingsSection): void {
   d.nav.appendChild(b);
 }
 
-/** Раздел пропадает из открытого окна; был открыт — открывается первый. */
+/** Раздел пропадает из открытого окна; был открыт — открывается «Доска» (или первый). */
 export function removeSettingsSection(id: string): void {
   const d = dialog;
   if (!d) return;
   d.sections = d.sections.filter(x => x.id !== id);
   d.nav.querySelector(`.sd-nav-item[data-section="${id}"]`)?.remove();
-  if (lastSection === id) showSection(d.sections[0].id);
+  // открытый раздел пропал — «Доска» (основной раздел), а если её нет — первый
+  if (lastSection === id) showSection((d.sections.find(x => x.id === 'general') ?? d.sections[0]).id);
 }
 
 function showSection(id: string): void {

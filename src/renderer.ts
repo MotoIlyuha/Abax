@@ -1,6 +1,7 @@
 import type { Camera, Element, GridMode, ImageEl, LaserPt, Page, ShapeEl, SolidEl, TaskEl } from './types';
 import { EXAM_LABELS, SUBJECT_LABELS, TASK_STATUS_LABEL, taskStatus } from './task-element';
 import { foreignSelections, readOnly } from './collab';
+import { mySelectionColor } from './profile';
 import { PILL_H, layoutPills, layoutPins } from './annotations';
 import { clientId } from './identity';
 import {
@@ -13,6 +14,7 @@ import { fitSolid, solidGeometry, type SolidPrim } from './solid';
 import { state } from './state';
 import { assetHashOf } from './asset-store';
 import { ERASER_PATHS, ERASER_TIP } from './toolbar';
+import { eraserRadius, eraserSettled } from './eraser-size';
 import { SpatialIndex } from './spatial-index';
 
 /** Сколько картинок догрузилось: кэш сцены, собранный с заглушкой, устаревает. */
@@ -844,7 +846,6 @@ export function renderScene(
 
 const REBUILD_DELAY = 120; // мс покоя камеры до резкой перерисовки
 const HEAVY_BOARD = 1500; // элементов: выше — переносим выделенное поверх ради плавности
-const PART_ERASE_R = 12; // радиус ластика для пера и маркера, px экрана
 
 let canvas: HTMLCanvasElement | null = null;
 let ctx: CanvasRenderingContext2D | null = null;
@@ -1082,12 +1083,32 @@ export function renderNow(): void {
 /** Ручки редактирования единственного выделенного элемента (экранные координаты). */
 function drawHandles(ctx: CanvasRenderingContext2D, cam: Camera): void {
   const el = state.board.elements.find(e => state.selection.has(e.id));
-  if (!el) return;
+  if (el) drawElHandles(ctx, cam, el);
+}
+
+/**
+ * Выделение одного элемента вне доски (превью в выборе курсора): пунктирная рамка и ручки
+ * ровно как у выделенного элемента на холсте, цветом color. ctx — в экранных координатах (dpr учтён).
+ */
+export function drawSelectionPreview(ctx: CanvasRenderingContext2D, el: Element, cam: Camera, color: string): void {
+  const prev = selColor;
+  selColor = color;
+  const a = cacheOf(el).aabb;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([5, 4]);
+  ctx.strokeRect((a.x0 - cam.x) * cam.zoom - 4, (a.y0 - cam.y) * cam.zoom - 4, (a.x1 - a.x0) * cam.zoom + 8, (a.y1 - a.y0) * cam.zoom + 8);
+  ctx.setLineDash([]);
+  drawElHandles(ctx, cam, el);
+  selColor = prev;
+}
+
+function drawElHandles(ctx: CanvasRenderingContext2D, cam: Camera, el: Element): void {
   const hs = elementHandles(el, cam.zoom);
   // у штриха собственных ручек нет — масштабируем за общую рамку
   if (hs.length === 0) { drawBoxHandles(ctx, cam, elementAABB(el)); return; }
   // направляющие параметров (высота, радиус) — под ручками
-  ctx.strokeStyle = '#3273f5';
+  ctx.strokeStyle = selColor;
   ctx.lineWidth = 1;
   ctx.setLineDash([4, 3]);
   ctx.beginPath();
@@ -1100,7 +1121,7 @@ function drawHandles(ctx: CanvasRenderingContext2D, cam: Camera): void {
   ctx.setLineDash([]);
   for (const { from } of hs) {
     if (!from) continue;
-    ctx.fillStyle = '#3273f5';
+    ctx.fillStyle = selColor;
     ctx.beginPath();
     ctx.arc((from.x - cam.x) * cam.zoom, (from.y - cam.y) * cam.zoom, 2.5, 0, Math.PI * 2);
     ctx.fill();
@@ -1109,12 +1130,12 @@ function drawHandles(ctx: CanvasRenderingContext2D, cam: Camera): void {
     const sx = (x - cam.x) * cam.zoom;
     const sy = (y - cam.y) * cam.zoom;
     ctx.fillStyle = '#ffffff';
-    ctx.strokeStyle = '#3273f5';
+    ctx.strokeStyle = selColor;
     ctx.lineWidth = 1.5;
     if (h.kind === 'insert') {
       ctx.beginPath();
       ctx.arc(sx, sy, 2.5, 0, Math.PI * 2);
-      ctx.fillStyle = '#3273f5';
+      ctx.fillStyle = selColor;
       ctx.fill();
       continue;
     }
@@ -1129,7 +1150,7 @@ function drawHandles(ctx: CanvasRenderingContext2D, cam: Camera): void {
       // параметр тела — залитая точка, отличается от ручек размера и узлов
       ctx.beginPath();
       ctx.arc(sx, sy, 5.5, 0, Math.PI * 2);
-      ctx.fillStyle = '#3273f5';
+      ctx.fillStyle = selColor;
       ctx.fill();
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = 2;
@@ -1137,13 +1158,8 @@ function drawHandles(ctx: CanvasRenderingContext2D, cam: Camera): void {
       continue;
     }
     if (h.kind === 'rotate' && (el.type === 'shape' || el.type === 'image')) {
-      // кнопка у левого верхнего угла: белый круг с иконкой «дуга со стрелками»
-      const R = 11;
-      ctx.beginPath();
-      ctx.arc(sx, sy, R, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-      drawRotateIcon(ctx, sx, sy);
+      // у левого верхнего угла: только иконка «дуга со стрелками», без круга
+      drawRotateIcon(ctx, sx, sy, (el.rot ?? 0) - Math.PI / 4);
       continue;
     }
     // end/node
@@ -1155,12 +1171,16 @@ function drawHandles(ctx: CanvasRenderingContext2D, cam: Camera): void {
 }
 
 /** Иконка поворота: дуга с наконечниками стрелок на обоих концах. */
-function drawRotateIcon(ctx: CanvasRenderingContext2D, cx: number, cy: number): void {
+function drawRotateIcon(ctx: CanvasRenderingContext2D, cx: number, cy: number, angle = 0): void {
   const r = 5.5;
   const a0 = Math.PI * 1.15, a1 = Math.PI * 1.85; // дуга над центром
   ctx.save();
-  ctx.strokeStyle = '#3273f5';
-  ctx.fillStyle = '#3273f5';
+  // иконка наклонена на −45° и поворачивается вместе с фигурой
+  ctx.translate(cx, cy);
+  ctx.rotate(angle);
+  ctx.translate(-cx, -cy);
+  ctx.strokeStyle = selColor;
+  ctx.fillStyle = selColor;
   ctx.lineWidth = 1.5;
   ctx.lineCap = 'round';
   ctx.beginPath();
@@ -1185,7 +1205,7 @@ function drawRotateIcon(ctx: CanvasRenderingContext2D, cx: number, cy: number): 
 /** Ручки общего прямоугольника выделения — квадратики по углам и серединам сторон. */
 function drawBoxHandles(ctx: CanvasRenderingContext2D, cam: Camera, box: AABB): void {
   ctx.fillStyle = '#ffffff';
-  ctx.strokeStyle = '#3273f5';
+  ctx.strokeStyle = selColor;
   ctx.lineWidth = 1.5;
   for (const { x, y } of boxHandles(box, cam.zoom)) {
     const sx = (x - cam.x) * cam.zoom;
@@ -1359,11 +1379,15 @@ function drawContent(ctx: CanvasRenderingContext2D, cache: SceneCache, cam: Came
   if (state.fadeStrokes.length > 0) drawFadeStrokes(ctx);
 }
 
+/** Цвет своего выделения на этот кадр: задаётся курсором пользователя (SPEC_NIGHT4 §4). */
+let selColor = '#3273f5';
+
 const mainFlash: FlashScratch = { shape: document.createElement('canvas'), ring: document.createElement('canvas') };
 
 function draw(): void {
   if (!ctx || !canvas) return;
   const cam = state.camera;
+  selColor = mySelectionColor();
   if (cam !== lastCamRef) {
     lastCamRef = cam;
     lastCamChange = performance.now();
@@ -1393,7 +1417,7 @@ function draw(): void {
     ctx.setLineDash([]);
   }
   if (state.selection.size > 0) {
-    ctx.strokeStyle = '#3273f5';
+    ctx.strokeStyle = selColor;
     ctx.lineWidth = 1.5;
     const selected = state.board.elements.filter(el => state.selection.has(el.id) && el.id !== state.hideElId);
     if (selected.length > 1) {
@@ -1415,8 +1439,8 @@ function draw(): void {
   if (state.guides.length > 0) drawGuides(ctx, cam);
   if (state.marquee) {
     const m = state.marquee;
-    ctx.strokeStyle = '#3273f5';
-    ctx.fillStyle = 'rgba(50,115,245,0.06)';
+    ctx.strokeStyle = selColor;
+    ctx.fillStyle = hexA(selColor, 0.06);
     ctx.lineWidth = 1;
     const x = Math.min(m.x0, m.x1);
     const y = Math.min(m.y0, m.y1);
@@ -1444,8 +1468,10 @@ function draw(): void {
     ctx.strokeStyle = '#7a828e';
     ctx.lineWidth = 1.25;
     ctx.beginPath();
-    ctx.arc(state.hover.x, state.hover.y, PART_ERASE_R, 0, Math.PI * 2);
+    const er = eraserRadius();
+    ctx.arc(state.hover.x, state.hover.y, er, 0, Math.PI * 2);
     ctx.stroke();
+    if (!eraserSettled(er)) requestRender(); // гоним кадры, пока кружок сжимается
   }
   drawSpread(ctx, cam, cssW);
   drawLaser(ctx);
@@ -1545,7 +1571,7 @@ function drawPresent(camSettled: boolean): void {
       c.strokeStyle = '#7a828e';
       c.lineWidth = 1.25;
       c.beginPath();
-      c.arc(x, y, PART_ERASE_R * k, 0, Math.PI * 2);
+      c.arc(x, y, eraserRadius() * k, 0, Math.PI * 2);
       c.stroke();
     } else if (state.tool === 'eraser') {
       drawEraser(c, x, y);
@@ -1841,7 +1867,6 @@ function drawLaser(ctx: CanvasRenderingContext2D): void {
   if (busy) requestRender(); // гоним кадры, пока след гаснет
 }
 
-export const partEraseRadius = PART_ERASE_R;
 export function contentBBox(elements: Element[]) {
   let x0 = Infinity;
   let y0 = Infinity;

@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { PlanTier } from '../src/types';
 import { PLAN_LIMITS, isPlanTier } from '../src/limits';
+import { DEFAULT_CURSOR_ID, isCursorId } from '../src/cursors';
 import type { Db, UserRow } from './db';
 
 export const sha256Hex = (s: string): string => createHash('sha256').update(s).digest('hex');
@@ -25,14 +26,24 @@ export function limitsFor(plan: PlanTier) {
   };
 }
 
+/** Аноним — ни одного способа входа (только токен устройства). */
+export function isAnonymousUser(user: UserRow): boolean {
+  return user.tg_id === null && user.email === null && user.google_sub === null;
+}
+
 export function userInfo(user: UserRow, now: number) {
   return {
     id: user.id,
     displayName: user.display_name,
     tgUsername: user.tg_username,
     avatarUrl: user.avatar_url,
-    isAnonymous: user.tg_id === null,
+    isAnonymous: isAnonymousUser(user),
     plan: effectivePlan(user, now),
+    cursorId: isCursorId(user.cursor_id) ? user.cursor_id : DEFAULT_CURSOR_ID,
+    nameCustom: user.name_custom === 1,
+    email: user.email,
+    telegram: user.tg_id !== null,
+    google: user.google_sub !== null,
   };
 }
 

@@ -12,7 +12,7 @@ import { verifySession } from './auth';
 import type { AppContext } from './context';
 import { findActiveInvite, type InviteRights } from './invites';
 import { getActiveProject, getProjectRow, mergeStale, ownerPlanOf, projectOf, writeProject } from './projects';
-import { getUser } from './users';
+import { effectivePlan, getUser, isAnonymousUser } from './users';
 
 // Облачные комнаты (Cloud Rooms): серверный хаб из src/room-host.ts. Проект и настоящие ответы заданий живут в памяти
 // сервера, участникам-гостям уходят только замаскированные задания. На pro и tutor комната живёт без автора.
@@ -231,10 +231,12 @@ export function createCloudRooms(app: AppContext, attach: { onUpgrade(fn: (req: 
 
     const sock = new WsRoomSocket(ws, makePreprocess(app, user?.id ?? null));
     const conn: Conn = { sock, isHost: isOwner, inviteToken: invite?.token ?? null };
-    const name = normalizeName(hello.name) || (user && user.tg_id ? user.display_name : '');
+    const name = normalizeName(hello.name) || (user && (!isAnonymousUser(user) || user.name_custom === 1) ? user.display_name : '');
     if (invite) room.inviteAllowCopy = invite.allowCopy;
+    // Pro-курсор — только при эффективном тарифе pro/tutor того, чья это сессия (гость без сессии — классический)
+    const allowProCursor = !!user && effectivePlan(user, app.now()) !== 'free';
     const uid = room.hub.attach(sock, {
-      isHost: isOwner, name,
+      isHost: isOwner, name, cursorId: hello.cursorId, allowProCursor,
       ...(invite ? { rights: guestRights(room.hub.room.project ?? projectOf(row), invite) } : {}),
     });
     if (uid === null) { if (room.conns.size === 0) unload(room); return; } // хаб отказал и сам закрыл сокет

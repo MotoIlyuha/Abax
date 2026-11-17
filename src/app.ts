@@ -33,10 +33,14 @@ import * as pdfjsLib from 'pdfjs-dist';
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker&inline';
 import { collabActive, isHost, myColor, noteSelection, readOnly, startHostConnection, stopCollab } from './collab';
 import { closePresent, openPresent, presentOpen } from './present';
+import { renderProfileSettings } from './profile-settings';
+import { cursorSvg } from './cursors';
+import { authErrorText, type AuthOutcome } from './auth';
+import { myCursorId, onProfileChange, profileName } from './profile';
 import { type ToolbarGroup, onToolbarChange, restoreToolbar, svg, toolDef, toolTip, toolUsesColor, toolbarConfig } from './toolbar';
 import { canDropTool, toolDropElement } from './tool-drop';
 import {
-  addSettingsSection, openSettingsDialog, removeSettingsSection, settingsDialogOpen, type SettingsSection,
+  addSettingsSection, lastSettingsSection, openSettingsDialog, removeSettingsSection, settingsDialogOpen, type SettingsSection,
 } from './settings-dialog';
 import { experimentalHeadIcon, experimentsShown, renderExperimental, setExperimentsShown, setRecursionDiscovered } from './experimental';
 import { renderToolbarEditor } from './toolbar-editor';
@@ -2144,10 +2148,56 @@ function openSettings(): void {
   pop.style.top = `${br.bottom + 6}px`;
 }
 
+const PROFILE_ICON = svg('<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.8-3.6 3.6-5.5 7-5.5s6.2 1.9 7 5.5"/>');
+
+/** Кнопка профиля в шапке домашнего экрана: мини-курсор и имя; открывает раздел «Профиль». */
+function profileButton(): HTMLButtonElement {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'home-profile';
+  b.title = 'Профиль: имя, курсор и вход';
+  const icon = document.createElement('span');
+  icon.className = 'home-profile-cursor';
+  icon.innerHTML = cursorSvg(myCursorId(), { size: 22 });
+  const name = document.createElement('span');
+  name.className = 'home-profile-name';
+  name.textContent = profileName() || 'Профиль';
+  b.append(icon, name);
+  b.addEventListener('click', () => openAllSettings('profile'));
+  return b;
+}
+
+/** Сообщение о входе для раздела «Профиль» (вернулись от провайдера в настройки). */
+let profileNotice: { text: string; kind: 'error' | 'info'; until: number } | null = null;
+
+/**
+ * Сообщение о входе для «Профиля»: живёт несколько секунд — раздел перерисовывается, когда после запуска
+ * приходит ответ сервера об аккаунте, и сообщение не должно пропасть.
+ */
+export function takeProfileNotice(): { text: string; kind: 'error' | 'info' } | null {
+  if (!profileNotice || profileNotice.until < Date.now()) { profileNotice = null; return null; }
+  return { text: profileNotice.text, kind: profileNotice.kind };
+}
+
+/** Вернулись от провайдера входа, начатого в настройках: открыть «Профиль» и показать итог. */
+export function openProfileAfterAuth(outcome: AuthOutcome): void {
+  const until = Date.now() + 8000;
+  profileNotice = outcome.ok
+    ? { text: outcome.mode === 'link' ? 'Способ входа привязан' : 'Вы вошли в аккаунт', kind: 'info', until }
+    : { text: authErrorText(outcome.error ?? 'auth-failed'), kind: 'error', until };
+  openAllSettings('profile');
+}
+
 /** Окно «Все настройки»; section — раздел, с которого открыть (по умолчанию — последний открытый). */
 export function openAllSettings(section?: string): void {
   closeSettings();
   openSettingsDialog([
+    {
+      id: 'profile',
+      title: 'Профиль',
+      icon: PROFILE_ICON,
+      render: (host, rerender) => renderProfileSettings(host, rerender, { notice: takeProfileNotice() }),
+    },
     {
       id: 'general',
       title: 'Доска',
@@ -2175,7 +2225,8 @@ export function openAllSettings(section?: string): void {
     },
     { id: 'about', title: 'О проекте', icon: ICONS.info, render: host => renderAbout(host, showExperiments) },
     ...(experimentsShown() ? [EXPERIMENTAL] : []),
-  ], section);
+    // «Профиль» — первым в списке, но окно без явного раздела по-прежнему открывается на «Доске» (или на последнем)
+  ], section ?? (lastSettingsSection() || 'general'));
 }
 
 /** Скрытый раздел (см. experimental.ts): открывается, если задержать логотип в «О проекте». */
@@ -3942,7 +3993,7 @@ function renderHome(): void {
   newBtn.innerHTML = ICONS.plus;
   newBtn.append('Новый проект');
   newBtn.addEventListener('click', () => { void newProjectHandler(); });
-  tools.append(views, newBtn);
+  tools.append(views, newBtn, profileButton());
   head.append(logo, h, tools);
   home.appendChild(head);
   const pinned = state.projects.filter(m => m.pinned);
@@ -5083,7 +5134,7 @@ async function openShareDialog(): Promise<void> {
           await render();
           return;
         }
-        if (!r.connected) await startHostConnection(r.port!, r.code!, r.hostKey!, 'Автор');
+        if (!r.connected) await startHostConnection(r.port!, r.code!, r.hostKey!, profileName() || 'Автор');
         await render();
       });
       dlg!.appendChild(start);
@@ -5349,6 +5400,18 @@ export function initApp(c: HTMLCanvasElement): void {
   document.addEventListener('focusout', () => queueMicrotask(syncShapeCaret));
   try { refresh(); } catch (err) { console.error('[doska] refresh failed:', err); }
   onToolbarChange(() => {
+    buildToolbar();
+    syncGroupPanels();
+    refresh();
+    positionCtxPanels(true);
+  });
+  // кнопка «Выделение» показывает персональный курсор: сменился курсор (или право на него) — перестроить панель
+  // кнопка профиля на домашнем экране показывает имя и курсор
+  onProfileChange(() => { if (state.view === 'home') renderHome(); });
+  let shownCursor = myCursorId();
+  onProfileChange(() => {
+    if (myCursorId() === shownCursor) return;
+    shownCursor = myCursorId();
     buildToolbar();
     syncGroupPanels();
     refresh();

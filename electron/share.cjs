@@ -63,7 +63,7 @@ function createShareServer({ port, code, hostKey = newHostKey(), openEdit = proc
     if (proto !== null && proto !== String(PROTO)) { ws.close(4426, 'protocol mismatch'); return; }
     const isHost = u.searchParams.get('host') === '1';
     if (isHost && !safeEqual(u.searchParams.get('key'), hostKey)) { ws.close(4401, 'bad host key'); return; }
-    hub.attach(ws, { isHost, name: cleanName(u.searchParams.get('name')) });
+    hub.attach(ws, { isHost, name: cleanName(u.searchParams.get('name')), cursorId: u.searchParams.get('cursor') || undefined });
   });
 
   return new Promise((resolve, reject) => {

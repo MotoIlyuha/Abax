@@ -166,7 +166,7 @@ describe('гость', () => {
   it('имя участника с разметкой показывается как текст, а не HTML', async () => {
     await collab.startCollab(base, false, 'Ученик');
     await until(() => st.state.project.id === 'proj');
-    const evil = '<img src=x onerror="window.__pwned=1">';
+    const evil = '<img src=x onerror="__pwned=1">'; // не длиннее лимита имени (32)
     const other = await peer(`${base}&name=${encodeURIComponent(encodeURIComponent(evil))}`);
     peers.push(other);
     other.ws.send(JSON.stringify({ t: 'cursor', x: 10, y: 10, pageId: 'pg1' }));
@@ -178,7 +178,7 @@ describe('гость', () => {
     // цвет — свойство style, а не подстановка в разметку
     const span = label.querySelector('span')!;
     expect(span.style.background).not.toBe('');
-    expect(label.querySelector('i')!.style.borderColor).not.toBe('');
+    expect(label.querySelector<HTMLElement>('i.rc-arrow')!.style.color).not.toBe('');
   });
 
   it('метка «Отошёл» у бездействующего участника', async () => {
@@ -808,5 +808,54 @@ describe('указка в совместной работе', () => {
     await until(() => st.state.remoteLasers.size === 1);
     collab.stopCollab();
     expect(st.state.remoteLasers.size).toBe(0);
+  });
+});
+
+describe('персональные курсоры (Ночь №4)', () => {
+  const setProfileRaw = (p: Record<string, unknown>) => localStorage.setItem('doska.profile', JSON.stringify({ name: '', cursorId: 'default', onboarded: true, updatedAt: 1, ...p }));
+
+  it('свой курсор уходит параметром подключения, чужой виден с бейджем своего цвета', async () => {
+    setProfileRaw({ cursorId: 'mint' });
+    await collab.startCollab(base, false, 'Ученик');
+    await until(() => st.state.project.id === 'proj');
+    await until(() => [...server.room.clients.values()].some(c => (c as unknown as { cursorId?: string }).cursorId === 'mint'));
+    const other = await peer(`${base}&name=Аня&cursor=coral`);
+    peers.push(other);
+    other.ws.send(JSON.stringify({ t: 'cursor', x: 10, y: 10, pageId: 'pg1' }));
+    const el = await until(() => document.querySelector<HTMLElement>('#remote-cursors .remote-cursor'));
+    expect(el.querySelector('svg path')!.getAttribute('fill')).toBe('#ffa8a8');
+    const label = el.querySelector('span')!;
+    expect(label.textContent).toBe('Аня');
+    expect(label.style.background).toBe('rgb(201, 42, 42)'); // badgeBg «Коралла»
+    // узел не пересоздаётся при движении
+    other.ws.send(JSON.stringify({ t: 'cursor', x: 30, y: 10, pageId: 'pg1' }));
+    await until(() => el.style.left === '30px');
+    expect(document.querySelector('#remote-cursors .remote-cursor')).toBe(el);
+    // рамка выделения — цвет выделения его курсора
+    other.ws.send(JSON.stringify({ t: 'selection', ids: ['a'], pageId: 'pg1' }));
+    await until(() => collab.foreignSelections().length === 1);
+    expect(collab.foreignSelections()[0].color).toBe('#e03131');
+  });
+
+  it('без курсора (старая версия) — классическая стрелка и цвет от хаба', async () => {
+    await collab.startCollab(base, false, 'Ученик');
+    await until(() => st.state.project.id === 'proj');
+    const other = await peer(`${base}&name=Старый&cursor=%3Cx%3E`);
+    peers.push(other);
+    other.ws.send(JSON.stringify({ t: 'cursor', x: 10, y: 10, pageId: 'pg1' }));
+    const el = await until(() => document.querySelector<HTMLElement>('#remote-cursors .remote-cursor'));
+    expect(el.querySelector('svg path')!.getAttribute('fill')).toBe('#ffffff');
+    expect(el.querySelector('span')!.style.background).not.toBe('');
+  });
+
+  it('смена профиля на лету доходит до остальных', async () => {
+    setProfileRaw({ name: 'Ученик', cursorId: 'default' });
+    await collab.startCollab(base, false, 'Ученик');
+    await until(() => st.state.project.id === 'proj');
+    const other = await peer(`${base}&name=Аня`);
+    peers.push(other);
+    const profile = await import('../../src/profile');
+    profile.setProfile({ name: 'Бодрый Енот', cursorId: 'lavender' });
+    await until(() => last(other, 'users')?.users.some((u: Msg) => u.name === 'Бодрый Енот' && u.cursorId === 'lavender'));
   });
 });

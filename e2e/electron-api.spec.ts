@@ -19,7 +19,8 @@ test.describe('режим Electron (doskaAPI)', () => {
     const [saved] = [...host.store.values()];
     expect(saved.name).toBe('Проект 1');
     expect(saved.pages[0].elements).toHaveLength(1);
-    const lsKeys = await page.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('doska.p')));
+    // doska.profile — профиль пользователя (Ночь №4), не проект
+    const lsKeys = await page.evaluate(() => Object.keys(localStorage).filter(k => k.startsWith('doska.p') && k !== 'doska.profile'));
     expect(lsKeys).toEqual([]);
 
     await page.reload();

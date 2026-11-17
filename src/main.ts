@@ -15,8 +15,12 @@ import { joinCloudInvite, watchOwnerRoom } from './cloud-room';
 import { cloudEnabled } from './api-client';
 import { localGuestTransport, localRoomCode } from './local-transport';
 import { startLocalRoom } from './browser-host';
-import { syncPlanFromServer } from './api-client';
 import { initCloudSync, mergeRemoteMetas, openFresh, startBackgroundSync } from './cloud-sync';
+import { myCursorId, profileName } from './profile';
+import { startProfileSync, syncAccount } from './profile-sync';
+import { completePendingAuth, type AuthOutcome } from './auth';
+import { needsOnboarding, openOnboarding } from './onboarding';
+import { openProfileAfterAuth } from './app';
 
 /** Уведомление гостю, когда комната закрылась или отказала. */
 function watchGuestClose(): void {
@@ -41,12 +45,12 @@ async function boot(): Promise<void> {
   if (roomCode || invite) {
     // имя из URL (тестовое окно) или автогенерация — БЕЗ window.prompt,
     // который блокирует boot в Electron BrowserWindow
-    const name = q.get('name') || invite?.name || `Гость ${Math.floor(Math.random() * 90 + 10)}`;
+    const name = q.get('name') || invite?.name || profileName() || `Гость ${Math.floor(Math.random() * 90 + 10)}`;
     // подписка до подключения: отказ может прийти сразу после открытия канала
     watchGuestClose();
     const localCode = localRoomCode(roomCode);
-    if (invite) await connectCollab(cloudTransport(invite.relayUrl, invite.room, invite.key, name, relayNotice), false);
-    else if (localCode) await connectCollab(localGuestTransport(localCode, name), false);
+    if (invite) await connectCollab(cloudTransport(invite.relayUrl, invite.room, invite.key, name, relayNotice, myCursorId()), false);
+    else if (localCode) await connectCollab(localGuestTransport(localCode, name, undefined, myCursorId()), false);
     else await startCollab(`ws://${location.host}/ws?code=${encodeURIComponent(roomCode!)}`, false, name);
     setStorage(netStorage);
     initRenderer(canvas);
@@ -74,6 +78,9 @@ async function boot(): Promise<void> {
     },
   });
 
+  // вернулись от провайдера входа (#abaxAuth=…) — завершить вход до открытия доски
+  const authOutcome = viewRoute ? null : await completePendingAuth();
+
   let metas = await storage.list();
   if (viewRoute) {
     state.projects = metas;
@@ -85,7 +92,7 @@ async function boot(): Promise<void> {
       // приглашение /j/:token: гость входит в облачную комнату; не вышло — проект для чтения; не открылось — обычная доска
       state.projects = metas;
       watchGuestClose();
-      const outcome = await joinCloudInvite(route.token, q.get('name') || `Гость ${Math.floor(Math.random() * 90 + 10)}`);
+      const outcome = await joinCloudInvite(route.token, q.get('name') || profileName() || `Гость ${Math.floor(Math.random() * 90 + 10)}`);
       if (outcome === 'room') {
         setStorage(netStorage);
         initRenderer(canvas);
@@ -124,7 +131,10 @@ async function boot(): Promise<void> {
   // обновления — только здесь: гость совместной работы (ветка выше) открыл приложение автора
   startUpdateChecks();
   // тариф с сервера и начальная синхронизация проектов (без настроенного облака — ничего не делают)
-  void syncPlanFromServer().then(() => startBackgroundSync());
+  // тариф и профиль аккаунта (SPEC_NIGHT4 §8), затем фоновая синхронизация проектов
+  void syncAccount().then(() => { startBackgroundSync(); startProfileSync(); });
+  // вошли или вышли без перезагрузки (почта, выход) — проекты аккаунта появляются в списке
+  document.addEventListener('doska:account-changed', () => startBackgroundSync());
   // автор подключается к облачной комнате своего проекта, пока у проекта есть приглашение
   if (!viewRoute) watchOwnerRoom();
   if (viewRoute) {
@@ -148,12 +158,33 @@ async function boot(): Promise<void> {
 
   // отладочный доступ для smoke-тестов
   (window as unknown as Record<string, unknown>).__doska = { state, undo, redo, requestRender, importPdfFromDataUrl, startLocalRoom };
+
+  // окно первого входа — на обычной доске (не в просмотре по ссылке), когда интерфейс уже показан
+  if (!viewRoute) afterStartup = () => startOnboarding(authOutcome);
+}
+
+/** Что сделать, когда экран загрузки скрыт. */
+let afterStartup: (() => void) | null = null;
+
+/** Окно первого входа: возврат от провайдера (шаг 2 или ошибка на шаге 1), раздел «Профиль» или первое знакомство. */
+function startOnboarding(outcome: AuthOutcome | null): void {
+  const resume = outcome?.resume ?? null;
+  if (outcome && resume?.where === 'onboarding') {
+    openOnboarding({ step: outcome.ok ? 2 : 1, resume, error: outcome.ok ? null : outcome.error });
+  } else if (outcome && resume?.where === 'settings') {
+    openProfileAfterAuth(outcome);
+  } else if (needsOnboarding()) {
+    openOnboarding();
+  }
 }
 
 void boot().then(() => {
   // Дождаться отрисовки холста, прежде чем открывать готовый интерфейс.
   requestAnimationFrame(() => requestAnimationFrame(() => {
     document.getElementById('startup')!.hidden = true;
+    const next = afterStartup;
+    afterStartup = null;
+    next?.();
   }));
 }).catch((error: unknown) => {
   console.error('Не удалось запустить приложение', error);

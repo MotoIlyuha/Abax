@@ -63,7 +63,7 @@ export function wsTransport(url: string): CollabTransport {
  * (серверу нужно их понимать, он хранит проект и проверяет ответы), без шифрования ключом комнаты.
  * Первым сообщением представляемся: версия протокола, имя и доступ — приглашение (гость) или сессия (автор).
  */
-export function cloudRoomTransport(apiBase: string, roomCode: string, hello: { name: string; invite?: string; session?: string }): CollabTransport {
+export function cloudRoomTransport(apiBase: string, roomCode: string, hello: { name: string; invite?: string; session?: string; cursorId?: string }): CollabTransport {
   const ws = new WebSocket(`${apiBase.replace(/^http/i, 'ws')}/ws/room/${encodeURIComponent(roomCode)}`);
   const t: CollabTransport = {
     send(data) {
@@ -99,7 +99,7 @@ const RELAY_NOTICE = '{"t":"relay"';
  * сообщением представляемся автору: имя, версия протокола и идентификатор сеанса шифрования.
  * WebCrypto асинхронный — отправка и приём идут через очереди, порядок сообщений сохраняется.
  */
-export function cloudTransport(relayUrl: string, room: string, rawKey: Uint8Array, name: string, onRelay?: (ev: RelayEvent) => void): CollabTransport {
+export function cloudTransport(relayUrl: string, room: string, rawKey: Uint8Array, name: string, onRelay?: (ev: RelayEvent) => void, cursorId?: string): CollabTransport {
   const ws = new WebSocket(`${relayUrl}/g/${encodeURIComponent(room)}`);
   ws.binaryType = 'arraybuffer';
   const sid = randomBytes(SID_BYTES);
@@ -130,7 +130,7 @@ export function cloudTransport(relayUrl: string, room: string, rawKey: Uint8Arra
     onclose: null,
   };
   ws.onopen = () => {
-    enqueueSend('hello', ZERO_SID, 0, JSON.stringify({ t: 'hello', proto: PROTO, name, sid: bytesToBase64url(sid) }));
+    enqueueSend('hello', ZERO_SID, 0, JSON.stringify({ t: 'hello', proto: PROTO, name, sid: bytesToBase64url(sid), ...(cursorId ? { cursorId } : {}) }));
     // onopen — после hello в очереди: первые сообщения комнаты уйдут уже после знакомства
     sending = sending.then(() => t.onopen?.());
   };

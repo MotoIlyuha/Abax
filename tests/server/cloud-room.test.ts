@@ -409,3 +409,33 @@ describe('картинки, REST и закрытие сервера', () => {
     expect(JSON.parse((data.prepare('SELECT data_json FROM projects WHERE id = ?').get('a') as { data_json: string }).data_json).pages[1].elements).toHaveLength(2);
   });
 });
+
+describe('персональные курсоры в облачной комнате (Ночь №4)', () => {
+  const cursorOf = (p: Peer, name: string) => p.last('users')?.users.find((u: Msg) => u.name === name)?.cursorId;
+
+  it('Pro-курсор — только при тарифе pro/tutor по сессии; без сессии и на free — классический', async () => {
+    const { app, owner } = await setup();
+    const host = join(app, 'a', { session: owner.token, name: 'Автор', cursorId: 'neon' });
+    await until(() => host.last('init'));
+    await until(() => cursorOf(host, 'Автор') === 'neon');
+    // гость без сессии
+    const g1 = join(app, 'a', { invite: 'inv-edit', name: 'Маша', cursorId: 'gold' });
+    await until(() => g1.last('init'));
+    await until(() => cursorOf(host, 'Маша') === 'default');
+    // гость с сессией на free и с сессией на pro
+    const free = await anon(app);
+    const g2 = join(app, 'a', { invite: 'inv-edit', session: free.token, name: 'Петя', cursorId: 'flame' });
+    await until(() => g2.last('init'));
+    await until(() => cursorOf(host, 'Петя') === 'default');
+    const paid = await anon(app);
+    setPlan(app, paid.id, 'tutor');
+    const g3 = join(app, 'a', { invite: 'inv-edit', session: paid.token, name: 'Оля', cursorId: 'flame' });
+    await until(() => g3.last('init'));
+    await until(() => cursorOf(host, 'Оля') === 'flame');
+    // бесплатный курсор — всем; смена на лету тоже проверяет тариф
+    g1.send({ t: 'profile', cursorId: 'mint' });
+    await until(() => cursorOf(host, 'Маша') === 'mint');
+    g1.send({ t: 'profile', cursorId: 'aurora' }); // Pro без права — классический, как при входе
+    await until(() => cursorOf(host, 'Маша') === 'default');
+  });
+});

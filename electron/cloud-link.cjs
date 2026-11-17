@@ -187,7 +187,7 @@ function createCloudLink(options) {
     const sock = new GuestSocket(link, conn, sid);
     guests.set(conn, sock);
     sock.once('close', () => { if (guests.get(conn) === sock) guests.delete(conn); });
-    o.attach(sock, { isHost: false, name: typeof m.name === 'string' ? m.name : '' });
+    o.attach(sock, { isHost: false, name: typeof m.name === 'string' ? m.name : '', cursorId: m.cursorId });
   }
 
   function onData(data) {

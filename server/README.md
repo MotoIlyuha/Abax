@@ -31,7 +31,8 @@ npm run server:plan -- <userId | tg:<id>> pro 30    # выдать тариф н
 
 | Область | Маршруты |
 | --- | --- |
-| Вход | `POST /api/auth/anon` (токен устройства), `POST /api/auth/telegram` (Telegram Login Widget, подпись HMAC), `POST /api/auth/logout`, `GET /api/me` |
+| Вход | `POST /api/auth/anon` (токен устройства), `POST /api/auth/telegram` (Telegram Login, подпись HMAC), `POST /api/auth/logout`, `GET /api/me`, `PATCH /api/me` (имя и курсор) |
+| Способы входа (Ночь №4) | `GET /api/auth/providers`; почта — `POST /api/auth/email/start` и `/verify` (6-значный код, 10 минут, 5 попыток); Telegram и Google — `POST /api/auth/flow` → переход на сайт провайдера → возврат `#abaxAuth=` → `POST /api/auth/flow/complete` (оба провайдера — OpenID Connect, Authorization Code + PKCE); режимы `login` (вход, слияние анонима) и `link` (привязка к текущему аккаунту, `409 identity-taken`, если способ у другого). Dev-провайдеры — `ABAX_DEV_AUTH=1` (в `npm run dev:cloud` включены, если нет ключей) |
 | Проекты | `GET /api/projects`, `GET/PUT/DELETE /api/projects/:id`, `POST /api/projects/:id/patch`, `POST /api/projects/:id/clone` |
 | Картинки | `POST /api/assets` (`{dataUrl}`), `GET /api/assets/:hash` (по хэшу SHA-256 от строки data URL) |
 | Приглашения | `POST /api/invites`, `GET /api/invites?projectId=`, `DELETE /api/invites/:token`, `GET /api/invites/:token` и `GET /j/:token` (JSON) |
@@ -47,6 +48,63 @@ npm run server:plan -- <userId | tg:<id>> pro 30    # выдать тариф н
   выносится в хранилище, адреса картинок из интернета и чужие схемы стираются.
 - Картинки отдаются с `nosniff` и `Content-Security-Policy: default-src 'none'; sandbox`; SVG — только как скачивание.
 - Создание анонимных пользователей ограничено по адресу (30 в час), подключения к комнатам — 120 в минуту.
+
+## Вход через Google
+
+Используется OpenID Connect (Authorization Code + PKCE S256 + `nonce`) по документации Google
+([OpenID Connect](https://developers.google.com/identity/openid-connect/openid-connect),
+[OAuth 2.0 для веб-серверов](https://developers.google.com/identity/protocols/oauth2/web-server)); браузер уходит на
+`accounts.google.com`, код меняется на токены сервером (`oauth2.googleapis.com/token`, с `client_secret`), в `id_token`
+проверяются `iss`, `aud`, `exp`, `nonce`; пользователь определяется по `sub` (не по почте — так советует Google).
+
+1. [Google Cloud Console → Branding](https://console.developers.google.com/auth/branding): название приложения, почта поддержки
+   (экран согласия). Пока приложение в режиме тестирования, войти могут только тестовые пользователи (Audience → Test users).
+   Области `openid email profile` — несенситивные, проверка Google для них не нужна.
+2. [Clients → Create client](https://console.developers.google.com/auth/clients), тип **Web application**.
+   **Authorized redirect URIs** — точный адрес (схема, хост, порт, путь):
+   - разработка: `http://localhost:5173/api/auth/google/callback` (открывайте приложение именно по `localhost`, не `127.0.0.1`);
+   - прод: `https://<домен API>/api/auth/google/callback` (только https и доменное имя, не IP).
+   Секрет показывается один раз — сохраните его.
+3. Разработка: в корне репозитория файл `.env.local` (в git не попадает):
+   ```
+   GOOGLE_CLIENT_ID=….apps.googleusercontent.com
+   GOOGLE_CLIENT_SECRET=…
+   ```
+   и `npm run dev:cloud` — кнопка «Google» ведёт на настоящий Google (Telegram и почта остаются dev-заглушками, если их ключей нет).
+4. Прод: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `PUBLIC_API_URL=https://<домен API>` (из него строится redirect URI),
+   `PUBLIC_WEB_URL` (или `ALLOWED_ORIGINS`) — адрес веб-клиента, куда возвращать после входа.
+
+Ошибка `redirect_uri_mismatch` на странице Google — адрес в консоли не совпадает символ в символ с
+`<PUBLIC_API_URL или адрес, по которому открыт сервер>/api/auth/google/callback`.
+
+## Вход через Telegram
+
+OpenID Connect по документации Telegram ([Log In With Telegram](https://core.telegram.org/widgets/login),
+discovery — `https://oauth.telegram.org/.well-known/openid-configuration`), без скрипта виджета (строгий CSP):
+браузер уходит на `https://oauth.telegram.org/auth` (`scope=openid profile`, `state`, PKCE S256), код меняется на токены
+сервером (`https://oauth.telegram.org/token`, `Authorization: Basic base64(client_id:client_secret)`, `code_verifier`).
+Подпись `id_token` проверяется обязательно — по ключам `https://oauth.telegram.org/.well-known/jwks.json` (RS256 по
+умолчанию; ES256 и EdDSA тоже поддержаны), затем `iss = https://oauth.telegram.org`, `aud` = ID бота, `exp`.
+Аккаунт — по числовому `id` пользователя Telegram (claim `id`), поэтому прежние входы через виджет узнаются.
+
+1. В @BotFather откройте мини-приложение, выберите бота → **Login Widget** → добавьте **Allowed URLs**: адрес веб-клиента
+   (`https://<домен>`) и redirect URI `https://<домен API>/api/auth/telegram/callback` (точно этот путь).
+   Там же — **Client ID** (ID бота) и **Client Secret**. Алгоритм подписи по умолчанию (RS256) менять не нужно; EdDSA и
+   ES256K запрещают scope `profile`, без него не будет имени и `id` — вход не пройдёт.
+2. Переменные: `TELEGRAM_CLIENT_SECRET` (обязательно), `TELEGRAM_CLIENT_ID` (если не задан — берётся из `TELEGRAM_BOT_TOKEN`,
+   часть до «:»), `PUBLIC_API_URL` (из него строится redirect URI), `PUBLIC_WEB_URL` / `ALLOWED_ORIGINS`.
+3. Разработка: Telegram не принимает `http://localhost` в Allowed URLs («Domain is invalid») — нужен https-домен.
+   Покупать его не обязательно: бесплатный туннель, например ngrok со статическим доменом бесплатного тарифа
+   (`ngrok http 5173 --url=<имя>.ngrok-free.app`). В `.env.local`:
+   ```
+   PUBLIC_API_URL=https://<имя>.ngrok-free.app
+   TELEGRAM_CLIENT_SECRET=…
+   ```
+   `npm run dev:cloud` сам разрешит этот хост в Vite и использует его как адрес облака и адрес возврата;
+   в @BotFather → Login Widget → Allowed URLs — `https://<имя>.ngrok-free.app` и
+   `https://<имя>.ngrok-free.app/api/auth/telegram/callback`. Открывайте приложение по адресу туннеля.
+
+Старый `POST /api/auth/telegram` (данные Login Widget с подписью HMAC от `TELEGRAM_BOT_TOKEN`) оставлен для совместимости.
 
 ## Тарифы и лимиты
 

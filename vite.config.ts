@@ -7,6 +7,9 @@ const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 
 // облачный сервер: apiUrl из package.json, DOSKA_API_URL перекрывает (пустая строка — облако выключено)
 const apiUrl = (process.env.DOSKA_API_URL ?? (pkg.apiUrl || '')).trim();
 let apiOrigin = '';
+/** Внешнее имя dev-сервера за https-туннелем (для входа через Telegram/Google нужен настоящий https-домен). */
+let tunnelHost = '';
+try { tunnelHost = process.env.PUBLIC_API_URL ? new URL(process.env.PUBLIC_API_URL).hostname : ''; } catch { /* неверный адрес */ }
 try { apiOrigin = apiUrl ? new URL(apiUrl).origin : ''; } catch { /* неверный адрес — облако выключено на клиенте */ }
 
 /**
@@ -15,8 +18,11 @@ try { apiOrigin = apiUrl ? new URL(apiUrl).origin : ''; } catch { /* невер�
  * на сам dev-сервер (DOSKA_API_URL=http://localhost:5173) или задано ABAX_DEV_SERVER=1. Код сервера грузится
  * средствами Vite (TypeScript, импорты из src/ без расширений), в обычную сборку он не попадает.
  */
+/** Сервер Abax живёт внутри dev-сервера: тогда клиент ходит в API по адресу, с которого открыт (localhost или туннель). */
+const ownApi = process.env.ABAX_DEV_SERVER === '1' || /^https?:\/\/(localhost|127\.0\.0\.1):5173\/?$/.test(apiUrl);
+
 function abaxDevServer(): Plugin {
-  const own = process.env.ABAX_DEV_SERVER === '1' || /^https?:\/\/(localhost|127\.0\.0\.1):5173\/?$/.test(apiUrl);
+  const own = ownApi;
   return {
     name: 'abax-dev-server',
     apply: 'serve',
@@ -26,7 +32,10 @@ function abaxDevServer(): Plugin {
       let started: Promise<{ handler: (req: unknown, res: unknown) => void; handleUpgrade: (req: unknown, socket: unknown, head: unknown) => boolean; close: () => Promise<void> }> | null = null;
       const start = () => (started ??= (async () => {
         const { createAppServer } = await server.ssrLoadModule('/server/app.ts') as { createAppServer: (o: Record<string, unknown>) => any };
-        const { loadJwtSecret, truthy } = await server.ssrLoadModule('/server/config.ts') as { loadJwtSecret: (e: NodeJS.ProcessEnv, d: string) => string; truthy: (v?: string) => boolean };
+        const { loadJwtSecret, truthy, listEnv } = await server.ssrLoadModule('/server/config.ts') as { loadJwtSecret: (e: NodeJS.ProcessEnv, d: string) => string; truthy: (v?: string) => boolean; listEnv: (v?: string) => string[] };
+        const { mailerFromEnv, consoleMailer } = await server.ssrLoadModule('/server/mailer.ts') as { mailerFromEnv: (e: NodeJS.ProcessEnv) => unknown; consoleMailer: (log: (m: string) => void) => unknown };
+        const log = (m: string) => server.config.logger.info(`[abax] ${m}`);
+        const devAuth = truthy(process.env.ABAX_DEV_AUTH);
         const dataDir = resolve(process.env.DATA_DIR || '.data');
         const srv = createAppServer({
           dbPath: join(dataDir, 'abax.db'),
@@ -35,7 +44,17 @@ function abaxDevServer(): Plugin {
           telegramBotToken: process.env.TELEGRAM_BOT_TOKEN,
           enforceLimits: truthy(process.env.ABAX_ENFORCE_LIMITS),
           publicWebUrl: process.env.PUBLIC_WEB_URL || 'http://localhost:5173',
-          log: (m: string) => server.config.logger.info(`[abax] ${m}`),
+          // dev-провайдеры входа (npm run dev:cloud включает их, если нет настоящих ключей Telegram/Google)
+          devAuth,
+          // без настроенной почты коды входа печатаются в консоль dev-сервера (даже при настоящих ключах Telegram/Google)
+          mailer: mailerFromEnv(process.env) ?? consoleMailer(log),
+          googleClientId: process.env.GOOGLE_CLIENT_ID,
+          telegramClientId: process.env.TELEGRAM_CLIENT_ID,
+          telegramClientSecret: process.env.TELEGRAM_CLIENT_SECRET,
+          googleClientSecret: process.env.GOOGLE_CLIENT_SECRET,
+          publicApiUrl: process.env.PUBLIC_API_URL || '',
+          allowedOrigins: listEnv(process.env.ALLOWED_ORIGINS),
+          log,
         });
         server.config.logger.info(`[abax] сервер Abax подключён к dev-серверу, данные: ${dataDir}`);
         return srv;
@@ -54,7 +73,7 @@ function abaxDevServer(): Plugin {
   };
 }
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [abaxDevServer(), {
     // сервер на другом адресе должен быть разрешён в CSP страницы (connect-src)
     name: 'abax-csp-api',
@@ -62,12 +81,15 @@ export default defineConfig({
   }],
   base: './',
   build: { target: 'es2022', outDir: 'dist' },
-  server: { port: 5173, strictPort: true },
+  // через https-туннель (PUBLIC_API_URL=https://….ngrok-free.app) dev-сервер должен принимать его имя хоста
+  server: { port: 5173, strictPort: true, allowedHosts: tunnelHost ? [tunnelHost] : [] },
   define: {
     __APP_VERSION__: JSON.stringify(pkg.version),
     __DEFAULT_API_URL__: JSON.stringify(apiUrl),
+    // только `vite` (serve) с встроенным сервером Abax: API на том же адресе, что и страница; в сборке — false
+    __API_SAME_ORIGIN__: JSON.stringify(command === 'serve' && ownApi && !!apiUrl),
     // ретранслятор по умолчанию для автора в браузере — как в electron/main.cjs: relayUrl из package.json,
     // DOSKA_RELAY_URL перекрывает (пустая строка — без адреса по умолчанию)
     __DEFAULT_RELAY_URL__: JSON.stringify(process.env.DOSKA_RELAY_URL ?? (pkg.relayUrl || '')),
   },
-});
+}));

@@ -3,7 +3,10 @@ import type { IncomingMessage } from 'node:http';
 import type { AppContext } from './context';
 import type { UserRow } from './db';
 import { HttpError, type Ctx, type Reply, type Router } from './router';
-import { createUser, findByDevice, findByTelegram, getUser, meResponse, mergeUsers, sha256Hex } from './users';
+import { createUser, effectivePlan, findByDevice, getUser, meResponse, sha256Hex } from './users';
+import { resolveIdentity, type Identity } from './identity';
+import { canUseCursor, isCursorId } from '../src/cursors';
+import { normalizeName } from '../src/room-host';
 
 // Сессии (JWT HS256 на node:crypto), анонимный вход по токену устройства и проверка Telegram Login Widget.
 
@@ -129,11 +132,29 @@ export function signTelegramPayload(fields: Record<string, string | number>, bot
   return createHmac('sha256', createHash('sha256').update(botToken).digest()).update(lines.join('\n')).digest('hex');
 }
 
-const cleanName = (s: string): string => Array.from(s.replace(/[\p{Cc}\u2028\u2029\u202A-\u202E\u2066-\u2069]/gu, ' ').replace(/\s+/g, ' ').trim()).slice(0, 60).join('');
+/** Имя от провайдера входа: те же правила, что у имени участника комнаты (до MAX_NAME = 32 символов). */
+const cleanName = (s: string): string => normalizeName(s);
 
 // ----- Маршруты -----
 
-function sessionReply(app: AppContext, user: UserRow, status = 200): Reply {
+/**
+ * Данные Telegram Login (подпись уже проверена) → способ входа: id, имя (имя и фамилия, иначе username),
+ * username и аватар (только https).
+ */
+export function telegramIdentity(p: TelegramPayload): Identity {
+  const tgId = String(p.id);
+  if (!/^\d{1,20}$/.test(tgId)) throw new HttpError(400, 'bad-telegram-id');
+  const name = cleanName([p.first_name, p.last_name].filter((s): s is string => typeof s === 'string').join(' '))
+    || (typeof p.username === 'string' ? cleanName(p.username) : '') || 'Пользователь Telegram';
+  return {
+    provider: 'telegram', subject: tgId, displayName: name,
+    tgUsername: typeof p.username === 'string' ? cleanName(p.username) || null : null,
+    avatarUrl: typeof p.photo_url === 'string' && /^https:\/\//.test(p.photo_url) ? p.photo_url.slice(0, 500) : null,
+  };
+}
+
+/** Ответ входа: токен сессии, cookie и то же, что /api/me. */
+export function sessionReply(app: AppContext, user: UserRow, status = 200): Reply {
   const token = signSession(app.opts.jwtSecret, user.id, app.now());
   return {
     status,
@@ -164,32 +185,8 @@ export function registerAuthRoutes(router: Router): void {
     const payload = await ctx.body();
     if (!verifyTelegramLogin(payload, botToken, app.now())) throw new HttpError(401, 'bad-telegram-signature');
     const p = payload as TelegramPayload;
-    const tgId = String(p.id);
-    if (!/^\d{1,20}$/.test(tgId)) throw new HttpError(400, 'bad-telegram-id');
-    const name = cleanName([p.first_name, p.last_name].filter((s): s is string => typeof s === 'string').join(' ')) || (typeof p.username === 'string' ? cleanName(p.username) : '') || 'Пользователь Telegram';
-    const profile = {
-      tg_username: typeof p.username === 'string' ? cleanName(p.username) || null : null,
-      display_name: name,
-      avatar_url: typeof p.photo_url === 'string' && /^https:\/\//.test(p.photo_url) ? p.photo_url.slice(0, 500) : null,
-    };
-    const now = app.now();
-    const current = ctx.user; // анонимная сессия этого устройства, если есть
-    const anon = current && current.tg_id === null ? current : null;
-
-    let user = findByTelegram(app.db, tgId);
-    if (user) {
-      app.db.prepare('UPDATE users SET tg_username = ?, display_name = ?, avatar_url = ?, updated_at = ? WHERE id = ?')
-        .run(profile.tg_username, profile.display_name, profile.avatar_url, now, user.id);
-      if (anon) mergeUsers(app.db, anon.id, user.id, now);
-    } else if (anon) {
-      // аноним становится Telegram-пользователем на месте: проекты и приглашения остаются при нём
-      app.db.prepare('UPDATE users SET tg_id = ?, tg_username = ?, display_name = ?, avatar_url = ?, updated_at = ? WHERE id = ?')
-        .run(tgId, profile.tg_username, profile.display_name, profile.avatar_url, now, anon.id);
-      user = anon;
-    } else {
-      user = createUser(app.db, now, { tg_id: tgId, ...profile });
-    }
-    return sessionReply(app, getUser(app.db, user.id)!);
+    const user = resolveIdentity(app.db, telegramIdentity(p), 'login', ctx.user, app.now());
+    return sessionReply(app, user);
   });
 
   router.post('/api/auth/logout', ctx => ({ json: { ok: true }, headers: { 'Set-Cookie': clearedCookie(ctx.app) } }));
@@ -198,4 +195,27 @@ export function registerAuthRoutes(router: Router): void {
     const user = requireUser(ctx);
     return { json: meResponse(user, ctx.app.now(), ctx.app.opts.enforceLimits) };
   });
+
+  // профиль: своё имя и персональный курсор (SPEC_NIGHT4 §6)
+  router.patch('/api/me', async ctx => {
+    const app = ctx.app;
+    const user = requireUser(ctx);
+    const body = await ctx.body() as { displayName?: unknown; cursorId?: unknown } | undefined;
+    if (!body || typeof body !== 'object') throw new HttpError(400, 'bad-request');
+    const now = app.now();
+    let name: string | null = null;
+    let cursor: string | null = null;
+    if (body.displayName !== undefined) {
+      name = normalizeName(body.displayName);
+      if (!name) throw new HttpError(400, 'bad-name');
+    }
+    if (body.cursorId !== undefined) {
+      if (!isCursorId(body.cursorId)) throw new HttpError(400, 'bad-cursor');
+      if (!app.opts.devAuth && !canUseCursor(body.cursorId, effectivePlan(user, now))) throw new HttpError(403, 'plan-cursor');
+      cursor = body.cursorId;
+    }
+    if (name !== null) app.db.prepare('UPDATE users SET display_name = ?, name_custom = 1, updated_at = ? WHERE id = ?').run(name, now, user.id);
+    if (cursor !== null) app.db.prepare('UPDATE users SET cursor_id = ?, updated_at = ? WHERE id = ?').run(cursor, now, user.id);
+    return { json: meResponse(getUser(app.db, user.id)!, now, app.opts.enforceLimits) };
+  }, { maxBody: 4096 });
 }
