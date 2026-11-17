@@ -14,10 +14,10 @@ export interface LetterLimitOptions {
   limit: number;
   /** С какого остатка счётчик оранжевый. */
   near: number;
-  /** Куда класть слой с падающими буквами: элемент на весь экран (position: fixed). */
-  pileHost: HTMLElement;
+  /** Куда класть слой с падающими буквами (сам слой position: fixed на весь экран); спрашивается при первом падении. */
+  pileHost: () => HTMLElement;
   /** Под каким элементом лежит кучка: пол на 46 px ниже его нижнего края. */
-  floorEl: HTMLElement;
+  floorEl: () => HTMLElement;
 }
 
 export interface LetterLimit {
@@ -93,7 +93,7 @@ export function createLetterLimit(opts: LetterLimitOptions): LetterLimit {
       pile = document.createElement('div');
       pile.className = 'ob-pile';
       pile.setAttribute('aria-hidden', 'true');
-      pileHost.appendChild(pile);
+      pileHost().appendChild(pile);
     }
     return pile;
   }
@@ -101,7 +101,7 @@ export function createLetterLimit(opts: LetterLimitOptions): LetterLimit {
   function measure(): void {
     if (!pile) return;
     const p = pile.getBoundingClientRect();
-    const f = floorEl.getBoundingClientRect();
+    const f = floorEl().getBoundingClientRect();
     W = p.width;
     floorY = Math.min(f.bottom - p.top + 46, p.height - 14);
   }

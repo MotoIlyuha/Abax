@@ -277,7 +277,7 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
   nameInput.type = 'text';
   nameInput.setAttribute('autocomplete', 'nickname');
   nameInput.placeholder = placeholder;
-  const nameField = createLetterLimit({ input: nameInput, limit: NAME_LIMIT, near: NAME_NEAR, pileHost: root, floorEl: win });
+  const nameField = createLetterLimit({ input: nameInput, limit: NAME_LIMIT, near: NAME_NEAR, pileHost: () => root, floorEl: () => win });
   nameField.set(resume?.name ?? '');
   nameLabel.append(nameCaption, nameRowWithDice(nameInput, nameField.el), nameHint);
   const cursorCaption = el('div', 'ob-caption', 'Выберите свой курсор');

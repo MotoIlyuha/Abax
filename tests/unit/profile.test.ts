@@ -29,7 +29,7 @@ describe('профиль', () => {
     setProfile({ cursorId: 'nope' });
     expect(getProfile().cursorId).toBe('mint');
     setProfile({ name: 'x'.repeat(100) });
-    expect(getProfile().name).toHaveLength(40);
+    expect(getProfile().name).toHaveLength(32);
   });
 
   it('испорченная запись — значения по умолчанию', () => {

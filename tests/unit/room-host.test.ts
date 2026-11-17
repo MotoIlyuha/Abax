@@ -116,7 +116,7 @@ describe('подключение и лимит гостей', () => {
     expect(hub.attach(second, { isHost: true })).toBeNull();
     expect(second.closed?.code).toBe(4409);
     expect(normalizeName('  А\u202Eб \n в  ')).toBe('А б в');
-    expect(join('x'.repeat(100)).s.last('init')!.name).toHaveLength(40);
+    expect(join('x'.repeat(100)).s.last('init')!.name).toHaveLength(32);
   });
 });
 

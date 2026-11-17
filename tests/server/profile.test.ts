@@ -39,7 +39,7 @@ describe('GET/PATCH /api/me', () => {
     const me = await call(app, 'GET', '/api/me', undefined, { token: a.token });
     expect(me.body.user).toMatchObject({ displayName: 'Бодрый Енот', cursorId: 'mint' });
     const long = await call(app, 'PATCH', '/api/me', { displayName: 'я'.repeat(100) }, { token: a.token });
-    expect(Array.from(long.body.user.displayName)).toHaveLength(40);
+    expect(Array.from(long.body.user.displayName)).toHaveLength(32);
   });
 
   it('ошибки: без сессии 401, пустое имя, неизвестный курсор, Pro без тарифа', async () => {
@@ -90,10 +90,10 @@ describe('имя от Telegram и своё имя', () => {
     expect(again.body.user.displayName).toBe('Капибара');
   });
 
-  it('без своего имени имя берётся из Telegram (до 40 символов)', async () => {
+  it('без своего имени имя берётся из Telegram (до 32 символов)', async () => {
     const app = await makeApp();
     const t = await call(app, 'POST', '/api/auth/telegram', tgPayload(app.clock.t, { first_name: 'Ж'.repeat(50) }));
     expect(t.body.user.nameCustom).toBe(false);
-    expect(Array.from(t.body.user.displayName as string).length).toBeLessThanOrEqual(40);
+    expect(Array.from(t.body.user.displayName as string).length).toBeLessThanOrEqual(32);
   });
 });

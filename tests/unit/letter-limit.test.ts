@@ -47,7 +47,7 @@ describe('поле с лимитом символов', () => {
     const host = document.createElement('div');
     const floor = document.createElement('div');
     document.body.append(host, floor);
-    const f = createLetterLimit({ input, limit: 5, near: 2, pileHost: host, floorEl: floor });
+    const f = createLetterLimit({ input, limit: 5, near: 2, pileHost: () => host, floorEl: () => floor });
     host.appendChild(f.el);
     return { input, f, count: () => f.el.querySelector('.ob-limit-count')!.textContent };
   }

@@ -4,7 +4,8 @@
 import { getApi } from './api-client';
 import { AuthError, authErrorText, logout } from './auth';
 import { createCursorPicker } from './cursor-picker';
-import { initialChoice, previewLocked } from './onboarding-logic';
+import { createLetterLimit } from './letter-limit';
+import { NAME_LIMIT, NAME_NEAR, initialChoice, previewLocked } from './onboarding-logic';
 import { PROVIDER_ICONS, PROVIDER_NAMES, button, chooseProvider, emailForm, nameRowWithDice } from './onboarding';
 import { cursorEntitled, getProfile, setProfile } from './profile';
 import { account, onAccountChange, signedIn } from './profile-sync';
@@ -29,14 +30,19 @@ export function renderProfileSettings(host: HTMLElement, rerender: () => void, o
   // ----- имя -----
   const nameField = el('label', 'ps-field');
   nameField.appendChild(el('span', 'ps-caption', 'Имя'));
-  const name = el('input', 'ob-input ps-name');
+  // как в окне первого входа: без maxLength, лишнее отрезается и падает буквами (src/letter-limit.ts)
+  const name = el('input', 'ob-limit-input ps-name');
   name.type = 'text';
-  name.maxLength = 40;
-  name.value = profile.name;
   name.placeholder = 'Как вас называть в совместной работе';
-  name.addEventListener('change', () => { setProfile({ name: name.value }); name.value = getProfile().name; });
+  const limited = createLetterLimit({
+    input: name, limit: NAME_LIMIT, near: NAME_NEAR,
+    pileHost: () => host.closest<HTMLElement>('#settings-dialog') ?? document.body,
+    floorEl: () => host.closest<HTMLElement>('.sd-window') ?? host,
+  });
+  limited.set(profile.name);
+  name.addEventListener('change', () => { setProfile({ name: name.value }); limited.set(getProfile().name); });
   name.addEventListener('keydown', e => { if (e.key === 'Enter') name.blur(); });
-  nameField.append(nameRowWithDice(name), el('span', 'ps-hint', 'Его видят участники совместной работы рядом с вашим курсором.'));
+  nameField.append(nameRowWithDice(name, limited.el), el('span', 'ps-hint', 'Его видят участники совместной работы рядом с вашим курсором.'));
 
   // ----- курсор -----
   const cursorBlock = el('div', 'ps-block');
@@ -119,5 +125,5 @@ export function renderProfileSettings(host: HTMLElement, rerender: () => void, o
   host.appendChild(box);
   // вошли / вышли / сменился тариф — раздел перерисовывается
   const off = onAccountChange(() => rerender());
-  return { dispose: off };
+  return { dispose: () => { off(); limited.destroy(); } };
 }

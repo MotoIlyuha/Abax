@@ -3214,7 +3214,7 @@ form.ob-email { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin
 .ob-limit.is-full .ob-limit-fill { stroke: var(--danger); }
 .ob-limit.is-full .ob-limit-count { color: var(--danger); }
 /* буквы, которые не влезли: падают из окна и лежат кучкой под ним */
-.ob-pile { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.ob-pile { position: fixed; inset: 0; z-index: 1000; overflow: hidden; pointer-events: none; }
 .ob-pile span {
   position: absolute;
   left: 0;

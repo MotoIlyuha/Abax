@@ -132,7 +132,7 @@ export function signTelegramPayload(fields: Record<string, string | number>, bot
   return createHmac('sha256', createHash('sha256').update(botToken).digest()).update(lines.join('\n')).digest('hex');
 }
 
-/** Имя от провайдера входа: те же правила, что у имени участника комнаты (до MAX_NAME = 40 символов). */
+/** Имя от провайдера входа: те же правила, что у имени участника комнаты (до MAX_NAME = 32 символов). */
 const cleanName = (s: string): string => normalizeName(s);
 
 // ----- Маршруты -----

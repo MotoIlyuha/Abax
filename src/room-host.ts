@@ -16,7 +16,7 @@ export { PROTO };
 const COLORS = ['#e8590c', '#1971c2', '#2f9e44', '#9c36b5', '#0c8599', '#f08c00'];
 export const MAX_ID = 128;
 export const MAX_SELECTION = 10000;
-export const MAX_NAME = 40;
+export const MAX_NAME = 32;
 const DEFAULT_AWAY_MS = 45000;
 /** Причина отказа гостю в бесплатной комнате. */
 export const FREE_LIMIT_REASON = 'free-limit-reached';

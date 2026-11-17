@@ -166,7 +166,7 @@ describe('гость', () => {
   it('имя участника с разметкой показывается как текст, а не HTML', async () => {
     await collab.startCollab(base, false, 'Ученик');
     await until(() => st.state.project.id === 'proj');
-    const evil = '<img src=x onerror="window.__pwned=1">';
+    const evil = '<img src=x onerror="__pwned=1">'; // не длиннее лимита имени (32)
     const other = await peer(`${base}&name=${encodeURIComponent(encodeURIComponent(evil))}`);
     peers.push(other);
     other.ws.send(JSON.stringify({ t: 'cursor', x: 10, y: 10, pageId: 'pg1' }));

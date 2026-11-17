@@ -1,10 +1,10 @@
 // Чистая логика окна первого входа: поле имени и выбор курсора (без DOM — проверяется юнит-тестами).
 
 import { DEFAULT_CURSOR_ID, cursorPreset } from './cursors';
-import { normalizeName } from './room-host';
+import { MAX_NAME, normalizeName } from './room-host';
 
-/** Сколько символов можно ввести в поле имени (и имена-подсказки не длиннее). */
-export const NAME_LIMIT = 32;
+/** Сколько символов можно ввести в поле имени (и имена-подсказки не длиннее): тот же лимит, что у имени участника. */
+export const NAME_LIMIT = MAX_NAME;
 /** С какого остатка счётчик становится оранжевым. */
 export const NAME_NEAR = 5;
 
