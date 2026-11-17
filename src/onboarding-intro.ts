@@ -5,27 +5,29 @@
 // Раскладка окна с самого начала финальная: прячутся только прочие элементы (прозрачность), а логотип
 // и заголовок сдвинуты и увеличены трансформацией. Фон и тень окна на время заставки рисует отдельная
 // карточка (.ob-card) — её прямоугольник едет от рамки вокруг крупного заголовка к рамке окна.
-// Пружина --spring-soft (крупные сдвиги и смена размера); один прогресс p ведёт всё синхронно.
+// Пружина --intro-reveal (почти критическая — плавно и без перелёта); один прогресс p ведёт всё синхронно.
 
 import { S, atRest, motionEnabled, reduceMotion, register, snap, spring, step, wake, type Spring } from './motion';
 
 /** Сколько секунд держится заставка. */
 export const INTRO_HOLD = 1.8;
 const SCALE = 1.6;       // во сколько раз крупнее логотип и заголовок на заставке
-const PAD = 36;          // поля карточки вокруг крупных логотипа и заголовка
-const REVEAL_AT = 0.55;  // с какого прогресса проявляются остальные элементы
+const PAD_X = 40;        // поля карточки заставки по бокам от крупных логотипа и заголовка
+const PAD_Y = 72;        // и сверху/снизу — карточка заметно выше надписи
+const REVEAL_AT = 0.5;   // с какого прогресса проявляются остальные элементы
 
 interface Box { x: number; y: number; w: number; h: number }
 interface Intro { root: HTMLElement; p: Spring; frame(dt: number): void; render(): void; settled(): boolean }
 
 const intros = new Set<Intro>();
 let ready = false;
-let SOFT: [number, number] = [260, 24];
+// почти критическое затухание: окно раскрывается плавно, без перелёта и подрагивания в конце
+let REVEAL: [number, number] = [150, 24];
 
 function ensureLoop(): void {
   if (ready) return;
   ready = true;
-  SOFT = spring('--spring-soft', SOFT);
+  REVEAL = spring('--intro-reveal', REVEAL);
   register({
     frame(dt) {
       for (const it of intros) {
@@ -87,7 +89,7 @@ export function playIntro(parts: IntroParts): () => void {
   const bottom = Math.max(L.y + L.h, T.y + T.h);
   const groupW = Math.max(L.w, TT.w);
   // крупно, но надпись помещается и в окно (лента шагов обрезает), и в экран
-  const k = Math.max(1, Math.min(SCALE, (Math.min(W.w, window.innerWidth - 32) - 2 * PAD) / (groupW || 1)));
+  const k = Math.max(1, Math.min(SCALE, (Math.min(W.w, window.innerWidth - 32) - 2 * PAD_X) / (groupW || 1)));
   const gc = { x: W.x + W.w / 2, y: (top + bottom) / 2 };          // центр группы в окне
   const sc = { x: window.innerWidth / 2, y: window.innerHeight / 2 }; // центр группы на заставке
   const off = (b: Box) => ({
@@ -97,15 +99,15 @@ export function playIntro(parts: IntroParts): () => void {
   });
   const oL = off(L);
   const oT = off(T);
-  const sw = groupW * k + 2 * PAD;
-  const sh = (bottom - top) * k + 2 * PAD;
+  const sw = groupW * k + 2 * PAD_X;
+  const sh = (bottom - top) * k + 2 * PAD_Y;
   const from: Box = { x: sc.x - sw / 2, y: sc.y - sh / 2, w: sw, h: sh };
 
   const card = document.createElement('div');
   card.className = 'ob-card';
   root.insertBefore(card, win);
 
-  const p = S(0, ...SOFT);
+  const p = S(0, ...REVEAL);
   let revealed = false;
   let started = false;
   let timer = 0;
@@ -149,11 +151,13 @@ export function playIntro(parts: IntroParts): () => void {
     intros.delete(it);
     logo.style.transform = '';
     title.style.transform = '';
+    // без этого снятие класса заново запустило бы CSS-появление окна (ui-pop) — то самое моргание в конце
+    win.style.animation = 'none';
     card.remove();
     root.classList.remove('ob-intro-card');
     reveal();
     // переходы проявления (с задержками по очереди) доигрывают, затем правила заставки снимаются
-    window.setTimeout(() => root.classList.remove('ob-intro'), 1000);
+    window.setTimeout(() => root.classList.remove('ob-intro'), 1400);
   }
 
   intros.add(it);

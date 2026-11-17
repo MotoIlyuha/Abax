@@ -95,6 +95,7 @@
   --goo-in: 520 34; /* Goo: капли и карточка возвращаются */
   --goo-toast: 260 17; /* Goo: кнопка вырастает в карточку панели */
   --goo-stagger: 45; /* Goo: мс между каплями */
+  --intro-reveal: 150 24; /* заставка окна входа: раскрытие почти без перелёта */
   --spring-settle: 280 22; /* приземление на значение: один небольшой перелёт (раскрытие списка страниц) */
   --input-caret: 700 32; /* поле почты: курсор, тянется от скорости */
   --input-morph: 300 20; /* поле почты ↔ пилюля «Код отправлен» */
@@ -2815,12 +2816,13 @@ body.link-view #project-icon { pointer-events: none; }
   border-radius: 18px;
   background: var(--panel);
   box-shadow: var(--shadow-dialog);
-  animation: ui-pop 0.3s cubic-bezier(0.22, 0.8, 0.24, 1);
+  animation: ob-card-in 0.6s cubic-bezier(0.16, 1, 0.3, 1);
 }
+@keyframes ob-card-in { from { opacity: 0; transform: scale(0.94); } }
 #onboarding.ob-intro-card .ob-window { background: transparent; box-shadow: none; animation: none; overflow: visible; }
-#onboarding.ob-intro-card .ob-logo, #onboarding.ob-intro-card .ob-title { position: relative; z-index: 1; animation: ui-fade 0.45s ease-out; }
+#onboarding.ob-intro-card .ob-logo, #onboarding.ob-intro-card .ob-title { position: relative; z-index: 1; animation: ui-fade 0.6s ease-out 0.1s both; }
 #onboarding.ob-intro .ob-rest {
-  transition: opacity 0.35s ease calc(var(--ob-i, 0) * 45ms), transform 0.5s cubic-bezier(0.16, 1, 0.3, 1) calc(var(--ob-i, 0) * 45ms);
+  transition: opacity 0.5s ease calc(var(--ob-i, 0) * 60ms), transform 0.7s cubic-bezier(0.16, 1, 0.3, 1) calc(var(--ob-i, 0) * 60ms);
 }
 #onboarding.ob-intro:not(.ob-revealed) .ob-rest { opacity: 0; transform: translateY(8px); pointer-events: none; }
 /* clip, а не hidden: фокус и scrollIntoView не должны прокручивать ленту шагов */
@@ -2835,7 +2837,7 @@ body.link-view #project-icon { pointer-events: none; }
 #onboarding.ob-no-anim .ob-track, #onboarding.ob-no-anim .ob-viewport { transition: none; }
 #onboarding.ob-instant, #onboarding.ob-instant .ob-window { animation: none; }
 .ob-step { width: 50%; flex: none; padding: 28px 28px 24px; box-sizing: border-box; }
-.ob-logo { display: block; width: 44px; height: 44px; margin: 0 auto 10px; }
+.ob-logo { display: block; width: 56px; height: 56px; margin: 0 auto 12px; }
 .ob-title { margin: 0 0 6px; font-size: 22px; font-weight: 700; text-align: center; color: var(--fg); }
 .ob-step2 .ob-title { margin-top: 8px; }
 .ob-sub { margin: 0 0 20px; color: var(--fg-secondary); text-align: center; font-size: 14px; }
@@ -2867,6 +2869,7 @@ body.link-view #project-icon { pointer-events: none; }
 .ob-btn:disabled { opacity: 0.6; cursor: default; }
 .ob-icon { display: grid; width: 20px; height: 20px; }
 .ob-icon svg { width: 20px; height: 20px; }
+.ob-window:focus { outline: none; }
 .ob-telegram .ob-icon { color: #229ed9; }
 .ob-google .ob-icon { color: #4285f4; }
 .ob-email .ob-icon { color: var(--accent); }

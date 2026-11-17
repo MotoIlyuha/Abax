@@ -26,7 +26,7 @@ test.describe('окно первого входа', () => {
     await expect(step(page)).toHaveAttribute('data-step', '1');
     await expect(page.locator('.ob-step1 .ob-provider')).toHaveText(['Почта', 'Telegram', 'Google']);
     await expect(page.locator('.ob-skip')).toHaveText('Продолжить без входа');
-    await expect(page.locator('.ob-note')).toContainText('Без входа доступны рисование, экспорт');
+    await expect(page.locator('.ob-note')).toContainText('Без входа доски хранятся только в этом браузере');
     await page.locator('.ob-step1 [data-provider="telegram"]').click();
     await expect(page.locator('.ob-step1 .ob-msg')).toContainText('Облачный сервер не подключён в этой сборке');
     await expect(page.locator('.ob-step1 .ob-provider')).toHaveCount(3);
@@ -89,7 +89,8 @@ test.describe('окно первого входа', () => {
   test('пока окно открыто, горячие клавиши доски не срабатывают; Esc закрывает', async ({ browser }) => {
     const page = await fresh(browser);
     await expect(step(page)).toBeVisible();
-    await expect(page.locator('.ob-step1 .ob-provider').first()).toBeFocused();
+    // фокус на самом окне (без рамки на кнопке), Tab — к кнопкам окна
+    await expect(page.locator('.ob-window')).toBeFocused();
     // по умолчанию — перо; V («Выделение») при открытом окне не срабатывает
     expect(await page.evaluate(() => (window as any).__doska.state.tool)).toBe('pen');
     await page.keyboard.press('v');

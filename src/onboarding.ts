@@ -18,13 +18,13 @@ import { initialChoice, resolveName, tabFill, type CursorChoice } from './onboar
 import { cursorEntitled, getProfile, setProfile } from './profile';
 import { account, pushProfile, signedIn } from './profile-sync';
 
-export const NO_LOGIN_NOTE = 'Без входа доступны рисование, экспорт, участие по ссылкам и хранение досок в этом браузере. '
-  + 'Вход нужен для облачной синхронизации между устройствами, сохранения досок при очистке браузера и подписки Pro';
+export const NO_LOGIN_NOTE = 'Без входа доски хранятся только в этом браузере. Вход нужен для синхронизации между устройствами и Pro';
 
 export const PROVIDER_ICONS = {
   email: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M3.5 7l8.5 6 8.5-6"/></svg>',
-  telegram: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 4L3 11l6 2.5M21 4l-3 16-9-6.5M21 4L9 13.5V19l3-3.5"/></svg>',
-  google: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M20 12.2h-8M20 12.2A8 8 0 1 1 17.4 6.3"/></svg>',
+  // настоящие логотипы: бумажный самолётик Telegram в круге и четырёхцветная «G» Google
+  telegram: '<svg viewBox="0 0 240 240" aria-hidden="true"><circle cx="120" cy="120" r="120" fill="#27a7e7"/><path fill="#fff" d="M100.04 144.41l48.36 35.73c5.52 3.04 9.5 1.47 10.88-5.13l19.68-92.76c2.02-8.08-3.08-11.75-8.36-9.35l-115.59 44.57c-7.89 3.17-7.84 7.57-1.44 9.53l29.66 9.26 68.67-43.33c3.24-1.97 6.22-.91 3.78 1.26"/></svg>',
+  google: '<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>',
   close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
 } as const;
 
@@ -201,6 +201,7 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
   win.setAttribute('role', 'dialog');
   win.setAttribute('aria-modal', 'true');
   win.setAttribute('aria-label', 'Знакомство с Abax');
+  win.tabIndex = -1;
   const closeBtn = el('button', 'ob-close');
   closeBtn.type = 'button';
   closeBtn.title = 'Закрыть';
@@ -413,6 +414,7 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
     const last = items[items.length - 1];
     const cur = document.activeElement;
     if (!win.contains(cur)) { e.preventDefault(); first.focus(); }
+    else if (cur === win) { e.preventDefault(); (e.shiftKey ? last : first).focus(); }
     else if (e.shiftKey && cur === first) { e.preventDefault(); last.focus(); }
     else if (!e.shiftKey && cur === last) { e.preventDefault(); first.focus(); }
   }
@@ -442,12 +444,14 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
     requestAnimationFrame(() => root.classList.remove('ob-no-anim'));
   } else {
     fitHeight();
+    // фокус на само окно, а не на кнопку «Почта»: без синей рамки на старте; Tab — по кнопкам как обычно
+    const focusWin = () => win.focus({ preventScroll: true });
     if (introEnabled()) {
       // заставка: крупные логотип и заголовок, затем окно раскрывается; фокус — когда всё видно
       const rest = [closeBtn, sub, providers, msg1, or, skip, note];
       for (const e of rest) e.classList.add('ob-rest');
-      playIntro({ root, win, logo, title: h1, rest, onReveal: focusStep1 });
-    } else focusStep1();
+      playIntro({ root, win, logo, title: h1, rest, onReveal: focusWin });
+    } else focusWin();
   }
 }
 
