@@ -31,7 +31,10 @@ import {
 import * as pdfjsLib from 'pdfjs-dist';
 // ?worker&inline: воркер инлайнится в бандл и работает из file:// (Electron)
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker&inline';
-import { collabActive, isHost, myColor, noteSelection, readOnly, startHostConnection, stopCollab } from './collab';
+import { initChatButton } from './collab-chat';
+import { collabActive, isHost, myColor, noteSelection, readOnly, startHostConnection, stopCollab, type CollabGotoDetail, type CollabSummonDetail } from './collab';
+import { animateCameraTo } from './camera-anim';
+import { fillPageAvatars, initCollabPresence } from './collab-presence';
 import { closePresent, openPresent, presentOpen } from './present';
 import { renderProfileSettings } from './profile-settings';
 import { cursorSvg } from './cursors';
@@ -58,8 +61,12 @@ import { hideHeldTooltip, showHeldTooltip } from './tooltip';
 import { LIMIT_PROJECTS_TEXT, copyBoardLink, currentBoardLink, registerLinkViewHooks } from './link-view-ui';
 import { canCreateProject, isOverPageLimit, isOverProjectLimit, PLAN_LIMITS } from './limits';
 import { limitsEnforced, userPlan } from './plan';
-import { openFresh } from './cloud-sync';
+import { CONFLICT_TEXT, cloudStorage, openFresh, type ConflictResolution } from './cloud-sync';
+import { clearStarter, isPristineStarterProject, starterId } from './sync-state';
+import { initSyncIndicator } from './sync-indicator';
 import { createInviteBox, refreshInviteBox } from './invite-ui';
+import { onCancelInteraction } from './interaction';
+import { incomingInvites, incomingInvitesSection, onIncomingInvites, refreshIncomingInvites } from './incoming-invites';
 import { addGestureProbe } from './gesture';
 import { initTaskOverlay, isTeacher } from './task-overlay';
 import { annotationButtons, initCommentsUi } from './comments-ui';
@@ -2155,6 +2162,7 @@ function profileButton(): HTMLButtonElement {
   const b = document.createElement('button');
   b.type = 'button';
   b.className = 'home-profile';
+  b.classList.toggle('has-invites', incomingInvites().length > 0);
   b.title = 'Профиль: имя, курсор и вход';
   const icon = document.createElement('span');
   icon.className = 'home-profile-cursor';
@@ -3067,6 +3075,22 @@ function dropPageOnCanvas(index: number, x: number, y: number): void {
   selectInserted(el.id);
 }
 
+/** Перейти к участнику: его страница, затем плавный перелёт камеры к точке (SPEC_NIGHT5 §8). */
+async function goToCollabPoint(d: CollabGotoDetail): Promise<void> {
+  if (state.view !== 'board' || !state.project.pages.some(p => p.id === d.pageId)) return;
+  if (d.pageId !== state.pageId) await switchPageHandler(d.pageId);
+  if (state.pageId !== d.pageId) return;
+  if (d.x !== undefined && d.y !== undefined) animateCameraTo(d.x, d.y, d.zoom);
+}
+
+/** Аватары участников у карточек страниц (состав комнаты изменился). */
+function refreshPageAvatars(): void {
+  for (const page of state.project.pages) {
+    const card = pageCards.get(page.id);
+    if (card) fillPageAvatars(card.avatars, page.id);
+  }
+}
+
 async function switchPageHandler(pageId: string): Promise<void> {
   if (pageId === state.pageId || state.view !== 'board') return;
   await saveNow();
@@ -3202,6 +3226,8 @@ let pagesOpen = false;
 
 interface PageCard {
   el: HTMLElement;
+  /** Аватары участников на этой странице (SPEC_NIGHT5 §8). */
+  avatars: HTMLElement;
   thumb: HTMLCanvasElement;
   /** Рамка видимой области (только у текущей страницы). */
   view: HTMLElement;
@@ -3239,7 +3265,10 @@ function makePageCard(pageId: string, draft = false): PageCard {
   const view = document.createElement('div');
   view.className = 'page-view';
   view.hidden = true;
-  thumbBox.append(thumb, view, num);
+  const avatars = document.createElement('div');
+  avatars.className = 'page-avatars';
+  avatars.hidden = true;
+  thumbBox.append(thumb, view, num, avatars);
   const row = document.createElement('div');
   row.className = 'page-row';
   const grid = document.createElement('span');
@@ -3254,7 +3283,7 @@ function makePageCard(pageId: string, draft = false): PageCard {
   del.title = draft ? 'Удалить черновик' : 'Удалить страницу';
   del.innerHTML = ICONS.del;
   el.append(thumbBox, row, del);
-  const card: PageCard = { el, thumb, view, cam: null, content: null, num, grid, name, gridMode: null, shot: null };
+  const card: PageCard = { el, avatars, thumb, view, cam: null, content: null, num, grid, name, gridMode: null, shot: null };
   el.addEventListener('click', e => {
     if ((e.target as HTMLElement).closest('.page-del, input')) return;
     void switchPageHandler(pageId);
@@ -3442,6 +3471,7 @@ function renderPages(): void {
       card.el.classList.toggle('active', page.id === state.pageId);
       card.el.style.setProperty('--i', String(i));
       card.num.textContent = String(i + 1);
+      fillPageAvatars(card.avatars, page.id);
       if (card.name.textContent !== page.name) card.name.textContent = page.name;
       const pageGridKey = `${page.grid}:${page.coordLabels !== false}`;
       if (card.gridMode !== pageGridKey) {
@@ -3706,6 +3736,67 @@ async function openFromHome(projectId: string, pageId?: string): Promise<void> {
   // свой проект с учётом облака: на сервере версия могла стать новее (правки с другого устройства или учеников в комнате)
   const p = state.project.id === projectId ? state.project : await openFresh(projectId);
   if (p) await openProjectHandler(p, pageId);
+}
+
+/**
+ * Проект из облака — на холст (SPEC_NIGHT5 §2.3, §2.4). keepView — обновление открытого проекта: та же страница и камера,
+ * несохранённое состояние открытой версии отбрасывается (вызывающий проверил, что своих правок нет или они в копии).
+ */
+export async function showCloudProject(project: Project, opts: { keepView?: boolean } = {}): Promise<void> {
+  homeProjects.delete(project.id);
+  const meta = projectMeta(project);
+  state.projects = [meta, ...state.projects.filter(m => m.id !== meta.id)];
+  if (opts.keepView && project.id === state.project.id) {
+    clearTimeout(saveTimer);
+    state.dirty = false;
+    const camera = { ...state.camera };
+    openProject(project, realPageId());
+    state.camera = camera;
+    refresh();
+    update();
+  } else {
+    await openProjectHandler(project);
+  }
+  document.dispatchEvent(new CustomEvent('doska:projects-changed'));
+}
+
+let replacingStarter = false;
+
+/**
+ * Стартовая заглушка уступает место облачному проекту (SPEC_NIGHT5 §2.1): открыт нетронутый автоматически созданный
+ * проект, а на сервере у пользователя есть проекты — открывается самый свежий, заглушка удаляется только с устройства.
+ */
+export async function replaceStarterWithCloud(metas: ProjectMeta[]): Promise<void> {
+  const sid = starterId();
+  const cloud = cloudStorage();
+  if (!sid || !cloud || replacingStarter || state.linkMode || state.collabRole !== null) return;
+  if (state.project.id !== sid || !isPristineStarterProject(state.project, sid)) return;
+  const latest = metas.filter(m => m.id !== sid).sort((a, b) => b.updatedAt - a.updatedAt)[0];
+  if (!latest) return;
+  replacingStarter = true;
+  try {
+    const p = await openFresh(latest.id);
+    // пока проект грузился, пользователь мог начать рисовать — тогда заглушка уже его доска
+    if (!p || starterId() !== sid || state.project.id !== sid || !isPristineStarterProject(state.project, sid)) return;
+    clearTimeout(saveTimer);
+    state.dirty = false;
+    await openProjectHandler(p);
+    await cloud.removeLocal(sid);
+    clearStarter(sid);
+    homeProjects.delete(sid);
+    state.projects = [projectMeta(p), ...state.projects.filter(m => m.id !== sid && m.id !== p.id)];
+    document.dispatchEvent(new CustomEvent('doska:projects-changed'));
+  } finally {
+    replacingStarter = false;
+  }
+}
+
+/** Офлайн-конфликт разрешён: открытая доска — серверная версия, тост с переходом к копии (SPEC_NIGHT5 §2.4). */
+export function applyCloudConflict(r: ConflictResolution): void {
+  homeProjects.delete(r.id);
+  if (state.project.id === r.id && !state.linkMode && state.collabRole === null) void showCloudProject(r.project, { keepView: true });
+  else document.dispatchEvent(new CustomEvent('doska:projects-changed'));
+  showToast(CONFLICT_TEXT, { label: 'Открыть копию', run: () => { void openFromHome(r.copy.id); } });
 }
 
 async function newProjectHandler(): Promise<void> {
@@ -3996,6 +4087,10 @@ function renderHome(): void {
   tools.append(views, newBtn, profileButton());
   head.append(logo, h, tools);
   home.appendChild(head);
+  // приглашения по почте (SPEC_NIGHT5 §7): карточки над проектами; список обновляется не чаще раза в 30 с
+  const invitesBlock = incomingInvitesSection();
+  if (invitesBlock) home.appendChild(invitesBlock);
+  void refreshIncomingInvites();
   const pinned = state.projects.filter(m => m.pinned);
   const rest = state.projects.filter(m => !m.pinned);
   const seen = new Set<string>();
@@ -4611,6 +4706,7 @@ function wireTopbar(): void {
   document.getElementById('btn-settings')!.innerHTML = ICONS.settings;
   document.getElementById('btn-share')!.innerHTML = svg('<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/>');
   document.getElementById('btn-share')!.addEventListener('click', () => { void openShareDialog(); });
+  initChatButton();
   const iconBtn = document.getElementById('project-icon') as HTMLButtonElement;
   iconBtn.addEventListener('click', () => {
     if (state.linkMode) return;
@@ -5355,8 +5451,31 @@ function syncSelectionToCollab(): void {
 }
 
 export function initApp(c: HTMLCanvasElement): void {
+  // страницу скрыли под гостем: открытый редактор текста закрывается без сохранения (SPEC_NIGHT5 §7)
+  onCancelInteraction(() => closeEditor(false));
+  // пришли приглашения по почте — домашний экран показывает их сразу
+  onIncomingInvites(() => { if (state.view === 'home') renderHome(); });
   // облако нашло проекты, которых нет на устройстве: показываем их на главном экране
   document.addEventListener('doska:projects-changed', () => { if (state.view === 'home') renderHome(); });
+  // вернулись на вкладку: с другого устройства пришла более новая версия открытого проекта (SPEC_NIGHT5 §2.3)
+  document.addEventListener('doska:cloud-fresh', ev => {
+    const project = (ev as CustomEvent<{ project: Project }>).detail?.project;
+    if (!project || project.id !== state.project.id || state.dirty || state.linkMode || state.collabRole !== null) return;
+    void showCloudProject(project, { keepView: true });
+  });
+  // автор позвал всех на страницу (SPEC_NIGHT5 §8): гость переходит на неё и плавно наводит камеру на центр экрана автора
+  document.addEventListener('doska:collab-summon', ev => {
+    const d = (ev as CustomEvent<CollabSummonDetail>).detail;
+    if (!d) return;
+    void goToCollabPoint({ pageId: d.pageId, x: d.vx, y: d.vy, zoom: d.vz, reason: 'follow' });
+  });
+  // к участнику: краевой курсор, аватар, автопереход за автором
+  document.addEventListener('doska:collab-goto', ev => {
+    const d = (ev as CustomEvent<CollabGotoDetail>).detail;
+    if (d) void goToCollabPoint(d);
+  });
+  initCollabPresence(refreshPageAvatars);
+  initSyncIndicator();
   c.addEventListener('dragover', e => { if (draggedColor && canEditBoard()) e.preventDefault(); });
   c.addEventListener('drop', e => {
     if (!draggedColor || !canEditBoard()) return;

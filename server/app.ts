@@ -4,6 +4,7 @@ import { LocalFsAssetBackend, type AssetStorageBackend } from './asset-storage';
 import { registerAssetRoutes } from './assets';
 import { createCloudRooms, type CloudRooms } from './cloud-room-manager';
 import { registerInviteRoutes } from './invite-routes';
+import { registerEmailInviteRoutes } from './email-invites';
 import { registerProjectRoutes } from './projects';
 import { authenticate, registerAuthRoutes } from './auth';
 import { registerAuthFlowRoutes } from './auth-flows';
@@ -156,6 +157,7 @@ export function createAppServer(options: AppOptions, extraRoutes: RouteModule[] 
   registerAssetRoutes(router);
   registerProjectRoutes(router);
   registerInviteRoutes(router);
+  registerEmailInviteRoutes(router);
   for (const mod of extraRoutes) mod(router, app);
 
   const upgradeHandlers: Parameters<AppServer['onUpgrade']>[0][] = [];

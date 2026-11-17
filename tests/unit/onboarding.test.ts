@@ -13,7 +13,7 @@ const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySe
 const step = () => $('#onboarding').dataset.step;
 const tick = () => new Promise(r => setTimeout(r, 0));
 
-async function until<T>(fn: () => T | undefined | null | false, ms = 3000): Promise<T> {
+async function until<T>(fn: () => T | undefined | null | false, ms = 6000): Promise<T> { // под нагрузкой полного прогона шаги окна входа бывали дольше 3 с
   const t0 = Date.now();
   for (;;) {
     const v = fn();

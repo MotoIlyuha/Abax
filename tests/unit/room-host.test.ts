@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { closedNotice } from '../../src/collab';
-import { createRoomHub, PROTO, normalizeName, type RoomHubOptions, type RoomSocket } from '../../src/room-host';
+import { createRoomHub, PROTO, VIEW_ZOOM_MAX, VIEW_ZOOM_MIN, normalizeName, type RoomHubOptions, type RoomSocket } from '../../src/room-host';
+import { ZOOM_MAX, ZOOM_MIN } from '../../src/state';
 import type { BoardPatch } from '../../src/delta';
 import { createTaskElement } from '../../src/task-element';
 import type { Element, Project, ShapeEl, TaskEl } from '../../src/types';
@@ -77,7 +78,7 @@ describe('подключение и лимит гостей', () => {
     join();
     const second = join();
     expect(second.uid).toBeNull();
-    expect(second.s.last('denied')).toEqual({ t: 'denied', reason: 'free-limit-reached' });
+    expect(second.s.last('denied')).toEqual({ t: 'denied', reason: 'free-limit-reached', maxGuests: 1, planLimited: true });
     expect(second.s.closed?.code).toBe(4402);
     expect(second.s.last('init')).toBeUndefined();
     expect(closedNotice(4402).title).toBe('Бесплатная комната занята');
@@ -672,5 +673,12 @@ describe('персональные курсоры (Ночь №4)', () => {
     expect(host.all('users').length).toBe(before);
     g.s.recv({ t: 'profile', cursorId: 'nope' }); // неизвестный курсор — прежний
     expect(userOf(host, g.uid).cursorId).toBe('coral');
+  });
+});
+
+describe('пределы зума в пакетах view и summon', () => {
+  it('совпадают с пределами зума приложения (src/state.ts)', () => {
+    expect(VIEW_ZOOM_MIN).toBe(ZOOM_MIN);
+    expect(VIEW_ZOOM_MAX).toBe(ZOOM_MAX);
   });
 });

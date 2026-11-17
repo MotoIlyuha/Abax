@@ -3,10 +3,11 @@
 // сообщения приходят строкой или байтами UTF-8 (Uint8Array).
 
 import type { Element, Page, PageRight, PlanTier, Project, TaskEl } from './types';
-import { PLAN_LIMITS, canCreatePage, canGuestJoinRoom, effectivePermissions, isPageRight, planOf } from './limits';
+import { PLAN_LIMITS, canCreatePage, effectiveMaxGuests, effectivePermissions, isPageRight, planOf } from './limits';
 import { applyBoardPatch, isBoardPatch, type BoardPatch, type ElementOp } from './delta';
 import { sanitizeElement } from './file';
-import { CLOSE_FREE_LIMIT, PROTO } from './collab-transport';
+import { CLOSE_FREE_LIMIT, CLOSE_ROOM_FULL, PROTO } from './collab-transport';
+import { CHAT_HISTORY, createRateLimiter, normalizeChatText, type ChatMessage } from './room-chat';
 import { cleanCursorId } from './cursors';
 import { addCommentReply, createCommentThread, resolveCommentThread, toggleElementReaction } from './comments';
 import { mergeGuestTask, mergeHostTask, projectTaskForRole, submitTaskAttempt, updateStudentDraft } from './task-element';
@@ -18,8 +19,13 @@ export const MAX_ID = 128;
 export const MAX_SELECTION = 10000;
 export const MAX_NAME = 32;
 const DEFAULT_AWAY_MS = 45000;
-/** Причина отказа гостю в бесплатной комнате. */
+/** Причина закрытия сокета гостю в бесплатной комнате (текст кода 4402). */
 export const FREE_LIMIT_REASON = 'free-limit-reached';
+/** Причина отказа в пакете { t: 'denied' }, когда мест нет по лимиту автора (planLimited: false, код 4430). */
+export const ROOM_FULL_REASON = 'room-full';
+/** Пределы зума в пакетах view и summon — как ZOOM_MIN / ZOOM_MAX в src/state.ts (паритет — tests/unit/room-host.test.ts). */
+export const VIEW_ZOOM_MIN = 0.05;
+export const VIEW_ZOOM_MAX = 32;
 
 /** Что изменило состояние проекта в комнате. */
 export type ChangeKind = 'patch' | 'project' | 'task-draft' | 'task-submit' | 'react' | 'comment';
@@ -45,8 +51,15 @@ export interface RoomHubOptions {
   openEdit?: boolean;
   /** Тариф автора; нет — по ownerPlan проекта, а у проекта без него — free. */
   plan?: PlanTier;
-  /** Сколько гостей (без автора) можно допустить; по умолчанию — по тарифу: free 1, pro/tutor безлимит. */
+  /**
+   * Сколько гостей (без автора) можно допустить; по умолчанию — по тарифу (free 1, pro/tutor безлимит)
+   * и лимиту автора permissions.maxGuests (Pro/Tutor, SPEC_NIGHT5 §3.3).
+   */
   maxGuests?: number;
+  /** Можно ли автору включать «Автопереход за мной»; по умолчанию — по тарифу (PLAN_LIMITS.canFollowHost). */
+  canFollowHost?: boolean;
+  /** Несколько соединений автора (его устройства) вместо отказа 4409; включает облачная комната (SPEC_NIGHT5 §2.3). */
+  multiHost?: boolean;
   /** Сколько участников (с автором) могут одновременно быть редакторами; по умолчанию — по тарифу. */
   maxEditors?: number;
   /** Можно ли гостям копировать; по умолчанию — из прав проекта (allowCopy и forbidClone). Функция — значение может меняться. */
@@ -90,7 +103,14 @@ interface Client {
   patches: boolean;
   cursorId?: string;
   allowProCursor: boolean;
+  /** Центр экрана участника в мировых координатах и его зум (пакет view). */
+  view: ParticipantView | null;
+  /** Ограничитель частоты сообщений чата. */
+  chatOk: (now: number) => boolean;
 }
+
+/** Где участник смотрит: страница, центр экрана в мировых координатах, зум. */
+export interface ParticipantView { pageId: string; vx: number; vy: number; vz: number }
 
 export interface UserSnapshot {
   userId: number;
@@ -104,6 +124,10 @@ export interface UserSnapshot {
   rights: { default: string; pages: Record<string, string> };
   /** Персональный курсор (нет — участник со старой версией: курсор классический, бейдж цвета color). */
   cursorId?: string;
+  /** Камера участника (нет поля — участник её не присылал). */
+  view?: ParticipantView | null;
+  /** Участник на странице, скрытой для получателя: страница, курсор, камера и выделение не передаются. */
+  hiddenPage?: true;
 }
 
 /**
@@ -124,6 +148,26 @@ const isId = (v: unknown): v is string => typeof v === 'string' && v.length > 0 
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const isObj = (v: unknown): v is Rec => v !== null && typeof v === 'object' && !Array.isArray(v);
 const optPageId = (v: unknown) => v === undefined || v === null || isId(v);
+
+/** Камера из пакета view / summon: id страницы, конечные координаты, зум в пределах приложения. */
+export function cleanView(m: Rec): ParticipantView | null {
+  if (!isId(m.pageId) || !isNum(m.vx) || !isNum(m.vy) || !isNum(m.vz)) return null;
+  if (m.vz < VIEW_ZOOM_MIN || m.vz > VIEW_ZOOM_MAX) return null;
+  return { pageId: m.pageId, vx: m.vx, vy: m.vy, vz: m.vz };
+}
+
+/**
+ * Снимок участников так, как его видит получатель: участник на странице, скрытой для получателя, приходит
+ * без страницы, курсора, камеры и выделения, с пометкой hiddenPage (SPEC_NIGHT5 §3.1). Себя получатель видит как есть.
+ */
+export function maskUsersFor(users: UserSnapshot[], viewerId: number, hidden: ReadonlySet<string>): UserSnapshot[] {
+  if (hidden.size === 0) return users;
+  return users.map(u => {
+    if (u.userId === viewerId) return u;
+    const onHidden = (u.pageId !== null && hidden.has(u.pageId)) || (!!u.view && hidden.has(u.view.pageId));
+    return onHidden ? { ...u, pageId: null, cursor: null, view: null, selection: [], hiddenPage: true as const } : u;
+  });
+}
 
 function validCursor(m: Rec): boolean {
   return isNum(m.x) && isNum(m.y) && optPageId(m.pageId);
@@ -263,6 +307,12 @@ export class Room {
   nextUid = 1;
   /** Ревизии страниц: растут с каждым принятым патчем. */
   revs = new Map<string, number>();
+  /** Последние сообщения чата (кольцевой буфер CHAT_HISTORY): только в памяти, в проект не пишутся. */
+  chat: ChatMessage[] = [];
+  /** «Автопереход участников за мной» включён автором. */
+  followHost = false;
+  /** Права страниц из permissions проекта, известные хабу: их смену хаб доносит до гостей (SPEC_NIGHT5 §3.2). */
+  pageRights: Record<string, PageRight> = {};
 
   constructor(readonly code: string, private readonly opts: { now: () => number; awayMs: number; maxEditors: () => number }) {}
 
@@ -299,6 +349,13 @@ export class Room {
     if (!r) return 'view';
     return r.pages[pageId] || r.default || 'view';
   }
+  /** Страницы, скрытые от участника (у автора — ни одной). */
+  hiddenPagesFor(uid: number): Set<string> {
+    const out = new Set<string>();
+    if (!this.project || this.clientOf(uid)?.host) return out;
+    for (const pg of this.project.pages) if (this.userPageRight(uid, pg.id) === 'hidden') out.add(pg.id);
+    return out;
+  }
   visiblePages(uid: number): Page[] {
     if (!this.project) return [];
     if (this.clientOf(uid)?.host) return this.project.pages;
@@ -332,6 +389,7 @@ export class Room {
         cursor: c.cursor, pageId: c.pageId, selection: c.selection,
         rights: { default: c.host ? 'edit' : (r?.default || 'view'), pages: c.host ? {} : (r?.pages || {}) },
         ...(c.cursorId ? { cursorId: c.cursorId } : {}),
+        ...(c.view ? { view: c.view } : {}),
       };
     });
   }
@@ -348,15 +406,37 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
     return perms.allowCopy !== false && perms.forbidClone !== true;
   };
   const room: Room = new Room(options.code, { now, awayMs: options.awayMs ?? DEFAULT_AWAY_MS, maxEditors });
-  const guestAllowed = () => options.maxGuests !== undefined ? room.guestCount() < options.maxGuests : canGuestJoinRoom(planNow(), room.guestCount());
+  /** Лимит гостей и чей он: тарифа (planLimited — код 4402) или автора / владельца хаба (код 4430). */
+  const guestLimit = (): { max: number; planLimited: boolean } => {
+    const plan = planNow();
+    const max = options.maxGuests ?? effectiveMaxGuests(plan, room.project?.permissions);
+    // лимит не строже тарифного — это лимит тарифа (Free); строже — ограничение автора
+    return { max, planLimited: max >= PLAN_LIMITS[plan].maxP2PGuests };
+  };
+  const canFollowHost = () => options.canFollowHost ?? PLAN_LIMITS[planNow()].canFollowHost;
+  let chatSeq = 0;
 
   const sendTo = (sock: RoomSocket, obj: unknown): void => {
     if (sock.readyState === 1) try { sock.send(JSON.stringify(obj)); } catch { /* канал закрывается */ }
   };
 
+  /** Снимок участников для получателя (§3.1); base — общий снимок, если он уже посчитан. */
+  const usersFor = (info: Client, base: UserSnapshot[] = room.usersSnapshot()): UserSnapshot[] =>
+    maskUsersFor(base, info.uid, room.hiddenPagesFor(info.uid));
+
   function broadcastUsers(): void {
-    const users = { t: 'users', users: room.usersSnapshot() };
-    for (const c of room.clients.values()) sendTo(c.sock, users);
+    const base = room.usersSnapshot();
+    let shared: string | null = null;
+    for (const c of room.clients.values()) {
+      if (c.sock.readyState !== 1) continue;
+      const hidden = room.hiddenPagesFor(c.uid);
+      if (hidden.size === 0) {
+        shared ??= JSON.stringify({ t: 'users', users: base });
+        try { c.sock.send(shared); } catch { /* канал закрывается */ }
+      } else {
+        sendTo(c.sock, { t: 'users', users: maskUsersFor(base, c.uid, hidden) });
+      }
+    }
   }
 
   const projectFor = (info: Client): Project | null =>
@@ -371,8 +451,8 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
 
   const initFor = (info: Client) => ({
     t: 'init', proto: PROTO, userId: info.uid, color: info.color, name: info.name,
-    project: projectFor(info), rights: rightsOf(info.uid), allowCopy: allowCopy(), users: room.usersSnapshot(),
-    patches: true,
+    project: projectFor(info), rights: rightsOf(info.uid), allowCopy: allowCopy(), users: usersFor(info),
+    patches: true, chat: room.chat, followHost: room.followHost,
   });
 
   /** Права нового гостя: по умолчанию и по страницам, заданным автором в permissions.pageRights. */
@@ -391,22 +471,30 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
   }
 
   function attach(sock: RoomSocket, { isHost = false, name = '', patches = false, rights, cursorId, allowProCursor = true }: AttachOptions = {}): number | null {
-    if (isHost && [...room.clients.values()].some(c => c.host && c.sock.readyState === 1)) {
+    const hostOnline = [...room.clients.values()].some(c => c.host && c.sock.readyState === 1);
+    if (isHost && hostOnline && !options.multiHost) {
       sock.close(4409, 'host already connected');
       return null;
     }
-    if (!isHost && !guestAllowed()) {
-      sendTo(sock, { t: 'denied', reason: FREE_LIMIT_REASON });
-      sock.close(CLOSE_FREE_LIMIT, FREE_LIMIT_REASON);
-      return null;
+    if (!isHost) {
+      const { max, planLimited } = guestLimit();
+      if (room.guestCount() >= max) {
+        // причина лимита тарифа — прежняя (free-limit-reached), лимита автора — room-full; клиент смотрит на planLimited и код
+        sendTo(sock, { t: 'denied', reason: planLimited ? FREE_LIMIT_REASON : ROOM_FULL_REASON, maxGuests: max, planLimited });
+        if (planLimited) sock.close(CLOSE_FREE_LIMIT, FREE_LIMIT_REASON);
+        else sock.close(CLOSE_ROOM_FULL, ROOM_FULL_REASON);
+        return null;
+      }
     }
-    const uid = isHost ? 0 : room.nextUid++;
+    // первое устройство автора — uid 0, следующие (multiHost) — свои номера
+    const uid = isHost && !room.clientOf(0) ? 0 : room.nextUid++;
     const info: Client = {
       sock, uid, host: isHost,
       name: normalizeName(name) || (isHost ? 'Автор' : `Гость ${uid}`),
       color: isHost ? '#e03131' : COLORS[uid % COLORS.length],
       last: now(), cursor: null, pageId: null, selection: [], patches,
       cursorId: cleanCursorId(cursorId, allowProCursor), allowProCursor,
+      view: null, chatOk: createRateLimiter(),
     };
     room.clients.set(sock, info);
     room.rights.set(uid, isHost ? { default: 'edit', pages: {} } : cleanRights(rights) ?? initialRights());
@@ -451,6 +539,10 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
         if (validProject(m.project)) acceptProject(info, m.project);
         return;
       }
+      if (m.t === 'chat') { acceptChat(info, m); return; }
+      if (m.t === 'view') { acceptView(info, m); return; }
+      if (m.t === 'summon') { acceptSummon(info, m); return; }
+      if (m.t === 'follow-host') { acceptFollowHost(info, m); return; }
       if (m.t === 'patch') {
         if (isBoardPatch(m)) acceptPatch(info, m);
         return;
@@ -496,10 +588,91 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
       const merged = mergePages(info.uid, false, project);
       room.project = { ...room.project, pages: merged.pages, updatedAt: isNum(project.updatedAt) ? project.updatedAt : room.project.updatedAt };
     }
+    const changed = info.host ? syncPageRights() : [];
     for (const c of room.clients.values()) {
       if (c.sock !== info.sock) sendTo(c.sock, { t: 'project', project: projectFor(c), by: info.uid });
     }
+    afterRightsSync(changed);
     if (room.project) options.onChange?.(room.project, 'project');
+  }
+
+  /**
+   * Живые права страниц (SPEC_NIGHT5 §3.2): автор поменял право страницы в permissions проекта — у каждого гостя
+   * право этой страницы становится новым (личные права других страниц не трогаются). Возвращает гостей, чьи права
+   * изменились; им после рассылки проекта уходит { t: 'rights' } (afterRightsSync).
+   */
+  function syncPageRights(): number[] {
+    const next: Record<string, PageRight> = {};
+    for (const [id, r] of Object.entries(room.project?.permissions?.pageRights ?? {})) if (isPageRight(r)) next[id] = r;
+    const prev = room.pageRights;
+    room.pageRights = next;
+    const diff = new Set([...Object.keys(prev), ...Object.keys(next)].filter(id => prev[id] !== next[id]));
+    if (diff.size === 0) return [];
+    const changed: number[] = [];
+    for (const c of room.clients.values()) {
+      if (c.host) continue;
+      const r = room.rights.get(c.uid) ?? { default: 'view' as PageRight, pages: {} };
+      const pages = { ...r.pages };
+      for (const id of diff) {
+        if (next[id]) pages[id] = next[id];
+        else delete pages[id]; // право страницы снято — действует право участника по умолчанию
+      }
+      room.rights.set(c.uid, { default: r.default, pages });
+      changed.push(c.uid);
+    }
+    return changed;
+  }
+
+  function afterRightsSync(changed: number[]): void {
+    if (changed.length === 0) return;
+    for (const uid of changed) {
+      const c = room.clientOf(uid);
+      if (c) sendTo(c.sock, { t: 'rights', rights: rightsOf(uid), allowCopy: allowCopy() });
+    }
+    broadcastUsers();
+  }
+
+  /** Сообщение чата: проверка текста и частоты, буфер последних CHAT_HISTORY, рассылка всем (и отправителю). */
+  function acceptChat(info: Client, m: Rec): void {
+    const text = normalizeChatText(m.text);
+    if (text === null) return;
+    const ts = now();
+    if (!info.chatOk(ts)) return; // флуд — молча
+    const msg: ChatMessage = {
+      id: `${ts.toString(36)}-${(++chatSeq).toString(36)}`, by: info.uid, name: info.name,
+      ...(info.cursorId ? { cursorId: info.cursorId } : {}), text, ts,
+    };
+    room.chat = [...room.chat, msg].slice(-CHAT_HISTORY);
+    for (const c of room.clients.values()) sendTo(c.sock, { t: 'chat', ...msg });
+  }
+
+  /** Камера участника: страница должна существовать и не быть для него скрытой. */
+  function acceptView(info: Client, m: Rec): void {
+    const view = cleanView(m);
+    if (!view || !room.project?.pages.some(p => p.id === view.pageId)) return;
+    if (room.userPageRight(info.uid, view.pageId) === 'hidden') return;
+    info.view = view;
+    info.pageId = view.pageId;
+    broadcastUsers();
+  }
+
+  /** «Позвать всех сюда»: только от автора, гостям, которым страница видна. */
+  function acceptSummon(info: Client, m: Rec): void {
+    if (!info.host) return;
+    const view = cleanView(m);
+    if (!view || !room.project?.pages.some(p => p.id === view.pageId)) return;
+    for (const c of room.clients.values()) {
+      if (c.host || room.userPageRight(c.uid, view.pageId) === 'hidden') continue;
+      sendTo(c.sock, { t: 'summon', ...view, by: info.uid });
+    }
+  }
+
+  /** «Автопереход участников за мной»: только автор и только на тарифе, где это есть. */
+  function acceptFollowHost(info: Client, m: Rec): void {
+    if (!info.host || typeof m.enabled !== 'boolean' || !canFollowHost()) return;
+    if (room.followHost === m.enabled) return;
+    room.followHost = m.enabled;
+    for (const c of room.clients.values()) sendTo(c.sock, { t: 'follow-host', enabled: room.followHost, by: info.uid });
   }
 
   /** Указка не хранится: чистое сообщение уходит всем остальным, кто видит страницу. */
@@ -642,7 +815,9 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
     },
     pushProject(project) {
       room.project = project;
+      const changed = syncPageRights();
       for (const c of room.clients.values()) sendTo(c.sock, { t: 'project', project: projectFor(c), by: -1 });
+      afterRightsSync(changed);
     },
     pushPatch: patch => acceptPatch(null, patch),
     users: () => room.usersSnapshot(),

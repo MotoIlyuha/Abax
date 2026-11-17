@@ -314,7 +314,7 @@ describe('секрет сессий и база', () => {
       expect(db.pragma('journal_mode', { simple: true })).toBe('wal');
       expect(db.pragma('foreign_keys', { simple: true })).toBe(1);
       const tables = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all() as { name: string }[]).map(t => t.name).sort();
-      expect(tables).toEqual(['assets', 'auth_flows', 'email_codes', 'invites', 'project_revisions', 'projects', 'users']); // + таблицы входа Ночи №4
+      expect(tables).toEqual(['assets', 'auth_flows', 'email_codes', 'invites', 'project_email_invites', 'project_revisions', 'projects', 'users']); // + таблицы входа Ночи №4 и приглашения по почте Ночи №5
       db.prepare("INSERT INTO users (id, created_at, updated_at) VALUES ('u', 1, 1)").run();
       db.close();
       const again = openDb(path);

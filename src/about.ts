@@ -51,10 +51,8 @@ function holdToReveal(logo: HTMLElement, onHold?: () => void): void {
 
 let toastTimer = 0;
 
-export interface ToastAction {
-  label: string;
-  href: string;
-}
+/** Действие в тосте: ссылка (href) или кнопка (run). */
+export type ToastAction = { label: string; href: string } | { label: string; run: () => void };
 
 /** Тост внизу окна на несколько секунд; action — необязательная ссылка (например, «Скачать»). */
 export function showToast(text: string, action?: ToastAction): void {
@@ -67,12 +65,23 @@ export function showToast(text: string, action?: ToastAction): void {
   }
   t.textContent = text;
   t.classList.toggle('has-action', !!action);
-  if (action) {
+  if (action && 'href' in action) {
     const a = el('a', '', action.label);
     a.href = action.href;
     a.target = '_blank';
     a.rel = 'noopener noreferrer';
     t.append(' ', a);
+  } else if (action) {
+    const b = el('button', 'toast-action', action.label);
+    b.type = 'button';
+    const toast = t;
+    b.addEventListener('click', () => {
+      toast.hidden = true;
+      toast.classList.remove('show');
+      clearTimeout(toastTimer);
+      action.run();
+    });
+    t.append(' ', b);
   }
   t.hidden = false;
   // перезапуск анимации появления, если тост уже на экране

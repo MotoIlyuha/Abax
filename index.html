@@ -46,6 +46,7 @@
         <span id="project-name" title="Текущий проект">Проект</span>
         <span class="crumb-sep" aria-hidden="true">/</span>
         <input id="page-name" title="Название страницы" spellcheck="false" />
+        <button id="sync-indicator" type="button" hidden></button>
       </div>
       <button id="btn-home" class="topbar-logo" title="Проекты (домашняя страница)" aria-label="Проекты (домашняя страница)"><img src="logo.svg" alt="Abax" /></button>
     </div>
@@ -54,6 +55,10 @@
       <div class="topbar-group">
         <button id="btn-present" class="icon" title="Окно для демонстрации экрана: только холст, без интерфейса"></button>
         <button id="btn-share" class="icon" title="Поделиться доской"></button>
+        <button id="btn-chat" class="icon" title="Чат" aria-label="Чат" aria-expanded="false" hidden></button>
+        <button id="btn-summon" class="icon" title="Позвать всех сюда" aria-label="Позвать всех сюда" hidden></button>
+        <button id="btn-follow" class="icon" title="Автопереход участников за мной" aria-label="Автопереход участников за мной" aria-pressed="false" hidden></button>
+        <div id="collab-presence" aria-label="Участники" hidden></div>
         <button id="btn-export" class="icon" title="Экспорт в PNG (Ctrl+E)"></button>
       </div>
       <div class="topbar-group view-group"><button id="view-grid-icon" class="icon" title="Тип сетки" aria-label="Тип сетки" aria-expanded="false"></button><button id="zoom-out" class="icon" title="Уменьшить масштаб" aria-label="Уменьшить масштаб"></button><button id="zoom-label" title="Масштаб и вид" aria-expanded="false">100%</button><button id="zoom-in" class="icon" title="Увеличить масштаб" aria-label="Увеличить масштаб"></button><button id="btn-fit" class="icon" title="Сбросить вид"></button></div>
@@ -68,6 +73,7 @@
     </filter>
   </svg>
   <div id="main">
+    <div id="activity-pills" role="status" aria-live="polite"></div>
     <div id="canvas-wrap">
       <!-- капли Goo-эффекта групп панели инструментов (src/goo.ts): под панелью, выплывают из-за неё -->
       <div id="goo-layer" aria-hidden="true"></div>
@@ -75,6 +81,8 @@
       <canvas id="board"></canvas>
       <div id="overlay"></div>
       <div id="task-overlay"></div>
+      <div id="follow-hidden-badge" role="status" hidden>Эта страница скрыта — участники остались на предыдущей странице</div>
+      <div id="all-pages-hidden-banner" role="status" hidden>Автор временно скрыл все страницы доски. Доступ откроется автоматически, когда автор включит страницу.</div>
       <div id="draft-badge" role="status" hidden><span>Черновик</span> · виден только вам: ни гостям, ни в демонстрации</div>
       <div id="pages-dock" data-tip-side="top">
         <div id="pages-tray"><div id="pages-list"></div></div>

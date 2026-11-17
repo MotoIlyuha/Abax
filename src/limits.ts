@@ -12,20 +12,30 @@ export interface PlanLimits {
   canProtectCopy: boolean;
   cloudSync24x7: boolean;
   tutorFeatures: boolean;
+  /** Автор задаёт свой лимит гостей (ProjectPermissions.maxGuests). */
+  canSetMaxGuests: boolean;
+  /** Тумблер «Автопереход участников за мной». */
+  canFollowHost: boolean;
 }
+
+/** Верхняя граница своего лимита гостей. */
+export const MAX_GUESTS_LIMIT = 50;
 
 export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
   free: {
     maxProjects: 3, maxPagesPerProject: 3, maxP2PGuests: 1, maxEditors: 4,
     canProtectClone: false, canProtectCopy: false, cloudSync24x7: false, tutorFeatures: false,
+    canSetMaxGuests: false, canFollowHost: false,
   },
   pro: {
     maxProjects: Infinity, maxPagesPerProject: Infinity, maxP2PGuests: Infinity, maxEditors: Infinity,
     canProtectClone: true, canProtectCopy: true, cloudSync24x7: true, tutorFeatures: false,
+    canSetMaxGuests: true, canFollowHost: true,
   },
   tutor: {
     maxProjects: Infinity, maxPagesPerProject: Infinity, maxP2PGuests: Infinity, maxEditors: Infinity,
     canProtectClone: true, canProtectCopy: true, cloudSync24x7: true, tutorFeatures: true,
+    canSetMaxGuests: true, canFollowHost: true,
   },
 };
 
@@ -84,7 +94,16 @@ export function sanitizePermissionsForPlan(plan: PlanTier, perms: ProjectPermiss
     for (const [id, r] of Object.entries(perms.pageRights)) if (isPageRight(r)) pageRights[id] = r;
     out.pageRights = pageRights;
   }
+  // свой лимит гостей — только Pro/Tutor и только 1..MAX_GUESTS_LIMIT; null/0 — без ограничений (поле не нужно)
+  const mg = perms.maxGuests;
+  if (lim.canSetMaxGuests && typeof mg === 'number' && Number.isInteger(mg) && mg >= 1 && mg <= MAX_GUESTS_LIMIT) out.maxGuests = mg;
   return out;
+}
+
+/** Сколько гостей пускает комната: лимит тарифа и (Pro/Tutor) лимит автора, если он задан. Автор не считается. */
+export function effectiveMaxGuests(plan: PlanTier, perms: ProjectPermissions | null | undefined): number {
+  const own = sanitizePermissionsForPlan(plan, perms ?? {}).maxGuests;
+  return Math.min(PLAN_LIMITS[plan].maxP2PGuests, own ?? Infinity);
 }
 
 /** Действующие права проекта с поправкой на тариф владельца. */

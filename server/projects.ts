@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { contentSignature } from '../src/sync-conflict';
 import { applyBoardPatch, isBoardPatch, type BoardPatch, type ElementOp } from '../src/delta';
 import { parseProject, sanitizeElement, serializeProject } from '../src/file';
 import { assetHashOf } from '../src/asset-store';
@@ -159,7 +160,7 @@ export function viewFor(app: AppContext, row: ProjectRow, access: Access) {
   const stored = projectOf(row);
   const plan = ownerPlanOf(app, row.owner_id);
   if (access.role === 'host') {
-    return { role: 'host', rev: row.rev, canClone: true, allowCopy: true, ownerPlan: plan, project: { ...stored, ownerPlan: plan } };
+    return { role: 'host', rev: row.rev, canClone: true, allowCopy: true, ownerPlan: plan, project: { ...stored, ownerPlan: plan }, sig: contentSignature(stored) };
   }
   const hidden = access.role === 'guest'
     ? new Set(stored.pages.filter(p => invitePageRight(stored, access.invite, p.id) === 'hidden').map(p => p.id))
@@ -242,7 +243,7 @@ export function registerProjectRoutes(router: Router): void {
     const user = requireUser(ctx);
     const app = ctx.app;
     const id = ctx.params.id;
-    const body = await ctx.body() as { project?: unknown; expectedRev?: unknown } | undefined;
+    const body = await ctx.body() as { project?: unknown; expectedRev?: unknown; baseSig?: unknown } | undefined;
     const parsed = parseProject(body?.project);
     if (!parsed) throw new HttpError(400, 'bad-project');
     if (parsed.id !== id) throw new HttpError(400, 'id-mismatch');
@@ -253,6 +254,13 @@ export function registerProjectRoutes(router: Router): void {
     const row = getProjectRow(app, id);
     if (row && row.owner_id !== user.id) throw new HttpError(409, 'id-taken');
     const existing = row && row.is_deleted === 0 ? row : null;
+    // настоящий офлайн-конфликт (SPEC_NIGHT5 §2.4): клиент правил старую версию, а содержимое автора на сервере
+    // с тех пор изменилось (с другого устройства) — ничего не пишем, клиент сохранит свою версию копией
+    const baseSig = typeof body?.baseSig === 'string' && body.baseSig.length <= 64 ? body.baseSig : undefined;
+    if (existing && baseSig !== undefined && expectedRev !== undefined && expectedRev < existing.rev
+      && contentSignature(projectOf(existing)) !== baseSig) {
+      throw new HttpError(409, 'rev-conflict', { rev: existing.rev });
+    }
     const plan = effectivePlan(user, app.now());
     if (app.opts.enforceLimits) {
       if (!existing && !canCreateProject(plan, activeCount(app, user.id))) throw new HttpError(403, 'plan-limit-projects');
@@ -276,7 +284,7 @@ export function registerProjectRoutes(router: Router): void {
     });
     app.notifyProjectChanged(id, next);
     const updated = getProjectRow(app, id)!;
-    return { json: { id, rev, ownerPlan: plan, permissions: next.permissions, updatedAt: updated.updated_at, merged } };
+    return { json: { id, rev, ownerPlan: plan, permissions: next.permissions, updatedAt: updated.updated_at, merged, sig: contentSignature(next) } };
   }, { maxBody: MAX_PROJECT_BODY });
 
   router.post('/api/projects/:id/patch', async ctx => {

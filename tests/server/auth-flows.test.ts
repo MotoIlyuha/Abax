@@ -186,6 +186,15 @@ describe('способы входа сервера', () => {
     expect(calls[0].body.get('client_secret')).toBe('gsecret');
     const done = await call(app, 'POST', '/api/auth/flow/complete', { flowId: f.body.flowId, secret: f.body.secret });
     expect(done.body.user).toMatchObject({ google: true, displayName: 'Гугл Пользователь', email: null });
+    // адрес Google без email_verified не сохраняется; подтверждённый — сохраняется (приглашения по почте, SPEC_NIGHT5 §4.1)
+    const gEmail = () => (app.db.prepare("SELECT google_email FROM users WHERE google_sub = 'g-123'").get() as { google_email: string | null }).google_email;
+    expect(gEmail()).toBeNull();
+    const v = await flow(app, { provider: 'google' });
+    claims = { ...claims, nonce: googleNonce(app.app, v.body.flowId), email: 'G@Gmail.com', email_verified: true };
+    await follow(`${app.base}/api/auth/google/callback?state=${v.body.flowId}&code=c0de`);
+    expect((await call(app, 'POST', '/api/auth/flow/complete', { flowId: v.body.flowId, secret: v.body.secret })).body.user).toMatchObject({ google: true });
+    expect(gEmail()).toBe('g@gmail.com');
+    claims = { ...claims, email_verified: undefined };
     // id_token с nonce другого потока (повтор) — вход не засчитывается
     const n = await flow(app, { provider: 'google' });
     await follow(`${app.base}/api/auth/google/callback?state=${n.body.flowId}&code=c0de`);

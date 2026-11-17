@@ -1,3 +1,4 @@
+import { MAX_GUESTS_LIMIT } from './limits';
 import type { TaskAttempt, CommentMessage, CommentThread, Element, GridMode, Page, PageRight, Project, ProjectPermissions, Pt } from './types';
 import { MAX_AUTHOR_NAME, MAX_COMMENT_TEXT, MAX_REACTION_LEN } from './comments';
 import { EXAM_TYPES, MAX_ATTEMPTS, MAX_DRAFT, SUBJECTS } from './task-element';
@@ -217,6 +218,8 @@ export function sanitizePermissions(raw: unknown): ProjectPermissions | undefine
     for (const [id, r] of Object.entries(raw.pageRights)) if (isPageRight(r)) pageRights[id] = r;
     out.pageRights = pageRights;
   }
+  if (raw.maxGuests === null) out.maxGuests = null;
+  else if (typeof raw.maxGuests === 'number' && Number.isInteger(raw.maxGuests) && raw.maxGuests >= 0 && raw.maxGuests <= MAX_GUESTS_LIMIT) out.maxGuests = raw.maxGuests;
   return out;
 }
 

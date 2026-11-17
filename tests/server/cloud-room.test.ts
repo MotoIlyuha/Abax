@@ -292,13 +292,26 @@ describe('вход и отказы', () => {
     expect(r).toBeTruthy();
   });
 
-  it('второй автор той же комнаты отклоняется (4409), первый остаётся', async () => {
+  it('автор с двух своих устройств: оба в комнате и получают правки друг друга (SPEC_NIGHT5 §2.3)', async () => {
     const { app, owner } = await setup();
-    const h1 = join(app, 'a', { session: owner.token });
-    await until(() => h1.last('init'));
-    const h2 = join(app, 'a', { session: owner.token });
-    expect((await h2.closed).code).toBe(4409);
-    expect(h1.ws.readyState).toBe(1);
+    const laptop = join(app, 'a', { session: owner.token });
+    await until(() => laptop.last('init'));
+    const tablet = join(app, 'a', { session: owner.token });
+    const init2 = await until(() => tablet.last('init'));
+    expect(init2.userId).not.toBe(laptop.last('init')!.userId);
+    laptop.send({ t: 'caps', patches: true });
+    tablet.send({ t: 'caps', patches: true });
+    laptop.send({ t: 'patch', pageId: 'a-p2', rev: 1, ops: [{ op: 'put', el: rectEl('с-ноутбука') }] });
+    await until(() => tablet.inbox.some(m => (m.t === 'patch' && m.ops.some((o: any) => o.el?.id === 'с-ноутбука'))
+      || (m.t === 'project' && JSON.stringify(m.project).includes('с-ноутбука'))));
+    tablet.send({ t: 'patch', pageId: 'a-p3', rev: 1, ops: [{ op: 'put', el: rectEl('с-планшета') }] });
+    await until(() => laptop.inbox.some(m => (m.t === 'patch' && m.ops.some((o: any) => o.el?.id === 'с-планшета'))
+      || (m.t === 'project' && JSON.stringify(m.project).includes('с-планшета'))));
+    expect(laptop.ws.readyState).toBe(1);
+    expect(tablet.ws.readyState).toBe(1);
+    // оба — авторы: скрытая для гостей страница им видна
+    expect(init2.project.pages.map((p: any) => p.id)).toContain('a-p3');
+    await until(() => JSON.stringify(storedProject(app, 'a')).includes('с-планшета'));
   });
 
   it('отзыв приглашения отключает его гостей (4403), удаление проекта закрывает комнату (4410)', async () => {
@@ -312,6 +325,28 @@ describe('вход и отказы', () => {
     await call(app, 'DELETE', '/api/projects/a', undefined, { token: owner.token });
     expect((await h.closed).code).toBe(4410);
     expect(app.rooms.count()).toBe(0);
+  });
+});
+
+describe('живые права ссылки (SPEC_NIGHT5 §3.2)', () => {
+  it('смена роли и копирования у ссылки сразу доходит до подключённого гостя', async () => {
+    const { app, owner } = await setup();
+    const res = await call(app, 'POST', '/api/invites', { projectId: 'a', defaultRole: 'edit' }, { token: owner.token });
+    const token = res.body.token as string;
+    const g = join(app, 'a', { invite: token });
+    const init = await until(() => g.last('init'));
+    expect(init.rights.default).toBe('edit');
+    const before = g.inbox.length;
+    const upd = await call(app, 'POST', '/api/invites', { projectId: 'a', defaultRole: 'view', allowCopy: false }, { token: owner.token });
+    expect(upd.body).toMatchObject({ created: false, token });
+    const rights = await until(() => g.inbox.slice(before).reverse().find(m => m.t === 'rights'));
+    expect(rights.rights.default).toBe('view');
+    expect(Object.values(rights.rights.pages).every(r => r === 'view')).toBe(true);
+    expect(rights.allowCopy).toBe(false);
+    // правка гостя теперь не принимается
+    g.send({ t: 'patch', pageId: 'a-p1', rev: 1, ops: [{ op: 'put', el: rectEl('после-смены') }] });
+    await sleep(80);
+    expect(JSON.stringify(app.rooms.projectOf('a'))).not.toContain('после-смены');
   });
 });
 
@@ -344,6 +379,21 @@ describe('бесплатный тариф', () => {
     // автор вернулся: комната снова работает
     const h2 = join(app, 'a', { session: owner.token });
     expect((await until(() => h2.last('init'))).project.pages[0].elements[0].attempts).toHaveLength(1);
+  });
+
+  it('free: устройства автора не занимают гостевой слот; гость остаётся, пока подключено хотя бы одно устройство автора', async () => {
+    const { app, owner } = await setup('free');
+    const laptop = join(app, 'a', { session: owner.token });
+    await until(() => laptop.last('init'));
+    const tablet = join(app, 'a', { session: owner.token });
+    await until(() => tablet.last('init'));
+    const g = join(app, 'a', { invite: 'inv-edit' });
+    await until(() => g.last('init'));
+    laptop.ws.close();
+    await sleep(80);
+    expect(g.ws.readyState).toBe(1);
+    tablet.ws.close();
+    expect((await g.closed).code).toBe(4503);
   });
 
   it('пока лимиты на сервере выключены, free ведёт себя как pro: комната без автора и без лимита гостей', async () => {

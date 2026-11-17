@@ -1,4 +1,5 @@
 import { clearRunField } from './text-runs';
+import { clearStarter, starterId } from './sync-state';
 import type {
   BoardSettings, Camera, Element, PlanTier, FadeStroke, Flash, GridMode, Guide, LaserPt, RemoteLaser, NoteEl, Page, Project, ProjectMeta, Pt, ShapeEl, SolidKind,
   TextAlign, TextEl, TextVAlign, ToolId,
@@ -283,6 +284,8 @@ let redoStack: Element[][] = [];
 const HISTORY_LIMIT = 200;
 
 export function pushHistory(prev: Element[]): void {
+  // первая правка в автоматически созданной стартовой доске — это уже проект пользователя (SPEC_NIGHT5 §2.1)
+  if (undoStack.length === 0 && starterId() === state.project.id) clearStarter(state.project.id);
   undoStack.push(prev);
   if (undoStack.length > HISTORY_LIMIT) undoStack.shift();
   redoStack = [];

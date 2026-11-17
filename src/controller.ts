@@ -19,6 +19,11 @@ import { myCursorId, onProfileChange } from './profile';
 import { fxForget, fxMove } from './cursor-fx';
 import { settingsDialogOpen } from './settings-dialog';
 import { presenting, requestRender, renderScene } from './renderer';
+import { animateCameraTo, cancelCameraAnim } from './camera-anim';
+import { cancelActiveInteraction, onCancelInteraction } from './interaction';
+
+/** Плавный перелёт камеры к мировой точке (SPEC_NIGHT5 §8); прерывается жестом пользователя. */
+export { animateCameraTo, cancelActiveInteraction };
 import { eraserRadius, resetEraser, trackEraser } from './eraser-size';
 import { fitSolid, SOLID_CLICK_SIZE, solidKeepsAspect } from './solid';
 import { spreadElements, spreadTargets } from './spread';
@@ -1385,7 +1390,33 @@ export function initController(canvas: HTMLCanvasElement): void {
     if (mouseAction(e)) { e.preventDefault(); e.stopImmediatePropagation(); }
   }, true);
 
+  // автор скрыл страницу под гостем (SPEC_NIGHT5 §7): незавершённый жест отменяется без записи в историю
+  onCancelInteraction(() => {
+    stopAutoPan();
+    cancelCameraAnim();
+    // содержимое страницы не трогаем: следом приходит проект хаба, а правка здесь ушла бы ему патчем
+    action = null;
+    gesture = null;
+    pointers.clear();
+    touchBlocked = false;
+    clearTransfer();
+    state.liveStroke = null;
+    state.liveShape = null;
+    state.liveSolid = null;
+    state.livePoly = null;
+    state.liveNote = null;
+    state.liveEdit = false;
+    state.marquee = null;
+    state.spread = null;
+    state.guides = [];
+    state.dragHidden = null;
+    resetEraser();
+    update();
+  });
   addGestureProbe(() => (action !== null && action.kind !== 'pan' && action.kind !== 'marquee' && action.kind !== 'fade') || nudge !== null);
+  // любой жест пользователя прерывает плавный перелёт камеры (SPEC_NIGHT5 §8)
+  canvas.addEventListener('pointerdown', () => cancelCameraAnim(), { capture: true });
+  canvas.addEventListener('wheel', () => cancelCameraAnim(), { capture: true, passive: true });
   canvas.addEventListener('pointerdown', onPointerDown);
   canvas.addEventListener('pointermove', onPointerMove);
   canvas.addEventListener('pointerup', onPointerUp);

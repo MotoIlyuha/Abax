@@ -2,10 +2,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, createApiClient, type ApiClient } from '../../src/api-client';
 import { AssetStore, resetUploadedAssets } from '../../src/asset-store';
-import { LIMIT_SYNC_TEXT, createCloudStorage, mergeRemoteMetas, openFresh, type CloudStorage } from '../../src/cloud-sync';
+import { CONFLICT_COPY_SUFFIX, LIMIT_SYNC_TEXT, createCloudStorage, mergeRemoteMetas, openFresh, type CloudStorage, type ConflictResolution } from '../../src/cloud-sync';
 import { blankProject, openProject, projectMeta, state } from '../../src/state';
 import type { BoardsStorage } from '../../src/storage';
-import { getSyncedRev, isDirty, pendingDeletes } from '../../src/sync-state';
+import { STARTER_PROJECT_NAME, clearStarter, getSyncBase, getSyncedRev, isDirty, markStarter, pendingDeletes, starterId } from '../../src/sync-state';
+import { contentSignature } from '../../src/sync-conflict';
 import type { Project, ProjectMeta } from '../../src/types';
 import { anon, call, closeApps, editStored, makeApp, proj, rectEl, taskEl, type TestApp } from '../server/helpers';
 
@@ -405,5 +406,173 @@ describe('мелочи', () => {
   it('ошибка без сети — ApiError со статусом 0, а не необработанное исключение', async () => {
     const down = createApiClient({ base: 'http://127.0.0.1:1' });
     await expect(down.request('GET', '/api/projects')).rejects.toBeInstanceOf(ApiError);
+  });
+});
+
+describe('стартовая заглушка (SPEC_NIGHT5 §2.1)', () => {
+  const starter = () => { const p = blankProject(STARTER_PROJECT_NAME); markStarter(p.id); return p; };
+
+  it('нетронутая заглушка в облако не уходит ни при сохранении, ни при начальной синхронизации', async () => {
+    const { c } = make();
+    const p = starter();
+    await c.save(p);
+    await c.flush();
+    await c.syncAll();
+    expect(serverRow(p.id)).toBeUndefined();
+    expect(isDirty(p.id)).toBe(false);
+    expect(c.status(p)).toBe('hidden');
+  });
+
+  it('после правки метка снимается и проект уходит', async () => {
+    const { c } = make();
+    const p = starter();
+    await c.save(p);
+    await c.save({ ...p, name: 'Алгебра' });
+    expect(starterId()).toBeNull();
+    await c.flush();
+    expect(serverRow(p.id)).toBeDefined();
+  });
+
+  it('первая правка на холсте (pushHistory) снимает метку открытого проекта', async () => {
+    const p = starter();
+    openProject(p);
+    const { pushHistory } = await import('../../src/state');
+    pushHistory([]);
+    expect(starterId()).toBeNull();
+  });
+
+  it('onSynced получает проекты сервера; removeLocal удаляет только с устройства', async () => {
+    const seen: ProjectMeta[][] = [];
+    const { c, base } = make(memStorage(), { onSynced: m => seen.push(m) });
+    await c.save(proj('cloud1'));
+    await c.flush();
+    const p = starter();
+    await base.save(p);
+    await c.syncAll();
+    expect(seen.at(-1)!.map(m => m.id)).toEqual(['cloud1']);
+    await c.removeLocal(p.id);
+    expect(base.data.has(p.id)).toBe(false);
+    expect(pendingDeletes()).toEqual([]);
+    clearStarter();
+  });
+});
+
+describe('статус синхронизации (SPEC_NIGHT5 §2.2)', () => {
+  it('сохранение → синхронизация → в облаке; подписка срабатывает', async () => {
+    const { c } = make(memStorage(), { debounceMs: 30 });
+    let calls = 0;
+    const off = c.onStatus(() => { calls++; });
+    const p = proj('a');
+    expect(c.status(p)).toBe('synced');
+    await c.save(p);
+    expect(c.status(p)).toBe('syncing');
+    await c.flush();
+    expect(c.status(p)).toBe('synced');
+    expect(calls).toBeGreaterThan(0);
+    off();
+  });
+
+  it('нет сети — офлайн; flushNow отправляет сразу, без паузы повтора', async () => {
+    let up = false;
+    api = createApiClient({ base: app.base, fetch: (async (u: string, i: RequestInit) => { if (!up) throw new TypeError('offline'); return fetch(u, i); }) as typeof fetch });
+    const { c } = make(memStorage(), { retryMs: [60_000] });
+    const p = proj('a');
+    await c.save(p);
+    await c.flush();
+    expect(c.status(p)).toBe('offline');
+    up = true;
+    await c.flushNow();
+    expect(serverRow('a')).toBeDefined();
+    expect(c.status(p)).toBe('synced');
+  });
+
+  it('лимит тарифа — только на устройстве', async () => {
+    const { c } = make();
+    for (const id of ['a', 'b', 'c', 'd']) await c.save(proj(id));
+    await c.flush();
+    const rejected = ['a', 'b', 'c', 'd'].find(id => !serverRow(id))!;
+    expect(c.status(proj(rejected))).toBe('limit');
+  });
+
+  it('проект в облачной комнате автора — в облаке', async () => {
+    const { c } = make();
+    const p = proj('a');
+    await c.save(p);
+    c.setCloudRoom('a');
+    expect(c.status(p)).toBe('synced');
+  });
+
+  it('без облака — скрыт', () => {
+    const { c } = make(memStorage(), { api: () => null });
+    expect(c.status(proj('a'))).toBe('hidden');
+  });
+});
+
+describe('офлайн-конфликт (SPEC_NIGHT5 §2.4)', () => {
+  it('отправка несёт подпись версии с сервера; после ответа подпись обновляется', async () => {
+    const bodies: Record<string, unknown>[] = [];
+    api = createApiClient({ base: app.base, fetch: (async (u: string, i: RequestInit) => { if (i.method === 'PUT') bodies.push(JSON.parse(String(i.body))); return fetch(u, i); }) as typeof fetch });
+    const { c } = make();
+    await c.save(proj('a'));
+    await c.flush();
+    expect(bodies[0].baseSig).toBeUndefined();
+    const sig1 = getSyncBase('a');
+    expect(sig1).toMatch(/^v1:/);
+    await c.save({ ...proj('a'), name: 'Два' });
+    await c.flush();
+    expect(bodies[1]).toMatchObject({ expectedRev: 1, baseSig: sig1 });
+    expect(getSyncBase('a')).not.toBe(sig1);
+  });
+
+  it('открытие свежей версии с сервера запоминает её подпись', async () => {
+    const { c } = make();
+    await c.save(proj('a'));
+    await c.flush();
+    editStored(app, 'a', p => { p.name = 'С другого устройства'; });
+    // правок на устройстве нет — при открытии берётся серверная версия
+    const opened = (await c.openFresh('a'))!;
+    expect(opened.name).toBe('С другого устройства');
+    expect(getSyncBase('a')).toBe(contentSignature(opened));
+  });
+
+  it('правки автора с обеих сторон: копия с локальными правками, основной — с сервера, уведомление один раз', async () => {
+    const conflicts: ConflictResolution[] = [];
+    const { c, base } = make(memStorage(), { onConflict: r => conflicts.push(r) });
+    await c.save(proj('a'));
+    await c.flush();
+    // другое устройство автора поменяло содержимое (не живые поля)
+    editStored(app, 'a', p => { p.name = 'Правка с планшета'; });
+    const mine = { ...base.data.get('a')!, pages: [{ id: 'a-p1', name: 'П', grid: 'square', elements: [rectEl('офлайн')] }] } as Project;
+    await c.save(mine);
+    await c.flush();
+    await until(() => conflicts.length === 1);
+    const r = conflicts[0];
+    expect(r.id).toBe('a');
+    expect(r.project.name).toBe('Правка с планшета');
+    expect(base.data.get('a')!.name).toBe('Правка с планшета');
+    expect(getSyncedRev('a')).toBe(serverRow('a')!.rev);
+    expect(isDirty('a')).toBe(false);
+    const copy = base.data.get(r.copy.id)!;
+    expect(copy.name).toBe(`Проект a${CONFLICT_COPY_SUFFIX}`);
+    expect(copy.pages[0].elements.map(e => e.id)).toEqual(['офлайн']);
+    // копия уходит в облако обычным путём, сервер с основным не трогается повторно
+    await c.flush();
+    await until(() => serverRow(r.copy.id));
+    expect(JSON.parse(serverRow('a')!.data_json).name).toBe('Правка с планшета');
+    expect(conflicts).toHaveLength(1);
+  });
+
+  it('на сервере менялись только живые поля — не конфликт, прежнее слияние', async () => {
+    const conflicts: ConflictResolution[] = [];
+    const { c, base } = make(memStorage(), { onConflict: r => conflicts.push(r) });
+    await c.save({ ...proj('a'), pages: [{ id: 'a-p1', name: 'П', grid: 'square', elements: [taskEl(), rectEl('r1')] }] } as Project);
+    await c.flush();
+    editStored(app, 'a', p => { p.pages[0].elements[0].attempts = [{ value: '42', timestamp: 7, isCorrect: true }]; });
+    await c.save({ ...base.data.get('a')!, name: 'Моя правка' });
+    await c.flush();
+    expect(conflicts).toHaveLength(0);
+    const stored = JSON.parse(serverRow('a')!.data_json);
+    expect(stored.name).toBe('Моя правка');
+    expect(stored.pages[0].elements[0].attempts).toHaveLength(1);
   });
 });

@@ -61,7 +61,7 @@ class WsRoomSocket implements RoomSocket {
   }
 }
 
-interface Conn { sock: WsRoomSocket; isHost: boolean; inviteToken: string | null }
+interface Conn { sock: WsRoomSocket; isHost: boolean; inviteToken: string | null; uid: number }
 
 interface CloudRoom {
   id: string;
@@ -168,6 +168,8 @@ export function createCloudRooms(app: AppContext, attach: { onUpgrade(fn: (req: 
     const room: CloudRoom = { id, conns: new Set(), plan, inviteAllowCopy: true, kinds: new Map(), saveTimer: null, unloadTimer: null, hub: null as never };
     room.hub = createRoomHub({
       code: `cloud:${id}`, plan,
+      // автор может быть подключён с нескольких своих устройств (SPEC_NIGHT5 §2.3): гостевые слоты они не занимают
+      multiHost: true,
       allowCopy: () => {
         const perms = effectivePermissions(room.hub.room.project);
         return perms.allowCopy !== false && perms.forbidClone !== true && room.inviteAllowCopy;
@@ -181,8 +183,10 @@ export function createCloudRooms(app: AppContext, attach: { onUpgrade(fn: (req: 
 
   function leave(room: CloudRoom, conn: Conn): void {
     room.conns.delete(conn);
-    // бесплатная комната живёт, пока подключён автор
-    if (conn.isHost && room.plan === 'free') for (const c of [...room.conns]) c.sock.close(CLOSE_HOST_OFFLINE, 'host left');
+    // бесплатная комната живёт, пока подключено хотя бы одно устройство автора
+    if (conn.isHost && room.plan === 'free' && ![...room.conns].some(c => c.isHost)) {
+      for (const c of [...room.conns]) c.sock.close(CLOSE_HOST_OFFLINE, 'host left');
+    }
     if (room.conns.size === 0) {
       persist(room);
       room.unloadTimer = setTimeout(() => { if (room.conns.size === 0) unload(room); }, app.opts.roomIdleMs);
@@ -230,7 +234,7 @@ export function createCloudRooms(app: AppContext, attach: { onUpgrade(fn: (req: 
     }
 
     const sock = new WsRoomSocket(ws, makePreprocess(app, user?.id ?? null));
-    const conn: Conn = { sock, isHost: isOwner, inviteToken: invite?.token ?? null };
+    const conn: Conn = { sock, isHost: isOwner, inviteToken: invite?.token ?? null, uid: -1 };
     const name = normalizeName(hello.name) || (user && (!isAnonymousUser(user) || user.name_custom === 1) ? user.display_name : '');
     if (invite) room.inviteAllowCopy = invite.allowCopy;
     // Pro-курсор — только при эффективном тарифе pro/tutor того, чья это сессия (гость без сессии — классический)
@@ -240,6 +244,7 @@ export function createCloudRooms(app: AppContext, attach: { onUpgrade(fn: (req: 
       ...(invite ? { rights: guestRights(room.hub.room.project ?? projectOf(row), invite) } : {}),
     });
     if (uid === null) { if (room.conns.size === 0) unload(room); return; } // хаб отказал и сам закрыл сокет
+    conn.uid = uid;
     room.conns.add(conn);
     if (room.unloadTimer) { clearTimeout(room.unloadTimer); room.unloadTimer = null; }
     sock.on('close', () => leave(room, conn));
@@ -282,6 +287,19 @@ export function createCloudRooms(app: AppContext, attach: { onUpgrade(fn: (req: 
     const room = rooms.get(ev.projectId);
     if (!room) return;
     if (ev.kind === 'deleted') { unload(room); return; }
+    if (ev.kind === 'invite-updated') {
+      // роль и копирование ссылки изменились: подключённые по ней гости получают новые права сразу (SPEC_NIGHT5 §3.2)
+      const invite = ev.token ? findActiveInvite(app, ev.token, ev.projectId) : null;
+      if (!invite) return;
+      room.inviteAllowCopy = invite.allowCopy;
+      const project = room.hub.room.project;
+      for (const c of [...room.conns]) {
+        if (c.isHost || c.inviteToken !== ev.token) continue;
+        if (project) room.hub.setRights(c.uid, { default: invite.defaultRole, pages: guestRights(project, invite).pages });
+        else room.hub.setRights(c.uid, { default: invite.defaultRole });
+      }
+      return;
+    }
     for (const c of [...room.conns]) if (c.inviteToken === ev.token) c.sock.close(CLOSE_BAD_CODE, 'invite revoked');
   });
 

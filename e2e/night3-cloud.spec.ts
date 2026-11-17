@@ -216,8 +216,8 @@ test.describe('облако', () => {
       });
       return { status: r.status, body: await r.json() };
     }, [id, pages] as const);
-    // проект, который клиент создал сам, уже занимает одно из трёх мест; дозаполняем остальные
-    await expect.poll(async () => (await a.evaluate(async () => (await (await fetch('/api/projects', { headers: { Authorization: `Bearer ${localStorage.getItem('doska.session')}` } })).json()).projects.length)), { timeout: 15000 }).toBe(1);
+    // нетронутая стартовая доска в облако не уходит (SPEC_NIGHT5 §2.1) — все три места свободны
+    expect((await put('lim-0', 1)).status).toBe(200);
     expect((await put('lim-1', 1)).status).toBe(200);
     expect((await put('lim-2', 1)).status).toBe(200);
     const fourth = await put('lim-3', 1);

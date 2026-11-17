@@ -389,6 +389,9 @@ describe('транспорт и версия протокола', () => {
     expect(collab.closedNotice(4429).title).toBe('Слишком много подключений');
     expect(collab.closedNotice(4408).title).toBe('Соединение слишком медленное');
     expect(collab.closedNotice(4403).title).toBe('Неверная ссылка');
+    expect(collab.closedNotice(1006).title).toBe('Соединение с автором прервано');
+    expect(collab.closedNotice(1006, true).title).toBe('Не удалось подключиться к серверу');
+    expect(collab.closedNotice(4410, true).title).toBe('Совместная работа завершена');
     for (const code of [1006, 1001, 4400, 4000, 4999]) expect(collab.closedNotice(code).title).toBe('Соединение с автором прервано');
     collab.showCollabNotice('<b>заголовок</b>', '<img src=x onerror=alert(1)>');
     collab.showCollabNotice('Второй', 'текст');
@@ -410,7 +413,7 @@ describe('канал, который не открылся', () => {
     t.onclose!(1006, '');
     await ready;
     expect(collab.collabActive()).toBe(false);
-    expect(events.at(-1)).toEqual({ code: 1006, reason: '' });
+    expect(events.at(-1)).toEqual({ code: 1006, reason: '', neverOpened: true });
   });
 });
 
@@ -857,5 +860,279 @@ describe('персональные курсоры (Ночь №4)', () => {
     const profile = await import('../../src/profile');
     profile.setProfile({ name: 'Бодрый Енот', cursorId: 'lavender' });
     await until(() => last(other, 'users')?.users.some((u: Msg) => u.name === 'Бодрый Енот' && u.cursorId === 'lavender'));
+  });
+});
+
+describe('уведомления и чат комнаты (Ночь №5)', () => {
+  const pillTexts = () => [...document.querySelectorAll('#activity-pills .ap-text')].map(n => n.textContent);
+
+  it('вход и выход участника — пилюли; своё подключение — без пилюли', async () => {
+    await collab.startCollab(base, false, 'Ученик');
+    await until(() => st.state.project.id === 'proj');
+    expect(pillTexts()).toEqual([]);
+    const other = await peer(`${base}&name=${encodeURIComponent('Капибара')}`);
+    await until(() => pillTexts().includes('Капибара присоединился к доске'));
+    other.ws.send(JSON.stringify({ t: 'profile', name: 'Бодрый Енот' }));
+    await until(() => pillTexts().includes('Капибара теперь Бодрый Енот'));
+    other.ws.close();
+    await until(() => pillTexts().includes('Бодрый Енот покинул доску'));
+  });
+
+  it('сообщение уходит в комнату и приходит в ленту; история — из init', async () => {
+    const other = await peer(`${base}&name=${encodeURIComponent('Лемур')}`);
+    peers.push(other);
+    other.ws.send(JSON.stringify({ t: 'chat', text: 'до вас' }));
+    await until(() => last(other, 'chat'));
+    await collab.startCollab(base, false, 'Ученик');
+    await until(() => st.state.project.id === 'proj');
+    const chat = await import('../../src/collab-chat');
+    expect(chat.chatMessages().map(m => m.text)).toEqual(['до вас']);
+    expect(document.getElementById('btn-chat')).toBeNull(); // в тестовой разметке кнопки нет — модуль не падает
+    expect(collab.sendChat('  привет  ')).toBe(true);
+    await until(() => [...other.inbox].some(m => m.t === 'chat' && m.text === 'привет' && m.name === 'Ученик'));
+    other.ws.send(JSON.stringify({ t: 'chat', text: 'и тебе' }));
+    await until(() => chat.chatMessages().some(m => m.text === 'и тебе'));
+    expect(chat.chatUnread()).toBe(1);
+    expect(pillTexts()).toContain('Лемур: и тебе');
+  });
+
+  it('смена моих прав — пилюля', async () => {
+    await collab.startCollab(base, false, 'Ученик');
+    await until(() => st.state.project.id === 'proj');
+    const uid = [...server.room.clients.values()][0].uid;
+    server.setRights(uid, { pages: { pg1: 'edit' } });
+    await until(() => pillTexts().includes('Автор изменил права доступа'));
+  });
+
+  it('«Позвать всех»: пилюля и событие перехода на страницу', async () => {
+    await collab.startCollab(base, false, 'Ученик');
+    await until(() => st.state.project.id === 'proj');
+    const got: unknown[] = [];
+    document.addEventListener('doska:collab-summon', e => got.push((e as CustomEvent).detail));
+    const host = await peer(`${base}&host=1&key=${encodeURIComponent(server.hostKey)}`);
+    peers.push(host);
+    host.ws.send(JSON.stringify({ t: 'summon', pageId: 'pg2', vx: 10, vy: 20, vz: 2 }));
+    await until(() => got.length === 1);
+    expect(got[0]).toMatchObject({ pageId: 'pg2', vx: 10, vy: 20, vz: 2 });
+    expect(pillTexts()).toContain('Автор позвал всех на страницу «Вторая»');
+  });
+
+  it('автопереход: состояние из init и сообщений', async () => {
+    const host = await peer(`${base}&host=1&key=${encodeURIComponent(server.hostKey)}`);
+    peers.push(host);
+    host.ws.send(JSON.stringify({ t: 'follow-host', enabled: true }));
+    await until(() => last(host, 'follow-host'));
+    await collab.startCollab(base, false, 'Ученик');
+    await until(() => st.state.project.id === 'proj');
+    expect(collab.hostFollowEnabled()).toBe(true);
+    host.ws.send(JSON.stringify({ t: 'follow-host', enabled: false }));
+    await until(() => !collab.hostFollowEnabled());
+  });
+
+  it('конец совместной работы убирает пилюли и выключает чат', async () => {
+    document.body.insertAdjacentHTML('beforeend', '<button id="btn-chat" hidden></button>');
+    await collab.startCollab(base, false, 'Ученик');
+    await until(() => st.state.project.id === 'proj');
+    expect((document.getElementById('btn-chat') as HTMLButtonElement).hidden).toBe(false);
+    const other = await peer(`${base}&name=${encodeURIComponent('Корги')}`);
+    peers.push(other);
+    await until(() => pillTexts().length > 0);
+    collab.stopCollab();
+    expect(pillTexts()).toEqual([]);
+    expect((document.getElementById('btn-chat') as HTMLButtonElement).hidden).toBe(true);
+    expect(collab.sendChat('x')).toBe(false);
+  });
+});
+
+describe('присутствие: камера, автопереход, «Позвать всех» (Ночь №5, TASK-06)', () => {
+  type RoomClient = { uid: number; host: boolean; view?: { pageId: string; vx: number; vy: number; vz: number } | null };
+  const guestClient = () => [...server.room.clients.values()].find(c => !(c as unknown as RoomClient).host) as unknown as RoomClient | undefined;
+  const hostUrl = () => `${base}&host=1&key=${encodeURIComponent(server.hostKey)}`;
+
+  it('view: сразу после входа и при смене страницы; камера — после остановки (дебаунс)', async () => {
+    await collab.startCollab(base, false, 'Ученик');
+    await until(() => st.state.project.id === 'proj');
+    const first = await until(() => guestClient()?.view);
+    expect(first.pageId).toBe(st.state.pageId);
+    expect(first.vz).toBe(st.state.camera.zoom);
+    // камера двигается: пока движется — не отправляется
+    for (let i = 1; i <= 5; i++) { st.state.camera = { ...st.state.camera, x: st.state.camera.x + 10 }; st.update(); }
+    await new Promise(r => setTimeout(r, collab.VIEW_SEND_MS / 3));
+    expect(guestClient()!.view!.vx).toBe(first.vx);
+    await until(() => guestClient()!.view!.vx === first.vx + 50);
+    // смена страницы — сразу
+    const other = st.state.project.pages.find(p => p.id !== st.state.pageId)!;
+    st.switchPage(other.id);
+    await until(() => guestClient()!.view!.pageId === other.id, 200);
+  });
+
+  it('автопереход: автор сменил страницу — гость переходит к нему; на скрытой странице — нет', async () => {
+    const host = await peer(hostUrl());
+    peers.push(host);
+    host.ws.send(JSON.stringify({ t: 'follow-host', enabled: true }));
+    await until(() => last(host, 'follow-host'));
+    await collab.startCollab(base, false, 'Ученик');
+    await until(() => st.state.project.id === 'proj');
+    const goto: Msg[] = [];
+    document.addEventListener('doska:collab-goto', e => goto.push((e as CustomEvent).detail));
+    host.ws.send(JSON.stringify({ t: 'view', pageId: 'pg2', vx: 100, vy: 50, vz: 2 }));
+    await until(() => goto.length === 1);
+    expect(goto[0]).toEqual({ pageId: 'pg2', x: 100, y: 50, zoom: 2, reason: 'follow' });
+    // только камера автора — гостя не двигает
+    host.ws.send(JSON.stringify({ t: 'view', pageId: 'pg2', vx: 300, vy: 50, vz: 2 }));
+    await until(() => collab.collabUsers().some(u => u.host && u.view?.vx === 300));
+    expect(goto).toHaveLength(1);
+    // страница pg1 скрыта от гостя: автор на ней — гость остаётся
+    server.setRights(guestClient()!.uid, { pages: { pg1: 'hidden' } });
+    host.ws.send(JSON.stringify({ t: 'view', pageId: 'pg1', vx: 1, vy: 1, vz: 1 }));
+    await until(() => collab.collabUsers().some(u => u.host && u.hiddenPage));
+    expect(goto).toHaveLength(1);
+    // вернулся на открытую страницу — гость снова за ним
+    host.ws.send(JSON.stringify({ t: 'view', pageId: 'pg2', vx: 7, vy: 8, vz: 1 }));
+    await until(() => goto.length === 2);
+    expect(goto[1]).toMatchObject({ pageId: 'pg2', x: 7, y: 8 });
+    // хаб общий для всех тестов: выключаем автопереход
+    host.ws.send(JSON.stringify({ t: 'follow-host', enabled: false }));
+    await until(() => !collab.hostFollowEnabled());
+  });
+
+  it('без автоперехода смена страницы автором гостя не двигает', async () => {
+    const host = await peer(hostUrl());
+    peers.push(host);
+    await collab.startCollab(base, false, 'Ученик');
+    await until(() => st.state.project.id === 'proj');
+    expect(collab.hostFollowEnabled()).toBe(false);
+    const goto: Msg[] = [];
+    document.addEventListener('doska:collab-goto', e => goto.push((e as CustomEvent).detail));
+    host.ws.send(JSON.stringify({ t: 'view', pageId: 'pg2', vx: 1, vy: 1, vz: 1 }));
+    await until(() => collab.collabUsers().some(u => u.host && u.pageId === 'pg2'));
+    expect(goto).toEqual([]);
+  });
+
+  it('автор: sendSummon и sendFollowHost уходят в комнату; гостю они не доступны', async () => {
+    const guest = await peer(`${base}&name=Гость`);
+    peers.push(guest);
+    st.openProject(demo());
+    await collab.startHostConnection(server.port, server.code, server.hostKey, 'Автор');
+    await until(() => collab.myCollabId() >= 0);
+    expect(collab.sendSummon('pg2')).toBe(true);
+    const s = await until(() => last(guest, 'summon'));
+    expect(s.pageId).toBe('pg2');
+    expect(Number.isFinite(s.vx) && Number.isFinite(s.vy) && s.vz > 0).toBe(true);
+    expect(collab.sendFollowHost(true)).toBe(true);
+    expect(collab.hostFollowEnabled()).toBe(true);
+    await until(() => last(guest, 'follow-host')?.enabled === true);
+    collab.sendFollowHost(false);
+    await until(() => last(guest, 'follow-host')?.enabled === false);
+    collab.stopCollab();
+    await collab.startCollab(base, false, 'Ученик');
+    expect(collab.sendSummon('pg1')).toBe(false);
+    expect(collab.sendFollowHost(true)).toBe(false);
+  });
+
+  it('sendProjectNow: проект уходит сразу, следом — summon (гость видит открытую страницу)', async () => {
+    // хаб общий для файла: проект прошлого теста пришёл бы автору в init вместо его собственного (с правами)
+    server.room.project = null;
+    const guest = await peer(`${base}&name=Гость`);
+    peers.push(guest);
+    const p = demo();
+    p.permissions = { pageRights: { pg2: 'hidden' } };
+    st.openProject(p);
+    await collab.startHostConnection(server.port, server.code, server.hostKey, 'Автор');
+    await until(() => collab.myCollabId() >= 0 && server.room.project?.permissions?.pageRights?.pg2 === 'hidden');
+    st.state.project.permissions = { pageRights: { pg2: 'view' } };
+    collab.sendProjectNow(st.state.project);
+    collab.sendSummon('pg2');
+    const s = await until(() => last(guest, 'summon'));
+    expect(s.pageId).toBe('pg2');
+  });
+});
+
+describe('живые права страниц у гостя (Ночь №5, TASK-07)', () => {
+  // хаб общий для файла и помнит права страниц прошлого теста: сбрасываем их через хаб
+  beforeEach(() => { (server as unknown as { pushProject(p: Project): void }).pushProject(demo()); });
+  async function guestWithHost(): Promise<Peer> {
+    await collab.startCollab(base, false, 'Ученик');
+    await until(() => st.state.project.id === 'proj' && st.state.project.pages.length === 2);
+    const host = await peer(`${base}&host=1&key=${encodeURIComponent(server.hostKey)}`);
+    peers.push(host);
+    await until(() => last(host, 'init'));
+    return host;
+  }
+  const withRights = (pageRights: Record<string, string>): Project => ({ ...demo(), permissions: { pageRights: pageRights as never } });
+
+  it('страницу под гостем скрыли: жест отменён, переход на ближайшую доступную и пилюля', async () => {
+    const host = await guestWithHost();
+    const inter = await import('../../src/interaction');
+    let cancelled = 0;
+    inter.onCancelInteraction(() => { cancelled++; });
+    st.switchPage('pg2');
+    st.setSelection(['x']);
+    host.ws.send(JSON.stringify({ t: 'project', project: withRights({ pg2: 'hidden' }) }));
+    await until(() => st.state.project.pages.length === 1);
+    expect(st.state.pageId).toBe('pg1');
+    expect(st.state.selection.size).toBe(0);
+    expect(cancelled).toBe(1);
+    expect(document.getElementById('activity-pills')?.textContent).toContain(collab.PAGE_HIDDEN_PILL);
+  });
+
+  it('скрыли другую страницу: гость остаётся на своей без пилюли', async () => {
+    const host = await guestWithHost();
+    host.ws.send(JSON.stringify({ t: 'project', project: withRights({ pg2: 'hidden' }) }));
+    await until(() => st.state.project.pages.length === 1);
+    expect(st.state.pageId).toBe('pg1');
+    expect(document.getElementById('activity-pills')?.textContent ?? '').not.toContain(collab.PAGE_HIDDEN_PILL);
+  });
+
+  it('скрыли все страницы: баннер, холст только для чтения, ничего не отправляется; открыли — баннер уходит', async () => {
+    const host = await guestWithHost();
+    const uid = [...server.room.clients.values()].find(c => !(c as unknown as { host: boolean }).host)!.uid;
+    server.setRights(uid, { default: 'edit' });
+    await until(() => collab.pageRight('pg1') === 'edit');
+    host.ws.send(JSON.stringify({ t: 'project', project: withRights({ pg1: 'hidden', pg2: 'hidden' }) }));
+    await until(() => collab.allPagesHidden());
+    const banner = document.getElementById('all-pages-hidden-banner')!;
+    expect(banner.hidden).toBe(false);
+    expect(banner.textContent).toBe(collab.ALL_HIDDEN_TEXT);
+    expect(document.body.classList.contains('all-pages-hidden')).toBe(true);
+    expect(st.state.project.pages.map(p => p.id)).toEqual([collab.HIDDEN_PLACEHOLDER_ID]);
+    expect(collab.readOnly()).toBe(true);
+    // сохранение и отправка заглушки не уходят хабу
+    const before = host.inbox.length;
+    await collab.netStorage.save(st.state.project);
+    collab.sendProject(st.state.project);
+    await new Promise(r => setTimeout(r, 400));
+    expect(host.inbox.slice(before).filter(m => m.t === 'project' || m.t === 'patch')).toEqual([]);
+    expect(server.room.project!.pages.map(p => p.id)).toEqual(['pg1', 'pg2']);
+    // автор открыл вторую страницу
+    host.ws.send(JSON.stringify({ t: 'project', project: withRights({ pg1: 'hidden', pg2: 'view' }) }));
+    await until(() => !collab.allPagesHidden());
+    expect(banner.hidden).toBe(true);
+    expect(document.body.classList.contains('all-pages-hidden')).toBe(false);
+    expect(st.state.pageId).toBe('pg2');
+    expect(st.state.project.pages.map(p => p.id)).toEqual(['pg2']);
+  });
+
+  it('остановка совместной работы снимает баннер', async () => {
+    const host = await guestWithHost();
+    host.ws.send(JSON.stringify({ t: 'project', project: withRights({ pg1: 'hidden', pg2: 'hidden' }) }));
+    await until(() => collab.allPagesHidden());
+    collab.stopCollab();
+    expect(collab.allPagesHidden()).toBe(false);
+    expect(document.body.classList.contains('all-pages-hidden')).toBe(false);
+  });
+
+  it('отказ хаба запоминается и приходит в событии закрытия', async () => {
+    const t = { send: () => true, close: () => {}, onopen: null as null | (() => void), onmessage: null as null | ((d: string) => void), onclose: null as null | ((c: number, r: string) => void) };
+    const closed: unknown[] = [];
+    document.addEventListener('doska:collab-closed', e => closed.push((e as CustomEvent).detail));
+    const p = collab.connectCollab(t as never, false);
+    t.onopen!();
+    await p;
+    t.onmessage!(JSON.stringify({ t: 'denied', reason: 'room-full', maxGuests: 3, planLimited: false }));
+    t.onclose!(4430, 'room full');
+    expect(collab.lastCollabDenied()).toEqual({ reason: 'room-full', maxGuests: 3, planLimited: false });
+    expect(collab.lastCollabClose()).toEqual({ code: 4430, reason: 'room full', denied: { reason: 'room-full', maxGuests: 3, planLimited: false } });
+    expect(closed).toEqual([collab.lastCollabClose()]);
   });
 });

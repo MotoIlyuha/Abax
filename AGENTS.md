@@ -6,7 +6,7 @@
 1. **Zero UI Frameworks в `src/`**: только чистый TypeScript и нативный DOM/Canvas 2D API. Не устанавливай React, Vue, Zustand, Tailwind или внешние стейт-менеджеры.
 2. **Иммутабельность элементов доски**:
    - Массив `state.board.elements` обновляется через `replaceElements()` / `addElement()` / `deleteSelected()` в `src/state.ts`; кэш отрисовки (`WeakMap` по ссылке в `src/renderer.ts`) и `src/spatial-index.ts` опираются на то, что элементы не правятся на месте.
-   - Любое пользовательское изменение на холсте обязано вызывать `pushHistory()` перед мутацией для работы Undo/Redo. Исключения (реакции, комментарии, ввод ученика в задание) — см. Locked Decisions в `SPEC_NIGHT1.md` / `SPEC_NIGHT2.md` / `SPEC_NIGHT3.md` / `SPEC_NIGHT4.md`.
+   - Любое пользовательское изменение на холсте обязано вызывать `pushHistory()` перед мутацией для работы Undo/Redo. Исключения (реакции, комментарии, ввод ученика в задание) — см. Locked Decisions в `SPEC_NIGHT1.md` … `SPEC_NIGHT5.md`.
 3. **Сериализация и валидация (`src/file.ts`, `src/geom.ts`, `src/renderer.ts`)**: при добавлении новых полей в `BaseEl`, `Page`, `Project` или нового типа в union `Element` (`src/types.ts`) обязательно обновить:
    - `sanitizeElement` / `parseProject` в `src/file.ts` (чтобы поля не стирались при сохранении/загрузке),
    - `elementAABB` и `hitTest` в `src/geom.ts`,
@@ -25,14 +25,19 @@
 
 ## 3. Автономный ночной режим
 - В ночном режиме НЕ задавай вопросов пользователю.
-- При неоднозначности сверяйся с `SPEC_NIGHT4.md` (Ночь №4, раздел 11 Locked Decisions; предыдущие — `SPEC_NIGHT3.md`, `SPEC_NIGHT2.md`, `SPEC_NIGHT1.md`). Если ответа там нет — выбирай самое простое обратно-совместимое решение, документируй его в `NIGHT_LOG.md` и продолжай работу.
+- При неоднозначности сверяйся с `SPEC_NIGHT5.md` (Ночь №5, раздел 11 Locked Decisions; предыдущие — `SPEC_NIGHT4.md` … `SPEC_NIGHT1.md`). Если ответа там нет — выбирай самое простое обратно-совместимое решение, документируй его в `NIGHT_LOG.md` и продолжай работу.
 - После завершения каждой задачи из `TASKS.md` отмечай чекбокс `[x]`, записывай краткий отчёт в `NIGHT_LOG.md` и делай атомарный `git commit`.
 
-## 4. Сервер (`server/`, Ночи №3–4)
-- Каталог `server/` — Node + TypeScript + `better-sqlite3`; он импортирует из `src/` только чистые модули без DOM (`types`, `file`, `delta`, `limits`, `task-element`, `room-host`, `asset-store`, `project-access`, `cursors`).
+## 4. Сервер (`server/`, Ночи №3–5)
+- Каталог `server/` — Node + TypeScript + `better-sqlite3`; он импортирует из `src/` только чистые модули без DOM (`types`, `file`, `delta`, `limits`, `task-element`, `room-host`, `asset-store`, `project-access`, `cursors`, `sync-conflict`, `room-chat`).
 - Клиент без настроенного адреса API (`apiUrl`) не делает сетевых запросов: все старые тесты работают как раньше.
 - Серверные тесты — `tests/server/*.test.ts` (`createAppServer({ dbPath: ':memory:' })`); типы сервера проверяет `npm run typecheck:tests`.
 
 ## 5. Профиль и курсоры (Ночь №4)
 - Каталог курсоров `src/cursors.ts` — единственный источник пресетов; SVG курсоров строится только из констант каталога (никаких пользовательских данных в разметке). Белый список идентификаторов в `electron/room.cjs` должен совпадать с каталогом (тест паритета).
 - Модальное окно первого входа не должно мешать тестам: E2E кладут готовый `doska.profile` (`onboarded: true`) через `addInitScript`.
+
+## 6. Совместная работа (Ночь №5)
+- Протокол хабов меняется только одновременно в `src/room-host.ts` и `electron/room.cjs`, с одинаковыми сценариями тестов для обоих.
+- Чат комнаты — только в памяти хаба (буфер 100), не в проекте, файле и БД; текст сообщений и ссылки выводятся только через `textContent`.
+- Снимок участников строится на получателя: участник на скрытой для получателя странице приходит с `hiddenPage: true` без страницы, курсора, камеры и выделения.

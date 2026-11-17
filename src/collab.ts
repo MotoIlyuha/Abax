@@ -10,6 +10,11 @@ import { myCursorId, onProfileChange, profileName } from './profile';
 import { setStorage, storage, type BoardsStorage } from './storage';
 import { getApi } from './api-client';
 import { hydrateFromCloud } from './cloud-assets';
+import { clearPills, diffUsers, showPill, showUserEvents } from './activity-pills';
+import { chatReceive, chatReset, setChatAvailable, setChatSender } from './collab-chat';
+import { viewCenter, viewportSize } from './camera-anim';
+import { cancelActiveInteraction } from './interaction';
+import { nearestAvailablePage } from './presence';
 import {
   CLOSE_BAD_CODE, CLOSE_BAD_REQUEST, CLOSE_FREE_LIMIT, CLOSE_HOST_OFFLINE, CLOSE_PROTOCOL_MISMATCH, CLOSE_RATE_LIMITED,
   CLOSE_ROOM_CLOSED, CLOSE_ROOM_FULL, CLOSE_ROOM_NOT_FOUND, CLOSE_TOO_SLOW, PROTO,
@@ -18,8 +23,18 @@ import {
 
 export { PROTO };
 
-/** Событие на document, когда соединение закрылось; detail — код и причина. */
-export interface CollabClosedDetail { code: number; reason: string }
+/** Отказ хаба перед закрытием ({t:'denied'}): мест нет — по лимиту тарифа автора (planLimited) или по лимиту, заданному автором. */
+export interface CollabDenied { reason: string; maxGuests?: number; planLimited?: boolean }
+
+/** Событие на document, когда соединение закрылось; detail — код и причина (и отказ хаба, если он был). */
+export interface CollabClosedDetail { code: number; reason: string; denied?: CollabDenied; /** Соединение так и не открылось (сервер недоступен или отверг подключение). */ neverOpened?: boolean }
+
+/** Текст баннера, когда автор скрыл от гостя все страницы (SPEC_NIGHT5 §7). */
+export const ALL_HIDDEN_TEXT = 'Автор временно скрыл все страницы доски. Доступ откроется автоматически, когда автор включит страницу.';
+/** Пилюля, когда автор скрыл страницу, на которой гость находился. */
+export const PAGE_HIDDEN_PILL = 'Автор скрыл страницу, на которой вы находились';
+/** Страница-заглушка гостя, пока все страницы скрыты: только у него, хабу не уходит. */
+export const HIDDEN_PLACEHOLDER_ID = '__all-pages-hidden__';
 
 export interface CollabUser {
   userId: number;
@@ -33,7 +48,23 @@ export interface CollabUser {
   rights: { default: string; pages: Record<string, string> };
   /** Персональный курсор (нет — участник со старой версией). */
   cursorId?: string;
+  /** Центр экрана участника в мировых координатах и зум (SPEC_NIGHT5 §8). */
+  view?: { pageId: string; vx: number; vy: number; vz: number } | null;
+  /** Участник на странице, скрытой от меня: где он, не сообщается (SPEC_NIGHT5 §3.1). */
+  hiddenPage?: boolean;
 }
+
+/** Событие на document: автор позвал всех на страницу (SPEC_NIGHT5 §8); камеру наводит приложение. */
+export interface CollabSummonDetail { pageId: string; vx: number; vy: number; vz: number; by: number }
+
+/**
+ * Событие на document 'doska:collab-goto': перейти к участнику (клик по краевому курсору или аватару, автопереход
+ * за автором). Приложение переключает страницу и плавно наводит камеру на (x, y); zoom — нет: текущий масштаб.
+ */
+export interface CollabGotoDetail { pageId: string; x?: number; y?: number; zoom?: number; reason: 'pointer' | 'avatar' | 'follow' }
+
+/** Событие на document 'doska:collab-presence': участники, их страницы или моя камера изменились (перерисовать присутствие). */
+export const PRESENCE_EVENT = 'doska:collab-presence';
 
 let transport: CollabTransport | null = null;
 let myUserId = -1;
@@ -43,18 +74,61 @@ let connected = false;
 let role: 'host' | 'guest' = 'guest';
 /** Хаб комнаты понимает дельта-патчи (признак приходит в init): тогда содержимое страниц идёт патчами, а не проектом. */
 let hubPatches = false;
+/** Состав комнаты уже известен (init или первый users): дальше его изменения показываются пилюлями. */
+let usersKnown = false;
+/** Автор включил «Автопереход участников за мной» (SPEC_NIGHT5 §8). */
+let followHost = false;
+/** Когда связь с комнатой оборвалась неожиданно: следующее подключение покажет «Связь восстановлена». */
+let lostAt: number | null = null;
+/** В течение какого времени после обрыва новое подключение считается восстановлением связи. */
+const RESTORE_WINDOW_MS = 10 * 60 * 1000;
+/** Последний отказ хаба ({t:'denied'}) в этом подключении. */
+let lastDenied: CollabDenied | null = null;
+/** Автор скрыл от гостя все страницы: на холсте заглушка, ничего не сохраняется и не отправляется. */
+let allHidden = false;
 
 
 export function collabActive(): boolean { return connected; }
+/** Все страницы доски скрыты от гостя автором (SPEC_NIGHT5 §7). */
+export function allPagesHidden(): boolean { return allHidden; }
 export function myColor(): string { return users.find(u => u.userId === myUserId)?.color || '#e03131'; }
 export function myName(): string { return users.find(u => u.userId === myUserId)?.name || ''; }
 export function isHost(): boolean { return role === 'host'; }
+/** Автор включил автопереход участников за собой. */
+export function hostFollowEnabled(): boolean { return followHost; }
+/** Участники комнаты (как их видит этот клиент: с маскировкой скрытых страниц). */
+export function collabUsers(): readonly CollabUser[] { return users; }
+/** Мой номер участника в комнате (-1 — не подключён). */
+export function myCollabId(): number { return myUserId; }
+
+/** «Позвать всех сюда» (только автор): гости переходят на страницу и наводят камеру на центр моего экрана. */
+export function sendSummon(pageId: string = state.pageId): boolean {
+  if (!connected || role !== 'host' || !transport) return false;
+  const { w, h } = viewportSize();
+  const v = viewCenter(state.camera, w, h);
+  return transport.send(JSON.stringify({ t: 'summon', pageId, vx: v.vx, vy: v.vy, vz: v.vz })) !== false;
+}
+
+/** Тумблер «Автопереход участников за мной» (только автор; тариф проверяет хаб). */
+export function sendFollowHost(enabled: boolean): boolean {
+  if (!connected || role !== 'host' || !transport) return false;
+  followHost = enabled;
+  document.dispatchEvent(new CustomEvent(PRESENCE_EVENT));
+  return transport.send(JSON.stringify({ t: 'follow-host', enabled })) !== false;
+}
+
+/** Сообщение в чат комнаты; false — нет соединения. */
+export function sendChat(text: string): boolean {
+  if (!connected || !transport) return false;
+  return transport.send(JSON.stringify({ t: 'chat', text })) !== false;
+}
 const cursorThrottle: { last: number; timer: number; pending: { x: number; y: number } | null } = { last: 0, timer: 0, pending: null };
 const projectThrottle: { timer: number } = { timer: 0 };
 
 /** Право на активной странице: edit / view / hidden. */
 export function pageRight(pageId: string): 'edit' | 'view' | 'hidden' {
   if (role === 'host' || isDraftId(pageId)) return 'edit';
+  if (allHidden || pageId === HIDDEN_PLACEHOLDER_ID) return 'view';
   const r: string = myRights.pages[pageId] ?? myRights.default ?? 'view';
   return r === 'edit' || r === 'hidden' ? r : 'view';
 }
@@ -92,6 +166,13 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
   }
   transport = t;
   hubPatches = false;
+  lastDenied = null;
+  lastClosed = null;
+  myUserId = -1;
+  viewSent = null;
+  presenceKey = '';
+  hostPages.clear();
+  usersKnown = false;
   baselines.clear();
   incoming.length = 0;
   startReady();
@@ -110,18 +191,33 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
       }
       myUserId = m.userId as number;
       myRights = (m.rights as typeof myRights) || myRights;
+      usersKnown = Array.isArray(m.users);
       if (Array.isArray(m.users)) users = m.users as CollabUser[];
+      followHost = m.followHost === true;
+      setChatSender(sendChat);
+      setChatAvailable(true);
+      chatReset(m.chat, myUserId);
+      if (lostAt !== null && Date.now() - lostAt < RESTORE_WINDOW_MS) showPill({ kind: 'ok', text: 'Связь с доской восстановлена' });
+      lostAt = null;
       // хаб умеет патчи — сообщаем, что мы тоже: до ответа он шлёт полные проекты
       hubPatches = m.patches === true;
       if (hubPatches) send({ t: 'caps', patches: true });
       if (m.project) applyRemoteProject(m.project as Project);
+      followHostPages(users);
       renderRemoteCursors();
       settleReady(true);
+      noteView(true);
     } else if (m.t === 'users') {
-      users = m.users as CollabUser[];
+      const next = Array.isArray(m.users) ? m.users as CollabUser[] : users;
+      if (usersKnown) showUserEvents(diffUsers(users, next, myUserId));
+      usersKnown = true;
+      users = next;
+      followHostPages(next);
       renderRemoteCursors();
     } else if (m.t === 'rights') {
-      myRights = (m.rights as typeof myRights) || myRights;
+      const nextRights = (m.rights as typeof myRights) || myRights;
+      if (role === 'guest' && JSON.stringify(nextRights) !== JSON.stringify(myRights)) showPill({ kind: 'info', text: 'Автор изменил права доступа' });
+      myRights = nextRights;
       // перерисовываем UI — тулбар и список страниц зависят от прав
       setSelection([...state.selection]);
     } else if (m.t === 'project') {
@@ -132,6 +228,22 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
       applyIncomingComments(m.pageId, m.comments);
     } else if (m.t === 'pointer') {
       applyIncomingPointer(m);
+    } else if (m.t === 'chat') {
+      chatReceive(m);
+    } else if (m.t === 'follow-host') {
+      const was = followHost;
+      followHost = m.enabled === true;
+      // гость: автопереход включили — сразу к автору (если он не на скрытой странице)
+      if (followHost && !was && role === 'guest') { hostPages.clear(); followHostPages(users); }
+      document.dispatchEvent(new CustomEvent(PRESENCE_EVENT));
+    } else if (m.t === 'summon') {
+      receiveSummon(m);
+    } else if (m.t === 'denied') {
+      lastDenied = {
+        reason: typeof m.reason === 'string' ? m.reason : '',
+        ...(typeof m.maxGuests === 'number' && Number.isFinite(m.maxGuests) ? { maxGuests: m.maxGuests } : {}),
+        ...(typeof m.planLimited === 'boolean' ? { planLimited: m.planLimited } : {}),
+      };
     }
   };
 
@@ -153,14 +265,33 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
     };
     t.onclose = (code, reason) => {
       if (!current()) return;
+      const wasInRoom = connected && myUserId >= 0;
+      const neverOpened = !connected;
       connected = false;
       dropRemotePointers();
       renderRemoteCursors();
       settleReady(false);
-      notifyClosed(code, reason);
+      setChatSender(null);
+      notifyClosed(code, reason, neverOpened);
+      // гостю причину объясняет карточка уведомления; автору — пилюля: его комната подключится снова
+      if (wasInRoom && role === 'host') {
+        lostAt = Date.now();
+        showPill({ kind: 'warn', text: 'Соединение прервано, переподключаемся…' });
+      }
       resolve(); // не открылся вовсе — не держим запуск приложения
     };
   });
+}
+
+/** Автор позвал всех на страницу: пилюля и событие для приложения (переход на страницу и камера). */
+function receiveSummon(m: Record<string, unknown>): void {
+  if (role !== 'guest' || typeof m.pageId !== 'string') return;
+  const page = state.project.pages.find(p => p.id === m.pageId);
+  if (!page) return;
+  const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+  showPill({ kind: 'info', text: `Автор позвал всех на страницу «${page.name}»` });
+  const detail: CollabSummonDetail = { pageId: page.id, vx: num(m.vx, 0), vy: num(m.vy, 0), vz: num(m.vz, 1), by: num(m.by, -1) };
+  document.dispatchEvent(new CustomEvent<CollabSummonDetail>('doska:collab-summon', { detail }));
 }
 
 /** Картинки asset://… в проекте или патче заменяются на содержимое (докачивается с сервера). */
@@ -201,8 +332,23 @@ export function collabReady(): Promise<boolean> {
   return readyPromise;
 }
 
-function notifyClosed(code: number, reason: string): void {
-  document.dispatchEvent(new CustomEvent<CollabClosedDetail>('doska:collab-closed', { detail: { code, reason } }));
+/** Как закрылось последнее подключение (null — ещё не закрывалось). */
+let lastClosed: CollabClosedDetail | null = null;
+
+function notifyClosed(code: number, reason: string, neverOpened = false): void {
+  const detail: CollabClosedDetail = { code, reason, ...(lastDenied ? { denied: lastDenied } : {}), ...(neverOpened ? { neverOpened } : {}) };
+  lastClosed = detail;
+  document.dispatchEvent(new CustomEvent<CollabClosedDetail>('doska:collab-closed', { detail }));
+}
+
+/** Отказ хаба в последнем подключении (null — не было). */
+export function lastCollabDenied(): CollabDenied | null {
+  return lastDenied;
+}
+
+/** Код, причина и отказ хаба при последнем закрытии соединения (null — не закрывалось с начала подключения). */
+export function lastCollabClose(): CollabClosedDetail | null {
+  return lastClosed;
 }
 
 /** Закрыть канал по своей причине (например, несовпадение версий) и сообщить об этом как о закрытии сервером. */
@@ -218,14 +364,59 @@ function closeWith(code: number, reason: string): void {
 }
 
 function applyRemoteProject(project: Project): void {
-  const keepPageId = state.pageId;
+  if (!project || !Array.isArray(project.pages)) return;
+  const guest = role === 'guest';
+  const wasHidden = allHidden;
+  const prevPage = state.pageId;
+  const prevOrder = state.project.pages.map(p => p.id);
+  // автор скрыл все страницы (SPEC_NIGHT5 §7): хаб прислал проект без страниц — гость видит заглушку и баннер
+  if (guest && project.pages.length === 0) {
+    if (!wasHidden) cancelActiveInteraction();
+    allHidden = true;
+    const placeholder: Page = { id: HIDDEN_PLACEHOLDER_ID, name: '', grid: 'none', elements: [] };
+    openProject({ ...project, pages: [placeholder] }, placeholder.id);
+    setSelection([]);
+    setAllHiddenBanner(true);
+    document.dispatchEvent(new CustomEvent('doska:collab-project'));
+    return;
+  }
+  if (project.pages.length === 0) return; // у автора проект без страниц не бывает
+  let keepPageId: string | undefined = prevPage;
+  let lost = false;
+  if (wasHidden) {
+    // страница снова открыта: баннер уходит, открывается первая доступная
+    allHidden = false;
+    setAllHiddenBanner(false);
+    keepPageId = project.pages[0].id;
+  } else if (guest && prevPage && !isDraftId(prevPage) && !project.pages.some(p => p.id === prevPage)) {
+    // страницу, на которой гость стоит, скрыли: жест отменяется, гость уходит на ближайшую доступную
+    lost = true;
+    cancelActiveInteraction();
+    keepPageId = nearestAvailablePage(prevOrder, prevPage, project.pages.map(p => p.id)) ?? project.pages[0].id;
+  }
   const keepCam = { ...state.camera };
-  openProject(project, keepPageId ?? undefined);
+  openProject(project, keepPageId);
   state.camera = keepCam;
-  setSelection([...state.selection]);
+  setSelection(lost ? [] : [...state.selection]);
   // содержимое теперь общее: следующие правки считаются от него
   markSent(state.project);
+  if (lost) showPill({ kind: 'warn', text: PAGE_HIDDEN_PILL });
   document.dispatchEvent(new CustomEvent('doska:collab-project'));
+}
+
+/** Баннер «все страницы скрыты» поверх холста; холст под ним не принимает ввод. */
+function setAllHiddenBanner(on: boolean): void {
+  document.body.classList.toggle('all-pages-hidden', on);
+  let banner = document.getElementById('all-pages-hidden-banner');
+  if (!banner && on) {
+    banner = document.createElement('div');
+    banner.id = 'all-pages-hidden-banner';
+    document.body.appendChild(banner);
+  }
+  if (!banner) return;
+  banner.setAttribute('role', 'status');
+  if (on && !banner.textContent) banner.textContent = ALL_HIDDEN_TEXT;
+  banner.hidden = !on;
 }
 
 // ----- Дельта-патчи -----
@@ -365,6 +556,76 @@ function flushCursor(): void {
   // черновик виден только автору: остальным курсор «не на странице» (пустой id не совпадает ни с одной)
   send({ t: 'cursor', x: cursorThrottle.pending.x, y: cursorThrottle.pending.y, pageId: onDraft() ? '' : state.pageId });
   cursorThrottle.pending = null;
+}
+
+// ----- Камера и страница участника (SPEC_NIGHT5 §8) -----
+
+/** Пока камера двигается, {t:'view'} не уходит: отправка через столько после остановки. Смена страницы — сразу. */
+export const VIEW_SEND_MS = 250;
+let viewSent: { pageId: string; vx: number; vy: number; vz: number } | null = null;
+let viewTimer = 0;
+
+function currentView(): { pageId: string; vx: number; vy: number; vz: number } | null {
+  if (!connected || myUserId < 0 || state.view !== 'board' || onDraft()) return null;
+  const { w, h } = viewportSize();
+  if (!w || !h) return null;
+  return { pageId: state.pageId, ...viewCenter(state.camera, w, h) };
+}
+
+function flushView(): void {
+  clearTimeout(viewTimer);
+  viewTimer = 0;
+  const v = currentView();
+  if (!v) return;
+  if (viewSent && viewSent.pageId === v.pageId && viewSent.vx === v.vx && viewSent.vy === v.vy && viewSent.vz === v.vz) return;
+  viewSent = v;
+  send({ t: 'view', ...v });
+}
+
+/** Моя камера или страница изменились: сообщить комнате (смена страницы — сразу, камера — после остановки). */
+function noteView(now = false): void {
+  const v = currentView();
+  if (!v) return;
+  if (viewSent && viewSent.pageId === v.pageId && viewSent.vx === v.vx && viewSent.vy === v.vy && viewSent.vz === v.vz) return;
+  if (now || !viewSent || viewSent.pageId !== v.pageId) { flushView(); return; }
+  clearTimeout(viewTimer);
+  viewTimer = window.setTimeout(flushView, VIEW_SEND_MS);
+}
+
+/** Камера или страница с прошлой перерисовки присутствия. */
+let presenceKey = '';
+onChange(() => {
+  if (!connected) return;
+  const cam = state.camera;
+  const key = `${state.view}|${state.pageId}|${cam.x}|${cam.y}|${cam.zoom}`;
+  if (key === presenceKey) return;
+  presenceKey = key;
+  // курсоры участников привязаны к сцене: при движении своей камеры их экранные места меняются
+  renderRemoteCursors();
+  noteView();
+});
+
+/** Где в последний раз был каждый автор (null — на скрытой от меня странице); для автоперехода. */
+const hostPages = new Map<number, string | null>();
+
+/**
+ * Автопереход за автором (гость): автор сменил страницу (не скрытую от меня) — переходим к нему. Смена только камеры
+ * автора гостя не двигает: он сам смотрит, куда хочет, до следующей смены страницы автором.
+ */
+function followHostPages(next: readonly CollabUser[]): void {
+  if (role !== 'guest') { hostPages.clear(); return; }
+  for (const u of next) {
+    if (!u.host || u.userId === myUserId) continue;
+    const page = u.hiddenPage ? null : u.pageId;
+    const prev = hostPages.get(u.userId);
+    hostPages.set(u.userId, page);
+    if (!followHost || page === null || prev === page) continue;
+    if (!state.project.pages.some(p => p.id === page)) continue;
+    const view = u.view && u.view.pageId === page ? u.view : null;
+    if (page === state.pageId && !view) continue;
+    const detail: CollabGotoDetail = { pageId: page, reason: 'follow', ...(view ? { x: view.vx, y: view.vy, zoom: view.vz } : {}) };
+    document.dispatchEvent(new CustomEvent<CollabGotoDetail>('doska:collab-goto', { detail }));
+  }
 }
 
 // ----- Указка: лазер, исчезающий маркер и подсветка объектов видны остальным участникам -----
@@ -583,7 +844,7 @@ export function noteSelection(ids: string[]): void {
 
 /** Отправка проекта (дебаунс 250мс) — вызывается из storage.save сетевого режима. */
 export function sendProject(project: Project): void {
-  if (!connected) return;
+  if (!connected || allHidden) return;
   if (hubPatches) {
     // содержимое страниц уходит патчами; полный проект — только когда изменился состав проекта
     if (flushPatches(project) && !structureChanged(project)) return;
@@ -593,6 +854,15 @@ export function sendProject(project: Project): void {
     send({ t: 'project', project });
     markSent(project);
   }, 250);
+}
+
+/** Отправить проект хабу сразу (без задержки): следующее сообщение (например, summon) хаб увидит уже после него. */
+export function sendProjectNow(project: Project): void {
+  if (!connected) return;
+  clearTimeout(projectThrottle.timer);
+  projectThrottle.timer = 0;
+  send({ t: 'project', project });
+  markSent(project);
 }
 
 /** Сетевое хранилище: save = отправка, load = из init-проекта. */
@@ -607,6 +877,8 @@ export const netStorage = {
     return netProject && netProject.id === id ? netProject : null;
   },
   async save(project: Project): Promise<void> {
+    // все страницы скрыты: на руках только заглушка — хранить и отправлять нечего
+    if (allHidden || project.pages.some(p => p.id === HIDDEN_PLACEHOLDER_ID)) return;
     netProject = project;
     sendProject(project);
   },
@@ -676,10 +948,20 @@ const CLOSED_GENERIC = {
   text: 'Обновите страницу, чтобы подключиться снова.',
 };
 
-/** Текст для гостя, когда соединение закрылось: по известной причине — её объяснение, иначе общий. */
-export function closedNotice(code: number): { title: string; text: string } {
+const CLOSED_NO_CONNECT = {
+  title: 'Не удалось подключиться к серверу',
+  text: 'Сервер недоступен или не пускает с этого адреса сайта. Проверьте интернет и ссылку; если не помогает — сообщите автору: возможно, адрес сайта не разрешён на ретрансляторе (RELAY_ALLOWED_ORIGINS).',
+};
+
+/**
+ * Текст для гостя, когда соединение закрылось: по известной причине — её объяснение, иначе общий.
+ * neverOpened — соединение не открылось вовсе (браузер не сообщает причину: сервер недоступен или отказал в рукопожатии).
+ */
+export function closedNotice(code: number, neverOpened = false): { title: string; text: string } {
   if (code === CLOSE_BAD_REQUEST) return CLOSED_GENERIC;
-  return CLOSED_NOTICES[code] ?? CLOSED_GENERIC;
+  const known = CLOSED_NOTICES[code];
+  if (known) return known;
+  return neverOpened ? CLOSED_NO_CONNECT : CLOSED_GENERIC;
 }
 
 /** Уведомления ретранслятора: пока автора нет, гость видит, что доска не зависла, а ждёт автора. */
@@ -765,6 +1047,8 @@ export function renderRemoteCursors(): void {
     else if (moved) fxMove(`u${u.userId}`, sx, sy, id);
   }
   for (const uid of [...cursorNodes.keys()]) if (!seen.has(uid)) removeCursorNode(uid);
+  // краевые курсоры, аватары у страниц и в шапке (src/collab-presence.ts)
+  document.dispatchEvent(new CustomEvent(PRESENCE_EVENT));
 }
 
 /** Чужие выделения для отрисовки рамок (только активная страница). */
@@ -838,6 +1122,18 @@ export function stopCollab(): void {
   clearTimeout(syncThrottle.timer);
   syncThrottle.timer = 0;
   users = [];
+  usersKnown = false;
+  followHost = false;
+  myUserId = -1;
+  clearTimeout(viewTimer);
+  viewTimer = 0;
+  viewSent = null;
+  presenceKey = '';
+  hostPages.clear();
+  setChatSender(null);
+  setChatAvailable(false);
+  clearPills();
+  if (allHidden) { allHidden = false; setAllHiddenBanner(false); }
   state.collabRole = null;
   renderRemoteCursors();
 }
