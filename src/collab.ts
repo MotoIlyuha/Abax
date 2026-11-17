@@ -27,7 +27,7 @@ export { PROTO };
 export interface CollabDenied { reason: string; maxGuests?: number; planLimited?: boolean }
 
 /** Событие на document, когда соединение закрылось; detail — код и причина (и отказ хаба, если он был). */
-export interface CollabClosedDetail { code: number; reason: string; denied?: CollabDenied }
+export interface CollabClosedDetail { code: number; reason: string; denied?: CollabDenied; /** Соединение так и не открылось (сервер недоступен или отверг подключение). */ neverOpened?: boolean }
 
 /** Текст баннера, когда автор скрыл от гостя все страницы (SPEC_NIGHT5 §7). */
 export const ALL_HIDDEN_TEXT = 'Автор временно скрыл все страницы доски. Доступ откроется автоматически, когда автор включит страницу.';
@@ -266,12 +266,13 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
     t.onclose = (code, reason) => {
       if (!current()) return;
       const wasInRoom = connected && myUserId >= 0;
+      const neverOpened = !connected;
       connected = false;
       dropRemotePointers();
       renderRemoteCursors();
       settleReady(false);
       setChatSender(null);
-      notifyClosed(code, reason);
+      notifyClosed(code, reason, neverOpened);
       // гостю причину объясняет карточка уведомления; автору — пилюля: его комната подключится снова
       if (wasInRoom && role === 'host') {
         lostAt = Date.now();
@@ -334,8 +335,8 @@ export function collabReady(): Promise<boolean> {
 /** Как закрылось последнее подключение (null — ещё не закрывалось). */
 let lastClosed: CollabClosedDetail | null = null;
 
-function notifyClosed(code: number, reason: string): void {
-  const detail: CollabClosedDetail = { code, reason, ...(lastDenied ? { denied: lastDenied } : {}) };
+function notifyClosed(code: number, reason: string, neverOpened = false): void {
+  const detail: CollabClosedDetail = { code, reason, ...(lastDenied ? { denied: lastDenied } : {}), ...(neverOpened ? { neverOpened } : {}) };
   lastClosed = detail;
   document.dispatchEvent(new CustomEvent<CollabClosedDetail>('doska:collab-closed', { detail }));
 }
@@ -947,10 +948,20 @@ const CLOSED_GENERIC = {
   text: 'Обновите страницу, чтобы подключиться снова.',
 };
 
-/** Текст для гостя, когда соединение закрылось: по известной причине — её объяснение, иначе общий. */
-export function closedNotice(code: number): { title: string; text: string } {
+const CLOSED_NO_CONNECT = {
+  title: 'Не удалось подключиться к серверу',
+  text: 'Сервер недоступен или не пускает с этого адреса сайта. Проверьте интернет и ссылку; если не помогает — сообщите автору: возможно, адрес сайта не разрешён на ретрансляторе (RELAY_ALLOWED_ORIGINS).',
+};
+
+/**
+ * Текст для гостя, когда соединение закрылось: по известной причине — её объяснение, иначе общий.
+ * neverOpened — соединение не открылось вовсе (браузер не сообщает причину: сервер недоступен или отказал в рукопожатии).
+ */
+export function closedNotice(code: number, neverOpened = false): { title: string; text: string } {
   if (code === CLOSE_BAD_REQUEST) return CLOSED_GENERIC;
-  return CLOSED_NOTICES[code] ?? CLOSED_GENERIC;
+  const known = CLOSED_NOTICES[code];
+  if (known) return known;
+  return neverOpened ? CLOSED_NO_CONNECT : CLOSED_GENERIC;
 }
 
 /** Уведомления ретранслятора: пока автора нет, гость видит, что доска не зависла, а ждёт автора. */

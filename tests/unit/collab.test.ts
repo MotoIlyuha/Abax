@@ -389,6 +389,9 @@ describe('транспорт и версия протокола', () => {
     expect(collab.closedNotice(4429).title).toBe('Слишком много подключений');
     expect(collab.closedNotice(4408).title).toBe('Соединение слишком медленное');
     expect(collab.closedNotice(4403).title).toBe('Неверная ссылка');
+    expect(collab.closedNotice(1006).title).toBe('Соединение с автором прервано');
+    expect(collab.closedNotice(1006, true).title).toBe('Не удалось подключиться к серверу');
+    expect(collab.closedNotice(4410, true).title).toBe('Совместная работа завершена');
     for (const code of [1006, 1001, 4400, 4000, 4999]) expect(collab.closedNotice(code).title).toBe('Соединение с автором прервано');
     collab.showCollabNotice('<b>заголовок</b>', '<img src=x onerror=alert(1)>');
     collab.showCollabNotice('Второй', 'текст');
@@ -410,7 +413,7 @@ describe('канал, который не открылся', () => {
     t.onclose!(1006, '');
     await ready;
     expect(collab.collabActive()).toBe(false);
-    expect(events.at(-1)).toEqual({ code: 1006, reason: '' });
+    expect(events.at(-1)).toEqual({ code: 1006, reason: '', neverOpened: true });
   });
 });
 

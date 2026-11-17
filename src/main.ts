@@ -37,7 +37,7 @@ function watchGuestClose(opts: { roomFullHandled?: boolean } = {}): void {
       if (!opts.roomFullHandled) showRoomFullModal({ ...full, onRetry: () => location.reload() });
       return;
     }
-    const notice = closedNotice(detail.code);
+    const notice = closedNotice(detail.code, detail.neverOpened === true);
     showCollabNotice(notice.title, notice.text);
   });
 }
