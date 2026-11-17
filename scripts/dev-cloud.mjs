@@ -11,7 +11,8 @@ if (existsSync('.env.local')) process.loadEnvFile('.env.local');
 // за https-туннелем (PUBLIC_API_URL) клиент ходит в облако через тот же туннель, и возвращаться после входа можно туда же
 if (process.env.PUBLIC_API_URL) {
   process.env.DOSKA_API_URL ??= process.env.PUBLIC_API_URL;
-  process.env.ALLOWED_ORIGINS = [process.env.ALLOWED_ORIGINS, process.env.PUBLIC_API_URL].filter(Boolean).join(',');
+  // возвращаться после входа можно и на туннель, и на localhost (клиент ходит в API по адресу страницы)
+  process.env.ALLOWED_ORIGINS = [process.env.ALLOWED_ORIGINS, process.env.PUBLIC_API_URL, 'http://localhost:5173'].filter(Boolean).join(',');
   process.env.PUBLIC_WEB_URL ??= process.env.PUBLIC_API_URL;
 }
 process.env.DOSKA_API_URL ??= 'http://localhost:5173';

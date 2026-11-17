@@ -95,10 +95,18 @@ export function normalizeApiUrl(raw: unknown): string {
   } catch { return ''; }
 }
 
-/** Адрес облака: переопределение в localStorage, затем значение из сборки; пусто — облако выключено. */
+/**
+ * Адрес облака: переопределение в localStorage, затем значение из сборки; пусто — облако выключено.
+ * В `npm run dev:cloud` сервер встроен в dev-сервер, поэтому берётся адрес самой страницы: открыли по localhost —
+ * туннель (PUBLIC_API_URL) не нужен, открыли через туннель — запросы идут через него же.
+ */
 export function apiBase(): string {
   const local = normalizeApiUrl(store(API_URL_KEY));
   if (local) return local;
+  if (typeof __API_SAME_ORIGIN__ === 'boolean' && __API_SAME_ORIGIN__ && typeof location !== 'undefined') {
+    const own = normalizeApiUrl(location.origin);
+    if (own) return own;
+  }
   return typeof __DEFAULT_API_URL__ === 'string' ? normalizeApiUrl(__DEFAULT_API_URL__) : '';
 }
 
