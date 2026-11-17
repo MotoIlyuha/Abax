@@ -445,7 +445,7 @@ export function pointInPoly(x: number, y: number, pts: { x: number; y: number }[
   return inside;
 }
 
-const ROT_HANDLE_OFF_PX = 20; // отступ ручки поворота от левого верхнего угла по каждой оси, px экрана
+const ROT_HANDLE_OFF_PX = 13; // отступ ручки поворота от левого верхнего угла по каждой оси, px экрана
 const MIN_SHAPE_SIZE = 4;
 const MIN_NOTE_W = 80;
 const MIN_NOTE_H = 60;

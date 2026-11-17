@@ -1138,13 +1138,8 @@ function drawHandles(ctx: CanvasRenderingContext2D, cam: Camera): void {
       continue;
     }
     if (h.kind === 'rotate' && (el.type === 'shape' || el.type === 'image')) {
-      // кнопка у левого верхнего угла: белый круг с иконкой «дуга со стрелками»
-      const R = 11;
-      ctx.beginPath();
-      ctx.arc(sx, sy, R, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-      drawRotateIcon(ctx, sx, sy);
+      // у левого верхнего угла: только иконка «дуга со стрелками», без круга
+      drawRotateIcon(ctx, sx, sy, (el.rot ?? 0) - Math.PI / 4);
       continue;
     }
     // end/node
@@ -1156,10 +1151,14 @@ function drawHandles(ctx: CanvasRenderingContext2D, cam: Camera): void {
 }
 
 /** Иконка поворота: дуга с наконечниками стрелок на обоих концах. */
-function drawRotateIcon(ctx: CanvasRenderingContext2D, cx: number, cy: number): void {
+function drawRotateIcon(ctx: CanvasRenderingContext2D, cx: number, cy: number, angle = 0): void {
   const r = 5.5;
   const a0 = Math.PI * 1.15, a1 = Math.PI * 1.85; // дуга над центром
   ctx.save();
+  // иконка наклонена на −45° и поворачивается вместе с фигурой
+  ctx.translate(cx, cy);
+  ctx.rotate(angle);
+  ctx.translate(-cx, -cy);
   ctx.strokeStyle = selColor;
   ctx.fillStyle = selColor;
   ctx.lineWidth = 1.5;

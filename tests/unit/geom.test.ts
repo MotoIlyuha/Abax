@@ -339,8 +339,8 @@ describe('elementHandles', () => {
     const hs = elementHandles(rect(), 2);
     expect(hs).toHaveLength(9);
     const rot = hs.find(h => h.h.kind === 'rotate')!;
-    expect(rot.x).toBeCloseTo(-10); // 20px экрана при zoom=2 влево от угла
-    expect(rot.y).toBeCloseTo(-10); // и вверх
+    expect(rot.x).toBeCloseTo(-6.5); // 13px экрана при zoom=2 влево от угла
+    expect(rot.y).toBeCloseTo(-6.5); // и вверх
   });
 
   it('ломаная — узлы и середины рёбер', () => {
