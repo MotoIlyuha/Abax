@@ -696,9 +696,9 @@ test.describe('изображения', () => {
     expect(img2.w).toBeCloseTo(300, 0);
     expect(img2.h).toBeCloseTo(150, 0);
     const cx = img2.x + img2.w / 2, cy = img2.y + img2.h / 2;
-    // ручка поворота — у левого верхнего угла, на 20 px экрана по каждой оси (PR #41); угол считается
+    // ручка поворота — у левого верхнего угла, на 13 px экрана по каждой оси (ROT_HANDLE_OFF_PX в geom.ts); угол считается
     // от направления «центр → левый верхний угол», поворот на 90° — точка в направлении (h, −w) от центра
-    const off = 20 / (await board.state()).camera.zoom;
+    const off = 13 / (await board.state()).camera.zoom;
     const hx = img2.x - off, hy = img2.y - off;
     const r = Math.hypot(img2.w, img2.h);
     const tx = cx + (img2.h / r) * 200, ty = cy - (img2.w / r) * 200;
