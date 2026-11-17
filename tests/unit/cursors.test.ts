@@ -78,7 +78,7 @@ describe('каталог курсоров', () => {
 
   it('CSS-курсор: data URL с горячей точкой и запасной стрелкой', () => {
     const css = cursorCss('neon');
-    expect(css).toMatch(/^url\("data:image\/svg\+xml,%3Csvg.*"\) 3 2, default$/);
+    expect(css).toMatch(/^url\("data:image\/svg\+xml,%3Csvg.*"\) 3 3, default$/);
     expect(css).not.toContain('"<');
   });
 });

@@ -82,9 +82,9 @@ export function cleanCursorId(raw: unknown, allowPro: boolean): string | undefin
 
 // ----- SVG -----
 
-/** Стрелка 32×32, кончик в (3, 2) — горячая точка курсора. */
-export const ARROW_PATH = 'M3 2L3 25L8.7 19.6L12.6 28.6L16.9 26.8L13 17.9L21 17.9Z';
-export const CURSOR_HOTSPOT = { x: 3, y: 2 } as const;
+/** Скруглённая стрелка 32×32 (единая форма всех курсоров), кончик в (3, 3) — горячая точка курсора. */
+export const ARROW_PATH = 'M20.54 14.32C23.29 12.84 24.67 12.1 25.01 11.21C25.32 10.44 25.23 9.57 24.79 8.87C24.27 8.06 22.78 7.6 19.79 6.68L8.51 3.21C5.99 2.43 4.73 2.04 3.9 2.36C3.17 2.63 2.61 3.21 2.35 3.95C2.07 4.79 2.49 6.04 3.35 8.53L7.13 19.58C8.18 22.64 8.71 24.18 9.55 24.66C10.27 25.09 11.16 25.13 11.93 24.79C12.81 24.39 13.49 22.91 14.85 19.97L15.85 17.79C16.06 17.32 16.17 17.09 16.32 16.89C16.45 16.7 16.61 16.54 16.78 16.4C16.97 16.24 17.2 16.12 17.66 15.87L20.54 14.32Z';
+export const CURSOR_HOTSPOT = { x: 3, y: 3 } as const;
 
 /** Узор внутри стрелки: определения (defs), заливка и декор поверх заливки (обрезается по стрелке). */
 function patternParts(p: CursorPreset, pre: string): { defs: string; fill: string; decor: string } {
@@ -100,14 +100,14 @@ function patternParts(p: CursorPreset, pre: string): { defs: string; fill: strin
       return {
         defs: g([[0, '#1b1f3b'], [0.6, '#3b2a6b'], [1, '#5f3dc4']], 0.6, 1),
         fill: `url(#${pre}g)`,
-        decor: [[5, 7, 0.8], [7.5, 12, 0.6], [5.2, 17, 0.9], [9.5, 21, 0.6], [13, 25.5, 0.7], [11.5, 15.5, 1.1], [16, 19.5, 0.6], [6, 22.5, 0.5]]
+        decor: [[6, 6, 0.7], [11, 7.5, 0.6], [18, 9.5, 0.7], [8, 11, 0.8], [14, 12.5, 0.6], [16, 15, 1.1], [10, 16, 0.7], [9.5, 21, 0.6]]
           .map(([x, y, r], i) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${i === 5 ? '#b197fc' : '#ffffff'}"/>`).join(''),
       };
     case 'neon':
       return {
         defs: '',
         fill: p.fill,
-        decor: `<path d="M5.5 8L5.5 19M8 13.5L13.5 17" stroke="#ff3bd4" stroke-width="1" stroke-linecap="round" opacity=".9"/>`,
+        decor: `<path d="M7 6.5L18 9.8M6 10L9.5 20" stroke="#ff3bd4" stroke-width="1" stroke-linecap="round" opacity=".9"/>`,
       };
     case 'holo':
       return {
@@ -131,7 +131,7 @@ function patternParts(p: CursorPreset, pre: string): { defs: string; fill: strin
       return {
         defs: g([[0, '#ffd43b'], [0.5, '#ff6b00'], [1, '#e03131']], 0, 1),
         fill: `url(#${pre}g)`,
-        decor: '<path d="M5 22C5 18 8 17 7 13C9.5 15 10 17.5 9 20C10.5 19 11 18 11 16.5C13 19 12.5 23 9 25C7 25.5 5 24.5 5 22Z" fill="#fff3bf" opacity=".8"/>',
+        decor: '<path d="M7 20C7 16 10 15 9 11C11.5 13 12 15.5 11 18C12.5 17 13 16 13 14.5C15 17 14.5 21 11 23C9 23.5 7 22.5 7 20Z" fill="#fff3bf" opacity=".8"/>',
       };
     case 'aurora':
       return {
@@ -167,7 +167,7 @@ export function cursorSvg(id: string | null | undefined, opts: CursorSvgOptions 
   const cls = opts.className ? ` class="${opts.className}"` : '';
   return `<svg xmlns="http://www.w3.org/2000/svg"${cls} width="${size}" height="${size}" viewBox="0 0 32 32" aria-hidden="true">${defs}${glow}`
     + `<path d="${ARROW_PATH}" fill="${parts.fill}"/>${decor}`
-    + `<path d="${ARROW_PATH}" fill="none" stroke="${p.outline}" stroke-width="1.5" stroke-linejoin="round"/></svg>`;
+    + `<path d="${ARROW_PATH}" fill="none" stroke="${p.outline}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 }
 
 /** Значение CSS cursor: аппаратный курсор из SVG (data URL), запасной — системная стрелка. */
