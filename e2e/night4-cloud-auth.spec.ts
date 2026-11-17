@@ -47,6 +47,26 @@ const me = (page: Page) => page.evaluate(async api => {
 }, base);
 
 test.describe('вход через облако (dev-провайдеры)', () => {
+  for (const how of ['ПКМ', 'Ctrl+V'] as const) {
+    test(`код из буфера обмена (${how}): из текста письма остаются только 6 цифр`, async ({ browser }) => {
+      const page = await device(browser);
+      await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: base });
+      await page.locator('.ob-step1 [data-provider="email"]').click();
+      await page.locator('.ob-step1 .em-input').fill('clip@abax.example');
+      await page.locator('.ob-step1 .em-go').click();
+      const hint = page.locator('.ob-step1 .em-otp .ob-dev-hint');
+      await expect(hint).toContainText('Режим разработки: код');
+      const code = /(\d{6})/.exec((await hint.textContent())!)![1];
+      const text = `17.11.2026 — код для входа в Abax: ${code.slice(0, 3)} ${code.slice(3)}. Он действует 10 минут`;
+      await page.evaluate(t => navigator.clipboard.writeText(t), text);
+      await page.waitForTimeout(600);   // полоса «Код отправлен» делится на клетки
+      if (how === 'ПКМ') await page.locator('.ob-step1 .em-code').click({ button: 'right' });
+      else { await page.locator('.ob-step1 .em-code').focus(); await page.keyboard.press('Control+V'); }
+      await expect(page.locator('#onboarding')).toHaveAttribute('data-step', '2');
+      expect((await me(page)).email).toBe('clip@abax.example');
+    });
+  }
+
   test('почта на шаге 1 → шаг 2 «Вы вошли», привязка Telegram и возврат на шаг 2, имя уходит на сервер', async ({ browser }) => {
     const page = await device(browser);
     await page.locator('.ob-step1 [data-provider="email"]').click();

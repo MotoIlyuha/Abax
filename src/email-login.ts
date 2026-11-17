@@ -20,6 +20,17 @@ const ICON_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" s
 
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const N = 6;        // цифр в коде
+
+/**
+ * Код из вставленного текста: только 6 цифр. Сначала ищем отдельную группу из шести цифр
+ * (можно с пробелами или дефисами внутри: «123 456», «123-456») — так дата или номер рядом не мешают;
+ * иначе берём первые шесть цифр текста. Пустая строка — цифр нет.
+ */
+export function extractCode(text: string): string {
+  const group = /(?<!\d)\d(?:[  \-–]?\d){5}(?!\d)/.exec(text);
+  if (group) return group[0].replace(/\D/g, '');
+  return text.replace(/\D/g, '').slice(0, N);
+}
 const GAP = 8;      // зазор между клетками кода
 
 /** Ширина клетки кода при ширине блока w. */
@@ -539,6 +550,57 @@ function codeView(addr: string, devCode: string | undefined, mode: AuthMode, bac
   });
   inp.addEventListener('focus', () => { focused = true; wake(); });
   inp.addEventListener('blur', () => { focused = false; wake(); });
+
+  // ----- вставка из буфера обмена -----
+  /** Вставить код из текста буфера: только 6 цифр, цифры падают в клетки волной. */
+  function applyPasted(text: string): void {
+    if (checking || finished) return;
+    const code = extractCode(text);
+    if (!code) { setHelp('В буфере обмена нет кода из письма', 'err'); return; }
+    if (help.textContent) setHelp('');
+    // вставка заменяет набранное целиком
+    set('');
+    for (let k = 1; k <= code.length; k++) T.later(k * 0.04, () => { if (!checking) set(code.slice(0, k)); });
+    inp.focus({ preventScroll: true });
+  }
+  // Ctrl+V / «Вставить»: maxLength обрезал бы «Код: 123456» до «Код: 1» ещё до события input — разбираем сами
+  inp.addEventListener('paste', e => {
+    e.preventDefault();
+    applyPasted(e.clipboardData?.getData('text') ?? '');
+  });
+  let clipAt = 0;
+  /** ПКМ или долгий тап: прочитать буфер обмена (браузер может спросить разрешение). */
+  async function pasteFromClipboard(): Promise<void> {
+    if (checking || finished || performance.now() - clipAt < 800) return;
+    clipAt = performance.now();
+    try {
+      applyPasted(await navigator.clipboard.readText());
+    } catch {
+      setHelp('Нет доступа к буферу обмена — вставьте код сочетанием Ctrl+V', 'err');
+    }
+  }
+  const canReadClipboard = () => typeof navigator.clipboard?.readText === 'function';
+  // ПКМ на клетках (и долгий тап на Android — он тоже приходит как contextmenu) вместо меню вставляет код
+  inp.addEventListener('contextmenu', e => {
+    if (!canReadClipboard()) return;   // нет API — пусть откроется обычное меню с «Вставить»
+    e.preventDefault();
+    void pasteFromClipboard();
+  });
+  // долгий тап там, где contextmenu не приходит (iOS): держим палец 0,5 с без сдвига
+  let pressTimer = 0;
+  let pressAt = { x: 0, y: 0 };
+  const cancelPress = () => { clearTimeout(pressTimer); pressTimer = 0; };
+  inp.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' || !canReadClipboard()) return;
+    pressAt = { x: e.clientX, y: e.clientY };
+    cancelPress();
+    pressTimer = window.setTimeout(() => { pressTimer = 0; void pasteFromClipboard(); }, 500);
+  });
+  inp.addEventListener('pointermove', e => {
+    if (pressTimer && Math.hypot(e.clientX - pressAt.x, e.clientY - pressAt.y) > 10) cancelPress();
+  });
+  for (const ev of ['pointerup', 'pointercancel', 'pointerleave'] as const) inp.addEventListener(ev, cancelPress);
+
   // «Изменить почту»: клетки сливаются в полосу, и она раскрывается в поле адреса
   change.addEventListener('click', () => {
     if (finished || checking) return;
