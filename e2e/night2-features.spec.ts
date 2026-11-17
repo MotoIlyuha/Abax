@@ -223,7 +223,13 @@ test.describe('браузерный хост и патчи', () => {
     await expect(first.locator('body')).toHaveClass(/collab-guest/);
     await expect.poll(() => first.evaluate(() => (window as any).__doska.state.project.pages.length)).toBeGreaterThan(0);
     const second = await joinLocal(context, 'free1', 'Второй');
-    await expect(second.locator('#collab-notice')).toContainText('Бесплатная комната занята');
+    // Ночь №5 (SPEC_NIGHT5 §7): вместо уведомления — окно «Комната заполнена» с пояснением про тариф автора
+    const full = second.locator('#room-full-modal');
+    await expect(full).toBeVisible();
+    await expect(full.locator('h2')).toHaveText('В комнате сейчас максимум участников (1 из 1)');
+    await expect(full).toContainText('Это лимит бесплатного тарифа автора доски');
+    // без облака (комната браузера) просмотра «только для чтения» нет
+    await expect(full.locator('.room-full-readonly')).toHaveCount(0);
     await first.close();
     await second.close();
   });

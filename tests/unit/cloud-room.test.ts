@@ -2,7 +2,7 @@
 // Настоящий сервер (в памяти) и настоящие WebSocket.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SESSION_KEY, createApiClient, setApiForTests, type ApiClient } from '../../src/api-client';
-import { WAKE_MIN_MS, catchUpOnWake, connectOwnerRoom, joinCloudInvite, leaveOwnerRoom, ownerRoomProject, resetWakeForTests, setRoomRetryForTests } from '../../src/cloud-room';
+import { WAKE_MIN_MS, catchUpOnWake, connectOwnerRoom, joinCloudInvite, leaveOwnerRoom, ownerRoomProject, resetWakeForTests, setRoomRetryForTests, watchOwnerRoom } from '../../src/cloud-room';
 import { setAccount, signedIn, syncAccount } from '../../src/profile-sync';
 import { cloudStorage, initCloudSync } from '../../src/cloud-sync';
 import { collabActive, collabReady, connectCollab, sendTaskSubmit, stopCollab, type CollabClosedDetail } from '../../src/collab';
@@ -10,7 +10,7 @@ import { openProject, state, blankProject } from '../../src/state';
 import { storage } from '../../src/storage';
 import { getSyncedRev } from '../../src/sync-state';
 import { resetUploadedAssets } from '../../src/asset-store';
-import type { Project, TaskEl } from '../../src/types';
+import type { Element, Project, TaskEl } from '../../src/types';
 import { addInvite, anon, call, closeApps, editStored, makeApp, proj, putProject, rectEl, setPlan, taskEl, type TestApp } from '../server/helpers';
 
 const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
@@ -314,4 +314,57 @@ describe('автор в своей облачной комнате', () => {
     expect(task().answer).toBe('42'); // автору ответ виден
     ws.close();
   });
+});
+
+describe('комната автора: найдено в E2E Ночи №5 (порядок важен: watchOwnerRoom регистрирует постоянные подписки)', () => {
+  it('правки, ещё не сохранённые автосохранением, попадают в комнату автора (доска автора не расходится с гостями)', async () => {
+    leaveOwnerRoom();
+    await setup();
+    const api = createApiClient({ base: app.base });
+    setApiForTests(api);
+    localStorage.setItem(SESSION_KEY, owner.token);
+    const cloud = initCloudSync()!;
+    try {
+      const mine = (await call(app, 'GET', '/api/projects/a', undefined, { token: owner.token })).body.project as Project;
+      await storage.save(mine);
+      await cloud.flush();
+      openProject((await storage.load('a'))!);
+      // правка на холсте: автосохранение ещё не сработало
+      state.project = { ...state.project, pages: state.project.pages.map((pg, i) => (i === 0 ? { ...pg, elements: [...pg.elements, rectEl('fresh') as Element] } : pg)) };
+      state.dirty = true;
+      expect(await connectOwnerRoom()).toBe(true);
+      expect(state.dirty).toBe(false);
+      expect(app.rooms.projectOf('a')!.pages[0].elements.some(e => e.id === 'fresh')).toBe(true);
+    } finally {
+      leaveOwnerRoom();
+    }
+  });
+
+  it('вошедший автор начал рисовать на новой доске — после первой отправки он сам подключается к комнате', async () => {
+    leaveOwnerRoom(); // комната автора из прошлых тестов файла
+    await setup();
+    const api = createApiClient({ base: app.base });
+    setApiForTests(api);
+    localStorage.setItem(SESSION_KEY, owner.token);
+    app.db.prepare('UPDATE users SET email = ? WHERE id = ?').run('first-sync@example.com', owner.id);
+    const cloud = initCloudSync()!;
+    try {
+      expect(await syncAccount(api)).toBe(true);
+      // новая доска: в облаке её ещё нет, подключаться не к чему
+      openProject(blankProject('Новая'));
+      const id = state.project.id;
+      watchOwnerRoom();
+      await until(() => !collabActive() && getSyncedRev(id) === null);
+      expect(state.collabRole).toBeNull();
+      // правка: проект уходит в облако, id не меняется — подключение должно случиться само
+      await storage.save({ ...state.project, pages: [{ ...state.project.pages[0], elements: [rectEl('first') as Element] }] });
+      await cloud.flush();
+      await until(() => state.collabRole === 'host' && app.rooms.connections(id) === 1);
+      expect(ownerRoomProject()).toBe(id);
+    } finally {
+      leaveOwnerRoom();
+      setAccount(null);
+    }
+  });
+
 });

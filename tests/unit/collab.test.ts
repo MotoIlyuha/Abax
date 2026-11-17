@@ -1028,14 +1028,15 @@ describe('присутствие: камера, автопереход, «Поз
   });
 
   it('sendProjectNow: проект уходит сразу, следом — summon (гость видит открытую страницу)', async () => {
+    // хаб общий для файла: проект прошлого теста пришёл бы автору в init вместо его собственного (с правами)
+    server.room.project = null;
     const guest = await peer(`${base}&name=Гость`);
     peers.push(guest);
     const p = demo();
     p.permissions = { pageRights: { pg2: 'hidden' } };
     st.openProject(p);
     await collab.startHostConnection(server.port, server.code, server.hostKey, 'Автор');
-    // под нагрузкой полного прогона подключение автора и первая отправка проекта бывают дольше 3 с
-    await until(() => collab.myCollabId() >= 0 && server.room.project?.permissions?.pageRights?.pg2 === 'hidden', 10000);
+    await until(() => collab.myCollabId() >= 0 && server.room.project?.permissions?.pageRights?.pg2 === 'hidden');
     st.state.project.permissions = { pageRights: { pg2: 'view' } };
     collab.sendProjectNow(st.state.project);
     collab.sendSummon('pg2');

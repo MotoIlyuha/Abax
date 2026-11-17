@@ -93,6 +93,12 @@ export async function connectOwnerRoom(): Promise<boolean> {
   const id = state.project.id;
   connecting = true;
   try {
+    // правки последних долей секунды ещё ждут автосохранения: комната начнёт с серверного состояния, и без них
+    // доска автора разошлась бы с доской гостей — сохраняем их сразу, затем отправляем всё накопленное
+    if (state.dirty && state.collabRole === null) {
+      state.dirty = false;
+      await cloud.save(state.project);
+    }
     await cloud.flush();
     if (state.project.id !== id || getSyncedRev(id) === null) return false; // проект не в облаке или сменился
     // вошедший в аккаунт владелец подключается и без приглашения: его другие устройства видят правки вживую (SPEC_NIGHT5 §2.3)
@@ -116,7 +122,11 @@ export async function connectOwnerRoom(): Promise<boolean> {
   } catch {
     if (ownerRoom === id) { ownerRoom = null; setCloudRoomProject(null); }
     return false;
-  } finally { connecting = false; }
+  } finally {
+    connecting = false;
+    // пока шло подключение, открыли другой проект: его смену watchOwnerRoom пропустил (connecting) — пробуем для него
+    if (state.project.id !== id && ownerRoom === null) queueMicrotask(() => { void connectOwnerRoom(); });
+  }
 }
 
 /** Следит за сменой проекта и соединением: автор сам подключается к комнате и выходит из неё. Без облака ничего не делает. */
@@ -144,6 +154,15 @@ export function watchOwnerRoom(): void {
   });
   // вошли в аккаунт — открытый проект становится общим для своих устройств
   document.addEventListener('doska:account-changed', () => { if (ownerRoom === null) void connectOwnerRoom(); });
+  // проект впервые попал в облако (например, на стартовой доске начали рисовать): id не менялся, поэтому смена проекта
+  // этого не заметит — вошедший владелец подключается к комнате, как только у проекта появилась облачная ревизия
+  const triedSynced = new Set<string>();
+  cloudStorage()?.onStatus(() => {
+    const id = state.project.id;
+    if (ownerRoom !== null || connecting || triedSynced.has(id) || !signedIn() || getSyncedRev(id) === null) return;
+    triedSynced.add(id);
+    void connectOwnerRoom();
+  });
   // вернулись на вкладку или в окно (планшет мог усыпить соединение) — догнать другие устройства
   const wake = () => { if (!document.hidden) void catchUpOnWake(); };
   document.addEventListener('visibilitychange', wake);
