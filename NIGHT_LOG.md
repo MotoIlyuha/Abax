@@ -101,3 +101,7 @@
 - Настройки: `TELEGRAM_CLIENT_SECRET` (обязателен), `TELEGRAM_CLIENT_ID` (по умолчанию — из `TELEGRAM_BOT_TOKEN`); dev-заглушка Telegram — пока нет `TELEGRAM_CLIENT_SECRET`. Старый `POST /api/auth/telegram` (данные виджета, HMAC) оставлен. Клиент больше не разбирает `#tgAuthResult`.
 - Инструкция (@BotFather → Login Widget → Allowed URLs, Client ID/Secret) — `server/README.md`, раздел «Вход через Telegram». Принимает ли Telegram `http://localhost` в Allowed URLs, документация не говорит — для разработки может понадобиться https-туннель.
 - Тесты: `tests/server/jwks.test.ts` (3), в `auth-flows.test.ts` старый тест Telegram заменён на OIDC с настоящей RS256-подписью (чужой ключ, `aud`, `iss`, просрочен, нет `id`, отказ пользователя) + «без Client Secret — выключен». Всего 1093; E2E `night4-*` — 13 зелёных. Smoke `dev:cloud` с `TELEGRAM_CLIENT_SECRET` — редирект на `oauth.telegram.org/auth` с верными параметрами.
+
+## После ночи: рандомайзер имени
+- Кнопка с кубиком справа от поля имени — в окне первого входа (шаг 2) и в «Профиле» (`nameRowWithDice` в `onboarding.ts`). Клик подставляет другое случайное имя из списка (`nextFunnyName` — всегда не равное текущему), обновляет бейдж в превью, ставит каретку в конец; в «Профиле» имя сразу сохраняется. Это отменяет «кнопки 🎲 нет» из Решения 35 по просьбе пользователя.
+- Тесты: `profile.test.ts` (+1), `onboarding.test.ts` (+1), `profile-settings.test.ts` (+1). Всего 1096; E2E `night4-*` — 13 зелёных.

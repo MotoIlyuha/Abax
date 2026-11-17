@@ -5,7 +5,7 @@ import {
   resetProfileForTests, setProfile,
 } from '../../src/profile';
 import { DEV_MODE_KEY, PLAN_KEY, applyServerPlan, clearServerPlan } from '../../src/plan';
-import { FUNNY_NAMES, randomFunnyName } from '../../src/funny-names';
+import { FUNNY_NAMES, nextFunnyName, randomFunnyName } from '../../src/funny-names';
 import { initialChoice, pickCursor, previewLocked, resolveName, revertChoice, tabFill } from '../../src/onboarding-logic';
 
 beforeEach(() => {
@@ -87,6 +87,13 @@ describe('смешные имена', () => {
     expect(randomFunnyName(() => 0)).toBe(FUNNY_NAMES[0]);
     expect(randomFunnyName(() => 0.9999999)).toBe(FUNNY_NAMES[FUNNY_NAMES.length - 1]);
     expect(FUNNY_NAMES).toContain(randomFunnyName());
+  });
+
+  it('рандомайзер всегда даёт другое имя, чем текущее', () => {
+    for (const cur of FUNNY_NAMES.slice(0, 5)) {
+      for (const r of [0, 0.5, 0.9999999]) expect(nextFunnyName(cur, () => r)).not.toBe(cur);
+    }
+    expect(FUNNY_NAMES).toContain(nextFunnyName('Своё имя'));
   });
 });
 

@@ -10,7 +10,8 @@ import {
 } from './auth';
 import { createCursorPicker, type CursorPicker } from './cursor-picker';
 import { DEFAULT_CURSOR_ID } from './cursors';
-import { randomFunnyName } from './funny-names';
+import { createEmailLogin, type EmailLogin } from './email-login';
+import { nextFunnyName, randomFunnyName } from './funny-names';
 import { motionEnabled, reduceMotion } from './motion';
 import { initialChoice, resolveName, tabFill, type CursorChoice } from './onboarding-logic';
 import { cursorEntitled, getProfile, setProfile } from './profile';
@@ -76,6 +77,30 @@ export function button(cls: string, text: string, icon?: string): HTMLButtonElem
   }
   b.appendChild(el('span', 'ob-label', text));
   return b;
+}
+
+const DICE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="3.5"/><circle cx="8.5" cy="8.5" r="1" fill="currentColor"/><circle cx="15.5" cy="8.5" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="8.5" cy="15.5" r="1" fill="currentColor"/><circle cx="15.5" cy="15.5" r="1" fill="currentColor"/></svg>';
+
+/**
+ * Поле имени с кнопкой-рандомайзером справа: по клику в поле подставляется другое случайное имя из списка
+ * (и событие input — превью и бейдж обновляются). Возвращает ряд для вставки в разметку.
+ */
+export function nameRowWithDice(input: HTMLInputElement): HTMLElement {
+  const row = el('div', 'ob-name-row');
+  const dice = el('button', 'ob-dice');
+  dice.type = 'button';
+  dice.title = 'Случайное имя';
+  dice.setAttribute('aria-label', 'Случайное имя');
+  dice.innerHTML = DICE_ICON;
+  dice.addEventListener('click', () => {
+    input.value = nextFunnyName(input.value);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+  });
+  row.append(input, dice);
+  return row;
 }
 
 /** Форма входа по почте: адрес → код. done — вошли (общая с разделом «Профиль»). */
@@ -199,14 +224,19 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
   msg1.setAttribute('role', 'alert');
   msg1.hidden = true;
   const say1 = (text: string, kind: 'error' | 'info' = 'error') => { msg1.hidden = false; msg1.textContent = text; msg1.dataset.kind = kind; fitHeight(); };
-  const emailHost = el('div', 'ob-email-host');
+  // «Почта»: кнопка уступает место пружинному полю адреса, затем — клеткам кода (src/email-login.ts)
+  let emailLogin: EmailLogin | null = null;
   for (const p of ['email', 'telegram', 'google'] as const) {
     const b = button(`ob-btn ob-provider ob-${p}`, PROVIDER_NAMES[p], PROVIDER_ICONS[p]);
     b.dataset.provider = p;
     b.addEventListener('click', () => {
       void chooseProvider(p, 'login', () => ({ where: 'onboarding', name: nameInput.value, cursorId: choice.saved, placeholder }), say1, () => {
-        if (!emailHost.firstChild) emailHost.appendChild(emailForm('login', say1, () => go(2)));
-        emailHost.querySelector<HTMLInputElement>('input')?.focus();
+        if (!emailLogin) {
+          emailLogin = createEmailLogin({ mode: 'login', onDone: () => go(2), onResize: fitHeight });
+          msg1.hidden = true;
+          b.replaceWith(emailLogin.el);
+        }
+        emailLogin.focus();
         fitHeight();
       });
     });
@@ -216,7 +246,7 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
   const skip = button('ob-btn ob-skip', 'Продолжить без входа');
   skip.addEventListener('click', () => go(2));
   const note = el('p', 'ob-note', NO_LOGIN_NOTE);
-  s1.append(logo, h1, sub, providers, emailHost, msg1, or, skip, note);
+  s1.append(logo, h1, sub, providers, msg1, or, skip, note);
 
   // ----- шаг 2 -----
   const s2 = el('section', 'ob-step ob-step2');
@@ -232,7 +262,7 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
   nameInput.setAttribute('autocomplete', 'nickname');
   nameInput.placeholder = placeholder;
   nameInput.value = resume?.name ?? '';
-  nameLabel.append(nameCaption, nameInput);
+  nameLabel.append(nameCaption, nameRowWithDice(nameInput));
   const cursorCaption = el('div', 'ob-caption', 'Курсор, цвет выделения и бейдж с именем');
   const picker: CursorPicker = createCursorPicker({
     choice, entitled, name: resolveName(nameInput.value, placeholder),
@@ -281,7 +311,11 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
       b.dataset.provider = p;
       b.addEventListener('click', () => {
         void chooseProvider(p, 'link', () => ({ where: 'onboarding', name: nameInput.value, cursorId: choice.saved, placeholder }), say2, () => {
-          if (!form.firstChild) form.appendChild(emailForm('link', say2, () => { say2('Почта привязана', 'info'); renderLink(); }));
+          if (!form.firstChild) {
+            const login = createEmailLogin({ mode: 'link', onDone: () => { renderLink(); say2('Почта привязана', 'info'); }, onResize: fitHeight });
+            b.hidden = true;
+            form.appendChild(login.el);
+          }
           form.querySelector<HTMLInputElement>('input')?.focus();
           fitHeight();
         });
@@ -300,6 +334,12 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
     renderLink();
   }
 
+  /** Фокус шага 1: поле почты, если его уже открыли, иначе первая кнопка входа. */
+  function focusStep1(): void {
+    if (emailLogin) emailLogin.focus();
+    else s1.querySelector<HTMLElement>('.ob-provider')?.focus({ preventScroll: true });
+  }
+
   function fitHeight(): void {
     const active = step === 1 ? s1 : s2;
     viewport.style.height = `${active.scrollHeight}px`;
@@ -315,7 +355,8 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
     s1.setAttribute('aria-hidden', next !== 1 ? 'true' : 'false');
     s2.setAttribute('aria-hidden', next !== 2 ? 'true' : 'false');
     fitHeight();
-    (next === 2 ? nameInput : s1.querySelector<HTMLElement>('.ob-provider'))?.focus({ preventScroll: true });
+    if (next === 2) nameInput.focus({ preventScroll: true });
+    else focusStep1();
   }
 
   function finish(): void {
@@ -342,7 +383,7 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
     if (e.target instanceof Node && root.contains(e.target)) return;
     e.stopPropagation();
     if (e.key === 'Escape') { e.preventDefault(); finish(); return; }
-    if (e.key === 'Tab') { e.preventDefault(); (step === 2 ? nameInput : s1.querySelector<HTMLElement>('.ob-provider'))?.focus(); }
+    if (e.key === 'Tab') { e.preventDefault(); if (step === 2) nameInput.focus(); else focusStep1(); }
   }
 
   function trapFocus(e: KeyboardEvent): void {
@@ -383,7 +424,7 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
     requestAnimationFrame(() => root.classList.remove('ob-no-anim'));
   } else {
     fitHeight();
-    s1.querySelector<HTMLElement>('.ob-provider')?.focus({ preventScroll: true });
+    focusStep1();
   }
 }
 

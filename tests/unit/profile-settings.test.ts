@@ -71,6 +71,17 @@ describe('раздел «Профиль»', () => {
     expect($('.ps-account').textContent).toContain('Облачный сервер не подключён');
   });
 
+  it('кнопка-рандомайзер в «Профиле» сохраняет случайное имя', () => {
+    setProfile({ name: 'Лемур', onboarded: true });
+    const m = mount();
+    disposers.push(m.dispose);
+    $('.ps-field .ob-dice').click();
+    const saved = getProfile().name;
+    expect(saved).not.toBe('Лемур');
+    expect($<HTMLInputElement>('.ps-name').value).toBe(saved);
+    expect($('.cp-badge').textContent).toBe(saved);
+  });
+
   it('сообщение после возврата от провайдера', () => {
     const m = mount({ notice: { text: 'Способ входа привязан', kind: 'info' } });
     disposers.push(m.dispose);

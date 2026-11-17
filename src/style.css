@@ -96,6 +96,8 @@
   --goo-toast: 260 17; /* Goo: кнопка вырастает в карточку панели */
   --goo-stagger: 45; /* Goo: мс между каплями */
   --spring-settle: 280 22; /* приземление на значение: один небольшой перелёт (раскрытие списка страниц) */
+  --input-caret: 700 32; /* поле почты: курсор, тянется от скорости */
+  --input-morph: 300 20; /* поле почты ↔ пилюля «Код отправлен» */
   --toast-bg: #141917; /* тост */
   --toast-fg: #f3f1e7; /* текст тоста */
   --toast-link: #9ed9ff; /* ссылка в тосте */
@@ -2898,6 +2900,126 @@ body.link-view #project-icon { pointer-events: none; }
 .ob-link-note { margin: 8px 0 0; font-size: 12px; color: var(--fg-tertiary); }
 .ob-continue { width: 100%; margin-top: 18px; }
 
+/* ----- Вход по почте: пружинное поле адреса и клетки кода (src/email-login.ts) ----- */
+.em-springy { display: flex; flex-direction: column; gap: 8px; }
+.em-field {
+  position: relative;
+  width: 100%;
+  height: 56px;
+  margin: 0 auto;
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: inset 0 0 0 1px var(--border-input);
+  transition: box-shadow 0.25s, background 0.3s;
+  overflow: hidden;
+  will-change: width, transform;
+}
+.em-field.focus { box-shadow: inset 0 0 0 1.5px var(--accent), 0 0 0 3px var(--accent-ring); }
+.em-field.err { box-shadow: inset 0 0 0 1.5px var(--danger), 0 0 0 3px var(--danger-ring); }
+.em-field.ok { background: var(--success); box-shadow: none; }
+.em-label {
+  position: absolute; left: 16px; top: 18px;
+  font-size: 15px; line-height: 20px; color: var(--fg-placeholder);
+  transform-origin: left top; pointer-events: none; white-space: nowrap; transition: opacity 0.2s;
+}
+.em-field.focus .em-label, .em-field.err .em-label { color: var(--fg-secondary); }
+.em-box { position: absolute; left: 16px; right: 58px; top: 24px; height: 24px; }
+.em-layer { position: absolute; inset: 0; overflow: hidden; white-space: pre; pointer-events: none; }
+.em-layer-in { position: absolute; left: 0; top: 0; height: 24px; line-height: 24px; white-space: pre; }
+.em-ch {
+  display: inline-block; font-size: 16px; font-weight: 500; color: var(--fg);
+  line-height: 24px; font-kerning: none; transform-origin: 50% 80%;
+}
+.em-ch.in { animation: em-drop 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both; animation-delay: var(--d, 0ms); }
+.em-ch.out { position: absolute; top: 0; animation: em-out 0.34s cubic-bezier(0.5, 0, 0.75, 0) forwards; }
+.em-ch.nope { animation: em-nope 0.46s ease both; animation-delay: var(--d, 0ms); }
+.em-ch.fly { animation: em-fly 0.42s cubic-bezier(0.5, 0, 0.75, 0) forwards; animation-delay: var(--d, 0ms); }
+@keyframes em-drop {
+  0% { transform: translateY(14px) rotate(-16deg) scale(0.5); opacity: 0; filter: blur(3px); }
+  55% { transform: translateY(-3px) rotate(4deg) scale(1.1); opacity: 1; filter: none; }
+  80% { transform: translateY(1px) rotate(-1deg) scale(0.98); }
+  100% { transform: none; }
+}
+@keyframes em-out { to { transform: translateY(-18px) rotate(20deg) scale(0.5); opacity: 0; filter: blur(3px); } }
+@keyframes em-nope { 0%, 100% { transform: none; } 20% { transform: translateX(-4px) rotate(-8deg); } 40% { transform: translateX(4px) rotate(6deg); } 60% { transform: translateX(-2px); } 80% { transform: translateX(1px); } }
+@keyframes em-fly { to { transform: translateY(-28px) scale(0.6); opacity: 0; filter: blur(4px); } }
+.em-input {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  border: 0; outline: none; background: none; padding: 0;
+  font-family: inherit; font-size: 16px; font-weight: 500; line-height: 24px; font-kerning: none; letter-spacing: 0;
+  color: transparent; caret-color: transparent;
+}
+.em-input::selection { background: var(--accent-soft); color: transparent; }
+.em-caret {
+  position: absolute; left: 0; top: 2px; width: 2px; height: 20px; border-radius: 2px;
+  background: var(--accent); opacity: 0; pointer-events: none; transform-origin: left center;
+}
+.em-caret.blink { animation: caret-blink 1s steps(1) infinite; }
+.em-go {
+  position: absolute; right: 8px; top: 8px; width: 40px; height: 40px;
+  display: grid; place-items: center; border: 0; border-radius: 8px;
+  background: var(--accent); color: var(--fg-inverse); cursor: pointer;
+  transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.25s, background 0.2s;
+}
+.em-go:hover { background: var(--accent-strong); }
+.em-go:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.em-go svg { width: 20px; height: 20px; }
+.em-go.idle { transform: scale(0.82); opacity: 0.35; }
+.em-go:active { transform: scale(0.88); }
+.em-go.wait { animation: em-wait 0.9s ease-in-out infinite; }
+@keyframes em-wait { 50% { transform: scale(0.88); opacity: 0.6; } }
+.em-field.ok .em-go, .em-field.ok .em-label, .em-field.ok .em-box { opacity: 0; pointer-events: none; }
+.em-done {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px;
+  color: var(--fg-inverse); font-size: 15px; font-weight: 600; white-space: nowrap;
+  opacity: 0; transform: scale(0.9); pointer-events: none;
+}
+.em-done svg, .em-ok svg { width: 20px; height: 20px; }
+.em-done path { stroke-dasharray: 24; stroke-dashoffset: 24; }
+.em-field.ok .em-done { opacity: 1; transform: none; transition: opacity 0.3s 0.15s, transform 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.15s; }
+.em-field.ok .em-done path { stroke-dashoffset: 0; transition: stroke-dashoffset 0.45s cubic-bezier(0.65, 0, 0.35, 1) 0.3s; }
+.em-help { margin: 0; font-size: 13px; line-height: 18px; color: var(--fg-tertiary); text-align: center; }
+.em-help:empty { display: none; }
+.em-help.err { color: var(--error-text); }
+.em-help.info { color: var(--accent-strong); }
+
+.em-otp { display: flex; flex-direction: column; gap: 12px; text-align: center; animation: em-appear 0.35s cubic-bezier(0.16, 1, 0.3, 1); }
+@keyframes em-appear { from { opacity: 0; transform: translateY(8px) scale(0.98); } }
+.em-hint { margin: 0; font-size: 14px; line-height: 1.45; color: var(--fg-secondary); overflow-wrap: anywhere; }
+.em-hint b { color: var(--fg); font-weight: 600; }
+.em-boxes { position: relative; height: 56px; margin: 0 auto; }
+.em-bx {
+  position: absolute; top: 0; height: 56px; border-radius: 12px;
+  background: var(--surface-sunken); box-shadow: inset 0 0 0 1px var(--border-input);
+  display: grid; place-items: center;
+  font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--fg);
+  will-change: transform, width, left;
+}
+.em-bx i { font-style: normal; display: block; will-change: transform, opacity; }
+.em-car {
+  position: absolute; left: 50%; top: 16px; width: 2px; height: 24px; margin-left: -1px;
+  border-radius: 1px; background: var(--accent); animation: caret-blink 1.1s steps(1) infinite;
+}
+.em-ok {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px;
+  font-size: 15px; font-weight: 700; color: var(--fg-inverse); opacity: 0; pointer-events: none;
+}
+.em-code {
+  position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%;
+  opacity: 0; border: 0; padding: 0; font-size: 16px; cursor: text; caret-color: transparent;
+}
+.em-dev { text-align: center; }
+.em-dev[hidden] { display: none; }
+.em-actions { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.em-link {
+  padding: 6px 8px; border: 0; border-radius: 8px; background: transparent;
+  color: var(--fg-secondary); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer;
+}
+.em-link:hover { background: var(--hover); color: var(--fg); }
+.em-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.em-link:disabled { opacity: 0.6; cursor: default; }
+.em-resend { color: var(--accent); }
+
 /* ----- Выбор курсора (окно первого входа и «Профиль») ----- */
 .cp { display: grid; gap: 10px; }
 .cp-preview {
@@ -2990,3 +3112,22 @@ body.link-view #project-icon { pointer-events: none; }
 .ps-method-detail { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--fg-tertiary); }
 .ps-logout { margin-top: 6px; min-height: 36px; font-size: 14px; color: var(--danger); }
 .ps .ob-email { max-width: 420px; }
+
+/* кнопка-рандомайзер рядом с полем имени */
+.ob-name-row { display: flex; gap: 8px; }
+.ob-name-row .ob-input { flex: 1; }
+.ob-dice {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--border-input);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--fg-secondary);
+  cursor: pointer;
+}
+.ob-dice:hover { border-color: var(--border-strong); background: var(--hover); color: var(--accent); }
+.ob-dice:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ob-dice svg { width: 22px; height: 22px; }

@@ -10,6 +10,12 @@ export const FUNNY_NAMES: readonly string[] = [
   'Мурчащий Кот', 'Прыгучий Кенгуру',
 ];
 
+/** Другое случайное имя: не совпадает с текущим (кнопка-рандомайзер рядом с полем имени). */
+export function nextFunnyName(current: string, rand: () => number = Math.random): string {
+  const others = FUNNY_NAMES.filter(n => n !== current.trim());
+  return others[Math.min(others.length - 1, Math.max(0, Math.floor(rand() * others.length)))];
+}
+
 /** Случайное имя из списка; rand — источник случайности (для тестов). */
 export function randomFunnyName(rand: () => number = Math.random): string {
   const i = Math.min(FUNNY_NAMES.length - 1, Math.max(0, Math.floor(rand() * FUNNY_NAMES.length)));

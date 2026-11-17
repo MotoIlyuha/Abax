@@ -123,6 +123,27 @@ describe('окно первого входа', () => {
     expect(done).toHaveBeenCalledOnce();
   });
 
+  it('кнопка-рандомайзер рядом с именем подставляет другое имя и обновляет бейдж', () => {
+    openOnboarding();
+    $('.ob-skip').click();
+    const name = $<HTMLInputElement>('.ob-name');
+    const dice = $('.ob-name-row .ob-dice');
+    expect(dice.title).toBe('Случайное имя');
+    const seen = new Set<string>();
+    let prev = '';
+    for (let i = 0; i < 6; i++) {
+      dice.click();
+      expect(FUNNY_NAMES).toContain(name.value);
+      expect(name.value).not.toBe(prev);
+      expect($('.cp-badge').textContent).toBe(name.value);
+      prev = name.value;
+      seen.add(name.value);
+    }
+    expect(seen.size).toBeGreaterThan(1);
+    $('.ob-continue').click();
+    expect(getProfile().name).toBe(prev);
+  });
+
   it('Enter в поле имени — как «Продолжить»; клавиши не уходят к доске', () => {
     const board = vi.fn();
     window.addEventListener('keydown', board);

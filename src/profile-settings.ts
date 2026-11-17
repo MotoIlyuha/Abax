@@ -5,7 +5,7 @@ import { getApi } from './api-client';
 import { AuthError, authErrorText, logout } from './auth';
 import { createCursorPicker } from './cursor-picker';
 import { initialChoice, previewLocked } from './onboarding-logic';
-import { PROVIDER_ICONS, PROVIDER_NAMES, button, chooseProvider, emailForm } from './onboarding';
+import { PROVIDER_ICONS, PROVIDER_NAMES, button, chooseProvider, emailForm, nameRowWithDice } from './onboarding';
 import { cursorEntitled, getProfile, setProfile } from './profile';
 import { account, onAccountChange, signedIn } from './profile-sync';
 import type { SectionView } from './settings-dialog';
@@ -36,7 +36,7 @@ export function renderProfileSettings(host: HTMLElement, rerender: () => void, o
   name.placeholder = 'Как вас называть в совместной работе';
   name.addEventListener('change', () => { setProfile({ name: name.value }); name.value = getProfile().name; });
   name.addEventListener('keydown', e => { if (e.key === 'Enter') name.blur(); });
-  nameField.append(name, el('span', 'ps-hint', 'Его видят участники совместной работы рядом с вашим курсором.'));
+  nameField.append(nameRowWithDice(name), el('span', 'ps-hint', 'Его видят участники совместной работы рядом с вашим курсором.'));
 
   // ----- курсор -----
   const cursorBlock = el('div', 'ps-block');
