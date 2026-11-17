@@ -1,11 +1,19 @@
-// Поле с видимым лимитом символов (по мотивам «Letter limit» с designbookmark.com/motion).
-// Это настоящее поле ввода в одну строку: то, что выходит за лимит, отрезается с конца и вылетает
-// буквами. Каждая буква подпрыгивает от конца текста, падает с вращением, один раз отскакивает
-// и ложится в кучку под окном (где уже лежат буквы, «пол» выше). Кольцо справа заполняется
-// по мере ввода, у лимита становится оранжевым, на лимите красным, и на каждую лишнюю букву
-// «мотает головой». Стёрли символ: из кучки уходит одна буква, новые первыми.
+// Поле имени с видимым лимитом символов (по мотивам «Letter limit» с designbookmark.com/motion).
+//
+// Ввод анимирован так же, как поле почты на шаге входа (src/email-login.ts): настоящий <input> остаётся
+// на месте (ввод, вставка, выделение, доступность), но его текст прозрачный. Зеркальный слой рисует
+// по span на символ: новые буквы падают с отскоком (несколько сразу — волной), удалённые улетают вверх,
+// свой курсор пружинит между позициями и вытягивается от скорости.
+//
+// То, что выходит за лимит, отрезается с конца и вылетает буквами: каждая подпрыгивает от конца текста,
+// падает с вращением, один раз отскакивает и ложится в кучку под окном (где уже лежат буквы, «пол» выше).
+// Стёрли символ: из кучки уходит одна буква, новые первыми.
+//
+// Кольцо и остаток символов справа появляются только после ввода с клавиатуры (или вставки):
+// значение из кода и кнопка «Случайное имя» их прячут. Кольцо заполняется по мере ввода, у лимита
+// оранжевое, на лимите красное, и на каждую лишнюю букву «мотает головой».
 
-import { S, atRest, clamp, motionEnabled, reduceMotion, register, spring, step, tune, unregister, wake, type MotionComponent } from './motion';
+import { S, atRest, clamp, motionEnabled, reduceMotion, register, snap, spring, step, tune, unregister, wake, type MotionComponent, type Spring } from './motion';
 import { limitState, splitAtLimit } from './onboarding-logic';
 
 export interface LetterLimitOptions {
@@ -23,8 +31,11 @@ export interface LetterLimitOptions {
 export interface LetterLimit {
   /** Обёртка поля (рамка, кольцо, счётчик) для вставки в разметку. */
   el: HTMLElement;
-  /** Поставить значение из кода: лишнее отрезается молча, без падающих букв. */
-  set(value: string): void;
+  /**
+   * Поставить значение из кода: лишнее отрезается молча, без падающих букв, счётчик прячется.
+   * animate = false — буквы встают сразу (первое заполнение поля).
+   */
+  set(value: string, animate?: boolean): void;
   /** Убрать буквы и снять анимацию с цикла (окно закрыли). */
   destroy(): void;
 }
@@ -49,40 +60,66 @@ function circle(cls: string): SVGCircleElement {
   return c;
 }
 
+/** Ввод с клавиатуры, вставка, перетаскивание — у них InputEvent; у программного события (кубик) — нет. */
+const isUserInput = (e: Event): boolean => typeof InputEvent !== 'undefined' && e instanceof InputEvent;
+
 export function createLetterLimit(opts: LetterLimitOptions): LetterLimit {
   const { input, limit, near, pileHost, floorEl } = opts;
 
   const el = document.createElement('div');
   el.className = 'ob-limit';
-  const mirror = document.createElement('span');
-  mirror.className = 'ob-limit-mirror';
-  mirror.setAttribute('aria-hidden', 'true');
+  const box = document.createElement('div');
+  box.className = 'ob-limit-box';
+  const layerOut = document.createElement('div');
+  layerOut.className = 'ob-limit-layer';
+  layerOut.setAttribute('aria-hidden', 'true');
+  const layer = document.createElement('div');
+  layer.className = 'ob-limit-layer-in';
+  layerOut.appendChild(layer);
+  const caret = document.createElement('span');
+  caret.className = 'ob-limit-caret';
+  box.append(layerOut, input, caret);
+
+  const meta = document.createElement('div');
+  meta.className = 'ob-limit-meta';
+  meta.setAttribute('aria-hidden', 'true');
   const meter = document.createElementNS(SVG_NS, 'svg');
   meter.setAttribute('class', 'ob-limit-meter');
   meter.setAttribute('viewBox', '0 0 24 24');
-  meter.setAttribute('aria-hidden', 'true');
   const fill = circle('ob-limit-fill');
   fill.setAttribute('pathLength', '1');
   meter.append(circle('ob-limit-track'), fill);
   const count = document.createElement('span');
   count.className = 'ob-limit-count';
-  count.setAttribute('aria-hidden', 'true');
-  el.append(input, mirror, meter, count);
+  meta.append(meter, count);
+  el.append(box, meta);
 
   const pop = spring('--spring-pop', [520, 16]);
   const settle = spring('--spring-settle', [280, 22]);
+  const caretK = spring('--input-caret', [700, 32]);
   const F = S(0, ...settle);   // заполнение кольца
   const CP = S(1, ...pop);     // «прыжок» счётчика
   const SH = S(0, ...SHAKE);   // «мотает головой» на лишнюю букву
+  const C = S(0, ...caretK);   // x своего курсора
   tune(F, ...settle);
   tune(CP, ...pop);
   tune(SH, ...SHAKE);
-  const springs = [F, CP, SH];
+  tune(C, ...caretK);
+  const springs: Spring[] = [F, CP, SH, C];
 
+  // зеркальный слой
+  let spans: HTMLSpanElement[] = [];
+  let prev: string[] = [];
+  let scroll = 0;
+  let want = 0;
+  let lastMove = 0;
+  let focused = false;
+  let shown = false;
+
+  // кучка лишних букв
   let pile: HTMLDivElement | null = null;
   let letters: Letter[] = [];
   let bins: Record<number, number> = {};
-  let len = 0;
   let floorY = 0;
   let W = 0;
 
@@ -106,12 +143,17 @@ export function createLetterLimit(opts: LetterLimitOptions): LetterLimit {
     floorY = Math.min(f.bottom - p.top + 46, p.height - 14);
   }
 
+  /** Правый край текста в слое (без прокрутки). */
+  function textEnd(): number {
+    const l = spans[spans.length - 1];
+    return l ? l.offsetLeft + l.offsetWidth : 0;
+  }
+
   /** Где встал бы следующий символ: конец текста в поле, в координатах слоя с буквами. */
   function endOfText(): [number, number] {
     const p = ensurePile().getBoundingClientRect();
-    const r = input.getBoundingClientRect();
-    mirror.textContent = input.value;
-    const x = Math.min(r.left + mirror.offsetWidth - input.scrollLeft, r.right);
+    const r = layerOut.getBoundingClientRect();
+    const x = Math.min(r.left + textEnd() - scroll, r.right);
     return [x - p.left, r.top + r.height / 2 - p.top];
   }
 
@@ -144,44 +186,105 @@ export function createLetterLimit(opts: LetterLimitOptions): LetterLimit {
     if (l.bin !== null) bins[l.bin] = Math.max(0, (bins[l.bin] || 0) - 1);
   }
 
-  function sync(fromUser: boolean): void {
+  /** Зеркальный слой догоняет значение поля: удалённые буквы улетают, вставленные падают (как в поле почты). */
+  function mirror(anim: boolean): void {
+    const next = Array.from(input.value);
+    let a = 0;
+    while (a < prev.length && a < next.length && prev[a] === next[a]) a++;
+    let b = 0;
+    while (b < prev.length - a && b < next.length - a && prev[prev.length - 1 - b] === next[next.length - 1 - b]) b++;
+    if (a === prev.length && a === next.length) return;
+    for (const s of spans.splice(a, prev.length - a - b)) {
+      if (!anim) { s.remove(); continue; }
+      const left = s.offsetLeft;
+      s.classList.remove('in');
+      s.style.left = `${left}px`;
+      s.classList.add('out');
+      setTimeout(() => s.remove(), 360);
+    }
+    const ref = spans[a] ?? null;
+    const fresh = next.slice(a, next.length - b).map((ch, i) => {
+      const s = document.createElement('span');
+      s.className = anim ? 'em-ch in' : 'em-ch';
+      s.textContent = ch;
+      s.style.setProperty('--d', `${Math.min(i, 30) * 18}ms`);
+      layer.insertBefore(s, ref);
+      return s;
+    });
+    spans.splice(a, 0, ...fresh);
+    prev = next;
+    lastMove = performance.now();
+    if (!anim) {
+      C.t = textEnd();
+      snap(C);
+    }
+  }
+
+  function showMeta(on: boolean): void {
+    shown = on;
+    el.classList.toggle('has-count', on);
+  }
+
+  function sync(fromUser: boolean, anim = true): void {
+    const before = prev.length;
     const { kept, extra } = splitAtLimit(input.value, limit);
     if (extra) {                       // отрезаем то, что не влезло, и выбрасываем буквами
-      const caret = input.selectionStart ?? kept.length;
+      const caretAt = input.selectionStart ?? kept.length;
       input.value = kept;
       if (document.activeElement === input) {
-        const at = Math.min(caret, kept.length);
+        const at = Math.min(caretAt, kept.length);
         input.setSelectionRange(at, at);
       }
-      if (fromUser && animated()) drop(extra);
     }
-    const was = len;
-    len = Array.from(input.value).length;
-    if (len < was) {                   // место освободилось: кучка отдаёт столько же букв
+    mirror(anim && motionEnabled());
+    if (extra && fromUser && animated()) drop(extra);
+    const len = prev.length;
+    if (len < before) {                // место освободилось: кучка отдаёт столько же букв
       const live = letters.filter(l => !l.out);
-      for (let i = 0; i < Math.min(was - len, live.length); i++) leave(live[live.length - 1 - i]);
+      for (let i = 0; i < Math.min(before - len, live.length); i++) leave(live[live.length - 1 - i]);
     }
-    if (len !== was) CP.x = Math.max(CP.x, 1.12);
+    if (len !== before && shown) CP.x = Math.max(CP.x, 1.12);
     const left = limit - len;
     count.textContent = String(left);
     const st = limitState(left, near);
     el.classList.toggle('is-near', st === 'near');
     el.classList.toggle('is-full', st === 'full');
     F.t = len / limit;
+    if (!shown) snap(F);               // кольцо скрыто — при появлении сразу на своём месте
     wake();
+  }
+
+  /** Куда встать курсору: позиция каретки поля по буквам слоя. */
+  function caretTarget(): number {
+    const end = input.selectionEnd ?? input.value.length;
+    const i = Array.from(input.value.slice(0, end)).length;
+    if (!spans.length) return 0;
+    if (i < spans.length) return spans[i].offsetLeft;
+    return textEnd();
   }
 
   const onInput = (e: Event): void => {
     if ((e as InputEvent).isComposing) return;   // набор через IME — режем по его окончании
-    sync(true);
+    const user = isUserInput(e);
+    if (user && !shown) { showMeta(true); snap(F); }
+    else if (!user) showMeta(false);             // кнопка «Случайное имя» и прочие программные события
+    sync(user);
   };
+  const onMove = (): void => { lastMove = performance.now(); wake(); };
   input.addEventListener('input', onInput);
-  input.addEventListener('compositionend', () => sync(true));
+  input.addEventListener('compositionend', () => { showMeta(true); sync(true); });
+  input.addEventListener('focus', () => { focused = true; el.classList.add('focus'); wake(); });
+  input.addEventListener('blur', () => { focused = false; el.classList.remove('focus'); wake(); });
+  for (const ev of ['keydown', 'keyup', 'click', 'select']) input.addEventListener(ev, onMove);
   window.addEventListener('resize', measure);
+
+  const instant = (): boolean => !motionEnabled();
+  const adv = (s: Spring, dt: number): void => { if (instant()) snap(s); else step(s, dt); };
 
   const comp: MotionComponent = {
     frame(dt) {
-      for (const s of springs) step(s, dt);
+      C.t = caretTarget();
+      for (const s of springs) adv(s, dt);
       for (const l of letters) {
         if (l.out) {
           l.out += dt; l.vy += 900 * dt; l.y += l.vy * dt; l.s = Math.max(0, 1 - l.out / 0.32);
@@ -208,6 +311,23 @@ export function createLetterLimit(opts: LetterLimitOptions): LetterLimit {
       });
     },
     render() {
+      // курсор всегда в поле зрения, если текст шире поля (как в поле почты)
+      const width = layerOut.clientWidth;
+      want = Math.max(0, C.t - width + 6);
+      scroll += (want - scroll) * 0.25;
+      if (Math.abs(want - scroll) < 0.3 || instant()) scroll = want;
+      layer.style.transform = `translateX(${-scroll}px)`;
+      input.scrollLeft = scroll;
+
+      const speed = Math.abs(C.v);
+      const stretch = Math.min(speed / 80, 7);
+      caret.style.width = `${2 + stretch}px`;
+      caret.style.transform = `translateX(${C.x - scroll - (C.v > 0 ? stretch : 0)}px)`;
+      const idle = performance.now() - lastMove > 550 && speed < 5;
+      const sel = input.selectionStart !== input.selectionEnd;
+      caret.style.opacity = focused && !sel ? '1' : '0';
+      caret.classList.toggle('blink', focused && idle);
+
       fill.style.strokeDashoffset = (1 - clamp(F.x, 0, 1)).toFixed(4);
       const sh = (SH.x * 0.5).toFixed(2);
       count.style.transform = `translateX(${sh}px) scale(${CP.x.toFixed(4)})`;
@@ -217,19 +337,21 @@ export function createLetterLimit(opts: LetterLimitOptions): LetterLimit {
       }
     },
     settled() {
-      return springs.every(s => atRest(s, 0.001)) && letters.every(l => l.rest && !l.out);
+      return springs.every(s => atRest(s, 0.01)) && letters.every(l => l.rest && !l.out)
+        && Math.abs(want - scroll) < 0.3 && (!focused || caret.classList.contains('blink'));
     },
   };
   register(comp);
-  sync(false);
-  // первый кадр без анимации: кольцо сразу на месте
-  F.x = F.t; F.v = 0; CP.x = 1;
+  sync(false, false);
+  snap(F);
+  CP.x = 1;
 
   return {
     el,
-    set(value) {
+    set(value, animate = true) {
       input.value = value;
-      sync(false);
+      showMeta(false);
+      sync(false, animate);
     },
     destroy() {
       unregister(comp);

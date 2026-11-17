@@ -3181,19 +3181,48 @@ form.ob-email { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin
   box-sizing: border-box;
 }
 .ob-limit:has(.ob-limit-input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
-.ob-limit-input, .ob-limit-mirror { font: inherit; font-size: 15px; }
+/* ввод как в поле почты (.em-*): текст поля прозрачный, буквы рисует слой span, курсор — свой */
+.ob-limit-box { position: relative; flex: 1; min-width: 0; align-self: stretch; }
+.ob-limit-layer { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.ob-limit-layer-in { position: absolute; left: 0; top: 50%; height: 24px; margin-top: -12px; line-height: 24px; white-space: pre; }
+.ob-limit .em-ch { font-size: 15px; font-weight: 400; }
 .ob-limit-input {
-  flex: 1;
-  min-width: 0;
-  height: 42px;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
   padding: 0;
   border: 0;
-  background: transparent;
-  color: var(--fg);
+  background: none;
   outline: none;
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 400;
+  font-kerning: none;
+  letter-spacing: 0;
+  color: transparent;
+  caret-color: transparent;
 }
 .ob-limit-input::placeholder { color: var(--fg-placeholder); }
-.ob-limit-mirror { position: absolute; left: 0; top: 0; visibility: hidden; white-space: pre; pointer-events: none; }
+.ob-limit-input::selection { background: var(--accent-soft); color: transparent; }
+.ob-limit-caret {
+  position: absolute; left: 0; top: 50%; width: 2px; height: 20px; margin-top: -10px; border-radius: 2px;
+  background: var(--accent); opacity: 0; pointer-events: none; transform-origin: left center;
+}
+.ob-limit-caret.blink { animation: caret-blink 1s steps(1) infinite; }
+/* кольцо и остаток: только после ввода с клавиатуры; появляются, раздвигая место справа */
+.ob-limit-meta {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 0;
+  margin-left: -8px;
+  opacity: 0;
+  transform: scale(0.6);
+  transition: max-width 0.3s cubic-bezier(0.22, 0.8, 0.24, 1), margin-left 0.3s cubic-bezier(0.22, 0.8, 0.24, 1), opacity 0.2s, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.ob-limit.has-count .ob-limit-meta { max-width: 64px; margin-left: 0; opacity: 1; transform: none; }
 .ob-limit-meter { flex: none; width: 22px; height: 22px; transform: rotate(-90deg); will-change: transform; }
 .ob-limit-meter circle { fill: none; stroke-width: 2.6; }
 .ob-limit-track { stroke: var(--border-input); }

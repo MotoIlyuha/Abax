@@ -39,7 +39,7 @@ export function renderProfileSettings(host: HTMLElement, rerender: () => void, o
     pileHost: () => host.closest<HTMLElement>('#settings-dialog') ?? document.body,
     floorEl: () => host.closest<HTMLElement>('.sd-window') ?? host,
   });
-  limited.set(profile.name);
+  limited.set(profile.name, false);
   name.addEventListener('change', () => { setProfile({ name: name.value }); limited.set(getProfile().name); });
   name.addEventListener('keydown', e => { if (e.key === 'Enter') name.blur(); });
   nameField.append(nameRowWithDice(name, limited.el), el('span', 'ps-hint', 'Его видят участники совместной работы рядом с вашим курсором.'));

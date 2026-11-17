@@ -56,11 +56,11 @@ describe('поле с лимитом символов', () => {
     const { input, f, count } = make();
     expect(count()).toBe('5');
     input.value = 'абв';
-    input.dispatchEvent(new Event('input'));
+    input.dispatchEvent(new InputEvent('input', { inputType: 'insertText' }));
     expect(count()).toBe('2');
     expect(f.el.classList.contains('is-near')).toBe(true);
     input.value = 'абвгд';
-    input.dispatchEvent(new Event('input'));
+    input.dispatchEvent(new InputEvent('input', { inputType: 'insertText' }));
     expect(count()).toBe('0');
     expect(f.el.classList.contains('is-full')).toBe(true);
     f.destroy();
@@ -69,7 +69,7 @@ describe('поле с лимитом символов', () => {
   it('ввод сверх лимита отрезается с конца', () => {
     const { input, f, count } = make();
     input.value = 'абвгдеёж';
-    input.dispatchEvent(new Event('input'));
+    input.dispatchEvent(new InputEvent('input', { inputType: 'insertText' }));
     expect(input.value).toBe('абвгд');
     expect(count()).toBe('0');
     f.destroy();
@@ -85,10 +85,43 @@ describe('поле с лимитом символов', () => {
     f.destroy();
   });
 
+  it('счётчик появляется только после ввода с клавиатуры; кубик и значение из кода его прячут', () => {
+    const { input, f } = make();
+    const shown = () => f.el.classList.contains('has-count');
+    expect(shown()).toBe(false);
+    input.value = 'абв';
+    input.dispatchEvent(new Event('input', { bubbles: true }));   // так меняет значение кнопка «Случайное имя»
+    expect(shown()).toBe(false);
+    input.value = 'абвг';
+    input.dispatchEvent(new InputEvent('input', { inputType: 'insertText' }));
+    expect(shown()).toBe(true);
+    input.value = 'Енот';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(shown()).toBe(false);
+    input.dispatchEvent(new InputEvent('input', { inputType: 'insertText' }));
+    f.set('Лемур');
+    expect(shown()).toBe(false);
+    f.destroy();
+  });
+
+  it('слой букв повторяет значение поля по символам', () => {
+    const { input, f } = make();
+    const text = () => [...f.el.querySelectorAll('.ob-limit-layer-in .em-ch:not(.out)')].map(s => s.textContent).join('');
+    f.set('Ёж', false);
+    expect(text()).toBe('Ёж');
+    input.value = 'Ёжик';
+    input.dispatchEvent(new InputEvent('input', { inputType: 'insertText' }));
+    expect(text()).toBe('Ёжик');
+    input.value = 'Ёж😀';
+    input.dispatchEvent(new InputEvent('input', { inputType: 'insertText' }));
+    expect(text()).toBe('Ёж😀');
+    f.destroy();
+  });
+
   it('destroy убирает слой с буквами', () => {
     const { input, f } = make();
     input.value = 'абвгдеёж';
-    input.dispatchEvent(new Event('input'));
+    input.dispatchEvent(new InputEvent('input', { inputType: 'insertText' }));
     f.destroy();
     expect(document.querySelector('.ob-pile')).toBeNull();
   });
