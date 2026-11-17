@@ -31,7 +31,8 @@ import {
 import * as pdfjsLib from 'pdfjs-dist';
 // ?worker&inline: воркер инлайнится в бандл и работает из file:// (Electron)
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker&inline';
-import { collabActive, isHost, myColor, noteSelection, readOnly, startHostConnection, stopCollab } from './collab';
+import { initChatButton } from './collab-chat';
+import { collabActive, isHost, myColor, noteSelection, readOnly, startHostConnection, stopCollab, type CollabSummonDetail } from './collab';
 import { closePresent, openPresent, presentOpen } from './present';
 import { renderProfileSettings } from './profile-settings';
 import { cursorSvg } from './cursors';
@@ -4674,6 +4675,7 @@ function wireTopbar(): void {
   document.getElementById('btn-settings')!.innerHTML = ICONS.settings;
   document.getElementById('btn-share')!.innerHTML = svg('<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/>');
   document.getElementById('btn-share')!.addEventListener('click', () => { void openShareDialog(); });
+  initChatButton();
   const iconBtn = document.getElementById('project-icon') as HTMLButtonElement;
   iconBtn.addEventListener('click', () => {
     if (state.linkMode) return;
@@ -5425,6 +5427,12 @@ export function initApp(c: HTMLCanvasElement): void {
     const project = (ev as CustomEvent<{ project: Project }>).detail?.project;
     if (!project || project.id !== state.project.id || state.dirty || state.linkMode || state.collabRole !== null) return;
     void showCloudProject(project, { keepView: true });
+  });
+  // автор позвал всех на страницу (SPEC_NIGHT5 §8): гость переходит на неё; наведение камеры — TASK-06
+  document.addEventListener('doska:collab-summon', ev => {
+    const d = (ev as CustomEvent<CollabSummonDetail>).detail;
+    if (!d || state.view !== 'board' || !state.project.pages.some(p => p.id === d.pageId)) return;
+    void switchPageHandler(d.pageId);
   });
   initSyncIndicator();
   c.addEventListener('dragover', e => { if (draggedColor && canEditBoard()) e.preventDefault(); });

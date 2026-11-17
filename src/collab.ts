@@ -10,6 +10,8 @@ import { myCursorId, onProfileChange, profileName } from './profile';
 import { setStorage, storage, type BoardsStorage } from './storage';
 import { getApi } from './api-client';
 import { hydrateFromCloud } from './cloud-assets';
+import { clearPills, diffUsers, showPill, showUserEvents } from './activity-pills';
+import { chatReceive, chatReset, setChatAvailable, setChatSender } from './collab-chat';
 import {
   CLOSE_BAD_CODE, CLOSE_BAD_REQUEST, CLOSE_FREE_LIMIT, CLOSE_HOST_OFFLINE, CLOSE_PROTOCOL_MISMATCH, CLOSE_RATE_LIMITED,
   CLOSE_ROOM_CLOSED, CLOSE_ROOM_FULL, CLOSE_ROOM_NOT_FOUND, CLOSE_TOO_SLOW, PROTO,
@@ -33,7 +35,14 @@ export interface CollabUser {
   rights: { default: string; pages: Record<string, string> };
   /** Персональный курсор (нет — участник со старой версией). */
   cursorId?: string;
+  /** Центр экрана участника в мировых координатах и зум (SPEC_NIGHT5 §8). */
+  view?: { pageId: string; vx: number; vy: number; vz: number } | null;
+  /** Участник на странице, скрытой от меня: где он, не сообщается (SPEC_NIGHT5 §3.1). */
+  hiddenPage?: boolean;
 }
+
+/** Событие на document: автор позвал всех на страницу (SPEC_NIGHT5 §8); камеру наводит приложение. */
+export interface CollabSummonDetail { pageId: string; vx: number; vy: number; vz: number; by: number }
 
 let transport: CollabTransport | null = null;
 let myUserId = -1;
@@ -43,12 +52,32 @@ let connected = false;
 let role: 'host' | 'guest' = 'guest';
 /** Хаб комнаты понимает дельта-патчи (признак приходит в init): тогда содержимое страниц идёт патчами, а не проектом. */
 let hubPatches = false;
+/** Состав комнаты уже известен (init или первый users): дальше его изменения показываются пилюлями. */
+let usersKnown = false;
+/** Автор включил «Автопереход участников за мной» (SPEC_NIGHT5 §8). */
+let followHost = false;
+/** Когда связь с комнатой оборвалась неожиданно: следующее подключение покажет «Связь восстановлена». */
+let lostAt: number | null = null;
+/** В течение какого времени после обрыва новое подключение считается восстановлением связи. */
+const RESTORE_WINDOW_MS = 10 * 60 * 1000;
 
 
 export function collabActive(): boolean { return connected; }
 export function myColor(): string { return users.find(u => u.userId === myUserId)?.color || '#e03131'; }
 export function myName(): string { return users.find(u => u.userId === myUserId)?.name || ''; }
 export function isHost(): boolean { return role === 'host'; }
+/** Автор включил автопереход участников за собой. */
+export function hostFollowEnabled(): boolean { return followHost; }
+/** Участники комнаты (как их видит этот клиент: с маскировкой скрытых страниц). */
+export function collabUsers(): readonly CollabUser[] { return users; }
+/** Мой номер участника в комнате (-1 — не подключён). */
+export function myCollabId(): number { return myUserId; }
+
+/** Сообщение в чат комнаты; false — нет соединения. */
+export function sendChat(text: string): boolean {
+  if (!connected || !transport) return false;
+  return transport.send(JSON.stringify({ t: 'chat', text })) !== false;
+}
 const cursorThrottle: { last: number; timer: number; pending: { x: number; y: number } | null } = { last: 0, timer: 0, pending: null };
 const projectThrottle: { timer: number } = { timer: 0 };
 
@@ -92,6 +121,8 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
   }
   transport = t;
   hubPatches = false;
+  myUserId = -1;
+  usersKnown = false;
   baselines.clear();
   incoming.length = 0;
   startReady();
@@ -110,7 +141,14 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
       }
       myUserId = m.userId as number;
       myRights = (m.rights as typeof myRights) || myRights;
+      usersKnown = Array.isArray(m.users);
       if (Array.isArray(m.users)) users = m.users as CollabUser[];
+      followHost = m.followHost === true;
+      setChatSender(sendChat);
+      setChatAvailable(true);
+      chatReset(m.chat, myUserId);
+      if (lostAt !== null && Date.now() - lostAt < RESTORE_WINDOW_MS) showPill({ kind: 'ok', text: 'Связь с доской восстановлена' });
+      lostAt = null;
       // хаб умеет патчи — сообщаем, что мы тоже: до ответа он шлёт полные проекты
       hubPatches = m.patches === true;
       if (hubPatches) send({ t: 'caps', patches: true });
@@ -118,10 +156,15 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
       renderRemoteCursors();
       settleReady(true);
     } else if (m.t === 'users') {
-      users = m.users as CollabUser[];
+      const next = Array.isArray(m.users) ? m.users as CollabUser[] : users;
+      if (usersKnown) showUserEvents(diffUsers(users, next, myUserId));
+      usersKnown = true;
+      users = next;
       renderRemoteCursors();
     } else if (m.t === 'rights') {
-      myRights = (m.rights as typeof myRights) || myRights;
+      const nextRights = (m.rights as typeof myRights) || myRights;
+      if (role === 'guest' && JSON.stringify(nextRights) !== JSON.stringify(myRights)) showPill({ kind: 'info', text: 'Автор изменил права доступа' });
+      myRights = nextRights;
       // перерисовываем UI — тулбар и список страниц зависят от прав
       setSelection([...state.selection]);
     } else if (m.t === 'project') {
@@ -132,6 +175,12 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
       applyIncomingComments(m.pageId, m.comments);
     } else if (m.t === 'pointer') {
       applyIncomingPointer(m);
+    } else if (m.t === 'chat') {
+      chatReceive(m);
+    } else if (m.t === 'follow-host') {
+      followHost = m.enabled === true;
+    } else if (m.t === 'summon') {
+      receiveSummon(m);
     }
   };
 
@@ -153,14 +202,32 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
     };
     t.onclose = (code, reason) => {
       if (!current()) return;
+      const wasInRoom = connected && myUserId >= 0;
       connected = false;
       dropRemotePointers();
       renderRemoteCursors();
       settleReady(false);
+      setChatSender(null);
       notifyClosed(code, reason);
+      // гостю причину объясняет карточка уведомления; автору — пилюля: его комната подключится снова
+      if (wasInRoom && role === 'host') {
+        lostAt = Date.now();
+        showPill({ kind: 'warn', text: 'Соединение прервано, переподключаемся…' });
+      }
       resolve(); // не открылся вовсе — не держим запуск приложения
     };
   });
+}
+
+/** Автор позвал всех на страницу: пилюля и событие для приложения (переход на страницу и камера). */
+function receiveSummon(m: Record<string, unknown>): void {
+  if (role !== 'guest' || typeof m.pageId !== 'string') return;
+  const page = state.project.pages.find(p => p.id === m.pageId);
+  if (!page) return;
+  const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+  showPill({ kind: 'info', text: `Автор позвал всех на страницу «${page.name}»` });
+  const detail: CollabSummonDetail = { pageId: page.id, vx: num(m.vx, 0), vy: num(m.vy, 0), vz: num(m.vz, 1), by: num(m.by, -1) };
+  document.dispatchEvent(new CustomEvent<CollabSummonDetail>('doska:collab-summon', { detail }));
 }
 
 /** Картинки asset://… в проекте или патче заменяются на содержимое (докачивается с сервера). */
@@ -838,6 +905,12 @@ export function stopCollab(): void {
   clearTimeout(syncThrottle.timer);
   syncThrottle.timer = 0;
   users = [];
+  usersKnown = false;
+  followHost = false;
+  myUserId = -1;
+  setChatSender(null);
+  setChatAvailable(false);
+  clearPills();
   state.collabRole = null;
   renderRemoteCursors();
 }

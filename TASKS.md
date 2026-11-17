@@ -33,7 +33,7 @@
   - Заглушка не уходит в облако и заменяется облачным проектом (§2.1); `#sync-indicator` (§2.2); автоподключение владельца, вошедшего в аккаунт, + `visibilitychange`/`focus` (§2.3); `baseSig`, копия «(копия с устройства)» и тост «Открыть копию» (§2.4).
   - **Тесты**: дополнения `tests/unit/cloud-sync.test.ts`, `cloud-room.test.ts`.
 
-- [ ] **TASK-05: Activity Pills и чат**
+- [x] **TASK-05: Activity Pills и чат**
   - **Файлы**: `src/activity-pills.ts`, `src/collab-chat.ts`, `src/collab.ts`, `src/app.ts`, `index.html`, `src/style.css`.
   - Пилюли из разницы `users`, соединение, `summon`, права (§5); чат: кнопка с бейджем, панель, превью, история из `init` (§6).
   - **Тесты**: `tests/unit/activity-pills.test.ts`, `collab-chat.test.ts` (DOM: нет `innerHTML`, ссылки с `rel`), дополнения `collab.test.ts`.

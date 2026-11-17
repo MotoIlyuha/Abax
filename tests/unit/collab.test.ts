@@ -859,3 +859,84 @@ describe('персональные курсоры (Ночь №4)', () => {
     await until(() => last(other, 'users')?.users.some((u: Msg) => u.name === 'Бодрый Енот' && u.cursorId === 'lavender'));
   });
 });
+
+describe('уведомления и чат комнаты (Ночь №5)', () => {
+  const pillTexts = () => [...document.querySelectorAll('#activity-pills .ap-text')].map(n => n.textContent);
+
+  it('вход и выход участника — пилюли; своё подключение — без пилюли', async () => {
+    await collab.startCollab(base, false, 'Ученик');
+    await until(() => st.state.project.id === 'proj');
+    expect(pillTexts()).toEqual([]);
+    const other = await peer(`${base}&name=${encodeURIComponent('Капибара')}`);
+    await until(() => pillTexts().includes('Капибара присоединился к доске'));
+    other.ws.send(JSON.stringify({ t: 'profile', name: 'Бодрый Енот' }));
+    await until(() => pillTexts().includes('Капибара теперь Бодрый Енот'));
+    other.ws.close();
+    await until(() => pillTexts().includes('Бодрый Енот покинул доску'));
+  });
+
+  it('сообщение уходит в комнату и приходит в ленту; история — из init', async () => {
+    const other = await peer(`${base}&name=${encodeURIComponent('Лемур')}`);
+    peers.push(other);
+    other.ws.send(JSON.stringify({ t: 'chat', text: 'до вас' }));
+    await until(() => last(other, 'chat'));
+    await collab.startCollab(base, false, 'Ученик');
+    await until(() => st.state.project.id === 'proj');
+    const chat = await import('../../src/collab-chat');
+    expect(chat.chatMessages().map(m => m.text)).toEqual(['до вас']);
+    expect(document.getElementById('btn-chat')).toBeNull(); // в тестовой разметке кнопки нет — модуль не падает
+    expect(collab.sendChat('  привет  ')).toBe(true);
+    await until(() => [...other.inbox].some(m => m.t === 'chat' && m.text === 'привет' && m.name === 'Ученик'));
+    other.ws.send(JSON.stringify({ t: 'chat', text: 'и тебе' }));
+    await until(() => chat.chatMessages().some(m => m.text === 'и тебе'));
+    expect(chat.chatUnread()).toBe(1);
+    expect(pillTexts()).toContain('Лемур: и тебе');
+  });
+
+  it('смена моих прав — пилюля', async () => {
+    await collab.startCollab(base, false, 'Ученик');
+    await until(() => st.state.project.id === 'proj');
+    const uid = [...server.room.clients.values()][0].uid;
+    server.setRights(uid, { pages: { pg1: 'edit' } });
+    await until(() => pillTexts().includes('Автор изменил права доступа'));
+  });
+
+  it('«Позвать всех»: пилюля и событие перехода на страницу', async () => {
+    await collab.startCollab(base, false, 'Ученик');
+    await until(() => st.state.project.id === 'proj');
+    const got: unknown[] = [];
+    document.addEventListener('doska:collab-summon', e => got.push((e as CustomEvent).detail));
+    const host = await peer(`${base}&host=1&key=${encodeURIComponent(server.hostKey)}`);
+    peers.push(host);
+    host.ws.send(JSON.stringify({ t: 'summon', pageId: 'pg2', vx: 10, vy: 20, vz: 2 }));
+    await until(() => got.length === 1);
+    expect(got[0]).toMatchObject({ pageId: 'pg2', vx: 10, vy: 20, vz: 2 });
+    expect(pillTexts()).toContain('Автор позвал всех на страницу «Вторая»');
+  });
+
+  it('автопереход: состояние из init и сообщений', async () => {
+    const host = await peer(`${base}&host=1&key=${encodeURIComponent(server.hostKey)}`);
+    peers.push(host);
+    host.ws.send(JSON.stringify({ t: 'follow-host', enabled: true }));
+    await until(() => last(host, 'follow-host'));
+    await collab.startCollab(base, false, 'Ученик');
+    await until(() => st.state.project.id === 'proj');
+    expect(collab.hostFollowEnabled()).toBe(true);
+    host.ws.send(JSON.stringify({ t: 'follow-host', enabled: false }));
+    await until(() => !collab.hostFollowEnabled());
+  });
+
+  it('конец совместной работы убирает пилюли и выключает чат', async () => {
+    document.body.insertAdjacentHTML('beforeend', '<button id="btn-chat" hidden></button>');
+    await collab.startCollab(base, false, 'Ученик');
+    await until(() => st.state.project.id === 'proj');
+    expect((document.getElementById('btn-chat') as HTMLButtonElement).hidden).toBe(false);
+    const other = await peer(`${base}&name=${encodeURIComponent('Корги')}`);
+    peers.push(other);
+    await until(() => pillTexts().length > 0);
+    collab.stopCollab();
+    expect(pillTexts()).toEqual([]);
+    expect((document.getElementById('btn-chat') as HTMLButtonElement).hidden).toBe(true);
+    expect(collab.sendChat('x')).toBe(false);
+  });
+});

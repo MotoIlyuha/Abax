@@ -55,6 +55,7 @@
       <div class="topbar-group">
         <button id="btn-present" class="icon" title="Окно для демонстрации экрана: только холст, без интерфейса"></button>
         <button id="btn-share" class="icon" title="Поделиться доской"></button>
+        <button id="btn-chat" class="icon" title="Чат" aria-label="Чат" aria-expanded="false" hidden></button>
         <button id="btn-export" class="icon" title="Экспорт в PNG (Ctrl+E)"></button>
       </div>
       <div class="topbar-group view-group"><button id="view-grid-icon" class="icon" title="Тип сетки" aria-label="Тип сетки" aria-expanded="false"></button><button id="zoom-out" class="icon" title="Уменьшить масштаб" aria-label="Уменьшить масштаб"></button><button id="zoom-label" title="Масштаб и вид" aria-expanded="false">100%</button><button id="zoom-in" class="icon" title="Увеличить масштаб" aria-label="Увеличить масштаб"></button><button id="btn-fit" class="icon" title="Сбросить вид"></button></div>
@@ -69,6 +70,7 @@
     </filter>
   </svg>
   <div id="main">
+    <div id="activity-pills" role="status" aria-live="polite"></div>
     <div id="canvas-wrap">
       <!-- капли Goo-эффекта групп панели инструментов (src/goo.ts): под панелью, выплывают из-за неё -->
       <div id="goo-layer" aria-hidden="true"></div>
