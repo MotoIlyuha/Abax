@@ -13,6 +13,7 @@ import { DEFAULT_CURSOR_ID } from './cursors';
 import { createEmailLogin, springLayout, type EmailLogin, type EmailStage } from './email-login';
 import { nextFunnyName, randomFunnyName } from './funny-names';
 import { motionEnabled, reduceMotion } from './motion';
+import { introEnabled, playIntro } from './onboarding-intro';
 import { initialChoice, resolveName, tabFill, type CursorChoice } from './onboarding-logic';
 import { cursorEntitled, getProfile, setProfile } from './profile';
 import { account, pushProfile, signedIn } from './profile-sync';
@@ -441,7 +442,12 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
     requestAnimationFrame(() => root.classList.remove('ob-no-anim'));
   } else {
     fitHeight();
-    focusStep1();
+    if (introEnabled()) {
+      // заставка: крупные логотип и заголовок, затем окно раскрывается; фокус — когда всё видно
+      const rest = [closeBtn, sub, providers, msg1, or, skip, note];
+      for (const e of rest) e.classList.add('ob-rest');
+      playIntro({ root, win, logo, title: h1, rest, onReveal: focusStep1 });
+    } else focusStep1();
   }
 }
 
