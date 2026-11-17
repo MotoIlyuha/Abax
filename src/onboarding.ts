@@ -10,7 +10,7 @@ import {
 } from './auth';
 import { createCursorPicker, type CursorPicker } from './cursor-picker';
 import { DEFAULT_CURSOR_ID } from './cursors';
-import { createEmailLogin, type EmailLogin } from './email-login';
+import { createEmailLogin, springLayout, type EmailLogin, type EmailStage } from './email-login';
 import { nextFunnyName, randomFunnyName } from './funny-names';
 import { motionEnabled, reduceMotion } from './motion';
 import { initialChoice, resolveName, tabFill, type CursorChoice } from './onboarding-logic';
@@ -232,7 +232,7 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
     b.addEventListener('click', () => {
       void chooseProvider(p, 'login', () => ({ where: 'onboarding', name: nameInput.value, cursorId: choice.saved, placeholder }), say1, () => {
         if (!emailLogin) {
-          emailLogin = createEmailLogin({ mode: 'login', onDone: () => go(2), onResize: fitHeight });
+          emailLogin = createEmailLogin({ mode: 'login', onDone: () => go(2), onResize: fitHeight, onStage: setEmailStage });
           msg1.hidden = true;
           b.replaceWith(emailLogin.el);
         }
@@ -242,6 +242,8 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
     });
     providers.appendChild(b);
   }
+  const others = el('div', 'ob-others', 'Другие способы входа');
+  providers.insertBefore(others, providers.querySelector('.ob-telegram'));
   const or = el('div', 'ob-or', 'или');
   const skip = button('ob-btn ob-skip', 'Продолжить без входа');
   skip.addEventListener('click', () => go(2));
@@ -340,8 +342,23 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
     else s1.querySelector<HTMLElement>('.ob-provider')?.focus({ preventScroll: true });
   }
 
-  function fitHeight(): void {
+  /** Вход по почте перешёл к коду (или вернулся к адресу): Telegram и Google встают в одну линию
+   *  под подписью «Другие способы входа» (или обратно в столбик); всё ниже съезжает на пружинах. */
+  function setEmailStage(st: EmailStage): void {
+    const moving = [...providers.querySelectorAll<HTMLElement>('.ob-telegram, .ob-google'), msg1, or, skip, note];
+    springLayout(moving, () => providers.classList.toggle('ob-stage-code', st === 'code'));
+    fitHeight();
+  }
+
+  let fitTimer = 0;
+  /** Высота окна по активному шагу; now — высота меняется покадрово, ставим её без CSS-перехода. */
+  function fitHeight(now = false): void {
     const active = step === 1 ? s1 : s2;
+    if (now) {
+      viewport.style.transition = 'none';
+      clearTimeout(fitTimer);
+      fitTimer = window.setTimeout(() => { viewport.style.transition = ''; }, 120);
+    }
     viewport.style.height = `${active.scrollHeight}px`;
   }
 

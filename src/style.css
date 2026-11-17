@@ -2808,7 +2808,8 @@ body.link-view #project-icon { pointer-events: none; }
 }
 .ob-close:hover { background: var(--hover); color: var(--fg); }
 .ob-close svg { width: 18px; height: 18px; }
-.ob-viewport { overflow: hidden; transition: height 0.3s cubic-bezier(0.22, 0.8, 0.24, 1); }
+/* clip, а не hidden: фокус и scrollIntoView не должны прокручивать ленту шагов */
+.ob-viewport { overflow: hidden; overflow: clip; transition: height 0.3s cubic-bezier(0.22, 0.8, 0.24, 1); }
 .ob-track {
   display: flex;
   width: 200%;
@@ -2823,7 +2824,13 @@ body.link-view #project-icon { pointer-events: none; }
 .ob-title { margin: 0 0 6px; font-size: 22px; font-weight: 700; text-align: center; color: var(--fg); }
 .ob-step2 .ob-title { margin-top: 8px; }
 .ob-sub { margin: 0 0 20px; color: var(--fg-secondary); text-align: center; font-size: 14px; }
-.ob-providers { display: grid; gap: 8px; }
+/* minmax(0, 1fr): ширина кнопки во время пружинной перестройки не распирает колонку */
+.ob-providers { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.ob-providers > * { grid-column: 1 / -1; }
+/* на шаге кода Telegram и Google встают в одну линию под подписью «Другие способы входа» */
+.ob-providers.ob-stage-code > .ob-telegram, .ob-providers.ob-stage-code > .ob-google { grid-column: auto; }
+.ob-others { display: none; margin-top: 2px; font-size: 13px; font-weight: 600; color: var(--fg-label); text-align: center; }
+.ob-providers.ob-stage-code > .ob-others { display: block; animation: em-appear 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both; }
 .ob-btn {
   display: flex;
   align-items: center;
@@ -2895,6 +2902,7 @@ body.link-view #project-icon { pointer-events: none; }
 .ob-link[hidden] { display: none; }
 .ob-link-title { font-size: 13px; font-weight: 600; color: var(--fg-label); margin-bottom: 8px; }
 .ob-link-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.ob-link .em { margin-top: 8px; }
 .ob-chip { min-height: 34px; padding: 0 12px; font-size: 13px; border-radius: 99px; }
 .ob-chip .ob-icon, .ob-chip .ob-icon svg { width: 16px; height: 16px; }
 .ob-link-note { margin: 8px 0 0; font-size: 12px; color: var(--fg-tertiary); }
@@ -2983,7 +2991,12 @@ body.link-view #project-icon { pointer-events: none; }
 .em-help.err { color: var(--error-text); }
 .em-help.info { color: var(--accent-strong); }
 
-.em-otp { display: flex; flex-direction: column; gap: 12px; text-align: center; animation: em-appear 0.35s cubic-bezier(0.16, 1, 0.3, 1); }
+.em-otp { display: flex; flex-direction: column; text-align: center; }
+.em-otp .em-help { margin-top: 6px; }
+.em-hint-wrap { overflow: hidden; }
+.em-hint-wrap .em-hint { padding-bottom: 12px; }
+/* полоса клеток продолжает пилюлю поля адреса, а подписи под ней проявляются */
+.em-otp.intro > :not(.em-boxes):not(.em-hint-wrap) { animation: em-appear 0.4s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both; }
 @keyframes em-appear { from { opacity: 0; transform: translateY(8px) scale(0.98); } }
 .em-hint { margin: 0; font-size: 14px; line-height: 1.45; color: var(--fg-secondary); overflow-wrap: anywhere; }
 .em-hint b { color: var(--fg); font-weight: 600; }
@@ -3002,15 +3015,15 @@ body.link-view #project-icon { pointer-events: none; }
 }
 .em-ok {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 8px;
-  font-size: 15px; font-weight: 700; color: var(--fg-inverse); opacity: 0; pointer-events: none;
+  font-size: 15px; font-weight: 600; color: var(--fg-inverse); opacity: 0; pointer-events: none; white-space: nowrap;
 }
 .em-code {
   position: absolute; inset: 0; z-index: 2; width: 100%; height: 100%;
   opacity: 0; border: 0; padding: 0; font-size: 16px; cursor: text; caret-color: transparent;
 }
-.em-dev { text-align: center; }
+.em-dev { margin-top: 6px; text-align: center; }
 .em-dev[hidden] { display: none; }
-.em-actions { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.em-actions { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
 .em-link {
   padding: 6px 8px; border: 0; border-radius: 8px; background: transparent;
   color: var(--fg-secondary); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer;
@@ -3018,7 +3031,17 @@ body.link-view #project-icon { pointer-events: none; }
 .em-link:hover { background: var(--hover); color: var(--fg); }
 .em-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .em-link:disabled { opacity: 0.6; cursor: default; }
-.em-resend { color: var(--accent); }
+.em-resend { display: inline-flex; align-items: center; color: var(--accent); }
+.em-resend.cooling { color: var(--fg-tertiary); opacity: 1; }
+/* кольцо обратного отсчёта справа от надписи: появляется на время отсчёта и догорает */
+.em-ring { display: grid; width: 0; height: 16px; margin-left: 0; opacity: 0; overflow: hidden; transition: width 0.3s cubic-bezier(0.22, 0.8, 0.24, 1), margin 0.3s, opacity 0.2s; }
+.em-resend.cooling .em-ring { width: 16px; margin-left: 6px; opacity: 1; }
+.em-ring svg { width: 16px; height: 16px; transform: rotate(-90deg); }
+.em-ring circle { fill: none; stroke-width: 2.2; }
+.em-ring-track { stroke: var(--border-input); }
+.em-ring-arc { stroke: var(--accent); stroke-linecap: round; stroke-dasharray: 100; stroke-dashoffset: 0; }
+.em-ring.run .em-ring-arc { animation: em-ring var(--em-ring-sec, 60s) linear forwards; }
+@keyframes em-ring { to { stroke-dashoffset: 100; } }
 
 /* ----- Выбор курсора (окно первого входа и «Профиль») ----- */
 .cp { display: grid; gap: 10px; }

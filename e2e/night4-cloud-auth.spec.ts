@@ -50,13 +50,13 @@ test.describe('вход через облако (dev-провайдеры)', () 
   test('почта на шаге 1 → шаг 2 «Вы вошли», привязка Telegram и возврат на шаг 2, имя уходит на сервер', async ({ browser }) => {
     const page = await device(browser);
     await page.locator('.ob-step1 [data-provider="email"]').click();
-    await page.locator('.ob-step1 .ob-email input[type="email"]').fill('anya@abax.example');
-    await page.locator('.ob-step1 .ob-send').click();
-    const hint = page.locator('.ob-step1 .ob-dev-hint');
+    await page.locator('.ob-step1 .em-input').fill('anya@abax.example');
+    await page.locator('.ob-step1 .em-go').click();
+    const hint = page.locator('.ob-step1 .em-otp .ob-dev-hint');
     await expect(hint).toContainText('Режим разработки: код');
+    await expect(page.locator('.ob-step1 .em-hint')).toContainText('anya@abax.example');
     const code = /(\d{6})/.exec((await hint.textContent())!)![1];
-    await page.locator('.ob-step1 .ob-code').fill(code);
-    await page.locator('.ob-step1 .ob-verify').click();
+    await page.locator('.ob-step1 .em-code').fill(code);
     await expect(page.locator('#onboarding')).toHaveAttribute('data-step', '2');
     await expect(page.locator('.ob-step2 .ob-title')).toContainText('Вы вошли');
     await expect(page.locator('.ob-link [data-provider]')).toHaveCount(2);

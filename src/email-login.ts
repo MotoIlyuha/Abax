@@ -14,19 +14,32 @@ import { AuthError, authErrorText, startEmail, verifyEmail, type AuthMode } from
 import { S, atRest, clamp, motionEnabled, register, snap, spring, step, tune, wake, type Spring } from './motion';
 
 const ICON_ARROW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
+// кольцо отсчёта: серая дорожка и акцентная дуга, длина дуги — 100 (pathLength)
+const ICON_RING = '<svg viewBox="0 0 20 20" aria-hidden="true"><circle class="em-ring-track" cx="10" cy="10" r="7.5"/><circle class="em-ring-arc" cx="10" cy="10" r="7.5" pathLength="100"/></svg>';
 const ICON_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
-const PILL = 232;   // ширина «пилюли» «Код отправлен»
 const N = 6;        // цифр в коде
+const GAP = 8;      // зазор между клетками кода
+
+/** Ширина клетки кода при ширине блока w. */
+const cellWidth = (w: number): number => Math.min(48, (w - GAP * (N - 1)) / N);
+/** Ширина слитой полосы клеток: в неё же сжимается поле адреса — пилюля переходит в клетки без шва. */
+const stripWidth = (w: number): number => cellWidth(w) * N;
 const BOX_R = 12;   // скругление клетки кода — как у полей окна
+const RESEND_SEC = 60;  // через сколько можно запросить код ещё раз
+const STAGE_PAD = 14;   // отступы блока сверху и снизу на шаге кода
+
+export type EmailStage = 'email' | 'code';
 
 export interface EmailLoginOptions {
   mode: AuthMode;
   /** Код подтверждён — вошли (или почта привязана). */
   onDone(): void;
-  /** Высота блока поменялась (окно подстраивает свою). */
-  onResize(): void;
+  /** Высота блока поменялась (окно подстраивает свою); now — меняется покадрово, подстроиться без перехода. */
+  onResize(now?: boolean): void;
+  /** Сменился этап: адрес ↔ код (окно перестраивает соседние способы входа). */
+  onStage?(stage: EmailStage): void;
 }
 
 export interface EmailLogin { el: HTMLElement; focus(): void }
@@ -39,12 +52,14 @@ const live = new Set<Live>();
 let ready = false;
 let CARET: [number, number] = [700, 32];
 let MORPH: [number, number] = [300, 20];
+let SOFT: [number, number] = [260, 24];
 
 function ensureLoop(): void {
   if (ready) return;
   ready = true;
   CARET = spring('--input-caret', CARET);
   MORPH = spring('--input-morph', MORPH);
+  SOFT = spring('--spring-soft', SOFT);
   register({
     frame(dt) {
       for (const l of live) {
@@ -82,10 +97,73 @@ function timers() {
 
 let seq = 0;
 
+/**
+ * Перестроить раскладку с пружинами (FLIP): запоминаем, где элементы стояли, применяем change,
+ * и каждый элемент едет со старого места и старой ширины на новые по --spring-soft.
+ */
+const flips = new Map<HTMLElement, Live>();
+export function springLayout(els: HTMLElement[], change: () => void): void {
+  ensureLoop();
+  const before = els.map(e => e.getBoundingClientRect());
+  for (const e of els) {
+    const prev = flips.get(e);
+    if (prev) { live.delete(prev); flips.delete(e); }
+    e.style.transform = '';
+    e.style.width = '';
+  }
+  change();
+  if (instant()) return;
+  const items = els.flatMap((e, i) => {
+    const a = before[i];
+    const b = e.getBoundingClientRect();
+    if (!a.width || !b.width) return [];   // скрытый до или после — двигать нечего
+    const it = { e, base: b.width, x: S(a.left - b.left, ...SOFT), y: S(a.top - b.top, ...SOFT), w: S(a.width - b.width, ...SOFT) };
+    it.x.t = it.y.t = it.w.t = 0;
+    return [it];
+  });
+  if (!items.length) return;
+  const me: Live = {
+    root: items[0].e,
+    frame(dt) { for (const it of items) { adv(it.x, dt); adv(it.y, dt); adv(it.w, dt); } },
+    render() {
+      const done = me.settled();
+      for (const it of items) {
+        it.e.style.transform = done ? '' : `translate(${it.x.x.toFixed(2)}px, ${it.y.x.toFixed(2)}px)`;
+        it.e.style.width = done || Math.abs(it.w.x) < 0.5 ? '' : `${(it.base + it.w.x).toFixed(2)}px`;
+      }
+      if (done) { live.delete(me); for (const it of items) flips.delete(it.e); }
+    },
+    settled: () => items.every(it => atRest(it.x, 0.1) && atRest(it.y, 0.1) && atRest(it.w, 0.1)),
+  };
+  for (const it of items) flips.set(it.e, me);
+  live.add(me);
+  wake();
+}
+
 export function createEmailLogin(o: EmailLoginOptions): EmailLogin {
   ensureLoop();
   const host = el('div', 'em');
   let view: View | null = null;
+  // этап кода: блок плавно получает отступы сверху и снизу
+  const P = S(0, ...SOFT);
+  let stage: EmailStage = 'email';
+  const setStage = (s: EmailStage) => {
+    if (s === stage) return;
+    stage = s;
+    P.t = s === 'code' ? 1 : 0;
+    o.onStage?.(s);
+    wake();
+  };
+  live.add({
+    root: host,
+    frame(dt) { adv(P, dt); },
+    render() {
+      const pad = STAGE_PAD * clamp(P.x, 0, 1.2);
+      host.style.padding = pad > 0.05 ? `${pad.toFixed(2)}px 0` : '';
+      if (!atRest(P, 0.002)) o.onResize(true);
+    },
+    settled: () => atRest(P, 0.002),
+  });
 
   function show(v: View): void {
     view?.dispose();
@@ -98,7 +176,7 @@ export function createEmailLogin(o: EmailLoginOptions): EmailLogin {
   const toEmail = (value: string, fromPill: boolean) =>
     show(springyView(value, fromPill, (addr, dev) => toCode(addr, dev), o.onResize));
   const toCode = (addr: string, dev?: string) =>
-    show(codeView(addr, dev, o.mode, () => toEmail(addr, true), o.onDone, o.onResize));
+    show(codeView(addr, dev, o.mode, () => toEmail(addr, true), o.onDone, o.onResize, setStage));
 
   toEmail('', false);
   return { el: host, focus: () => view?.focus() };
@@ -127,7 +205,6 @@ function springyView(value: string, fromPill: boolean, sent: (addr: string, dev?
   box.append(layerOut, input, caret);
   const go = el('button', 'em-go idle');
   go.type = 'submit';
-  go.title = 'Получить код';
   go.setAttribute('aria-label', 'Получить код');
   go.innerHTML = ICON_ARROW;
   const doneEl = el('div', 'em-done');
@@ -242,7 +319,7 @@ function springyView(value: string, fromPill: boolean, sent: (addr: string, dev?
       W.x = field.offsetWidth;
       W.v = 0;
       tune(W, ...MORPH);
-      W.t = PILL;
+      W.t = stripWidth(wrap.clientWidth);
       field.classList.add('ok');
       field.setAttribute('aria-label', 'Код отправлен');
       input.blur();
@@ -259,15 +336,15 @@ function springyView(value: string, fromPill: boolean, sent: (addr: string, dev?
   field.addEventListener('submit', e => { e.preventDefault(); void submit(); });
 
   if (fromPill) {
-    // вернулись от кода: пилюля раскрывается обратно в поле, адрес падает волной
-    field.classList.add('ok');
-    field.style.width = `${PILL}px`;
-    W.x = W.t = PILL;
+    // вернулись от кода: клетки слились в полосу — она раскрывается обратно в поле, адрес падает волной
     busy = true;
-    T.later(0.05, () => {
-      field.classList.remove('ok');
+    T.later(0, () => {
+      const strip = stripWidth(wrap.clientWidth);
+      field.style.width = `${strip}px`;
+      W.x = strip;
+      W.v = 0;
       tune(W, MORPH[0] * 0.8, MORPH[1]);
-      W.t = wrap.clientWidth || PILL;
+      W.t = wrap.clientWidth || strip;
       busy = false;
       input.value = value;
       sync();
@@ -325,10 +402,15 @@ function springyView(value: string, fromPill: boolean, sent: (addr: string, dev?
 }
 
 // ----- клетки кода (OTP Code) -----
-function codeView(addr: string, devCode: string | undefined, mode: AuthMode, back: () => void, done: () => void, resize: () => void): View {
+function codeView(addr: string, devCode: string | undefined, mode: AuthMode, back: () => void, done: () => void,
+  resize: (now?: boolean) => void, setStage: (s: EmailStage) => void): View {
   const wrap = el('div', 'em-otp');
+  wrap.classList.add('intro');
+  // подпись над клетками раскрывается по высоте, сдвигая полосу вниз
+  const hintWrap = el('div', 'em-hint-wrap');
   const hint = el('p', 'em-hint', 'Код отправлен на ');
   hint.append(el('b', '', addr), document.createTextNode('. Он действует 10 минут'));
+  hintWrap.appendChild(hint);
   const boxes = el('div', 'em-boxes');
   const inp = el('input', 'em-code');
   inp.inputMode = 'numeric';
@@ -345,7 +427,8 @@ function codeView(addr: string, devCode: string | undefined, mode: AuthMode, bac
   });
   const ok = el('div', 'em-ok');
   ok.innerHTML = ICON_CHECK;
-  ok.appendChild(el('span', '', mode === 'link' ? 'Почта привязана' : 'Вход выполнен'));
+  const okText = el('span', '', 'Код отправлен');
+  ok.appendChild(okText);
   boxes.append(inp, ok);
   const help = el('p', 'em-help');
   help.setAttribute('aria-live', 'polite');
@@ -355,15 +438,43 @@ function codeView(addr: string, devCode: string | undefined, mode: AuthMode, bac
   const actions = el('div', 'em-actions');
   const change = el('button', 'em-link em-change', '← Изменить почту');
   change.type = 'button';
-  const resend = el('button', 'em-link em-resend', 'Отправить код ещё раз');
+  const resend = el('button', 'em-link em-resend');
   resend.type = 'button';
+  resend.appendChild(el('span', '', 'Отправить код ещё раз'));
+  // кольцо обратного отсчёта: пока оно не догорело, кнопка недоступна
+  const ring = el('span', 'em-ring');
+  ring.setAttribute('aria-hidden', 'true');
+  ring.innerHTML = ICON_RING;
+  resend.appendChild(ring);
   actions.append(change, resend);
-  wrap.append(hint, boxes, help, dev, actions);
+  wrap.append(hintWrap, boxes, help, dev, actions);
 
-  const M = S(0, 260, 24);   // клетки сливаются в полосу
-  const G = S(0, 220, 28);   // полоса зеленеет
+  // начинаем слитой зелёной полосой «Код отправлен» — той самой пилюлей поля адреса
+  const M = S(1, 260, 24);   // клетки сливаются в полосу
+  const G = S(1, 220, 28);   // полоса зеленеет
   const shake = S(0, 700, 10);
+  const E = S(0, 60, 15.5);  // рамки ошибки: вспыхивают сразу и плавно гаснут без перелёта
+  const H = S(0, ...SOFT);   // подпись над клетками: 0 — свёрнута, 1 — раскрыта
   const T = timers();
+  let cooldown = 0;
+
+  /** Запустить отсчёт до повторной отправки: кнопка недоступна, кольцо догорает за RESEND_SEC. */
+  function startCooldown(): void {
+    clearTimeout(cooldown);
+    resend.disabled = true;
+    resend.classList.add('cooling');
+    ring.style.setProperty('--em-ring-sec', `${RESEND_SEC}s`);
+    // перезапуск CSS-анимации кольца
+    ring.classList.remove('run');
+    void ring.offsetWidth;
+    ring.classList.add('run');
+    cooldown = window.setTimeout(() => {
+      resend.disabled = false;
+      resend.classList.remove('cooling');
+      ring.classList.remove('run');
+    }, RESEND_SEC * 1000);
+  }
+  startCooldown();
   let val = '';
   let checking = false;
   let finished = false;
@@ -381,8 +492,10 @@ function codeView(addr: string, devCode: string | undefined, mode: AuthMode, bac
     for (let i = 0; i < N; i++) {
       const c = v[i] ?? '';
       const b = bx[i];
-      if (c && b.d.textContent !== c) { b.d.textContent = c; b.y.x = -14; b.y.v = 0; b.o.x = 0; b.o.t = 1; }
-      if (!c) { b.d.textContent = ''; b.o.t = 0; }
+      // новая цифра падает сверху с отскоком
+      if (c && (b.d.textContent !== c || b.o.t === 0)) { b.d.textContent = c; b.y.x = -14; b.y.v = 0; b.o.x = 0; b.o.t = 1; }
+      // стёртая проседает вниз и гаснет; сам символ остаётся до следующей цифры, чтобы было что гасить
+      if (!c && b.o.t !== 0) { b.o.t = 0; b.y.v = 90; }
     }
     val = v;
     inp.value = v;
@@ -399,13 +512,20 @@ function codeView(addr: string, devCode: string | undefined, mode: AuthMode, bac
       T.clear();
       M.t = 0;
       shake.v -= 420;
+      // все шесть клеток ненадолго обводятся цветом ошибки
+      E.x = E.t = 1;
+      E.v = 0;
+      T.later(0.7, () => { E.t = 0; wake(); });
       setHelp(authErrorText(e instanceof AuthError ? e.code : 'auth-failed'), 'err');
       wake();
-      T.later(0.35, () => { checking = false; set(''); inp.focus(); });
+      // цифры стираются по одной, начиная с последней
+      for (let k = 0; k < N; k++) T.later(0.35 + k * 0.07, () => set(val.slice(0, -1)));
+      T.later(0.35 + N * 0.07, () => { checking = false; inp.focus(); wake(); });
       return;
     }
     finished = true;
     M.t = 1;
+    okText.textContent = mode === 'link' ? 'Почта привязана' : 'Вход выполнен';
     T.later(0.3, () => { G.t = 1; wake(); });
     T.later(1.1, done);
     inp.blur();
@@ -419,33 +539,53 @@ function codeView(addr: string, devCode: string | undefined, mode: AuthMode, bac
   });
   inp.addEventListener('focus', () => { focused = true; wake(); });
   inp.addEventListener('blur', () => { focused = false; wake(); });
-  change.addEventListener('click', () => { if (!finished) back(); });
+  // «Изменить почту»: клетки сливаются в полосу, и она раскрывается в поле адреса
+  change.addEventListener('click', () => {
+    if (finished || checking) return;
+    checking = true;
+    T.clear();
+    H.t = 0;
+    setStage('email');
+    G.t = 0;
+    M.t = 1;
+    inp.blur();
+    wake();
+    T.later(0.35, back);
+  });
+  // зелень сходит, затем полоса делится на клетки (обратный порядок слияния)
+  // вместе с этим подпись раскрывается над полосой, а блок получает отступы
+  T.later(0.15, () => { G.t = 0; H.t = 1; setStage('code'); wake(); });
+  T.later(0.35, () => { M.t = 0; wake(); });
   resend.addEventListener('click', async () => {
-    if (checking || finished) return;
+    if (checking || finished || resend.classList.contains('cooling')) return;
     resend.disabled = true;
     try {
       const r = await startEmail(addr);
       showDev(r.devCode);
       set('');
       setHelp('Новый код отправлен', 'info');
+      startCooldown();
       inp.focus();
     } catch (e) {
       setHelp(authErrorText(e instanceof AuthError ? e.code : 'auth-failed'), 'err');
-    } finally { resend.disabled = false; }
+      resend.disabled = false;
+    }
   });
 
-  const springs = [M, G, shake, ...bx.flatMap(b => [b.y, b.o, b.a])];
+  const springs = [M, G, shake, E, H, ...bx.flatMap(b => [b.y, b.o, b.a])];
   const me: Live = {
     root: wrap,
     frame(dt) {
       const at = Math.min(val.length, N - 1);
-      bx.forEach((b, i) => { b.a.t = focused && !checking && i === at ? 1 : 0; });
+      // активная клетка подсвечивается, только когда полоса уже разделилась на клетки
+      const split = M.t === 0 && G.t === 0;
+      bx.forEach((b, i) => { b.a.t = focused && !checking && split && i === at ? 1 : 0; });
       for (const s of springs) adv(s, dt);
     },
     render() {
       const W = boxes.parentElement?.clientWidth ?? 320;
-      const gap0 = 8;
-      const bw = Math.min(48, (W - gap0 * (N - 1)) / N);
+      const gap0 = GAP;
+      const bw = cellWidth(W);
       const m = clamp(clamp(M.x, 0, 1.1), 0, 1);
       const gap = gap0 * (1 - m);
       const total = bw * N + gap * (N - 1);
@@ -461,9 +601,12 @@ function codeView(addr: string, devCode: string | undefined, mode: AuthMode, bac
         const a = clamp(b.a.x, 0, 1);
         b.el.style.background = g > 0.01 ? `color-mix(in srgb, var(--success) ${(g * 100).toFixed(1)}%, var(--surface-sunken))`
           : a > 0.01 ? `color-mix(in srgb, var(--accent-soft) ${(a * 100).toFixed(1)}%, var(--surface-sunken))` : '';
-        // рамка клетки: активная — акцентная; при слиянии рамки гаснут, чтобы полоса была цельной
-        b.el.style.boxShadow = `inset 0 0 0 ${a > 0.01 ? 1.5 : 1}px color-mix(in srgb, var(--accent) ${(a * 100).toFixed(1)}%, `
-          + `color-mix(in srgb, transparent ${(Math.max(m, g) * 100).toFixed(1)}%, var(--border-input)))`;
+        // рамка клетки: активная — акцентная; при слиянии рамки гаснут, чтобы полоса была цельной;
+        // после неверного кода поверх всего — цвет ошибки, он плавно сходит
+        const e = clamp(E.x, 0, 1);
+        b.el.style.boxShadow = `inset 0 0 0 ${a > 0.01 || e > 0.01 ? 1.5 : 1}px color-mix(in srgb, var(--danger) ${(e * 100).toFixed(1)}%, `
+          + `color-mix(in srgb, var(--accent) ${(a * 100).toFixed(1)}%, `
+          + `color-mix(in srgb, transparent ${(Math.max(m, g) * 100).toFixed(1)}%, var(--border-input))))`;
         b.d.style.opacity = (clamp(b.o.x, 0, 1) * (1 - g)).toFixed(3);
         b.d.style.transform = `translateY(${b.y.x.toFixed(2)}px)`;
         b.car.style.display = a > 0.5 && !val[i] ? '' : 'none';
@@ -472,6 +615,10 @@ function codeView(addr: string, devCode: string | undefined, mode: AuthMode, bac
       boxes.style.transform = shake.x ? `translateX(${shake.x.toFixed(2)}px)` : '';
       ok.style.opacity = clamp(G.x * 1.6 - 0.5, 0, 1).toFixed(3);
       ok.style.transform = `translateY(${((1 - g) * 8).toFixed(2)}px)`;
+      const h = clamp(H.x, 0, 1.2);
+      hintWrap.style.height = h > 0.999 && atRest(H) ? '' : `${(hint.offsetHeight * h).toFixed(2)}px`;
+      hintWrap.style.opacity = clamp(h, 0, 1).toFixed(3);
+      if (!atRest(H, 0.002)) resize(true);
     },
     settled: () => springs.every(s => atRest(s, 0.01)),
   };
@@ -481,6 +628,6 @@ function codeView(addr: string, devCode: string | undefined, mode: AuthMode, bac
   return {
     el: wrap,
     focus: () => inp.focus({ preventScroll: true }),
-    dispose: () => { T.clear(); live.delete(me); },
+    dispose: () => { T.clear(); clearTimeout(cooldown); live.delete(me); },
   };
 }

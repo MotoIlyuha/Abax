@@ -23,6 +23,12 @@ async function until<T>(fn: () => T | undefined | null | false, ms = 3000): Prom
   }
 }
 
+/** Ввод в поле: значение и событие input, как при наборе. */
+function type(input: HTMLInputElement, value: string): void {
+  input.value = value;
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
 function key(target: HTMLElement, k: string, o: KeyboardEventInit = {}): KeyboardEvent {
   const e = new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, ...o });
   target.dispatchEvent(e);
@@ -216,13 +222,40 @@ describe('окно первого входа с сервером', () => {
   it('вход по почте: код (dev-подсказка) → шаг 2, блок привязки без почты', async () => {
     openOnboarding();
     $('.ob-step1 [data-provider="email"]').click();
-    const email = await until(() => document.querySelector<HTMLInputElement>('.ob-step1 .ob-email input[type="email"]'));
-    email.value = 'kapi@bara.ru';
-    $('.ob-step1 .ob-send').click();
-    const hint = await until(() => { const h = document.querySelector<HTMLElement>('.ob-dev-hint'); return h && !h.hidden && h; });
+    const email = await until(() => document.querySelector<HTMLInputElement>('.ob-step1 .em-input'));
+    // кнопка «Почта» уступила место полю
+    expect(document.querySelector('.ob-step1 [data-provider="email"]')).toBeNull();
+    // неверный адрес: подсказка под полем, кода нет
+    type(email, 'kapi@bara');
+    $('.ob-step1 .em-go').click();
+    await until(() => $('.ob-step1 .em-help').classList.contains('err'));
+    expect($('.ob-step1 .em-field').classList.contains('err')).toBe(true);
+    expect(document.querySelector('.em-otp')).toBeNull();
+    type(email, 'kapi@bara.ru');
+    expect($('.ob-step1 .em-help').textContent).toBe('');
+    expect($('.ob-step1 .em-layer-in').textContent).toBe('kapi@bara.ru');
+    $('.ob-step1 .em-go').click();
+    // верный: поле сменяется клетками кода с адресом и dev-подсказкой
+    const hint = await until(() => { const h = document.querySelector<HTMLElement>('.ob-step1 .em-otp .ob-dev-hint'); return h && !h.hidden && h; });
+    expect($('.em-hint').textContent).toContain('kapi@bara.ru');
     const code = /(\d{6})/.exec(hint.textContent!)![1];
-    $<HTMLInputElement>('.ob-code').value = code;
-    $('.ob-verify').click();
+    // «Изменить почту» возвращает поле с тем же адресом
+    $('.em-change').click();
+    const again = await until(() => { const i = document.querySelector<HTMLInputElement>('.ob-step1 .em-input'); return i?.value ? i : null; });
+    expect(again.value).toBe('kapi@bara.ru');
+    $('.ob-step1 .em-go').click();
+    const hint2 = await until(() => { const h = document.querySelector<HTMLElement>('.ob-step1 .em-otp .ob-dev-hint'); return h && !h.hidden && h; });
+    const code2 = /(\d{6})/.exec(hint2.textContent!)![1];
+    // неверный код: ошибка, клетки очищаются
+    const wrong = code2 === '000000' ? '111111' : '000000';
+    type($<HTMLInputElement>('.em-code'), wrong);
+    await until(() => $('.em-otp .em-help').classList.contains('err'));
+    // цифры уходят по одной, начиная с последней
+    await until(() => $<HTMLInputElement>('.em-code').value === wrong.slice(0, 3));
+    await until(() => $<HTMLInputElement>('.em-code').value === '');
+    expect(code).toMatch(/^\d{6}$/);
+    // пока стирание не закончилось, ввод не принимается — дожидаемся
+    await until(() => { type($<HTMLInputElement>('.em-code'), code2); return $<HTMLInputElement>('.em-code').value === code2; });
     await until(() => step() === '2');
     expect(account()?.user.email).toBe('kapi@bara.ru');
     expect($('.ob-step2 .ob-title').textContent).toContain('Вы вошли');
@@ -230,5 +263,5 @@ describe('окно первого входа с сервером', () => {
     expect(link.hidden).toBe(false);
     expect([...link.querySelectorAll('[data-provider]')].map(b => (b as HTMLElement).dataset.provider)).toEqual(['telegram', 'google']);
     expect(link.textContent).toContain('в любой момент в Настройках');
-  });
+  }, 15000);
 });
