@@ -83,8 +83,6 @@ export function button(cls: string, text: string, icon?: string): HTMLButtonElem
 
 const BACK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>';
 
-const DICE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="3.5"/><circle cx="8.5" cy="8.5" r="1" fill="currentColor"/><circle cx="15.5" cy="8.5" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="8.5" cy="15.5" r="1" fill="currentColor"/><circle cx="15.5" cy="15.5" r="1" fill="currentColor"/></svg>';
-
 /**
  * Поле имени с кнопкой-рандомайзером справа: по клику в поле подставляется другое случайное имя из списка
  * (и событие input — превью и бейдж обновляются). field — что ставить в ряд вместо самого поля
@@ -96,7 +94,7 @@ export function nameRowWithDice(input: HTMLInputElement, field: HTMLElement = in
   dice.type = 'button';
   dice.title = 'Случайное имя';
   dice.setAttribute('aria-label', 'Случайное имя');
-  dice.innerHTML = DICE_ICON;
+  dice.textContent = '🎲';
   dice.addEventListener('click', () => {
     input.value = nextFunnyName(input.value);
     input.dispatchEvent(new Event('input', { bubbles: true }));
