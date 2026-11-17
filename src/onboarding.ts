@@ -80,6 +80,8 @@ export function button(cls: string, text: string, icon?: string): HTMLButtonElem
   return b;
 }
 
+const BACK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>';
+
 const DICE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="3.5"/><circle cx="8.5" cy="8.5" r="1" fill="currentColor"/><circle cx="15.5" cy="8.5" r="1" fill="currentColor"/><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="8.5" cy="15.5" r="1" fill="currentColor"/><circle cx="15.5" cy="15.5" r="1" fill="currentColor"/></svg>';
 
 /**
@@ -255,19 +257,27 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
   // ----- шаг 2 -----
   const s2 = el('section', 'ob-step ob-step2');
   s2.dataset.step = '2';
-  const backBtn = button('ob-back', '← Назад');
+  const backBtn = el('button', 'ob-back');
+  backBtn.type = 'button';
+  backBtn.title = 'Назад';
+  backBtn.setAttribute('aria-label', 'Назад');
+  backBtn.innerHTML = BACK_ICON;
   backBtn.addEventListener('click', () => go(1));
   const h2 = el('h2', 'ob-title', 'Как вас зовут?');
+  // шапка шага: кнопка «Назад» слева, заголовок по центру на той же линии
+  const head = el('div', 'ob-head');
+  head.append(backBtn, h2);
   const nameLabel = el('label', 'ob-field');
-  const nameCaption = el('span', 'ob-caption', 'Имя — его увидят участники совместной работы');
+  const nameCaption = el('span', 'ob-caption', 'Введите имя');
+  const nameHint = el('span', 'ob-hint', 'Это имя увидят участники совместной работы');
   const nameInput = el('input', 'ob-input ob-name');
   nameInput.type = 'text';
   nameInput.maxLength = 40;
   nameInput.setAttribute('autocomplete', 'nickname');
   nameInput.placeholder = placeholder;
   nameInput.value = resume?.name ?? '';
-  nameLabel.append(nameCaption, nameRowWithDice(nameInput));
-  const cursorCaption = el('div', 'ob-caption', 'Курсор, цвет выделения и бейдж с именем');
+  nameLabel.append(nameCaption, nameRowWithDice(nameInput), nameHint);
+  const cursorCaption = el('div', 'ob-caption', 'Выберите свой курсор');
   const picker: CursorPicker = createCursorPicker({
     choice, entitled, name: resolveName(nameInput.value, placeholder),
     onChange: c => { choice = c; fitHeight(); },
@@ -279,7 +289,7 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
   const say2 = (text: string, kind: 'error' | 'info' = 'error') => { msg2.hidden = false; msg2.textContent = text; msg2.dataset.kind = kind; fitHeight(); };
   const done = button('ob-btn ob-primary ob-continue', 'Продолжить');
   done.addEventListener('click', finish);
-  s2.append(backBtn, h2, nameLabel, cursorCaption, picker.el, link, msg2, done);
+  s2.append(head, nameLabel, cursorCaption, picker.el, link, msg2, done);
 
   track.append(s1, s2);
 
@@ -326,14 +336,14 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
       });
       row.appendChild(b);
     }
-    link.append(row, form, el('p', 'ob-link-note', 'Это можно сделать в любой момент в Настройках → Профиль'));
+    link.append(row, form, el('p', 'ob-link-note', 'Это можно сделать в любой момент в Настройках, раздел «Профиль»'));
   }
 
   function enterStep2(): void {
     // вошли — имя аккаунта (если оно есть и поле ещё пустое)
     const fromAccount = accountName(account());
     if (fromAccount && !nameInput.value.trim()) nameInput.value = fromAccount;
-    h2.textContent = signedIn() ? 'Вы вошли — как вас называть?' : 'Как вас зовут?';
+    h2.textContent = signedIn() ? 'Вы вошли. Как вас называть?' : 'Как вас зовут?';
     picker.setName(resolveName(nameInput.value, placeholder));
     renderLink();
   }

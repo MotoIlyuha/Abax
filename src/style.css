@@ -2280,11 +2280,11 @@ body.no-ui-anim #icon-picker { animation: none; }
   pointer-events: none;
   transition: left 40ms linear, top 40ms linear;
 }
-/* стрелка 24×24 из каталога курсоров: кончик (3, 2 в сетке 32) — в точке курсора */
+/* стрелка 24×24 из каталога курсоров: кончик (3, 3 в сетке 32) — в точке курсора */
 .remote-cursor .rc-arrow {
   position: absolute;
   left: -2.25px;
-  top: -1.5px;
+  top: -2.25px;
   width: 24px;
   height: 24px;
   line-height: 0;
@@ -2842,7 +2842,8 @@ body.link-view #project-icon { pointer-events: none; }
 .ob-step { width: 50%; flex: none; padding: 28px 28px 24px; box-sizing: border-box; }
 .ob-logo { display: block; width: 56px; height: 56px; margin: 0 auto 12px; }
 .ob-title { margin: 0 0 6px; font-size: 22px; font-weight: 700; text-align: center; color: var(--fg); }
-.ob-step2 .ob-title { margin-top: 8px; }
+.ob-head { display: grid; grid-template-columns: 36px 1fr 36px; align-items: center; gap: 8px; margin-bottom: 6px; }
+.ob-head .ob-title { grid-column: 2; margin: 0; }
 .ob-sub { margin: 0 0 20px; color: var(--fg-secondary); text-align: center; font-size: 14px; }
 /* minmax(0, 1fr): ширина кнопки во время пружинной перестройки не распирает колонку */
 .ob-providers { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
@@ -2903,20 +2904,22 @@ form.ob-email { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin
 .ob-input::placeholder { color: var(--fg-placeholder); }
 .ob-code { letter-spacing: 0.2em; }
 .ob-back {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 6px 10px 6px 6px;
+  grid-column: 1;
+  grid-row: 1;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
   border: 0;
-  border-radius: 8px;
+  border-radius: 10px;
   background: transparent;
   color: var(--fg-secondary);
-  font: inherit;
-  font-size: 14px;
   cursor: pointer;
 }
+.ob-back svg { width: 22px; height: 22px; }
 .ob-back:hover { background: var(--hover); color: var(--fg); }
-.ob-back .ob-label { font-weight: 500; }
+.ob-hint { display: block; font-size: 12px; line-height: 1.4; color: var(--fg-secondary); }
 .ob-field { display: grid; gap: 6px; margin: 14px 0 16px; }
 .ob-caption { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 600; color: var(--fg-label); }
 .ob-field .ob-caption { margin-bottom: 0; }
