@@ -255,6 +255,8 @@ export interface ProjectPermissions {
   allowCopy?: boolean;
   /** Права по страницам для ссылки совместной работы (pageId → право). */
   pageRights?: Record<string, PageRight>;
+  /** Максимум гостей в комнате (Pro/Tutor); null, 0 или нет поля — без ограничений автора (SPEC_NIGHT5 §3.3). */
+  maxGuests?: number | null;
 }
 
 /** Проект — набор страниц. */

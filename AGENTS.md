@@ -29,7 +29,7 @@
 - После завершения каждой задачи из `TASKS.md` отмечай чекбокс `[x]`, записывай краткий отчёт в `NIGHT_LOG.md` и делай атомарный `git commit`.
 
 ## 4. Сервер (`server/`, Ночи №3–5)
-- Каталог `server/` — Node + TypeScript + `better-sqlite3`; он импортирует из `src/` только чистые модули без DOM (`types`, `file`, `delta`, `limits`, `task-element`, `room-host`, `asset-store`, `project-access`, `cursors`, `sync-conflict`).
+- Каталог `server/` — Node + TypeScript + `better-sqlite3`; он импортирует из `src/` только чистые модули без DOM (`types`, `file`, `delta`, `limits`, `task-element`, `room-host`, `asset-store`, `project-access`, `cursors`, `sync-conflict`, `room-chat`).
 - Клиент без настроенного адреса API (`apiUrl`) не делает сетевых запросов: все старые тесты работают как раньше.
 - Серверные тесты — `tests/server/*.test.ts` (`createAppServer({ dbPath: ':memory:' })`); типы сервера проверяет `npm run typecheck:tests`.
 

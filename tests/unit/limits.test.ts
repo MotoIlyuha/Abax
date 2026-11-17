@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-  PLAN_LIMITS, isOverPageLimit, isOverProjectLimit, canCreatePage, canCreateProject, canGuestJoinRoom, effectivePermissions, planOf, sanitizePermissionsForPlan,
+  PLAN_LIMITS, MAX_GUESTS_LIMIT, effectiveMaxGuests, isOverPageLimit, isOverProjectLimit, canCreatePage, canCreateProject, canGuestJoinRoom, effectivePermissions, planOf, sanitizePermissionsForPlan,
 } from '../../src/limits';
 import { parseProject, serializeProject } from '../../src/file';
 import type { Project } from '../../src/types';
@@ -126,5 +126,42 @@ describe('превышение лимита после смены тарифа',
   it('платные тарифы без ограничений', () => {
     expect(isOverPageLimit('pro', 100)).toBe(false);
     expect(isOverProjectLimit('tutor', 100)).toBe(false);
+  });
+});
+
+describe('свой лимит гостей (SPEC_NIGHT5 §3.3)', () => {
+  it('флаги тарифов', () => {
+    expect(PLAN_LIMITS.free.canSetMaxGuests).toBe(false);
+    expect(PLAN_LIMITS.free.canFollowHost).toBe(false);
+    for (const plan of ['pro', 'tutor'] as const) {
+      expect(PLAN_LIMITS[plan].canSetMaxGuests).toBe(true);
+      expect(PLAN_LIMITS[plan].canFollowHost).toBe(true);
+    }
+  });
+
+  it('free: поле отбрасывается, действует лимит тарифа (1 гость)', () => {
+    expect(sanitizePermissionsForPlan('free', { maxGuests: 10 }).maxGuests).toBeUndefined();
+    expect(effectiveMaxGuests('free', { maxGuests: 10 })).toBe(1);
+    expect(effectiveMaxGuests('free', undefined)).toBe(1);
+  });
+
+  it('pro: 1..50 сохраняется; 0, null, дробь и больше 50 — без ограничений', () => {
+    expect(sanitizePermissionsForPlan('pro', { maxGuests: 3 }).maxGuests).toBe(3);
+    expect(effectiveMaxGuests('pro', { maxGuests: 3 })).toBe(3);
+    expect(effectiveMaxGuests('tutor', { maxGuests: MAX_GUESTS_LIMIT })).toBe(MAX_GUESTS_LIMIT);
+    for (const v of [0, null, 2.5, MAX_GUESTS_LIMIT + 1, -1]) {
+      expect(sanitizePermissionsForPlan('pro', { maxGuests: v }).maxGuests).toBeUndefined();
+      expect(effectiveMaxGuests('pro', { maxGuests: v })).toBe(Infinity);
+    }
+  });
+
+  it('поле переживает сохранение и загрузку проекта', () => {
+    const p = parseProject(proj({ permissions: { maxGuests: 7, allowCopy: false } }))!;
+    expect(p.permissions).toEqual({ maxGuests: 7, allowCopy: false });
+    const back = parseProject(JSON.parse(serializeProject(p)))!;
+    expect(back.permissions?.maxGuests).toBe(7);
+    expect(parseProject(proj({ permissions: { maxGuests: null } }))!.permissions).toEqual({ maxGuests: null });
+    // мусор отбрасывается
+    for (const bad of ['5', 2.5, -1, 51, {}]) expect(parseProject(proj({ permissions: { maxGuests: bad } }))!.permissions).toEqual({});
   });
 });

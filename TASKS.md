@@ -9,7 +9,7 @@
 
 ---
 
-- [ ] **TASK-01: Чистые модели**
+- [x] **TASK-01: Чистые модели**
   - **Файлы**: `src/types.ts`, `src/limits.ts`, `src/file.ts`, `src/sync-state.ts`, `src/sync-conflict.ts`, `src/edge-pointer.ts`, `src/presence.ts`, `src/collab-chat.ts` (только чистые функции), `AGENTS.md` (список модулей для сервера).
   - `isPristineStarterProject`, метка `doska.starter`, `SyncStatus` + `syncStatusOf` (§2.1, §2.2); `contentSignature`, `doska.syncBase.*` (§2.4).
   - `ProjectPermissions.maxGuests` в `sanitizeElement`/`parseProject` и `sanitizePermissionsForPlan` (Free — отбрасывается, Pro/Tutor — 1..50); `effectiveMaxGuests(plan, perms)`; в `PlanLimits` — `canSetMaxGuests`, `canFollowHost` (§3.3).
