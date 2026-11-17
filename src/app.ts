@@ -65,6 +65,8 @@ import { CONFLICT_TEXT, cloudStorage, openFresh, type ConflictResolution } from 
 import { clearStarter, isPristineStarterProject, starterId } from './sync-state';
 import { initSyncIndicator } from './sync-indicator';
 import { createInviteBox, refreshInviteBox } from './invite-ui';
+import { onCancelInteraction } from './interaction';
+import { incomingInvites, incomingInvitesSection, onIncomingInvites, refreshIncomingInvites } from './incoming-invites';
 import { addGestureProbe } from './gesture';
 import { initTaskOverlay, isTeacher } from './task-overlay';
 import { annotationButtons, initCommentsUi } from './comments-ui';
@@ -2160,6 +2162,7 @@ function profileButton(): HTMLButtonElement {
   const b = document.createElement('button');
   b.type = 'button';
   b.className = 'home-profile';
+  b.classList.toggle('has-invites', incomingInvites().length > 0);
   b.title = 'Профиль: имя, курсор и вход';
   const icon = document.createElement('span');
   icon.className = 'home-profile-cursor';
@@ -4084,6 +4087,10 @@ function renderHome(): void {
   tools.append(views, newBtn, profileButton());
   head.append(logo, h, tools);
   home.appendChild(head);
+  // приглашения по почте (SPEC_NIGHT5 §7): карточки над проектами; список обновляется не чаще раза в 30 с
+  const invitesBlock = incomingInvitesSection();
+  if (invitesBlock) home.appendChild(invitesBlock);
+  void refreshIncomingInvites();
   const pinned = state.projects.filter(m => m.pinned);
   const rest = state.projects.filter(m => !m.pinned);
   const seen = new Set<string>();
@@ -5444,6 +5451,10 @@ function syncSelectionToCollab(): void {
 }
 
 export function initApp(c: HTMLCanvasElement): void {
+  // страницу скрыли под гостем: открытый редактор текста закрывается без сохранения (SPEC_NIGHT5 §7)
+  onCancelInteraction(() => closeEditor(false));
+  // пришли приглашения по почте — домашний экран показывает их сразу
+  onIncomingInvites(() => { if (state.view === 'home') renderHome(); });
   // облако нашло проекты, которых нет на устройстве: показываем их на главном экране
   document.addEventListener('doska:projects-changed', () => { if (state.view === 'home') renderHome(); });
   // вернулись на вкладку: с другого устройства пришла более новая версия открытого проекта (SPEC_NIGHT5 §2.3)

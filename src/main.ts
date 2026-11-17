@@ -22,11 +22,22 @@ import { completePendingAuth, type AuthOutcome } from './auth';
 import { needsOnboarding, openOnboarding } from './onboarding';
 import { applyCloudConflict, openProfileAfterAuth, replaceStarterWithCloud } from './app';
 import { STARTER_PROJECT_NAME, markStarter } from './sync-state';
+import { roomFullInfo, showRoomFullModal } from './room-full';
+import { refreshIncomingInvites } from './incoming-invites';
 
-/** Уведомление гостю, когда комната закрылась или отказала. */
-function watchGuestClose(): void {
+/**
+ * Уведомление гостю, когда комната закрылась или отказала. Мест нет (4402/4430) — окно «Комната заполнена»
+ * (SPEC_NIGHT5 §7); у облачного приглашения его показывает joinCloudInvite (там же — «только для чтения»).
+ */
+function watchGuestClose(opts: { roomFullHandled?: boolean } = {}): void {
   document.addEventListener('doska:collab-closed', ev => {
-    const notice = closedNotice((ev as CustomEvent<CollabClosedDetail>).detail.code);
+    const detail = (ev as CustomEvent<CollabClosedDetail>).detail;
+    const full = roomFullInfo(detail);
+    if (full) {
+      if (!opts.roomFullHandled) showRoomFullModal({ ...full, onRetry: () => location.reload() });
+      return;
+    }
+    const notice = closedNotice(detail.code);
     showCollabNotice(notice.title, notice.text);
   });
 }
@@ -96,7 +107,7 @@ async function boot(): Promise<void> {
     } else {
       // приглашение /j/:token: гость входит в облачную комнату; не вышло — проект для чтения; не открылось — обычная доска
       state.projects = metas;
-      watchGuestClose();
+      watchGuestClose({ roomFullHandled: true });
       const outcome = await joinCloudInvite(route.token, q.get('name') || profileName() || `Гость ${Math.floor(Math.random() * 90 + 10)}`);
       if (outcome === 'room') {
         setStorage(netStorage);
@@ -139,9 +150,9 @@ async function boot(): Promise<void> {
   startUpdateChecks();
   // тариф с сервера и начальная синхронизация проектов (без настроенного облака — ничего не делают)
   // тариф и профиль аккаунта (SPEC_NIGHT4 §8), затем фоновая синхронизация проектов
-  void syncAccount().then(() => { startBackgroundSync(); startProfileSync(); });
+  void syncAccount().then(() => { startBackgroundSync(); startProfileSync(); void refreshIncomingInvites(true); });
   // вошли или вышли без перезагрузки (почта, выход) — проекты аккаунта появляются в списке
-  document.addEventListener('doska:account-changed', () => startBackgroundSync());
+  document.addEventListener('doska:account-changed', () => { startBackgroundSync(); void refreshIncomingInvites(true); });
   // автор подключается к облачной комнате своего проекта, пока у проекта есть приглашение
   if (!viewRoute) watchOwnerRoom();
   if (viewRoute) {

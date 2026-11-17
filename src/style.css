@@ -3667,3 +3667,83 @@ body.no-ui-anim .collab-edge-pointer, body.no-ui-anim .collab-edge-pointer .ep-l
   text-overflow: ellipsis;
 }
 #follow-hidden-badge[hidden] { display: none; }
+
+/* ----- Ночь №5, TASK-07: права до ссылки, почта, «Комната заполнена», все страницы скрыты, входящие приглашения ----- */
+.share-rights { display: flex; flex-direction: column; gap: 6px; }
+.share-invite-check { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.share-pro-tag {
+  font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 99px;
+  background: var(--accent-soft); color: var(--accent); margin-left: 4px;
+}
+.share-page-rights { display: flex; flex-direction: column; gap: 4px; }
+.share-page-right { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; }
+.share-page-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.share-email { margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; }
+.share-email-form { display: flex; gap: 6px; align-items: center; }
+.share-email-input {
+  flex: 1; min-width: 0; box-sizing: border-box; padding: 5px 8px; font: inherit; font-size: 12px;
+  border: 1px solid var(--border); border-radius: 7px; background: var(--panel); color: inherit;
+}
+.share-email-send { width: auto; margin: 0; white-space: nowrap; }
+.share-email-list { display: flex; flex-direction: column; gap: 4px; }
+.share-email-item { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.share-email-addr { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.share-email-meta { color: var(--muted); white-space: nowrap; }
+.share-email-revoke {
+  font: inherit; font-size: 11px; padding: 2px 8px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--panel); color: var(--danger); cursor: pointer;
+}
+.share-email-revoke:hover { border-color: var(--danger); }
+
+/* все страницы скрыты автором: холст закрыт баннером, панели нет */
+#all-pages-hidden-banner {
+  position: absolute; inset: 0; z-index: 30;
+  display: flex; align-items: center; justify-content: center; text-align: center;
+  padding: 24px; box-sizing: border-box;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  font-size: 15px; line-height: 1.5; color: var(--fg);
+}
+#all-pages-hidden-banner[hidden] { display: none; }
+body.all-pages-hidden #toolbar,
+body.all-pages-hidden #pages-dock,
+body.all-pages-hidden #goo-layer { display: none; }
+
+/* мест в комнате нет */
+#room-full-modal {
+  position: fixed; inset: 0; z-index: 1000;
+  display: flex; align-items: center; justify-content: center; padding: 16px;
+  background: rgba(16, 24, 40, 0.38);
+}
+.room-full-card {
+  width: 100%; max-width: 420px; box-sizing: border-box; padding: 22px;
+  background: var(--panel); border-radius: 14px; box-shadow: var(--shadow-dialog);
+}
+.room-full-card h2 { margin: 0 0 8px; font-size: 17px; line-height: 1.35; }
+.room-full-text { margin: 0 0 16px; font-size: 13px; line-height: 1.5; color: var(--muted); }
+.room-full-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.room-full-actions button {
+  font: inherit; font-size: 13px; padding: 7px 14px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--panel); color: var(--fg);
+}
+.room-full-actions button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+/* приглашения для вас — на домашнем экране */
+.invite-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.invite-card {
+  display: flex; flex-direction: column; gap: 6px; padding: 12px 14px;
+  border: 1px solid var(--border); border-radius: 12px; background: var(--panel); box-shadow: var(--shadow);
+}
+.invite-card-text { font-size: 14px; line-height: 1.4; overflow-wrap: anywhere; }
+.invite-card-role { font-size: 12px; color: var(--muted); }
+.invite-card-actions { display: flex; gap: 8px; margin-top: 4px; }
+.invite-card-actions button {
+  font: inherit; font-size: 13px; padding: 6px 12px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--panel); color: var(--fg);
+}
+.invite-card-actions .invite-join { background: var(--accent); border-color: var(--accent); color: #fff; }
+.invite-card-actions button:disabled { opacity: .6; cursor: default; }
+.home-profile { position: relative; }
+.home-profile.has-invites::after {
+  content: ''; position: absolute; top: 4px; right: 4px; width: 8px; height: 8px;
+  border-radius: 50%; background: var(--danger); box-shadow: 0 0 0 2px var(--panel);
+}

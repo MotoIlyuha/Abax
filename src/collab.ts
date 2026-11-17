@@ -13,6 +13,8 @@ import { hydrateFromCloud } from './cloud-assets';
 import { clearPills, diffUsers, showPill, showUserEvents } from './activity-pills';
 import { chatReceive, chatReset, setChatAvailable, setChatSender } from './collab-chat';
 import { viewCenter, viewportSize } from './camera-anim';
+import { cancelActiveInteraction } from './interaction';
+import { nearestAvailablePage } from './presence';
 import {
   CLOSE_BAD_CODE, CLOSE_BAD_REQUEST, CLOSE_FREE_LIMIT, CLOSE_HOST_OFFLINE, CLOSE_PROTOCOL_MISMATCH, CLOSE_RATE_LIMITED,
   CLOSE_ROOM_CLOSED, CLOSE_ROOM_FULL, CLOSE_ROOM_NOT_FOUND, CLOSE_TOO_SLOW, PROTO,
@@ -21,8 +23,18 @@ import {
 
 export { PROTO };
 
-/** Событие на document, когда соединение закрылось; detail — код и причина. */
-export interface CollabClosedDetail { code: number; reason: string }
+/** Отказ хаба перед закрытием ({t:'denied'}): мест нет — по лимиту тарифа автора (planLimited) или по лимиту, заданному автором. */
+export interface CollabDenied { reason: string; maxGuests?: number; planLimited?: boolean }
+
+/** Событие на document, когда соединение закрылось; detail — код и причина (и отказ хаба, если он был). */
+export interface CollabClosedDetail { code: number; reason: string; denied?: CollabDenied }
+
+/** Текст баннера, когда автор скрыл от гостя все страницы (SPEC_NIGHT5 §7). */
+export const ALL_HIDDEN_TEXT = 'Автор временно скрыл все страницы доски. Доступ откроется автоматически, когда автор включит страницу.';
+/** Пилюля, когда автор скрыл страницу, на которой гость находился. */
+export const PAGE_HIDDEN_PILL = 'Автор скрыл страницу, на которой вы находились';
+/** Страница-заглушка гостя, пока все страницы скрыты: только у него, хабу не уходит. */
+export const HIDDEN_PLACEHOLDER_ID = '__all-pages-hidden__';
 
 export interface CollabUser {
   userId: number;
@@ -70,9 +82,15 @@ let followHost = false;
 let lostAt: number | null = null;
 /** В течение какого времени после обрыва новое подключение считается восстановлением связи. */
 const RESTORE_WINDOW_MS = 10 * 60 * 1000;
+/** Последний отказ хаба ({t:'denied'}) в этом подключении. */
+let lastDenied: CollabDenied | null = null;
+/** Автор скрыл от гостя все страницы: на холсте заглушка, ничего не сохраняется и не отправляется. */
+let allHidden = false;
 
 
 export function collabActive(): boolean { return connected; }
+/** Все страницы доски скрыты от гостя автором (SPEC_NIGHT5 §7). */
+export function allPagesHidden(): boolean { return allHidden; }
 export function myColor(): string { return users.find(u => u.userId === myUserId)?.color || '#e03131'; }
 export function myName(): string { return users.find(u => u.userId === myUserId)?.name || ''; }
 export function isHost(): boolean { return role === 'host'; }
@@ -110,6 +128,7 @@ const projectThrottle: { timer: number } = { timer: 0 };
 /** Право на активной странице: edit / view / hidden. */
 export function pageRight(pageId: string): 'edit' | 'view' | 'hidden' {
   if (role === 'host' || isDraftId(pageId)) return 'edit';
+  if (allHidden || pageId === HIDDEN_PLACEHOLDER_ID) return 'view';
   const r: string = myRights.pages[pageId] ?? myRights.default ?? 'view';
   return r === 'edit' || r === 'hidden' ? r : 'view';
 }
@@ -147,6 +166,8 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
   }
   transport = t;
   hubPatches = false;
+  lastDenied = null;
+  lastClosed = null;
   myUserId = -1;
   viewSent = null;
   presenceKey = '';
@@ -217,6 +238,12 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
       document.dispatchEvent(new CustomEvent(PRESENCE_EVENT));
     } else if (m.t === 'summon') {
       receiveSummon(m);
+    } else if (m.t === 'denied') {
+      lastDenied = {
+        reason: typeof m.reason === 'string' ? m.reason : '',
+        ...(typeof m.maxGuests === 'number' && Number.isFinite(m.maxGuests) ? { maxGuests: m.maxGuests } : {}),
+        ...(typeof m.planLimited === 'boolean' ? { planLimited: m.planLimited } : {}),
+      };
     }
   };
 
@@ -304,8 +331,23 @@ export function collabReady(): Promise<boolean> {
   return readyPromise;
 }
 
+/** Как закрылось последнее подключение (null — ещё не закрывалось). */
+let lastClosed: CollabClosedDetail | null = null;
+
 function notifyClosed(code: number, reason: string): void {
-  document.dispatchEvent(new CustomEvent<CollabClosedDetail>('doska:collab-closed', { detail: { code, reason } }));
+  const detail: CollabClosedDetail = { code, reason, ...(lastDenied ? { denied: lastDenied } : {}) };
+  lastClosed = detail;
+  document.dispatchEvent(new CustomEvent<CollabClosedDetail>('doska:collab-closed', { detail }));
+}
+
+/** Отказ хаба в последнем подключении (null — не было). */
+export function lastCollabDenied(): CollabDenied | null {
+  return lastDenied;
+}
+
+/** Код, причина и отказ хаба при последнем закрытии соединения (null — не закрывалось с начала подключения). */
+export function lastCollabClose(): CollabClosedDetail | null {
+  return lastClosed;
 }
 
 /** Закрыть канал по своей причине (например, несовпадение версий) и сообщить об этом как о закрытии сервером. */
@@ -321,14 +363,59 @@ function closeWith(code: number, reason: string): void {
 }
 
 function applyRemoteProject(project: Project): void {
-  const keepPageId = state.pageId;
+  if (!project || !Array.isArray(project.pages)) return;
+  const guest = role === 'guest';
+  const wasHidden = allHidden;
+  const prevPage = state.pageId;
+  const prevOrder = state.project.pages.map(p => p.id);
+  // автор скрыл все страницы (SPEC_NIGHT5 §7): хаб прислал проект без страниц — гость видит заглушку и баннер
+  if (guest && project.pages.length === 0) {
+    if (!wasHidden) cancelActiveInteraction();
+    allHidden = true;
+    const placeholder: Page = { id: HIDDEN_PLACEHOLDER_ID, name: '', grid: 'none', elements: [] };
+    openProject({ ...project, pages: [placeholder] }, placeholder.id);
+    setSelection([]);
+    setAllHiddenBanner(true);
+    document.dispatchEvent(new CustomEvent('doska:collab-project'));
+    return;
+  }
+  if (project.pages.length === 0) return; // у автора проект без страниц не бывает
+  let keepPageId: string | undefined = prevPage;
+  let lost = false;
+  if (wasHidden) {
+    // страница снова открыта: баннер уходит, открывается первая доступная
+    allHidden = false;
+    setAllHiddenBanner(false);
+    keepPageId = project.pages[0].id;
+  } else if (guest && prevPage && !isDraftId(prevPage) && !project.pages.some(p => p.id === prevPage)) {
+    // страницу, на которой гость стоит, скрыли: жест отменяется, гость уходит на ближайшую доступную
+    lost = true;
+    cancelActiveInteraction();
+    keepPageId = nearestAvailablePage(prevOrder, prevPage, project.pages.map(p => p.id)) ?? project.pages[0].id;
+  }
   const keepCam = { ...state.camera };
-  openProject(project, keepPageId ?? undefined);
+  openProject(project, keepPageId);
   state.camera = keepCam;
-  setSelection([...state.selection]);
+  setSelection(lost ? [] : [...state.selection]);
   // содержимое теперь общее: следующие правки считаются от него
   markSent(state.project);
+  if (lost) showPill({ kind: 'warn', text: PAGE_HIDDEN_PILL });
   document.dispatchEvent(new CustomEvent('doska:collab-project'));
+}
+
+/** Баннер «все страницы скрыты» поверх холста; холст под ним не принимает ввод. */
+function setAllHiddenBanner(on: boolean): void {
+  document.body.classList.toggle('all-pages-hidden', on);
+  let banner = document.getElementById('all-pages-hidden-banner');
+  if (!banner && on) {
+    banner = document.createElement('div');
+    banner.id = 'all-pages-hidden-banner';
+    document.body.appendChild(banner);
+  }
+  if (!banner) return;
+  banner.setAttribute('role', 'status');
+  if (on && !banner.textContent) banner.textContent = ALL_HIDDEN_TEXT;
+  banner.hidden = !on;
 }
 
 // ----- Дельта-патчи -----
@@ -756,7 +843,7 @@ export function noteSelection(ids: string[]): void {
 
 /** Отправка проекта (дебаунс 250мс) — вызывается из storage.save сетевого режима. */
 export function sendProject(project: Project): void {
-  if (!connected) return;
+  if (!connected || allHidden) return;
   if (hubPatches) {
     // содержимое страниц уходит патчами; полный проект — только когда изменился состав проекта
     if (flushPatches(project) && !structureChanged(project)) return;
@@ -789,6 +876,8 @@ export const netStorage = {
     return netProject && netProject.id === id ? netProject : null;
   },
   async save(project: Project): Promise<void> {
+    // все страницы скрыты: на руках только заглушка — хранить и отправлять нечего
+    if (allHidden || project.pages.some(p => p.id === HIDDEN_PLACEHOLDER_ID)) return;
     netProject = project;
     sendProject(project);
   },
@@ -1033,6 +1122,7 @@ export function stopCollab(): void {
   setChatSender(null);
   setChatAvailable(false);
   clearPills();
+  if (allHidden) { allHidden = false; setAllHiddenBanner(false); }
   state.collabRole = null;
   renderRemoteCursors();
 }

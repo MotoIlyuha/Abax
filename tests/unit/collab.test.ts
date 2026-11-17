@@ -1043,3 +1043,92 @@ describe('присутствие: камера, автопереход, «Поз
     expect(s.pageId).toBe('pg2');
   });
 });
+
+describe('живые права страниц у гостя (Ночь №5, TASK-07)', () => {
+  // хаб общий для файла и помнит права страниц прошлого теста: сбрасываем их через хаб
+  beforeEach(() => { (server as unknown as { pushProject(p: Project): void }).pushProject(demo()); });
+  async function guestWithHost(): Promise<Peer> {
+    await collab.startCollab(base, false, 'Ученик');
+    await until(() => st.state.project.id === 'proj' && st.state.project.pages.length === 2);
+    const host = await peer(`${base}&host=1&key=${encodeURIComponent(server.hostKey)}`);
+    peers.push(host);
+    await until(() => last(host, 'init'));
+    return host;
+  }
+  const withRights = (pageRights: Record<string, string>): Project => ({ ...demo(), permissions: { pageRights: pageRights as never } });
+
+  it('страницу под гостем скрыли: жест отменён, переход на ближайшую доступную и пилюля', async () => {
+    const host = await guestWithHost();
+    const inter = await import('../../src/interaction');
+    let cancelled = 0;
+    inter.onCancelInteraction(() => { cancelled++; });
+    st.switchPage('pg2');
+    st.setSelection(['x']);
+    host.ws.send(JSON.stringify({ t: 'project', project: withRights({ pg2: 'hidden' }) }));
+    await until(() => st.state.project.pages.length === 1);
+    expect(st.state.pageId).toBe('pg1');
+    expect(st.state.selection.size).toBe(0);
+    expect(cancelled).toBe(1);
+    expect(document.getElementById('activity-pills')?.textContent).toContain(collab.PAGE_HIDDEN_PILL);
+  });
+
+  it('скрыли другую страницу: гость остаётся на своей без пилюли', async () => {
+    const host = await guestWithHost();
+    host.ws.send(JSON.stringify({ t: 'project', project: withRights({ pg2: 'hidden' }) }));
+    await until(() => st.state.project.pages.length === 1);
+    expect(st.state.pageId).toBe('pg1');
+    expect(document.getElementById('activity-pills')?.textContent ?? '').not.toContain(collab.PAGE_HIDDEN_PILL);
+  });
+
+  it('скрыли все страницы: баннер, холст только для чтения, ничего не отправляется; открыли — баннер уходит', async () => {
+    const host = await guestWithHost();
+    const uid = [...server.room.clients.values()].find(c => !(c as unknown as { host: boolean }).host)!.uid;
+    server.setRights(uid, { default: 'edit' });
+    await until(() => collab.pageRight('pg1') === 'edit');
+    host.ws.send(JSON.stringify({ t: 'project', project: withRights({ pg1: 'hidden', pg2: 'hidden' }) }));
+    await until(() => collab.allPagesHidden());
+    const banner = document.getElementById('all-pages-hidden-banner')!;
+    expect(banner.hidden).toBe(false);
+    expect(banner.textContent).toBe(collab.ALL_HIDDEN_TEXT);
+    expect(document.body.classList.contains('all-pages-hidden')).toBe(true);
+    expect(st.state.project.pages.map(p => p.id)).toEqual([collab.HIDDEN_PLACEHOLDER_ID]);
+    expect(collab.readOnly()).toBe(true);
+    // сохранение и отправка заглушки не уходят хабу
+    const before = host.inbox.length;
+    await collab.netStorage.save(st.state.project);
+    collab.sendProject(st.state.project);
+    await new Promise(r => setTimeout(r, 400));
+    expect(host.inbox.slice(before).filter(m => m.t === 'project' || m.t === 'patch')).toEqual([]);
+    expect(server.room.project!.pages.map(p => p.id)).toEqual(['pg1', 'pg2']);
+    // автор открыл вторую страницу
+    host.ws.send(JSON.stringify({ t: 'project', project: withRights({ pg1: 'hidden', pg2: 'view' }) }));
+    await until(() => !collab.allPagesHidden());
+    expect(banner.hidden).toBe(true);
+    expect(document.body.classList.contains('all-pages-hidden')).toBe(false);
+    expect(st.state.pageId).toBe('pg2');
+    expect(st.state.project.pages.map(p => p.id)).toEqual(['pg2']);
+  });
+
+  it('остановка совместной работы снимает баннер', async () => {
+    const host = await guestWithHost();
+    host.ws.send(JSON.stringify({ t: 'project', project: withRights({ pg1: 'hidden', pg2: 'hidden' }) }));
+    await until(() => collab.allPagesHidden());
+    collab.stopCollab();
+    expect(collab.allPagesHidden()).toBe(false);
+    expect(document.body.classList.contains('all-pages-hidden')).toBe(false);
+  });
+
+  it('отказ хаба запоминается и приходит в событии закрытия', async () => {
+    const t = { send: () => true, close: () => {}, onopen: null as null | (() => void), onmessage: null as null | ((d: string) => void), onclose: null as null | ((c: number, r: string) => void) };
+    const closed: unknown[] = [];
+    document.addEventListener('doska:collab-closed', e => closed.push((e as CustomEvent).detail));
+    const p = collab.connectCollab(t as never, false);
+    t.onopen!();
+    await p;
+    t.onmessage!(JSON.stringify({ t: 'denied', reason: 'room-full', maxGuests: 3, planLimited: false }));
+    t.onclose!(4430, 'room full');
+    expect(collab.lastCollabDenied()).toEqual({ reason: 'room-full', maxGuests: 3, planLimited: false });
+    expect(collab.lastCollabClose()).toEqual({ code: 4430, reason: 'room full', denied: { reason: 'room-full', maxGuests: 3, planLimited: false } });
+    expect(closed).toEqual([collab.lastCollabClose()]);
+  });
+});

@@ -43,7 +43,7 @@
   - `animateCameraTo`, отправка `view`, краевые курсоры, аватары у страниц и в списке участников, «Позвать всех сюда» с поповером для скрытой страницы, «Автопереход за мной» (§8).
   - **Тесты**: дополнения `collab.test.ts`, новые unit-тесты навигации за хостом и `animateCameraTo` (reduced motion — мгновенно).
 
-- [ ] **TASK-07: Приглашения в интерфейсе**
+- [x] **TASK-07: Приглашения в интерфейсе**
   - **Файлы**: `src/invite-ui.ts`, `src/link-view-ui.ts`, `src/collab.ts`, `src/controller.ts`, `src/cloud-room.ts`, `src/app.ts`, `src/main.ts`, `index.html`, `src/style.css`.
   - Права и `maxGuests` до создания ссылки; `cancelActiveInteraction`, уход со скрытой страницы, `#all-pages-hidden-banner`, проект без страниц у гостя; `#room-full-modal`; приглашения по почте у автора и «Приглашения для вас» у адресата (§7).
   - **Тесты**: дополнения `invite-ui`/`link-view` тестов, `collab.test.ts` (скрытие текущей и всех страниц), новый тест входящих приглашений.

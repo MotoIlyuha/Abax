@@ -2,7 +2,8 @@ import { ApiError, currentSession, getApi } from './api-client';
 import { myCursorId, profileName } from './profile';
 import { cloudStorage, openFresh, setCloudRoomProject } from './cloud-sync';
 import { cloudRoomTransport } from './collab-transport';
-import { collabActive, collabReady, connectCloudHost, connectCollab, stopCollab } from './collab';
+import { collabActive, collabReady, connectCloudHost, connectCollab, lastCollabClose, stopCollab } from './collab';
+import { roomFullInfo, showRoomFullModal } from './room-full';
 import { NOTICE_INVITE_GONE, NOTICE_INVITE_OFFLINE, openInviteView } from './link-view-ui';
 import { loadInvite } from './link-view-cloud';
 import { showCollabNotice } from './collab';
@@ -34,10 +35,31 @@ export async function joinCloudInvite(token: string, name: string): Promise<Join
   const session = currentSession();
   await connectCollab(cloudRoomTransport(api.base, inv.roomCode, { name, invite: token, cursorId: myCursorId(), ...(session ? { session } : {}) }), false);
   if (await collabReady()) return 'room';
-  // комнаты нет (причину гость уже видит в уведомлении): проект остаётся доступен для чтения
+  const closed = lastCollabClose();
   stopCollab();
+  const canView = inv.project.pages.length > 0;
+  // мест нет (SPEC_NIGHT5 §7): окно «Комната заполнена»; под ним — проект только для чтения, если есть что показать
+  const full = closed ? roomFullInfo(closed) : null;
+  if (full) {
+    if (canView) openInviteView(inv, token);
+    showRoomFullModal({
+      ...full,
+      // заново — тем же путём, что и первый вход: перезагрузка по той же ссылке-приглашению
+      onRetry: retryJoin,
+      onReadOnly: canView ? () => { /* просмотр уже открыт под окном */ } : null,
+    });
+    return canView ? 'view' : 'none';
+  }
+  if (!canView) return 'none';
+  // комнаты нет (причину гость уже видит в уведомлении): проект остаётся доступен для чтения
   openInviteView(inv, token);
   return 'view';
+}
+
+/** «Попробовать снова» у заполненной комнаты: подменяется в тестах. */
+let retryJoin: () => void = () => location.reload();
+export function setRoomRetryForTests(fn: (() => void) | null): void {
+  retryJoin = fn ?? (() => location.reload());
 }
 
 // ----- Автор -----

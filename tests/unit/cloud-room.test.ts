@@ -2,7 +2,7 @@
 // Настоящий сервер (в памяти) и настоящие WebSocket.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SESSION_KEY, createApiClient, setApiForTests, type ApiClient } from '../../src/api-client';
-import { WAKE_MIN_MS, catchUpOnWake, connectOwnerRoom, joinCloudInvite, leaveOwnerRoom, ownerRoomProject, resetWakeForTests } from '../../src/cloud-room';
+import { WAKE_MIN_MS, catchUpOnWake, connectOwnerRoom, joinCloudInvite, leaveOwnerRoom, ownerRoomProject, resetWakeForTests, setRoomRetryForTests } from '../../src/cloud-room';
 import { setAccount, signedIn, syncAccount } from '../../src/profile-sync';
 import { cloudStorage, initCloudSync } from '../../src/cloud-sync';
 import { collabActive, collabReady, connectCollab, sendTaskSubmit, stopCollab, type CollabClosedDetail } from '../../src/collab';
@@ -124,6 +124,59 @@ describe('гость по приглашению', () => {
     localStorage.setItem(SESSION_KEY, owner.token);
     expect(await joinCloudInvite('inv', 'Автор')).toBe('none');
     expect(state.collabRole).toBeNull();
+  });
+});
+
+describe('комната заполнена (Ночь №5, TASK-07)', () => {
+  /** Первый гость — отдельным сокетом (модуль совместной работы у теста один). */
+  function rawGuest(name: string): Promise<WebSocket> {
+    return new Promise((resolve, reject) => {
+      const ws = new WebSocket(`${app.base.replace(/^http/, 'ws')}/ws/room/a`);
+      ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', proto: 1, invite: 'inv', name }));
+      ws.onmessage = ev => { if (JSON.parse(String(ev.data)).t === 'init') resolve(ws); };
+      ws.onerror = reject;
+    });
+  }
+
+  it('лимит автора: окно «1 из 1», под ним проект для чтения; «Попробовать снова» — повторный вход', async () => {
+    await setup('pro');
+    editStored(app, 'a', p => { p.permissions = { maxGuests: 1 }; });
+    const first = await rawGuest('Первый');
+    let retried = 0;
+    setRoomRetryForTests(() => { retried++; });
+    try {
+      expect(await joinCloudInvite('inv', 'Второй')).toBe('view');
+      expect(closedEvents.map(e => e.code)).toEqual([4430]);
+      expect(state.linkMode).toBe('view-project');
+      const m = document.getElementById('room-full-modal')!;
+      expect(m.querySelector('h2')!.textContent).toBe('В комнате сейчас максимум участников (1 из 1)');
+      expect(m.textContent).toContain('Автор доски ограничил число участников');
+      expect(m.querySelector('.room-full-readonly')).not.toBeNull();
+      m.querySelector<HTMLButtonElement>('.room-full-retry')!.click();
+      expect(retried).toBe(1);
+    } finally {
+      setRoomRetryForTests(null);
+      first.close();
+    }
+  });
+
+  it('лимит бесплатного тарифа: пояснение про тариф', async () => {
+    await setup('free');
+    // автор в сети (бесплатная комната без автора не открывается), один гость уже есть
+    const host = await new Promise<WebSocket>((resolve, reject) => {
+      const ws = new WebSocket(`${app.base.replace(/^http/, 'ws')}/ws/room/a`);
+      ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', proto: 1, session: owner.token, name: 'Автор' }));
+      ws.onmessage = ev => { if (JSON.parse(String(ev.data)).t === 'init') resolve(ws); };
+      ws.onerror = reject;
+    });
+    const first = await rawGuest('Первый');
+    try {
+      expect(await joinCloudInvite('inv', 'Второй')).toBe('view');
+      expect(closedEvents.map(e => e.code)).toEqual([4402]);
+      const m = document.getElementById('room-full-modal')!;
+      expect(m.querySelector('h2')!.textContent).toBe('В комнате сейчас максимум участников (1 из 1)');
+      expect(m.textContent).toContain('лимит бесплатного тарифа автора');
+    } finally { first.close(); host.close(); }
   });
 });
 
