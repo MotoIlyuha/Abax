@@ -2869,7 +2869,7 @@ body.link-view #project-icon { pointer-events: none; }
   cursor: pointer;
 }
 .ob-btn:hover { border-color: var(--border-strong); background: var(--hover); }
-.ob-btn:focus-visible, .ob-back:focus-visible, .ob-input:focus-visible, .cp-tile:focus-visible, .cp-lock-back:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ob-btn:focus-visible, .ob-back:focus-visible, .ob-input:focus-visible, .cp-item:focus-visible, .cp-lock-back:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .ob-btn:disabled { opacity: 0.6; cursor: default; }
 .ob-icon { display: grid; width: 20px; height: 20px; }
 .ob-icon svg { width: 20px; height: 20px; }
@@ -3070,58 +3070,174 @@ form.ob-email { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin
 
 /* ----- Выбор курсора (окно первого входа и «Профиль») ----- */
 .cp { display: grid; gap: 10px; }
+/* холст: тело и выделение рисует рендерер доски (src/cursor-picker.ts), слева — список курсоров */
 .cp-preview {
   --cp-sel: #3273f5;
   position: relative;
-  height: 128px;
+  height: 380px;
   border: 1px solid var(--border);
   border-radius: 12px;
   background-color: var(--paper);
   background-image: radial-gradient(circle, var(--checker) 1px, transparent 1.2px);
   background-size: 16px 16px;
   overflow: hidden;
+  isolation: isolate;
+  /* холст ведёт себя как доска: жесты пальцем — выделение и перенос, список листается сам */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
-.cp-sample { position: absolute; left: 34px; top: 30px; width: 96px; height: 60px; border-radius: 10px; background: #ffe8a3; border: 2px solid #f2b705; }
-.cp-frame { position: absolute; left: 28px; top: 24px; width: 108px; height: 72px; border: 1.5px solid var(--cp-sel); pointer-events: none; }
-.cp-handle { position: absolute; width: 7px; height: 7px; background: #fff; border: 1.5px solid var(--cp-sel); box-sizing: border-box; }
-.cp-nw { left: -4px; top: -4px; } .cp-n { left: calc(50% - 3.5px); top: -4px; } .cp-ne { right: -4px; top: -4px; }
-.cp-e { right: -4px; top: calc(50% - 3.5px); } .cp-se { right: -4px; bottom: -4px; } .cp-s { left: calc(50% - 3.5px); bottom: -4px; }
-.cp-sw { left: -4px; bottom: -4px; } .cp-w { left: -4px; top: calc(50% - 3.5px); }
-.cp-marquee { position: absolute; left: 170px; top: 22px; width: 120px; height: 70px; border: 1px solid var(--cp-sel); background: color-mix(in srgb, var(--cp-sel) 8%, transparent); }
-.cp-pointer { position: absolute; left: 286px; top: 88px; }
-.cp-arrow { position: absolute; left: -3px; top: -2px; width: 32px; height: 32px; line-height: 0; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.25)); }
+.cp-scene, .cp-selection { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.cp-selection { transition: opacity 0.16s ease-out; }
+.cp-hide-sel .cp-selection { opacity: 0; }
+/* над холстом всё (карточки, кнопки, ползунок) — тем же курсором, что выставлен у холста */
+.cp-preview .cp-item, .cp-preview .cp-scroll-btn, .cp-preview .cp-thumb { cursor: inherit; }
+
+/* список курсоров: узкая колонка карточек вплотную, полоса прокрутки справа */
+.cp-rail { position: absolute; left: 0; top: 0; bottom: 0; width: 92px; z-index: 1; }
+.cp-scroller {
+  height: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  touch-action: pan-y;
+  display: flex;
+  flex-direction: column;
+}
+.cp-scroller::-webkit-scrollbar { display: none; }
+/* тонкая полупрозрачная полоса прокрутки справа — видна, только пока мышь над списком */
+.cp-thumb {
+  position: absolute;
+  right: 4px;
+  top: 0;
+  width: 4px;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--fg) 26%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s, width 0.12s, background-color 0.12s;
+  will-change: transform;
+}
+.cp-rail.scrollable.hover .cp-thumb, .cp-rail.dragging .cp-thumb { opacity: 1; pointer-events: auto; }
+.cp-thumb:hover, .cp-rail.dragging .cp-thumb { width: 6px; background: color-mix(in srgb, var(--fg) 42%, transparent); }
+/* кнопки прокрутки: во всю ширину карточек, только когда мышь над списком и есть куда листать */
+.cp-scroll-btn {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--panel) 72%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  color: var(--fg-secondary);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.16s, background-color 0.12s;
+  z-index: 2;
+}
+.cp-up { top: 0; }
+.cp-down { bottom: 0; }
+.cp-down svg { transform: rotate(180deg); }
+.cp-rail.hover .cp-scroll-btn.show { opacity: 1; pointer-events: auto; }
+.cp-scroll-btn:hover { background: color-mix(in srgb, var(--panel) 92%, transparent); color: var(--fg); }
+
+/* карточка: курсор сверху, подпись по центру под ним, Pro — в углу; карточки стоят вплотную */
+.cp-item {
+  --cp-item-sel: var(--accent);
+  position: relative;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  height: 80px;
+  box-sizing: border-box;
+  padding: 14px 4px 0;
+  border: 0;
+  border-radius: 0;
+  background: color-mix(in srgb, var(--fg) 5%, transparent);
+  color: var(--fg-secondary);
+  font: inherit;
+  font-size: 12px;
+  text-align: center;
+  transition: background-color 0.15s, color 0.15s;
+}
+.cp-item:first-child { border-top-left-radius: 12px; border-top-right-radius: 12px; }
+.cp-item:last-child { border-bottom-left-radius: 12px; border-bottom-right-radius: 12px; }
+.cp-item:hover { background: color-mix(in srgb, var(--fg) 9%, transparent); color: var(--fg); }
+/* выбранный — рамкой цвета его выделения внутри карточки */
+.cp-item::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border: 2px solid var(--cp-item-sel);
+  border-radius: 10px;
+  opacity: 0;
+  transform: scale(0.94);
+  transition: opacity 0.15s, transform 0.18s cubic-bezier(0.22, 0.8, 0.24, 1);
+  pointer-events: none;
+}
+.cp-item.active::after { opacity: 1; transform: none; }
+.cp-item.active { color: var(--fg); font-weight: 600; }
+.cp-item-icon {
+  display: block;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  line-height: 0;
+  transform-origin: 37.5% 37.5%;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.2));
+  transition: opacity 0.08s;
+  will-change: transform;
+}
+.cp-item-icon svg { width: 28px; height: 28px; }
+.cp-item-icon.worn { opacity: 0; }
+.cp-preview .cp-item:focus-visible { outline-offset: -3px; border-radius: 12px; z-index: 1; }
+.cp-item-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 16px; }
+.cp-pro { position: absolute; top: 5px; right: 5px; padding: 0 4px; border-radius: 5px; background: linear-gradient(90deg, #7048e8, #ae3ec9); color: #fff; font-size: 9px; font-weight: 700; line-height: 14px; letter-spacing: 0.02em; }
+
+/* курсор с именем: стоит у фигуры, на холсте — надет на мышь */
+.cp-pointer { position: absolute; left: 0; top: 0; z-index: 2; pointer-events: none; will-change: transform; }
+.cp-arrow { position: absolute; left: -3px; top: -3px; width: 32px; height: 32px; line-height: 0; transform-origin: 3px 3px; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.25)); }
+.cp-arrow-ghost { opacity: 0; }
+.cp-pointer.hw .cp-arrow { visibility: hidden; }
 .cp-preview[data-effect="glow"] .cp-arrow { filter: drop-shadow(0 0 6px var(--cp-sel)); }
-.cp-badge { position: absolute; left: 20px; top: 24px; padding: 2px 8px; border-radius: 99px; font-size: 12px; font-weight: 600; white-space: nowrap; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18); }
+.cp-badge {
+  position: absolute;
+  left: 20px;
+  top: 24px;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 2px 8px;
+  border-radius: 99px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+  transition: background-color 0.15s, color 0.15s, transform 0.18s cubic-bezier(0.22, 0.8, 0.24, 1);
+}
+/* у правого края холста бейдж — слева от курсора */
+.cp-pointer.flip .cp-badge { transform: translateX(calc(-100% - 30px)); }
 .cp-lock { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 8px 10px; border-radius: 10px; background: linear-gradient(90deg, #f3e8ff, #e7f0ff); font-size: 13px; }
 .cp-lock[hidden] { display: none; }
 .cp-lock-text { font-weight: 600; color: #5f3dc4; }
 .cp-lock-back { border: 0; background: transparent; color: var(--accent-strong); font: inherit; font-weight: 600; cursor: pointer; padding: 4px 6px; border-radius: 6px; }
 .cp-lock-back:hover { background: rgba(255, 255, 255, 0.6); }
-.cp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 6px; }
-.cp-tile {
-  position: relative;
-  display: grid;
-  justify-items: center;
-  gap: 2px;
-  padding: 8px 4px 6px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--panel);
-  color: var(--fg-secondary);
-  font: inherit;
-  font-size: 11px;
-  cursor: pointer;
-}
-.cp-tile:hover { border-color: var(--border-strong); background: var(--hover); }
-.cp-tile.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-ring); color: var(--fg); }
-.cp-tile-icon { display: grid; place-items: center; width: 28px; height: 28px; background: repeating-conic-gradient(#f1f3f6 0% 25%, #ffffff 0% 50%) 50% / 8px 8px; border-radius: 6px; }
-.cp-tile-icon svg { width: 26px; height: 26px; }
-.cp-tile-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cp-pro { position: absolute; top: 3px; right: 3px; padding: 0 4px; border-radius: 4px; background: linear-gradient(90deg, #7048e8, #ae3ec9); color: #fff; font-size: 9px; font-weight: 700; letter-spacing: 0.04em; line-height: 14px; }
 @media (max-width: 480px) {
   .ob-step { padding: 22px 16px 18px; }
-  .cp-marquee { display: none; }
-  .cp-pointer { left: 170px; }
+  .cp-preview { height: 340px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cp-selection, .cp-item, .cp-item::after, .cp-item-icon, .cp-thumb, .cp-scroll-btn, .cp-badge { transition: none; }
 }
 
 /* ----- Кнопка профиля на домашнем экране и раздел «Профиль» (Ночь №4) ----- */

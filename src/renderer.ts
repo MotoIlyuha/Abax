@@ -1083,7 +1083,27 @@ export function renderNow(): void {
 /** Ручки редактирования единственного выделенного элемента (экранные координаты). */
 function drawHandles(ctx: CanvasRenderingContext2D, cam: Camera): void {
   const el = state.board.elements.find(e => state.selection.has(e.id));
-  if (!el) return;
+  if (el) drawElHandles(ctx, cam, el);
+}
+
+/**
+ * Выделение одного элемента вне доски (превью в выборе курсора): пунктирная рамка и ручки
+ * ровно как у выделенного элемента на холсте, цветом color. ctx — в экранных координатах (dpr учтён).
+ */
+export function drawSelectionPreview(ctx: CanvasRenderingContext2D, el: Element, cam: Camera, color: string): void {
+  const prev = selColor;
+  selColor = color;
+  const a = cacheOf(el).aabb;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([5, 4]);
+  ctx.strokeRect((a.x0 - cam.x) * cam.zoom - 4, (a.y0 - cam.y) * cam.zoom - 4, (a.x1 - a.x0) * cam.zoom + 8, (a.y1 - a.y0) * cam.zoom + 8);
+  ctx.setLineDash([]);
+  drawElHandles(ctx, cam, el);
+  selColor = prev;
+}
+
+function drawElHandles(ctx: CanvasRenderingContext2D, cam: Camera, el: Element): void {
   const hs = elementHandles(el, cam.zoom);
   // у штриха собственных ручек нет — масштабируем за общую рамку
   if (hs.length === 0) { drawBoxHandles(ctx, cam, elementAABB(el)); return; }

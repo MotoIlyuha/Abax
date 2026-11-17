@@ -125,5 +125,5 @@ export function renderProfileSettings(host: HTMLElement, rerender: () => void, o
   host.appendChild(box);
   // вошли / вышли / сменился тариф — раздел перерисовывается
   const off = onAccountChange(() => rerender());
-  return { dispose: () => { off(); limited.destroy(); } };
+  return { dispose: () => { off(); limited.destroy(); picker.dispose(); } };
 }

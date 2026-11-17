@@ -175,7 +175,7 @@ describe('окно первого входа', () => {
     openOnboarding();
     $('.ob-skip').click();
     $('[data-cursor="mint"]').click();
-    expect($('[data-cursor="neon"] .cp-pro').textContent).toBe('PRO');
+    expect($('[data-cursor="neon"] .cp-pro').textContent).toBe('Pro');
     $('[data-cursor="neon"]').click();
     expect($('.cp-lock').hidden).toBe(false);
     expect($('.cp-lock').textContent).toContain('Доступно в подписке Pro');

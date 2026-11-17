@@ -86,6 +86,44 @@ test.describe('окно первого входа', () => {
     await page.context().close();
   });
 
+  test('холст выбора курсора: мышь снимает показное выделение, рамка и клик выделяют, пустое место снимает', async ({ browser }) => {
+    const page = await fresh(browser);
+    await page.locator('.ob-skip').click();
+    await page.mouse.move(5, 5);
+    const pv = page.locator('.ob-step2 .cp-preview');
+    await expect(pv).toHaveAttribute('data-selected', 'true');
+    // шаг 2 въезжает «слайдом»: координаты холста берём, когда он встал на место
+    let prev = -1;
+    await expect.poll(async () => {
+      const x = (await pv.boundingBox())!.x;
+      const still = x === prev;
+      prev = x;
+      return still;
+    }).toBe(true);
+    const b = (await pv.boundingBox())!;
+    const rail = (await page.locator('.ob-step2 .cp-rail').boundingBox())!;
+    const x0 = rail.x + rail.width + 8;
+    await page.mouse.move(b.x + b.width - 20, b.y + 20, { steps: 4 });
+    await expect(pv).toHaveAttribute('data-selected', 'false');
+    // рамка через весь холст правее списка задевает фигуру
+    await page.mouse.move(x0, b.y + 8);
+    await page.mouse.down();
+    await page.mouse.move(b.x + b.width - 8, b.y + b.height - 8, { steps: 6 });
+    await page.mouse.up();
+    await expect(pv).toHaveAttribute('data-selected', 'true');
+    // клик в пустой угол снимает выделение
+    await page.mouse.click(b.x + b.width - 8, b.y + 8);
+    await expect(pv).toHaveAttribute('data-selected', 'false');
+    // полоса прокрутки списка видна, только пока мышь над списком
+    await expect(page.locator('.ob-step2 .cp-thumb')).toHaveCSS('opacity', '0');
+    await page.mouse.move(rail.x + rail.width / 2, rail.y + rail.height / 2, { steps: 4 });
+    await expect(page.locator('.ob-step2 .cp-thumb')).toHaveCSS('opacity', '1');
+    // мышь ушла — фигура снова выделена напоказ
+    await page.mouse.move(5, 5, { steps: 4 });
+    await expect(pv).toHaveAttribute('data-selected', 'true');
+    await page.context().close();
+  });
+
   test('пока окно открыто, горячие клавиши доски не срабатывают; Esc закрывает', async ({ browser }) => {
     const page = await fresh(browser);
     await expect(step(page)).toBeVisible();

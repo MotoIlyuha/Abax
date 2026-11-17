@@ -32,7 +32,7 @@ test.describe('персональные курсоры', () => {
   test('курсор «Выделения» над холстом и иконка на панели меняются вместе с профилем', async ({ host, page }) => {
     const board = host.board;
     await board.tool('v');
-    await expect(board.canvas).toHaveCSS('cursor', /^url\("data:image\/svg\+xml.*\) 3 2, default$/);
+    await expect(board.canvas).toHaveCSS('cursor', /^url\("data:image\/svg\+xml.*\) 3 3, default$/);
     const selectBtn = page.locator('#toolbar .tool[data-tool="select"]');
     await expect(selectBtn.locator('svg.cursor-icon')).toHaveCount(1);
     expect(await selectBtn.locator('svg.cursor-icon path').first().getAttribute('fill')).toBe('#ffffff');
@@ -65,7 +65,7 @@ test.describe('персональные курсоры', () => {
   test('Pro-курсор на free — только примерка: курсор не меняется', async ({ host, page }) => {
     await page.keyboard.press('Control+Comma');
     await page.locator('.sd-nav-item', { hasText: 'Профиль' }).click();
-    await expect(page.locator('#settings-dialog [data-cursor="neon"] .cp-pro')).toHaveText('PRO');
+    await expect(page.locator('#settings-dialog [data-cursor="neon"] .cp-pro')).toHaveText('Pro');
     await page.locator('#settings-dialog [data-cursor="neon"]').click();
     await expect(page.locator('#settings-dialog .cp-lock')).toContainText('Доступно в подписке Pro');
     await page.keyboard.press('Escape');

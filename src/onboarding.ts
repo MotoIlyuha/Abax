@@ -436,6 +436,7 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
     if (current?.root !== root) return;
     current = null;
     nameField.destroy();
+    picker.dispose();
     window.removeEventListener('keydown', onOutsideKey, true);
     root.remove();
     opts.onDone?.();
