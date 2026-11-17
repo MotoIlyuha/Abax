@@ -3,6 +3,23 @@
 import { DEFAULT_CURSOR_ID, cursorPreset } from './cursors';
 import { normalizeName } from './room-host';
 
+/** Сколько символов можно ввести в поле имени (и имена-подсказки не длиннее). */
+export const NAME_LIMIT = 32;
+/** С какого остатка счётчик становится оранжевым. */
+export const NAME_NEAR = 5;
+
+/** Делит текст по лимиту в символах (эмодзи и прочие суррогатные пары не рвутся): что остаётся и что не влезло. */
+export function splitAtLimit(value: string, limit: number): { kept: string; extra: string } {
+  const chars = Array.from(value);
+  if (chars.length <= limit) return { kept: value, extra: '' };
+  return { kept: chars.slice(0, limit).join(''), extra: chars.slice(limit).join('') };
+}
+
+/** Состояние счётчика по остатку: обычное, близко к лимиту, лимит. */
+export function limitState(left: number, near: number): 'ok' | 'near' | 'full' {
+  return left <= 0 ? 'full' : left <= near ? 'near' : 'ok';
+}
+
 /**
  * Tab в поле имени: поле пустое и нажат Tab без Shift — вернуть подсказку (её подставят в поле,
  * каретку — в конец, переход фокуса отменяется); иначе null — штатная навигация.

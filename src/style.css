@@ -3164,6 +3164,74 @@ form.ob-email { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin
 /* кнопка-рандомайзер рядом с полем имени */
 .ob-name-row { display: flex; gap: 8px; }
 .ob-name-row .ob-input { flex: 1; }
+/* поле имени с лимитом символов (src/letter-limit.ts): рамка и скругление как у .ob-input,
+   справа кольцо-заполнение и остаток символов */
+.ob-name-row .ob-limit { flex: 1; }
+.ob-limit {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--border-input);
+  border-radius: 12px;
+  background: var(--panel);
+  box-sizing: border-box;
+}
+.ob-limit:has(.ob-limit-input:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ob-limit-input, .ob-limit-mirror { font: inherit; font-size: 15px; }
+.ob-limit-input {
+  flex: 1;
+  min-width: 0;
+  height: 42px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  outline: none;
+}
+.ob-limit-input::placeholder { color: var(--fg-placeholder); }
+.ob-limit-mirror { position: absolute; left: 0; top: 0; visibility: hidden; white-space: pre; pointer-events: none; }
+.ob-limit-meter { flex: none; width: 22px; height: 22px; transform: rotate(-90deg); will-change: transform; }
+.ob-limit-meter circle { fill: none; stroke-width: 2.6; }
+.ob-limit-track { stroke: var(--border-input); }
+.ob-limit-fill { stroke: var(--fg-secondary); stroke-linecap: round; stroke-dasharray: 1 1; stroke-dashoffset: 1; transition: stroke 0.2s; }
+.ob-limit-count {
+  flex: none;
+  min-width: 2ch;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  will-change: transform;
+  transition: color 0.2s;
+}
+.ob-limit.is-near .ob-limit-fill { stroke: var(--warn); }
+.ob-limit.is-near .ob-limit-count { color: var(--warn); }
+.ob-limit.is-full .ob-limit-fill { stroke: var(--danger); }
+.ob-limit.is-full .ob-limit-count { color: var(--danger); }
+/* буквы, которые не влезли: падают из окна и лежат кучкой под ним */
+.ob-pile { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.ob-pile span {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 16px;
+  height: 20px;
+  margin: -10px 0 0 -8px;
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 20px;
+  text-align: center;
+  color: var(--danger);
+  will-change: transform, opacity;
+  transition: color 0.5s, opacity 0.5s;
+}
+/* легли на тёмную подложку под окном: светлые, приглушённые */
+.ob-pile span.is-down { color: var(--fg-inverse); opacity: 0.7; }
 .ob-dice {
   flex: none;
   display: grid;

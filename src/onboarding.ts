@@ -13,8 +13,9 @@ import { DEFAULT_CURSOR_ID } from './cursors';
 import { createEmailLogin, springLayout, type EmailLogin, type EmailStage } from './email-login';
 import { nextFunnyName, randomFunnyName } from './funny-names';
 import { motionEnabled, reduceMotion } from './motion';
+import { createLetterLimit } from './letter-limit';
 import { introEnabled, playIntro } from './onboarding-intro';
-import { initialChoice, resolveName, tabFill, type CursorChoice } from './onboarding-logic';
+import { NAME_LIMIT, NAME_NEAR, initialChoice, resolveName, tabFill, type CursorChoice } from './onboarding-logic';
 import { cursorEntitled, getProfile, setProfile } from './profile';
 import { account, pushProfile, signedIn } from './profile-sync';
 
@@ -86,9 +87,10 @@ const DICE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 
 /**
  * Поле имени с кнопкой-рандомайзером справа: по клику в поле подставляется другое случайное имя из списка
- * (и событие input — превью и бейдж обновляются). Возвращает ряд для вставки в разметку.
+ * (и событие input — превью и бейдж обновляются). field — что ставить в ряд вместо самого поля
+ * (обёртка со счётчиком). Возвращает ряд для вставки в разметку.
  */
-export function nameRowWithDice(input: HTMLInputElement): HTMLElement {
+export function nameRowWithDice(input: HTMLInputElement, field: HTMLElement = input): HTMLElement {
   const row = el('div', 'ob-name-row');
   const dice = el('button', 'ob-dice');
   dice.type = 'button';
@@ -102,7 +104,7 @@ export function nameRowWithDice(input: HTMLInputElement): HTMLElement {
     input.focus();
     input.setSelectionRange(input.value.length, input.value.length);
   });
-  row.append(input, dice);
+  row.append(field, dice);
   return row;
 }
 
@@ -270,13 +272,14 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
   const nameLabel = el('label', 'ob-field');
   const nameCaption = el('span', 'ob-caption', 'Введите имя');
   const nameHint = el('span', 'ob-hint', 'Это имя увидят участники совместной работы');
-  const nameInput = el('input', 'ob-input ob-name');
+  // без maxLength: лишнее не блокируется, а отрезается и падает буквами (src/letter-limit.ts)
+  const nameInput = el('input', 'ob-limit-input ob-name');
   nameInput.type = 'text';
-  nameInput.maxLength = 40;
   nameInput.setAttribute('autocomplete', 'nickname');
   nameInput.placeholder = placeholder;
-  nameInput.value = resume?.name ?? '';
-  nameLabel.append(nameCaption, nameRowWithDice(nameInput), nameHint);
+  const nameField = createLetterLimit({ input: nameInput, limit: NAME_LIMIT, near: NAME_NEAR, pileHost: root, floorEl: win });
+  nameField.set(resume?.name ?? '');
+  nameLabel.append(nameCaption, nameRowWithDice(nameInput, nameField.el), nameHint);
   const cursorCaption = el('div', 'ob-caption', 'Выберите свой курсор');
   const picker: CursorPicker = createCursorPicker({
     choice, entitled, name: resolveName(nameInput.value, placeholder),
@@ -299,7 +302,7 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
       const fill = tabFill(nameInput.value, nameInput.placeholder, e.shiftKey);
       if (fill !== null) {
         e.preventDefault();
-        nameInput.value = fill;
+        nameField.set(fill);
         nameInput.setSelectionRange(fill.length, fill.length);
         picker.setName(fill);
       }
@@ -342,7 +345,7 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
   function enterStep2(): void {
     // вошли — имя аккаунта (если оно есть и поле ещё пустое)
     const fromAccount = accountName(account());
-    if (fromAccount && !nameInput.value.trim()) nameInput.value = fromAccount;
+    if (fromAccount && !nameInput.value.trim()) nameField.set(fromAccount);
     h2.textContent = signedIn() ? 'Вы вошли. Как вас называть?' : 'Как вас зовут?';
     picker.setName(resolveName(nameInput.value, placeholder));
     renderLink();
@@ -432,6 +435,7 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
   function close(): void {
     if (current?.root !== root) return;
     current = null;
+    nameField.destroy();
     window.removeEventListener('keydown', onOutsideKey, true);
     root.remove();
     opts.onDone?.();
