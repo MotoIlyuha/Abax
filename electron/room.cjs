@@ -23,6 +23,37 @@ const MAX_NAME = 32;
 const CURSOR_IDS = ['default', 'graphite', 'mint', 'coral', 'lavender', 'amber', 'geometry', 'cosmos', 'neon', 'hologram', 'pixel', 'gold', 'flame', 'aurora'];
 const cleanCursorId = v => (typeof v === 'string' && CURSOR_IDS.includes(v) ? v : undefined);
 
+// ----- Чат комнаты: зеркало src/room-chat.ts (паритет — tests/server/room-pointer.test.ts) -----
+const CHAT_MAX_LEN = 500;
+const CHAT_HISTORY = 100;
+const CHAT_RATE_COUNT = 5;
+const CHAT_RATE_MS = 3000;
+/** Текст сообщения после trim; null — пустое, слишком длинное или не строка. */
+function normalizeChatText(raw) {
+  if (typeof raw !== 'string') return null;
+  const text = raw.trim();
+  return text.length === 0 || text.length > CHAT_MAX_LEN ? null : text;
+}
+/** Ограничитель частоты: true — сообщение можно принять (и оно учтено). */
+function createRateLimiter(count = CHAT_RATE_COUNT, windowMs = CHAT_RATE_MS) {
+  const times = [];
+  return now => {
+    while (times.length > 0 && now - times[0] >= windowMs) times.shift();
+    if (times.length >= count) return false;
+    times.push(now);
+    return true;
+  };
+}
+
+/** Пределы зума в пакетах view и summon — зеркало VIEW_ZOOM_MIN / VIEW_ZOOM_MAX из src/room-host.ts. */
+const VIEW_ZOOM_MIN = 0.05;
+const VIEW_ZOOM_MAX = 32;
+/** Коды закрытия (src/collab-transport.ts). */
+const CLOSE_ROOM_FULL = 4430;
+const ROOM_FULL_REASON = 'room-full';
+/** Верхняя граница своего лимита гостей (MAX_GUESTS_LIMIT в src/limits.ts). */
+const MAX_GUESTS_LIMIT = 50;
+
 /**
  * Имя участника приходит от него самого и уходит всем остальным: управляющие символы и
  * переключатели направления текста заменяются пробелами, пробелы схлопываются, длина — до MAX_NAME
@@ -55,6 +86,25 @@ class Room {
     this.rights = new Map(); // uid -> { default: 'view'|'edit', pages: {pageId: 'view'|'edit'} }
     this.nextUid = 1;
     this.revs = new Map(); // pageId -> ревизия: растёт с каждым принятым патчем
+    this.chat = []; // последние сообщения чата (только в памяти)
+    this.followHost = false; // «Автопереход участников за мной»
+    this.pageRights = {}; // права страниц из permissions проекта, известные хабу
+  }
+  clientOf(uid) {
+    return [...this.clients.values()].find(c => c.uid === uid);
+  }
+  guestCount() {
+    let n = 0;
+    for (const c of this.clients.values()) if (!c.host && c.sock.readyState === 1) n++;
+    return n;
+  }
+  /** Страницы, скрытые от участника (у автора — ни одной). */
+  hiddenPagesFor(uid) {
+    const out = new Set();
+    const info = this.clientOf(uid);
+    if (!this.project || (info && info.host)) return out;
+    for (const pg of this.project.pages) if (this.userPageRight(uid, pg.id) === 'hidden') out.add(pg.id);
+    return out;
   }
   editorsCount() {
     let n = 0;
@@ -109,8 +159,26 @@ class Room {
       cursor: c.cursor || null, pageId: c.pageId || null,
       selection: c.selection || [], rights: { default: c.host ? 'edit' : (this.rights.get(c.uid)?.default || 'view'), pages: c.host ? {} : (this.rights.get(c.uid)?.pages || {}) },
       ...(c.cursorId ? { cursorId: c.cursorId } : {}),
+      ...(c.view ? { view: c.view } : {}),
     }));
   }
+}
+
+/** Камера из пакета view / summon (зеркало cleanView из src/room-host.ts). */
+function cleanView(m) {
+  if (!isId(m.pageId) || !isNum(m.vx) || !isNum(m.vy) || !isNum(m.vz)) return null;
+  if (m.vz < VIEW_ZOOM_MIN || m.vz > VIEW_ZOOM_MAX) return null;
+  return { pageId: m.pageId, vx: m.vx, vy: m.vy, vz: m.vz };
+}
+
+/** Снимок участников для получателя: на скрытой для него странице — без страницы, курсора, камеры, выделения (зеркало maskUsersFor). */
+function maskUsersFor(users, viewerId, hidden) {
+  if (hidden.size === 0) return users;
+  return users.map(u => {
+    if (u.userId === viewerId) return u;
+    const onHidden = (u.pageId !== null && hidden.has(u.pageId)) || (!!u.view && hidden.has(u.view.pageId));
+    return onHidden ? { ...u, pageId: null, cursor: null, view: null, selection: [], hiddenPage: true } : u;
+  });
 }
 
 // ----- Проверка входящих сообщений: они приходят от участников и не заслуживают доверия -----
@@ -264,16 +332,41 @@ function mapPage(known, incoming, fn) {
 
 /**
  * Хаб комнаты: принимает участников от любого транспорта и рассылает им сообщения.
- * @param {{ code: string, openEdit?: boolean }} opts
+ * Тарифа автора комната на компьютере не знает: лимита гостей по тарифу нет (как и раньше), лимит автора
+ * permissions.maxGuests действует у проекта с ownerPlan pro/tutor, «Автопереход» разрешён (кнопку ограничивает клиент).
+ * @param {{ code: string, openEdit?: boolean, maxGuests?: number, canFollowHost?: boolean, multiHost?: boolean }} opts
+ *   maxGuests — явный лимит гостей; multiHost — несколько соединений автора вместо отказа 4409
  */
-function createRoomHub({ code, openEdit = false }) {
+function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true, multiHost = false }) {
   const room = new Room(code);
+  let chatSeq = 0;
 
   const sendTo = (sock, obj) => { if (sock.readyState === 1) try { sock.send(JSON.stringify(obj)); } catch { /* канал закрывается */ } };
 
+  /** Лимит гостей: явный из опций или лимит автора у Pro/Tutor-проекта; без них — без ограничений. */
+  function guestLimit() {
+    if (maxGuests !== undefined) return maxGuests;
+    const p = room.project;
+    const own = p && p.permissions && p.permissions.maxGuests;
+    const paid = p && (p.ownerPlan === 'pro' || p.ownerPlan === 'tutor');
+    return paid && Number.isInteger(own) && own >= 1 && own <= MAX_GUESTS_LIMIT ? own : Infinity;
+  }
+
+  const usersFor = info => maskUsersFor(room.usersSnapshot(), info.uid, room.hiddenPagesFor(info.uid));
+
   function broadcastUsers() {
-    const users = JSON.stringify({ t: 'users', users: room.usersSnapshot() });
-    for (const c of room.clients.values()) { if (c.sock.readyState === 1) try { c.sock.send(users); } catch { /* канал закрывается */ } }
+    const base = room.usersSnapshot();
+    let shared = null;
+    for (const c of room.clients.values()) {
+      if (c.sock.readyState !== 1) continue;
+      const hidden = room.hiddenPagesFor(c.uid);
+      if (hidden.size === 0) {
+        if (shared === null) shared = JSON.stringify({ t: 'users', users: base });
+        try { c.sock.send(shared); } catch { /* канал закрывается */ }
+      } else {
+        sendTo(c.sock, { t: 'users', users: maskUsersFor(base, c.uid, hidden) });
+      }
+    }
   }
 
   const projectFor = info => info.host ? room.project : (room.project ? { ...room.project, pages: projectPagesForGuest(room.visiblePages(info.uid)) } : null);
@@ -286,7 +379,76 @@ function createRoomHub({ code, openEdit = false }) {
   }
 
   // patches: true — хаб понимает t: 'patch'; клиент отвечает { t: 'caps', patches: true }, и ему шлются патчи вместо проектов
-  const initFor = info => ({ t: 'init', proto: PROTO, userId: info.uid, color: info.color, name: info.name, project: projectFor(info), rights: rightsOf(info.uid), users: room.usersSnapshot(), patches: true });
+  const initFor = info => ({
+    t: 'init', proto: PROTO, userId: info.uid, color: info.color, name: info.name, project: projectFor(info), rights: rightsOf(info.uid),
+    users: usersFor(info), patches: true, chat: room.chat, followHost: room.followHost,
+  });
+
+  /** Живые права страниц (зеркало syncPageRights из src/room-host.ts): гости, чьи права изменились. */
+  function syncPageRights() {
+    const next = {};
+    const raw = (room.project && room.project.permissions && room.project.permissions.pageRights) || {};
+    for (const [id, r] of Object.entries(raw)) if (r === 'edit' || r === 'view' || r === 'hidden') next[id] = r;
+    const prev = room.pageRights;
+    room.pageRights = next;
+    const diff = [...new Set([...Object.keys(prev), ...Object.keys(next)])].filter(id => prev[id] !== next[id]);
+    if (diff.length === 0) return [];
+    const changed = [];
+    for (const c of room.clients.values()) {
+      if (c.host) continue;
+      const r = room.rights.get(c.uid) || { default: 'view', pages: {} };
+      const pages = { ...r.pages };
+      for (const id of diff) { if (next[id]) pages[id] = next[id]; else delete pages[id]; }
+      room.rights.set(c.uid, { default: r.default, pages });
+      changed.push(c.uid);
+    }
+    return changed;
+  }
+
+  function afterRightsSync(changed) {
+    if (changed.length === 0) return;
+    for (const uid of changed) {
+      const c = room.clientOf(uid);
+      if (c) sendTo(c.sock, { t: 'rights', rights: rightsOf(uid) });
+    }
+    broadcastUsers();
+  }
+
+  function acceptChat(info, m) {
+    const text = normalizeChatText(m.text);
+    if (text === null) return;
+    const ts = Date.now();
+    if (!info.chatOk(ts)) return; // флуд — молча
+    const msg = { id: `${ts.toString(36)}-${(++chatSeq).toString(36)}`, by: info.uid, name: info.name, ...(info.cursorId ? { cursorId: info.cursorId } : {}), text, ts };
+    room.chat = [...room.chat, msg].slice(-CHAT_HISTORY);
+    for (const c of room.clients.values()) sendTo(c.sock, { t: 'chat', ...msg });
+  }
+
+  function acceptView(info, m) {
+    const view = cleanView(m);
+    if (!view || !(room.project && room.project.pages.some(p => p.id === view.pageId))) return;
+    if (room.userPageRight(info.uid, view.pageId) === 'hidden') return;
+    info.view = view;
+    info.pageId = view.pageId;
+    broadcastUsers();
+  }
+
+  function acceptSummon(info, m) {
+    if (!info.host) return;
+    const view = cleanView(m);
+    if (!view || !(room.project && room.project.pages.some(p => p.id === view.pageId))) return;
+    for (const c of room.clients.values()) {
+      if (c.host || room.userPageRight(c.uid, view.pageId) === 'hidden') continue;
+      sendTo(c.sock, { t: 'summon', ...view, by: info.uid });
+    }
+  }
+
+  function acceptFollowHost(info, m) {
+    if (!info.host || typeof m.enabled !== 'boolean' || !canFollowHost) return;
+    if (room.followHost === m.enabled) return;
+    room.followHost = m.enabled;
+    for (const c of room.clients.values()) sendTo(c.sock, { t: 'follow-host', enabled: room.followHost, by: info.uid });
+  }
 
   /**
    * Подключить участника. Проверку доступа (код комнаты, ключ автора) делает транспорт до вызова.
@@ -295,18 +457,29 @@ function createRoomHub({ code, openEdit = false }) {
    * @returns {number | null} uid участника или null, если подключение отклонено
    */
   function attach(sock, { isHost = false, name = '', patches = false, cursorId } = {}) {
-    if (isHost && [...room.clients.values()].some(c => c.host)) { sock.close(4409, 'host already connected'); return null; }
-    const uid = isHost ? 0 : room.nextUid++;
+    if (isHost && !multiHost && [...room.clients.values()].some(c => c.host)) { sock.close(4409, 'host already connected'); return null; }
+    if (!isHost) {
+      const max = guestLimit();
+      if (room.guestCount() >= max) {
+        sendTo(sock, { t: 'denied', reason: ROOM_FULL_REASON, maxGuests: max, planLimited: false });
+        sock.close(CLOSE_ROOM_FULL, ROOM_FULL_REASON);
+        return null;
+      }
+    }
+    // первое устройство автора — uid 0, следующие (multiHost) — свои номера
+    const uid = isHost && !room.clientOf(0) ? 0 : room.nextUid++;
     const info = {
       sock, uid, host: isHost,
       name: normalizeName(name) || (isHost ? 'Автор' : `Гость ${uid}`),
       color: isHost ? '#e03131' : COLORS[uid % COLORS.length],
       last: Date.now(), cursor: null, pageId: null, selection: [], patches,
       cursorId: cleanCursorId(cursorId),
+      view: null, chatOk: createRateLimiter(),
     };
     room.clients.set(sock, info);
-    if (isHost) room.rights.set(0, { default: 'edit', pages: {} });
-    else room.rights.set(uid, { default: openEdit ? 'edit' : 'view', pages: {} });
+    if (isHost) room.rights.set(uid, { default: 'edit', pages: {} });
+    // права нового гостя: по умолчанию и по страницам из permissions проекта (зеркало initialRights в src/room-host.ts)
+    else room.rights.set(uid, { default: openEdit ? 'edit' : 'view', pages: { ...room.pageRights } });
 
     sendTo(sock, initFor(info));
     broadcastUsers(); // остальные сразу видят нового участника
@@ -339,6 +512,10 @@ function createRoomHub({ code, openEdit = false }) {
       if (m.t === 'pointer') { relayPointer(info, m); return; }
       if (m.t === 'react') { acceptReaction(info, m); return; }
       if (m.t === 'comment') { acceptComment(info, m); return; }
+      if (m.t === 'chat') { acceptChat(info, m); return; }
+      if (m.t === 'view') { acceptView(info, m); return; }
+      if (m.t === 'summon') { acceptSummon(info, m); return; }
+      if (m.t === 'follow-host') { acceptFollowHost(info, m); return; }
       if (m.t === 'project' && validProject(m.project)) {
         // серверный enforcement: чужие view-страницы не применяем
         if (!room.project) {
@@ -353,9 +530,11 @@ function createRoomHub({ code, openEdit = false }) {
           const merged = mergePages(m.project);
           room.project = { ...room.project, pages: merged.pages, updatedAt: isNum(m.project.updatedAt) ? m.project.updatedAt : room.project.updatedAt };
         }
+        const changed = isHost ? syncPageRights() : [];
         for (const c of room.clients.values()) {
           if (c.sock !== sock) sendTo(c.sock, { t: 'project', project: projectFor(c), by: uid });
         }
+        afterRightsSync(changed);
       }
     });
     sock.on('close', () => { room.clients.delete(sock); broadcastUsers(); });
@@ -507,10 +686,18 @@ function createRoomHub({ code, openEdit = false }) {
     refresh,
     setRights: (uid, patch) => { const r = room.setRights(uid, patch); broadcastUsers(); pushRights(uid); return r; },
     pushPatch: patch => validPatch(patch) && acceptPatch(null, patch),
-    pushProject: project => { room.project = project; for (const c of room.clients.values()) sendTo(c.sock, { t: 'project', project: projectFor(c), by: -1 }); },
+    pushProject: project => {
+      room.project = project;
+      const changed = syncPageRights();
+      for (const c of room.clients.values()) sendTo(c.sock, { t: 'project', project: projectFor(c), by: -1 });
+      afterRightsSync(changed);
+    },
     users: () => room.usersSnapshot(),
     closeAll: () => { for (const sock of room.clients.keys()) try { sock.close(); } catch { /* уже закрыт */ } },
   };
 }
 
-module.exports = { createRoomHub, Room, PROTO, MAX_EDITORS, MAX_ID, MAX_SELECTION, MAX_NAME, CURSOR_IDS, normalizeName, cleanPointer };
+module.exports = {
+  createRoomHub, Room, PROTO, MAX_EDITORS, MAX_ID, MAX_SELECTION, MAX_NAME, CURSOR_IDS, normalizeName, cleanPointer,
+  CHAT_MAX_LEN, CHAT_HISTORY, CHAT_RATE_COUNT, CHAT_RATE_MS, VIEW_ZOOM_MIN, VIEW_ZOOM_MAX, normalizeChatText, createRateLimiter, cleanView, maskUsersFor,
+};

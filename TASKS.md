@@ -16,7 +16,7 @@
   - `computeEdgePointer`, `getParticipantInitials`, `tokenizeChat`, `normalizeChatText`, ограничитель частоты 5/3 с (§6, §8).
   - **Тесты**: `tests/unit/sync-state.test.ts`, `sync-conflict.test.ts`, `edge-pointer.test.ts`, `presence.test.ts`, `collab-chat.test.ts` (чистая часть), дополнения `limits.test.ts` и `file.test.ts` (поле `maxGuests` переживает сохранение/загрузку).
 
-- [ ] **TASK-02: Протокол хабов**
+- [x] **TASK-02: Протокол хабов**
   - **Файлы**: `src/room-host.ts`, `electron/room.cjs`, `src/collab-transport.ts`.
   - `chat` (буфер 100 в `init`, 1..500, флуд), `view` → `Client.view` в `users`, снимок `users` на получателя с маскировкой `hiddenPage` (§3.1), `summon`, `follow-host` (тариф), живые права страниц из `permissions.pageRights` (§3.2), `effectiveMaxGuests` и `{t:'denied', reason:'room-full', …}` + 4402/4430, опция `multiHost` (§2.3).
   - **Тесты**: дополнения `tests/server/room.test.ts`, `room-pointer.test.ts`; одинаковые сценарии для `electron/room.cjs`.

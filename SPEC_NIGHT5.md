@@ -70,7 +70,7 @@
 | `{t:'view', pageId, vx, vy, vz}` | клиент → хаб | центр экрана в мировых координатах и зум; конечные числа, `vz` в пределах зума приложения; хранится в `Client.view`, попадает в `users` |
 | `{t:'summon', pageId, vx, vy, vz}` | хост → хаб → гости | только от хоста; гостям, у которых `pageId` не `hidden` |
 | `{t:'follow-host', enabled}` | хост → хаб → все | только если тариф комнаты ≠ `free` (с учётом `limitsEnforced`/`enforceLimits` как сейчас); состояние в `init` (`followHost`) |
-| `{t:'denied', reason:'room-full', maxGuests, planLimited}` + закрытие | хаб → гость | `planLimited: true` — лимит Free (код **4402**), `false` — лимит автора (код **4430**) |
+| `{t:'denied', reason, maxGuests, planLimited}` + закрытие | хаб → гость | `planLimited: true` — лимит Free (код **4402**, `reason: 'free-limit-reached'` — прежняя причина), `false` — лимит автора (код **4430**, `reason: 'room-full'`) |
 
 ### 3.1. Маскировка скрытой страницы
 `usersSnapshot` строится **для каждого получателя**: если участник стоит на странице, скрытой для получателя, у него в снимке `pageId: null`, `cursor: null`, `view: null`, `selection: []`, `hiddenPage: true`. Правило общее для всех участников (не только для хоста). Указки уже фильтруются (`relayPointer`).

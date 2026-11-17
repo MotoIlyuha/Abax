@@ -25,9 +25,9 @@ export function browserHostActive(): boolean {
 }
 
 /** Тариф владельца: на free гость один, на pro и tutor — без ограничений. Пока лимиты выключены — без ограничений у всех. */
-function hubLimits(): { plan: PlanTier; maxGuests?: number; maxEditors?: number } {
+function hubLimits(): { plan: PlanTier; maxGuests?: number; maxEditors?: number; canFollowHost?: boolean } {
   const plan = planOf(state.project);
-  return limitsEnforced() ? { plan } : { plan, maxGuests: Infinity, maxEditors: Infinity };
+  return limitsEnforced() ? { plan } : { plan, maxGuests: Infinity, maxEditors: Infinity, canFollowHost: true };
 }
 
 function newCode(): string {
