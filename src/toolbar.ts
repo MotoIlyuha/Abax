@@ -137,7 +137,9 @@ export function defaultToolbar(): ToolbarConfig {
   const tool = (id: ToolId): ToolbarItem => ({ type: 'tool', id });
   return {
     items: [
-      tool('select'), tool('pen'), tool('highlighter'), tool('eraser'), tool('partEraser'), tool('text'), tool('note'), tool('spread'), tool('task'),
+      tool('select'),
+      { type: 'group', id: 'draw', name: 'Рисование', tools: ['pen', 'highlighter', 'eraser', 'partEraser'] },
+      tool('text'), tool('note'), tool('spread'), tool('task'),
       { type: 'group', id: 'shapes', name: 'Фигуры', tools: ['rect', 'ellipse', 'triangle', 'line', 'arrow', 'poly'] },
       { type: 'group', id: 'solids', name: 'Стереометрия', tools: ['cube', 'box', 'prism', 'pyramid', 'truncPyramid', 'cylinder', 'cone', 'truncCone', 'sphere'] },
       { type: 'group', id: 'pointer', name: 'Указка', tools: ['laser', 'fadePen', 'flash'] },
@@ -219,9 +221,13 @@ export function sanitizeToolbar(raw: unknown): ToolbarConfig {
       continue;
     }
     const home = allGroups(cfg).find(g => g.id === it.id);
-    for (const t of it.tools) {
+    for (const [j, t] of it.tools.entries()) {
       if (seen.has(t)) continue;
-      if (home) home.tools.push(t);
+      if (home) { home.tools.push(t); continue; }
+      // группы в сохранённой настройке нет (её разобрали или она появилась позже): инструмент — за соседом по группе
+      const prev = it.tools[j - 1];
+      const at = prev ? cfg.items.findIndex(x => x.type === 'tool' && x.id === prev) : -1;
+      if (at >= 0) cfg.items.splice(at + 1, 0, { type: 'tool', id: t });
       else cfg.items.push({ type: 'tool', id: t });
     }
   }

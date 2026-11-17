@@ -7,6 +7,24 @@ const row = (page: Page, tool: string) => editor(page).locator(`.tbe-row[data-to
 const toolbarOrder = (page: Page) => page.locator('#toolbar .tool').evaluateAll(bs =>
   bs.map(b => (b as HTMLElement).dataset.tool ?? b.id));
 
+/** Панель, сохранённая до появления группы «Рисование»: перо, маркер и ластики — отдельными кнопками. */
+async function useLegacyToolbar(page: Page, board: { ready(): Promise<void> }): Promise<void> {
+  await page.evaluate(() => {
+    const t = (id: string) => ({ type: 'tool', id });
+    localStorage.setItem('doska.toolbar', JSON.stringify({
+      items: [
+        t('select'), t('pen'), t('highlighter'), t('eraser'), t('partEraser'), t('text'), t('note'), t('spread'), t('task'),
+        { type: 'group', id: 'shapes', name: 'Фигуры', tools: ['rect', 'ellipse', 'triangle', 'line', 'arrow', 'poly'] },
+        { type: 'group', id: 'solids', name: 'Стереометрия', tools: ['cube', 'box', 'prism', 'pyramid', 'truncPyramid', 'cylinder', 'cone', 'truncCone', 'sphere'] },
+        { type: 'group', id: 'pointer', name: 'Указка', tools: ['laser', 'fadePen', 'flash'] },
+      ],
+      hidden: [t('pan')],
+    }));
+  });
+  await page.reload();
+  await board.ready();
+}
+
 async function openToolbarSettings(page: Page): Promise<void> {
   await page.locator('#btn-settings').click();
   await page.locator('#settings-popover .settings-all').click();
@@ -119,6 +137,7 @@ test.describe('окно «Все настройки»', () => {
 
 test.describe('настройка панели инструментов', () => {
   test('порядок кнопок меняется перетаскиванием и сохраняется', async ({ board, page }) => {
+    await useLegacyToolbar(page, board);
     await openToolbarSettings(page);
     expect((await toolbarOrder(page)).slice(0, 3)).toEqual(['select', 'pen', 'highlighter']);
     await drag(page, row(page, 'pen'), row(page, 'select'), 0.1);
@@ -136,6 +155,7 @@ test.describe('настройка панели инструментов', () => 
   });
 
   test('инструмент, брошенный на другой, образует именованную группу', async ({ board, page }) => {
+    await useLegacyToolbar(page, board);
     await openToolbarSettings(page);
     await drag(page, row(page, 'eraser'), row(page, 'pen'), 0.5);
     const name = editor(page).locator('input.tbe-group-name');
@@ -194,6 +214,7 @@ test.describe('настройка панели инструментов', () => 
   });
 
   test('скрытие кнопкой и перетаскиванием; скрытый инструмент доступен с клавиатуры', async ({ board, page }) => {
+    await useLegacyToolbar(page, board);
     await openToolbarSettings(page);
     await row(page, 'highlighter').locator('.tbe-hide').click();
     await expect(editor(page).locator('.tbe-list[data-list="hidden"] .tbe-row[data-tool="highlighter"]')).toBeVisible();
@@ -223,6 +244,7 @@ test.describe('настройка панели инструментов', () => 
   });
 
   test('горячие клавиши: назначение, конфликт, запрещённая, снятие', async ({ board, page }) => {
+    await useLegacyToolbar(page, board);
     await openToolbarSettings(page);
     const status = editor(page).locator('.tbe-status');
     const penKey = row(page, 'pen').locator('.tbe-key');
@@ -271,7 +293,7 @@ test.describe('настройка панели инструментов', () => 
   test('«Сбросить» возвращает панель по умолчанию', async ({ page }) => {
     await openToolbarSettings(page);
     const defaults = await toolbarOrder(page);
-    await row(page, 'pen').locator('.tbe-hide').click();
+    await row(page, 'text').locator('.tbe-hide').click();
     await row(page, 'select').locator('.tbe-key').click();
     await page.keyboard.press('q');
     expect(await toolbarOrder(page)).not.toEqual(defaults);

@@ -27,7 +27,9 @@ describe('настройка по умолчанию', () => {
   it('все инструменты ровно один раз, группы как раньше', () => {
     const cfg = defaultToolbar();
     expect(allTools(cfg).sort()).toEqual(TOOL_DEFS.map(t => t.id).sort());
-    expect(cfg.items.filter(it => it.type === 'group').map(g => g.id)).toEqual(['shapes', 'solids', 'pointer']);
+    expect(cfg.items.filter(it => it.type === 'group').map(g => g.id)).toEqual(['draw', 'shapes', 'solids', 'pointer']);
+    // перо, маркер и оба ластика — в одной группе «Рисование»
+    expect(cfg.items.find(it => it.type === 'group' && it.id === 'draw')).toMatchObject({ name: 'Рисование', tools: ['pen', 'highlighter', 'eraser', 'partEraser'] });
     expect(cfg.hidden.map(it => it.type === 'tool' ? it.id : it.id)).toEqual(['pan']);
     expect(cfg.keys.pen).toBe('KeyP');
     expect(cfg.keys.cube).toBeUndefined();
@@ -170,10 +172,10 @@ describe('клавиши', () => {
 
 describe('операции', () => {
   it('moveEntry: перестановка на панели', () => {
-    const cfg = moveEntry(defaultToolbar(), { tool: 'pen' }, { list: 'items', before: { tool: 'select' } });
-    expect(layout(cfg).slice(0, 3)).toEqual(['pen', 'select', 'highlighter']);
-    const end = moveEntry(cfg, { tool: 'pen' }, { list: 'items', before: null });
-    expect(layout(end).at(-1)).toBe('pen');
+    const cfg = moveEntry(defaultToolbar(), { tool: 'text' }, { list: 'items', before: { tool: 'select' } });
+    expect(layout(cfg).slice(0, 3)).toEqual(['text', 'select', 'draw[pen,highlighter,eraser,partEraser]']);
+    const end = moveEntry(cfg, { tool: 'text' }, { list: 'items', before: null });
+    expect(layout(end).at(-1)).toBe('text');
   });
 
   it('moveEntry: инструмент в группу и из группы', () => {
@@ -195,16 +197,16 @@ describe('операции', () => {
 
   it('combineTools: два инструмента — новая группа на месте цели', () => {
     const base = defaultToolbar();
-    const r = combineTools(base, 'pen', 'eraser', 'Рисование');
+    const r = combineTools(base, 'text', 'spread', 'Макет');
     expect(r.group).toBeTruthy();
-    expect(layout(r.cfg).slice(0, 6)).toEqual(['select', `${r.group}[pen,eraser]`, 'highlighter', 'partEraser', 'text', 'note']);
-    expect(r.cfg.items.find(it => it.type === 'group' && it.id === r.group)).toMatchObject({ name: 'Рисование' });
+    expect(layout(r.cfg).slice(0, 5)).toEqual(['select', 'draw[pen,highlighter,eraser,partEraser]', `${r.group}[text,spread]`, 'note', 'task']);
+    expect(r.cfg.items.find(it => it.type === 'group' && it.id === r.group)).toMatchObject({ name: 'Макет' });
     // из группы тоже можно
     const r2 = combineTools(base, 'select', 'ellipse', 'Г');
     expect(layout(r2.cfg)[0]).toBe(`${r2.group}[select,ellipse]`);
     expect(layout(r2.cfg)).toContain('shapes[rect,triangle,line,arrow,poly]');
     // с самим собой и с инструментом внутри группы — нет
-    expect(combineTools(base, 'pen', 'pen', 'x').group).toBeNull();
+    expect(combineTools(base, 'text', 'text', 'x').group).toBeNull();
     expect(combineTools(base, 'rect', 'pen', 'x').group).toBeNull();
   });
 

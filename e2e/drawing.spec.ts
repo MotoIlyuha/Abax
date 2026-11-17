@@ -9,7 +9,9 @@ test.describe('загрузка', () => {
     expect(s.tool).toBe('pen');
     await expect(page.locator('#page-name')).toHaveValue('Страница 1');
     await expect(page.locator('#project-name')).toHaveText('Проект 1');
-    await expect(page.locator('.tool[data-tool="pen"]')).toHaveClass(/active/);
+    // перо — в группе «Рисование», её кнопка показывает перо
+    await expect(page.locator('#btn-draw')).toHaveClass(/active/);
+    await expect(page.locator('#btn-draw')).toHaveAttribute('data-shape', 'pen');
     await expect(page.locator('#btn-undo')).toBeDisabled();
     await expect(page.locator('#btn-redo')).toBeDisabled();
     await expect(page.locator('#zoom-label')).toHaveText('100%');
@@ -62,18 +64,25 @@ test.describe('перо и маркер', () => {
 
   test('маркер — широкий полупрозрачный штрих', async ({ board, page }) => {
     await board.tool('m');
-    await expect(page.locator('.tool[data-tool="highlighter"]')).toHaveClass(/active/);
+    await expect(page.locator('#btn-draw')).toHaveAttribute('data-shape', 'highlighter');
     await board.drag([{ x: 400, y: 300 }, { x: 600, y: 300 }]);
     const [s] = await board.elements();
     expect(s).toMatchObject({ tool: 'highlighter', width: 4 * 3.2 });
   });
 
   test('выбор инструмента кликом по тулбару', async ({ board, page }) => {
-    for (const id of ['select', 'highlighter', 'eraser', 'partEraser', 'text', 'pen']) {
+    for (const id of ['select', 'text']) {
       await page.locator(`.tool[data-tool="${id}"]`).click();
       expect((await board.state()).tool).toBe(id);
       await expect(page.locator(`.tool[data-tool="${id}"]`)).toHaveClass(/active/);
     }
+    // перо, маркер и оба ластика — в одной группе «Рисование»
+    for (const id of ['highlighter', 'eraser', 'partEraser', 'pen']) {
+      await board.groupTool('draw', id);
+      await expect(page.locator('#btn-draw')).toHaveClass(/active/);
+      await expect(page.locator('#btn-draw')).toHaveAttribute('data-shape', id);
+    }
+    await expect(page.locator('#toolbar .tool[data-tool="pen"]')).toHaveCount(0);
   });
 
   test('горячие клавиши инструментов', async ({ board }) => {
@@ -277,6 +286,48 @@ test.describe('ластик', () => {
     expect(await board.count()).toBe(1);
   });
 
+  test('объектный ластик стирает только перо и маркер, остальное не трогает', async ({ board, page }) => {
+    await board.drag([{ x: 300, y: 300 }, { x: 700, y: 300 }]); // перо
+    await board.tool('m');
+    await board.drag([{ x: 300, y: 340 }, { x: 700, y: 340 }]); // маркер
+    await board.rect(450, 380, 550, 440);
+    await board.tool('t');
+    await board.click({ x: 400, y: 500 });
+    await page.keyboard.type('текст');
+    await page.keyboard.press('Enter');
+    await board.tool('e');
+    // сверху вниз — через обе линии, прямоугольник и текст
+    await board.drag([{ x: 500, y: 250 }, { x: 500, y: 520 }], { steps: 1 });
+    const left = (await board.elements()).map(e => e.type).sort();
+    expect(left).toEqual(['shape', 'text']);
+    await page.keyboard.press('Control+z');
+    expect(await board.count()).toBe(4);
+  });
+
+  test('ластик для пера и маркера: спокойная рука — маленький, быстрая — крупный', async ({ board, page }) => {
+    await board.drag([{ x: 300, y: 300 }, { x: 700, y: 300 }]);
+    await board.tool('x');
+    // медленно: кружок в 14 px от линии её не задевает
+    const a = await board.screen({ x: 400, y: 314 });
+    await page.mouse.move(a.x, a.y);
+    await page.mouse.down();
+    for (let i = 1; i <= 8; i++) {
+      await page.mouse.move(a.x + i * 6, a.y);
+      await page.waitForTimeout(40);
+    }
+    await page.mouse.up();
+    expect((await board.elements()).filter(e => e.type === 'stroke')).toHaveLength(1);
+    // быстро, «трясём» рукой вдоль линии: ластик разрастается и линию задевает
+    await page.mouse.move(a.x - 100, a.y);
+    await page.mouse.down();
+    for (let pass = 0; pass < 4; pass++) {
+      await page.mouse.move(a.x + (pass % 2 ? -100 : 300), a.y, { steps: 8 }); // ≈ 50 px за кадр, несколько тысяч px/с
+    }
+    await page.mouse.up();
+    // кружок в 14 px от линии при тряске её стёр: линия цела уже не была
+    expect(await board.count('stroke')).not.toBe(1);
+  });
+
   test('ластик для пера и маркера разрезает линию и не трогает фигуры', async ({ board, page }) => {
     await board.drag([{ x: 300, y: 300 }, { x: 700, y: 300 }]); // перо
     await board.tool('m');
@@ -291,11 +342,11 @@ test.describe('ластик', () => {
     const els = await board.elements();
     expect(els.filter(e => e.type === 'stroke')).toHaveLength(4);
     expect(els.filter(e => e.type === 'shape')).toHaveLength(1);
-    // у линии пера стёрта только середина под ластиком, концы на месте
+    // у линии пера стёрта только середина под ластиком (его размер зависит от скорости руки), концы на месте
     const pen = els.filter(e => e.type === 'stroke' && (e as any).tool === 'pen') as any[];
     const ends = pen.map(e => [e.pts[0].x, e.pts[e.pts.length - 1].x].sort((a, b) => a - b));
-    expect(ends.some(([a, b]) => a === x0 && b > 480 && b < 500)).toBe(true);
-    expect(ends.some(([a, b]) => a > 500 && a < 520 && b === x1)).toBe(true);
+    expect(ends.some(([a, b]) => a === x0 && b > 430 && b < 500)).toBe(true);
+    expect(ends.some(([a, b]) => a > 500 && a < 570 && b === x1)).toBe(true);
     // стирание — одно действие истории
     await page.keyboard.press('Control+z');
     expect(await board.count('stroke')).toBe(2);
@@ -444,7 +495,7 @@ test.describe('указка', () => {
     await board.tool('v');
     await board.click({ x: 450, y: 350 });
     expect((await board.state()).selection).toHaveLength(1);
-    await page.locator('#toolbar .tool[data-tool="pen"]').click();
+    await page.locator('#btn-draw').click();
     expect((await board.state()).selection).toHaveLength(0);
     await board.tool('v');
     await board.click({ x: 450, y: 350 });

@@ -148,8 +148,8 @@ export class Board {
     await this.page.keyboard.press(key);
   }
 
-  /** Инструмент из группы тулбара: Фигуры / Стереометрия / Указка. */
-  async groupTool(group: 'shapes' | 'solids' | 'pointer', id: string): Promise<void> {
+  /** Инструмент из группы тулбара: Рисование / Фигуры / Стереометрия / Указка. */
+  async groupTool(group: 'draw' | 'shapes' | 'solids' | 'pointer', id: string): Promise<void> {
     await this.page.locator(`#btn-${group}`).click();
     await this.page.locator(`#ctx-layer .ctx-panel [data-shape="${id}"]`).click();
     await expect.poll(async () => (await this.state()).tool).toBe(id);

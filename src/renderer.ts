@@ -14,6 +14,7 @@ import { fitSolid, solidGeometry, type SolidPrim } from './solid';
 import { state } from './state';
 import { assetHashOf } from './asset-store';
 import { ERASER_PATHS, ERASER_TIP } from './toolbar';
+import { eraserRadius, eraserSettled } from './eraser-size';
 import { SpatialIndex } from './spatial-index';
 
 /** Сколько картинок догрузилось: кэш сцены, собранный с заглушкой, устаревает. */
@@ -845,7 +846,6 @@ export function renderScene(
 
 const REBUILD_DELAY = 120; // мс покоя камеры до резкой перерисовки
 const HEAVY_BOARD = 1500; // элементов: выше — переносим выделенное поверх ради плавности
-const PART_ERASE_R = 12; // радиус ластика для пера и маркера, px экрана
 
 let canvas: HTMLCanvasElement | null = null;
 let ctx: CanvasRenderingContext2D | null = null;
@@ -1468,8 +1468,10 @@ function draw(): void {
     ctx.strokeStyle = '#7a828e';
     ctx.lineWidth = 1.25;
     ctx.beginPath();
-    ctx.arc(state.hover.x, state.hover.y, PART_ERASE_R, 0, Math.PI * 2);
+    const er = eraserRadius();
+    ctx.arc(state.hover.x, state.hover.y, er, 0, Math.PI * 2);
     ctx.stroke();
+    if (!eraserSettled(er)) requestRender(); // гоним кадры, пока кружок сжимается
   }
   drawSpread(ctx, cam, cssW);
   drawLaser(ctx);
@@ -1569,7 +1571,7 @@ function drawPresent(camSettled: boolean): void {
       c.strokeStyle = '#7a828e';
       c.lineWidth = 1.25;
       c.beginPath();
-      c.arc(x, y, PART_ERASE_R * k, 0, Math.PI * 2);
+      c.arc(x, y, eraserRadius() * k, 0, Math.PI * 2);
       c.stroke();
     } else if (state.tool === 'eraser') {
       drawEraser(c, x, y);
@@ -1865,7 +1867,6 @@ function drawLaser(ctx: CanvasRenderingContext2D): void {
   if (busy) requestRender(); // гоним кадры, пока след гаснет
 }
 
-export const partEraseRadius = PART_ERASE_R;
 export function contentBBox(elements: Element[]) {
   let x0 = Infinity;
   let y0 = Infinity;

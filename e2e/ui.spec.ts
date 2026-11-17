@@ -547,26 +547,26 @@ test.describe('страница', () => {
 
 test.describe('подсказки', () => {
   test('наведение на кнопку панели показывает морфящуюся подсказку с хоткеем', async ({ page }) => {
-    await page.locator('.tool[data-tool="pen"]').hover();
+    await page.locator('.tool[data-tool="text"]').hover();
     const tip = page.locator('#morph-tip .mt-tip');
     await expect(tip).toBeVisible();
     const lab = page.locator('#morph-tip .mt-lab.cur');
-    await expect(lab).toContainText('Перо');
-    await expect(lab.locator('.mt-kbd')).toHaveText('P');
+    await expect(lab).toContainText('Текст');
+    await expect(lab.locator('.mt-kbd')).toHaveText('T');
     await expect(tip).toHaveAttribute('data-side', 'right');
     await page.mouse.move(900, 500);
     await expect(tip).toBeHidden();
   });
 
   test('подсказка перетекает к соседней кнопке: не гаснет и меняет надпись', async ({ page }) => {
-    await page.locator('.tool[data-tool="pen"]').hover();
-    await expect(page.locator('#morph-tip .mt-lab.cur')).toContainText('Перо');
+    await page.locator('.tool[data-tool="text"]').hover();
+    await expect(page.locator('#morph-tip .mt-lab.cur')).toContainText('Текст');
     const before = (await page.locator('#morph-tip .mt-tip').boundingBox())!;
-    await page.locator('.tool[data-tool="eraser"]').hover();
-    await expect(page.locator('#morph-tip .mt-lab.cur')).toContainText('Ластик');
+    await page.locator('.tool[data-tool="note"]').hover();
+    await expect(page.locator('#morph-tip .mt-lab.cur')).toContainText('Стикер');
     await expect(page.locator('#morph-tip .mt-tip')).toBeVisible();
     // пузырь поехал вдоль панели вниз, и стоит напротив новой кнопки
-    const btn = (await page.locator('.tool[data-tool="eraser"]').boundingBox())!;
+    const btn = (await page.locator('.tool[data-tool="note"]').boundingBox())!;
     await expect.poll(async () => {
       const b = (await page.locator('#morph-tip .mt-tip').boundingBox())!;
       return Math.abs(b.y + b.height / 2 - (btn.y + btn.height / 2));
@@ -582,7 +582,7 @@ test.describe('подсказки', () => {
     await cb.uncheck();
     expect((await board.state()).settings.motionAnimations).toBe(false);
     await page.keyboard.press('Escape');
-    await page.locator('.tool[data-tool="pen"]').hover();
+    await page.locator('.tool[data-tool="text"]').hover();
     await expect(page.locator('#tooltip')).toBeVisible();
     await expect(page.locator('#morph-tip .mt-tip')).toBeHidden();
 
@@ -593,7 +593,7 @@ test.describe('подсказки', () => {
     await page.locator('.sd-general label', { hasText: 'Motion анимации' }).locator('input').check();
     await page.keyboard.press('Escape');
     await page.mouse.move(900, 500);
-    await page.locator('.tool[data-tool="pen"]').hover();
+    await page.locator('.tool[data-tool="text"]').hover();
     await expect(page.locator('#morph-tip .mt-tip')).toBeVisible();
   });
 

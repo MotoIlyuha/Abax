@@ -18,7 +18,8 @@ import { cursorCss } from './cursors';
 import { myCursorId, onProfileChange } from './profile';
 import { fxForget, fxMove } from './cursor-fx';
 import { settingsDialogOpen } from './settings-dialog';
-import { partEraseRadius, presenting, requestRender, renderScene } from './renderer';
+import { presenting, requestRender, renderScene } from './renderer';
+import { eraserRadius, resetEraser, trackEraser } from './eraser-size';
 import { fitSolid, SOLID_CLICK_SIZE, solidKeepsAspect } from './solid';
 import { spreadElements, spreadTargets } from './spread';
 import {
@@ -275,7 +276,7 @@ export function initController(canvas: HTMLCanvasElement): void {
     zoomAtScreen(r.width / 2, r.height / 2, factor);
   }
 
-  /** Объектный ластик: стирает элементы целиком; картинки и страницы PDF не трогает. */
+  /** Объектный ластик: стирает целиком только перо и маркер, всё остальное не трогает. */
   function eraseAt(x: number, y: number, a: Extract<Action, { kind: 'erase' }>): void {
     const r = OBJECT_ERASE_PX / state.camera.zoom;
     // быстрое движение даёт редкие события: проходим путь от прошлой точки с шагом в радиус,
@@ -286,7 +287,7 @@ export function initController(canvas: HTMLCanvasElement): void {
     // радиус маленький, шагов много: проверяем только элементы, чья рамка задевает путь
     const path = { x0: Math.min(from.x, x), y0: Math.min(from.y, y), x1: Math.max(from.x, x), y1: Math.max(from.y, y) };
     const near = state.board.elements.filter(el => {
-      if (el.type === 'image' || el.type === 'task') return false;
+      if (el.type !== 'stroke') return false;
       const pad = r + ('width' in el ? el.width : 0); // у линии рамка без толщины
       const b = elementAABB(el);
       return aabbIntersects({ x0: b.x0 - pad, y0: b.y0 - pad, x1: b.x1 + pad, y1: b.y1 + pad }, path);
@@ -306,7 +307,7 @@ export function initController(canvas: HTMLCanvasElement): void {
 
   /** Ластик для пера и маркера: вырезает из линий часть под ластиком, остальное не трогает. */
   function erasePartAt(x: number, y: number, a: Extract<Action, { kind: 'erasePart' }>): void {
-    const r = partEraseRadius / state.camera.zoom;
+    const r = eraserRadius() / state.camera.zoom;
     const from = a.last ?? { x, y };
     const steps = Math.max(1, Math.ceil(Math.hypot(x - from.x, y - from.y) / r));
     a.last = { x, y };
@@ -792,6 +793,8 @@ export function initController(canvas: HTMLCanvasElement): void {
     const ptr = pointers.get(e.pointerId);
     if (ptr) { ptr.x = lp.x; ptr.y = lp.y; }
     state.hover = { x: lp.x, y: lp.y };
+    // размер ластика для пера и маркера растёт со скоростью руки
+    if (state.tool === 'partEraser' || action?.kind === 'erasePart') trackEraser(lp.x, lp.y);
     // шлейф или искры Pro-курсора (только мышь и только у «Выделения», где виден персональный курсор)
     if (e.pointerType === 'mouse' && state.tool === 'select' && !spacePan) fxMove('me', lp.x, lp.y, myCursorId());
     if (collabActive()) noteCursor(lp.x / state.camera.zoom + state.camera.x, lp.y / state.camera.zoom + state.camera.y);
@@ -1092,6 +1095,7 @@ export function initController(canvas: HTMLCanvasElement): void {
 
   function onPointerLeave(): void {
     state.hover = null;
+    resetEraser();
     fxForget('me');
     if (state.tool === 'partEraser' || state.tool === 'laser' || state.tool === 'spread') update();
     else if (presenting()) requestRender();
