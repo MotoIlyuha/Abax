@@ -18,6 +18,8 @@ export interface Identity {
   displayName?: string;
   tgUsername?: string | null;
   avatarUrl?: string | null;
+  /** Google: подтверждённый адрес (email_verified) — по нему находятся приглашения по почте; null — не подтверждён. */
+  verifiedEmail?: string | null;
 }
 
 const COLUMN: Record<IdentityProvider, 'email' | 'tg_id' | 'google_sub'> = { email: 'email', telegram: 'tg_id', google: 'google_sub' };
@@ -35,6 +37,9 @@ function assign(db: Db, user: UserRow, id: Identity, now: number): void {
 function refreshProfile(db: Db, userId: string, id: Identity, now: number): void {
   if (id.provider === 'telegram') {
     db.prepare('UPDATE users SET tg_username = ?, avatar_url = ?, updated_at = ? WHERE id = ?').run(id.tgUsername ?? null, id.avatarUrl ?? null, now, userId);
+  }
+  if (id.provider === 'google' && id.verifiedEmail !== undefined) {
+    db.prepare('UPDATE users SET google_email = ?, updated_at = ? WHERE id = ?').run(id.verifiedEmail, now, userId);
   }
   if (id.displayName) {
     db.prepare('UPDATE users SET display_name = ?, updated_at = ? WHERE id = ? AND name_custom = 0').run(id.displayName, now, userId);

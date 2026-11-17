@@ -21,7 +21,7 @@
   - `chat` (буфер 100 в `init`, 1..500, флуд), `view` → `Client.view` в `users`, снимок `users` на получателя с маскировкой `hiddenPage` (§3.1), `summon`, `follow-host` (тариф), живые права страниц из `permissions.pageRights` (§3.2), `effectiveMaxGuests` и `{t:'denied', reason:'room-full', …}` + 4402/4430, опция `multiHost` (§2.3).
   - **Тесты**: дополнения `tests/server/room.test.ts`, `room-pointer.test.ts`; одинаковые сценарии для `electron/room.cjs`.
 
-- [ ] **TASK-03: Сервер**
+- [x] **TASK-03: Сервер**
   - **Файлы**: `server/db.ts`, `server/invites.ts`, `server/invite-routes.ts`, `server/projects.ts`, `server/cloud-room-manager.ts`, `server/auth-flows.ts`, `server/context.ts`, `server/app.ts`, `server/README.md`.
   - Миграция V3 (§4.1), `kind='link'` в существующих запросах, `google_email`.
   - Приглашения по почте: 5 эндпоинтов, письмо, лимиты (§4.2).

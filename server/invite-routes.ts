@@ -28,9 +28,9 @@ function inviteJson(app: AppContext, r: InviteRights) {
   };
 }
 
-/** Действующее приглашение проекта (одно на проект); null — нет. */
+/** Действующая ссылка-приглашение проекта (одна на проект; приглашения по почте не в счёт); null — нет. */
 function activeInviteOf(app: AppContext, projectId: string): InviteRow | null {
-  const rows = app.db.prepare('SELECT * FROM invites WHERE project_id = ? AND revoked = 0 ORDER BY created_at DESC').all(projectId) as InviteRow[];
+  const rows = app.db.prepare("SELECT * FROM invites WHERE project_id = ? AND revoked = 0 AND kind = 'link' ORDER BY created_at DESC").all(projectId) as InviteRow[];
   return rows.find(r => r.expires_at === null || r.expires_at > app.now()) ?? null;
 }
 
@@ -70,6 +70,8 @@ export function registerInviteRoutes(router: Router): void {
       const role = (body.defaultRole as 'edit' | 'view' | undefined) ?? (existing.default_role === 'view' ? 'view' : 'edit');
       app.db.prepare('UPDATE invites SET default_role = ?, allow_copy = ?, page_rights_json = ? WHERE token = ?')
         .run(role, perms.allowCopy === false ? 0 : 1, pageRights, existing.token);
+      // подключённые по этой ссылке гости получают новые права сразу (SPEC_NIGHT5 §3.2)
+      app.notifyAccessChanged({ projectId: row.id, kind: 'invite-updated', token: existing.token });
       const rights = rightsOfInvite(app.db.prepare('SELECT * FROM invites WHERE token = ?').get(existing.token) as InviteRow);
       return { json: { ...inviteJson(app, rights), created: false } };
     }

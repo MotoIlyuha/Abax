@@ -24,6 +24,8 @@ export interface UserRow {
   name_custom: number;
   email: string | null;
   google_sub: string | null;
+  /** Подтверждённый адрес Google (миграция V3): по нему находятся приглашения по почте. */
+  google_email: string | null;
 }
 
 /** Код входа по почте (хранится только хеш). */
@@ -74,6 +76,23 @@ export interface InviteRow {
   revoked: number;
   expires_at: number | null;
   created_at: number;
+  /** 'link' — ссылка проекта, 'email' — персональное приглашение по почте (миграция V3). */
+  kind: string;
+}
+
+/** Приглашение по почте (миграция V3); доступ — по токену своей строки invites. */
+export interface EmailInviteRow {
+  id: string;
+  project_id: string;
+  host_user_id: string;
+  email: string;
+  role: string;
+  token: string;
+  status: string;
+  created_at: number;
+  updated_at: number;
+  /** Когда письмо отправлено в последний раз (повтор — не чаще раза в 10 минут). */
+  mailed_at: number | null;
 }
 
 export interface AssetRow {
@@ -182,12 +201,35 @@ CREATE TABLE auth_flows (
 );
 `;
 
-/** Миграции по порядку; номер версии хранится в PRAGMA user_version. */
-const MIGRATIONS: string[] = [SCHEMA_V1, SCHEMA_V2];
+/** Ночь №5: вид приглашения, подтверждённый адрес Google, приглашения по почте. */
+const SCHEMA_V3 = `
+ALTER TABLE invites ADD COLUMN kind TEXT NOT NULL DEFAULT 'link';
+ALTER TABLE users ADD COLUMN google_email TEXT;
+CREATE INDEX idx_users_google_email ON users(google_email);
 
-export function migrate(db: Db): void {
+CREATE TABLE project_email_invites (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  host_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  email TEXT NOT NULL,
+  role TEXT NOT NULL,
+  token TEXT NOT NULL UNIQUE REFERENCES invites(token),
+  status TEXT NOT NULL DEFAULT 'pending',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  mailed_at INTEGER
+);
+CREATE UNIQUE INDEX idx_email_invites_project_email ON project_email_invites(project_id, email);
+CREATE INDEX idx_email_invites_email ON project_email_invites(email, status);
+`;
+
+/** Миграции по порядку; номер версии хранится в PRAGMA user_version. */
+const MIGRATIONS: string[] = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3];
+
+/** target — до какой версии (по умолчанию — до последней; меньше — только в тестах миграций). */
+export function migrate(db: Db, target = MIGRATIONS.length): void {
   const current = db.pragma('user_version', { simple: true }) as number;
-  for (let v = current; v < MIGRATIONS.length; v++) {
+  for (let v = current; v < Math.min(target, MIGRATIONS.length); v++) {
     db.transaction(() => {
       db.exec(MIGRATIONS[v]);
       db.pragma(`user_version = ${v + 1}`);

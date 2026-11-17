@@ -1,7 +1,8 @@
 // Профиль на сервере (Ночь №4): миграция V2, PATCH /api/me, имя провайдера не затирает своё.
 import { afterEach, describe, expect, it } from 'vitest';
 import { signTelegramPayload } from '../../server/auth';
-import { openDb } from '../../server/db';
+import Database from 'better-sqlite3';
+import { migrate, openDb } from '../../server/db';
 import { BOT_TOKEN, anon, call, closeApps, makeApp, setPlan } from './helpers';
 
 afterEach(closeApps);
@@ -14,11 +15,38 @@ function tgPayload(now: number, over: Record<string, string | number> = {}) {
 describe('миграция V2', () => {
   it('колонки профиля и таблицы входа; повторное открытие не ломает базу', () => {
     const db = openDb(':memory:');
-    expect(db.pragma('user_version', { simple: true })).toBe(2);
+    expect(db.pragma('user_version', { simple: true })).toBe(3); // V3 (Ночь №5) — поверх V2
     const cols = (db.prepare('PRAGMA table_info(users)').all() as { name: string }[]).map(c => c.name);
     expect(cols).toEqual(expect.arrayContaining(['cursor_id', 'name_custom', 'email', 'google_sub']));
     const tables = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]).map(t => t.name);
     expect(tables).toEqual(expect.arrayContaining(['email_codes', 'auth_flows']));
+    db.close();
+  });
+});
+
+describe('миграция V3 (Ночь №5)', () => {
+  it('поверх базы V2: данные целы, у приглашений вид link, новые колонка и таблица', () => {
+    const db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    migrate(db, 2);
+    expect(db.pragma('user_version', { simple: true })).toBe(2);
+    db.prepare("INSERT INTO users (id, display_name, plan, created_at, updated_at, email) VALUES ('u1', 'Анна', 'free', 1, 1, 'a@b.ru')").run();
+    db.prepare("INSERT INTO projects (id, owner_id, title, rev, data_json, created_at, updated_at) VALUES ('p1', 'u1', 'Доска', 1, '{}', 1, 1)").run();
+    db.prepare("INSERT INTO invites (token, project_id, created_by, created_at) VALUES ('t1', 'p1', 'u1', 1)").run();
+    migrate(db);
+    expect(db.pragma('user_version', { simple: true })).toBe(3);
+    expect(db.prepare('SELECT display_name, email, google_email FROM users').get()).toEqual({ display_name: 'Анна', email: 'a@b.ru', google_email: null });
+    expect(db.prepare('SELECT token, kind FROM invites').get()).toEqual({ token: 't1', kind: 'link' });
+    expect(db.prepare('SELECT title FROM projects').get()).toEqual({ title: 'Доска' });
+    const cols = (db.prepare('PRAGMA table_info(project_email_invites)').all() as { name: string }[]).map(c => c.name);
+    expect(cols).toEqual(expect.arrayContaining(['id', 'project_id', 'host_user_id', 'email', 'role', 'token', 'status', 'created_at', 'updated_at']));
+    // приглашение по почте ссылается на свой токен; одно на адрес в проекте
+    db.prepare("INSERT INTO invites (token, project_id, created_by, created_at, kind) VALUES ('t2', 'p1', 'u1', 2, 'email')").run();
+    db.prepare("INSERT INTO project_email_invites (id, project_id, host_user_id, email, role, token, created_at, updated_at) VALUES ('e1', 'p1', 'u1', 's@x.ru', 'view', 't2', 2, 2)").run();
+    expect(db.prepare('SELECT status FROM project_email_invites').get()).toEqual({ status: 'pending' });
+    expect(() => db.prepare("INSERT INTO project_email_invites (id, project_id, host_user_id, email, role, token, created_at, updated_at) VALUES ('e2', 'p1', 'u1', 's@x.ru', 'view', 't1', 2, 2)").run()).toThrow();
+    migrate(db); // повторно — без изменений
+    expect(db.pragma('user_version', { simple: true })).toBe(3);
     db.close();
   });
 });

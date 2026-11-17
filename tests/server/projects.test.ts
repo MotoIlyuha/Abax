@@ -2,6 +2,8 @@
 // Главное свойство: правильный ответ задания не уходит никому, кроме владельца.
 import { afterEach, describe, expect, it } from 'vitest';
 import { MAX_REVISIONS_PER_PROJECT } from '../../server/db';
+import { AssetStore } from '../../src/asset-store';
+import { contentSignature } from '../../src/sync-conflict';
 import { addInvite, anon, call, closeApps, editStored, makeApp, proj, putProject, rectEl, setPlan, taskEl } from './helpers';
 
 afterEach(closeApps);
@@ -544,5 +546,83 @@ describe('DELETE /api/projects/:id', () => {
     await call(app, 'DELETE', '/api/projects/a', undefined, { token: owner.token });
     for (const id of ['b', 'c', 'd']) await putProject(app, owner.token, proj(id));
     expect((await putProject(app, owner.token, proj('a'))).status).toBe(403);
+  });
+});
+
+describe('офлайн-конфликт по подписи содержимого (SPEC_NIGHT5 §2.4)', () => {
+  /** Ревизия 1 у сервера и у «ноутбука»; затем «планшет» меняет содержимое — ревизия 2. */
+  async function twoDevices() {
+    const s = await setup();
+    const first = await putProject(s.app, s.owner.token, proj('a'));
+    const baseSig = first.body.sig as string;
+    expect(baseSig).toBe(contentSignature(proj('a')));
+    const tablet = proj('a');
+    tablet.pages[0].elements.push(rectEl('с-планшета'));
+    expect((await putProject(s.app, s.owner.token, tablet, 1)).body.rev).toBe(2);
+    return { ...s, baseSig };
+  }
+
+  it('сервер ушёл вперёд с другого устройства — 409 rev-conflict без записи', async () => {
+    const { app, owner, baseSig } = await twoDevices();
+    const laptop = proj('a', { name: 'Офлайн-правка' });
+    const r = await call(app, 'PUT', '/api/projects/a', { project: laptop, expectedRev: 1, baseSig }, { token: owner.token });
+    expect(r.status).toBe(409);
+    expect(r.body).toMatchObject({ error: 'rev-conflict', rev: 2 });
+    const got = (await call(app, 'GET', '/api/projects/a', undefined, { token: owner.token })).body;
+    expect(got.rev).toBe(2);
+    expect(got.project.name).not.toBe('Офлайн-правка');
+    expect(JSON.stringify(got.project)).toContain('с-планшета');
+  });
+
+  it('без baseSig — прежнее слияние (автор выигрывает)', async () => {
+    const { app, owner } = await twoDevices();
+    const r = await putProject(app, owner.token, proj('a', { name: 'Офлайн-правка' }), 1);
+    expect(r.status).toBe(200);
+    expect(r.body.rev).toBe(3);
+  });
+
+  it('устаревшая ревизия, но содержимое автора на сервере не менялось (только ввод учеников) — слияние, не конфликт', async () => {
+    const { app, owner } = await setup();
+    const first = await putProject(app, owner.token, proj('a'));
+    editStored(app, 'a', p => { p.pages[0].elements[1].reactions = { '👍': ['u1'] }; p.pages[0].comments = [{ id: 'c1', x: 0, y: 0, messages: [] }]; });
+    const mine = proj('a', { name: 'Моя правка' });
+    const r = await call(app, 'PUT', '/api/projects/a', { project: mine, expectedRev: 1, baseSig: first.body.sig }, { token: owner.token });
+    expect(r.status).toBe(200);
+    expect(r.body).toMatchObject({ rev: 3, merged: true });
+    // подпись в ответе — подпись записанного (после слияния живые поля в неё не входят)
+    expect(r.body.sig).toBe(contentSignature(mine));
+  });
+
+  it('expectedRev равен текущей — baseSig не проверяется', async () => {
+    const { app, owner } = await setup();
+    await putProject(app, owner.token, proj('a'));
+    const r = await call(app, 'PUT', '/api/projects/a', { project: proj('a', { name: 'X' }), expectedRev: 1, baseSig: 'v1:чужая' }, { token: owner.token });
+    expect(r.status).toBe(200);
+  });
+
+  it('подпись того, что отправляет клиент (картинки → asset://), совпадает с подписью того, что хранит и отдаёт сервер', async () => {
+    const { app, owner } = await setup();
+    setPlan(app, owner.id, 'pro');
+    const local = proj('a', {
+      icon: '📘', ownerPlan: 'free',
+      permissions: { forbidClone: true, allowCopy: false, pageRights: { 'a-p2': 'hidden' }, maxGuests: 4 },
+      pages: [
+        { id: 'a-p1', name: 'Первая', grid: 'square', backgroundColor: '#fffbe6', elements: [taskEl(), rectEl('r1'), { id: 'img', type: 'image', x: 0, y: 0, w: 5, h: 5, src: PNG }] },
+        { id: 'a-p2', name: 'Вторая', grid: 'dots', elements: [{ id: 's1', type: 'stroke', tool: 'pen', color: '#000', width: 2, pts: [{ x: 1, y: 2, p: 0.5 }, { x: 3, y: 4, p: 0.5 }] }] },
+      ],
+    });
+    // так делает клиент (src/cloud-sync.ts putProject): картинки — отдельно, в проекте — ссылки asset://
+    const store = new AssetStore({ idb: null });
+    const { strippedProject, assets } = await store.extractProjectAssets(local);
+    for (const dataUrl of Object.values(assets)) expect((await call(app, 'POST', '/api/assets', { dataUrl }, { token: owner.token })).status).toBeLessThan(300);
+    const clientSig = contentSignature(strippedProject);
+    const put = await putProject(app, owner.token, strippedProject);
+    expect(put.status).toBe(200);
+    expect(put.body.sig).toBe(clientSig);
+    const got = (await call(app, 'GET', '/api/projects/a', undefined, { token: owner.token })).body;
+    expect(got.sig).toBe(clientSig);
+    expect(contentSignature(got.project)).toBe(clientSig);
+    // и картинка в данных клиента (data:) даёт другую подпись — сравнивать нужно именно отправленный вид
+    expect(contentSignature(local)).not.toBe(clientSig);
   });
 });

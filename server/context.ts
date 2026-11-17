@@ -40,6 +40,12 @@ export interface ResolvedOptions {
   roomIdleMs: number;
 }
 
+/**
+ * Изменение доступа к проекту: удалён, приглашение отозвано или изменено (роль, копирование) —
+ * облачная комната отключает участников или пересчитывает их права.
+ */
+export interface AccessEvent { projectId: string; kind: 'deleted' | 'invite-revoked' | 'invite-updated'; token?: string }
+
 /** Общее состояние сервера, которое получают все обработчики. */
 export interface AppContext {
   db: Db;
@@ -58,6 +64,6 @@ export interface AppContext {
   /** Сообщить, что проект изменён через REST. */
   notifyProjectChanged(id: string, project: Project): void;
   /** Подписка на удаление проекта и отзыв приглашений (комната отключает участников). */
-  onAccessChanged(fn: (event: { projectId: string; kind: 'deleted' | 'invite-revoked'; token?: string }) => void): void;
-  notifyAccessChanged(event: { projectId: string; kind: 'deleted' | 'invite-revoked'; token?: string }): void;
+  onAccessChanged(fn: (event: AccessEvent) => void): void;
+  notifyAccessChanged(event: AccessEvent): void;
 }
