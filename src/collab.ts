@@ -12,6 +12,7 @@ import { getApi } from './api-client';
 import { hydrateFromCloud } from './cloud-assets';
 import { clearPills, diffUsers, showPill, showUserEvents } from './activity-pills';
 import { chatReceive, chatReset, setChatAvailable, setChatSender } from './collab-chat';
+import { viewCenter, viewportSize } from './camera-anim';
 import {
   CLOSE_BAD_CODE, CLOSE_BAD_REQUEST, CLOSE_FREE_LIMIT, CLOSE_HOST_OFFLINE, CLOSE_PROTOCOL_MISMATCH, CLOSE_RATE_LIMITED,
   CLOSE_ROOM_CLOSED, CLOSE_ROOM_FULL, CLOSE_ROOM_NOT_FOUND, CLOSE_TOO_SLOW, PROTO,
@@ -44,6 +45,15 @@ export interface CollabUser {
 /** Событие на document: автор позвал всех на страницу (SPEC_NIGHT5 §8); камеру наводит приложение. */
 export interface CollabSummonDetail { pageId: string; vx: number; vy: number; vz: number; by: number }
 
+/**
+ * Событие на document 'doska:collab-goto': перейти к участнику (клик по краевому курсору или аватару, автопереход
+ * за автором). Приложение переключает страницу и плавно наводит камеру на (x, y); zoom — нет: текущий масштаб.
+ */
+export interface CollabGotoDetail { pageId: string; x?: number; y?: number; zoom?: number; reason: 'pointer' | 'avatar' | 'follow' }
+
+/** Событие на document 'doska:collab-presence': участники, их страницы или моя камера изменились (перерисовать присутствие). */
+export const PRESENCE_EVENT = 'doska:collab-presence';
+
 let transport: CollabTransport | null = null;
 let myUserId = -1;
 let users: CollabUser[] = [];
@@ -72,6 +82,22 @@ export function hostFollowEnabled(): boolean { return followHost; }
 export function collabUsers(): readonly CollabUser[] { return users; }
 /** Мой номер участника в комнате (-1 — не подключён). */
 export function myCollabId(): number { return myUserId; }
+
+/** «Позвать всех сюда» (только автор): гости переходят на страницу и наводят камеру на центр моего экрана. */
+export function sendSummon(pageId: string = state.pageId): boolean {
+  if (!connected || role !== 'host' || !transport) return false;
+  const { w, h } = viewportSize();
+  const v = viewCenter(state.camera, w, h);
+  return transport.send(JSON.stringify({ t: 'summon', pageId, vx: v.vx, vy: v.vy, vz: v.vz })) !== false;
+}
+
+/** Тумблер «Автопереход участников за мной» (только автор; тариф проверяет хаб). */
+export function sendFollowHost(enabled: boolean): boolean {
+  if (!connected || role !== 'host' || !transport) return false;
+  followHost = enabled;
+  document.dispatchEvent(new CustomEvent(PRESENCE_EVENT));
+  return transport.send(JSON.stringify({ t: 'follow-host', enabled })) !== false;
+}
 
 /** Сообщение в чат комнаты; false — нет соединения. */
 export function sendChat(text: string): boolean {
@@ -122,6 +148,9 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
   transport = t;
   hubPatches = false;
   myUserId = -1;
+  viewSent = null;
+  presenceKey = '';
+  hostPages.clear();
   usersKnown = false;
   baselines.clear();
   incoming.length = 0;
@@ -153,13 +182,16 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
       hubPatches = m.patches === true;
       if (hubPatches) send({ t: 'caps', patches: true });
       if (m.project) applyRemoteProject(m.project as Project);
+      followHostPages(users);
       renderRemoteCursors();
       settleReady(true);
+      noteView(true);
     } else if (m.t === 'users') {
       const next = Array.isArray(m.users) ? m.users as CollabUser[] : users;
       if (usersKnown) showUserEvents(diffUsers(users, next, myUserId));
       usersKnown = true;
       users = next;
+      followHostPages(next);
       renderRemoteCursors();
     } else if (m.t === 'rights') {
       const nextRights = (m.rights as typeof myRights) || myRights;
@@ -178,7 +210,11 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
     } else if (m.t === 'chat') {
       chatReceive(m);
     } else if (m.t === 'follow-host') {
+      const was = followHost;
       followHost = m.enabled === true;
+      // гость: автопереход включили — сразу к автору (если он не на скрытой странице)
+      if (followHost && !was && role === 'guest') { hostPages.clear(); followHostPages(users); }
+      document.dispatchEvent(new CustomEvent(PRESENCE_EVENT));
     } else if (m.t === 'summon') {
       receiveSummon(m);
     }
@@ -434,6 +470,76 @@ function flushCursor(): void {
   cursorThrottle.pending = null;
 }
 
+// ----- Камера и страница участника (SPEC_NIGHT5 §8) -----
+
+/** Пока камера двигается, {t:'view'} не уходит: отправка через столько после остановки. Смена страницы — сразу. */
+export const VIEW_SEND_MS = 250;
+let viewSent: { pageId: string; vx: number; vy: number; vz: number } | null = null;
+let viewTimer = 0;
+
+function currentView(): { pageId: string; vx: number; vy: number; vz: number } | null {
+  if (!connected || myUserId < 0 || state.view !== 'board' || onDraft()) return null;
+  const { w, h } = viewportSize();
+  if (!w || !h) return null;
+  return { pageId: state.pageId, ...viewCenter(state.camera, w, h) };
+}
+
+function flushView(): void {
+  clearTimeout(viewTimer);
+  viewTimer = 0;
+  const v = currentView();
+  if (!v) return;
+  if (viewSent && viewSent.pageId === v.pageId && viewSent.vx === v.vx && viewSent.vy === v.vy && viewSent.vz === v.vz) return;
+  viewSent = v;
+  send({ t: 'view', ...v });
+}
+
+/** Моя камера или страница изменились: сообщить комнате (смена страницы — сразу, камера — после остановки). */
+function noteView(now = false): void {
+  const v = currentView();
+  if (!v) return;
+  if (viewSent && viewSent.pageId === v.pageId && viewSent.vx === v.vx && viewSent.vy === v.vy && viewSent.vz === v.vz) return;
+  if (now || !viewSent || viewSent.pageId !== v.pageId) { flushView(); return; }
+  clearTimeout(viewTimer);
+  viewTimer = window.setTimeout(flushView, VIEW_SEND_MS);
+}
+
+/** Камера или страница с прошлой перерисовки присутствия. */
+let presenceKey = '';
+onChange(() => {
+  if (!connected) return;
+  const cam = state.camera;
+  const key = `${state.view}|${state.pageId}|${cam.x}|${cam.y}|${cam.zoom}`;
+  if (key === presenceKey) return;
+  presenceKey = key;
+  // курсоры участников привязаны к сцене: при движении своей камеры их экранные места меняются
+  renderRemoteCursors();
+  noteView();
+});
+
+/** Где в последний раз был каждый автор (null — на скрытой от меня странице); для автоперехода. */
+const hostPages = new Map<number, string | null>();
+
+/**
+ * Автопереход за автором (гость): автор сменил страницу (не скрытую от меня) — переходим к нему. Смена только камеры
+ * автора гостя не двигает: он сам смотрит, куда хочет, до следующей смены страницы автором.
+ */
+function followHostPages(next: readonly CollabUser[]): void {
+  if (role !== 'guest') { hostPages.clear(); return; }
+  for (const u of next) {
+    if (!u.host || u.userId === myUserId) continue;
+    const page = u.hiddenPage ? null : u.pageId;
+    const prev = hostPages.get(u.userId);
+    hostPages.set(u.userId, page);
+    if (!followHost || page === null || prev === page) continue;
+    if (!state.project.pages.some(p => p.id === page)) continue;
+    const view = u.view && u.view.pageId === page ? u.view : null;
+    if (page === state.pageId && !view) continue;
+    const detail: CollabGotoDetail = { pageId: page, reason: 'follow', ...(view ? { x: view.vx, y: view.vy, zoom: view.vz } : {}) };
+    document.dispatchEvent(new CustomEvent<CollabGotoDetail>('doska:collab-goto', { detail }));
+  }
+}
+
 // ----- Указка: лазер, исчезающий маркер и подсветка объектов видны остальным участникам -----
 
 const TRAIL_FLUSH_MS = 40;
@@ -662,6 +768,15 @@ export function sendProject(project: Project): void {
   }, 250);
 }
 
+/** Отправить проект хабу сразу (без задержки): следующее сообщение (например, summon) хаб увидит уже после него. */
+export function sendProjectNow(project: Project): void {
+  if (!connected) return;
+  clearTimeout(projectThrottle.timer);
+  projectThrottle.timer = 0;
+  send({ t: 'project', project });
+  markSent(project);
+}
+
 /** Сетевое хранилище: save = отправка, load = из init-проекта. */
 let netProject: Project | null = null;
 document.addEventListener('doska:collab-project', () => { /* проект уже применён */ });
@@ -832,6 +947,8 @@ export function renderRemoteCursors(): void {
     else if (moved) fxMove(`u${u.userId}`, sx, sy, id);
   }
   for (const uid of [...cursorNodes.keys()]) if (!seen.has(uid)) removeCursorNode(uid);
+  // краевые курсоры, аватары у страниц и в шапке (src/collab-presence.ts)
+  document.dispatchEvent(new CustomEvent(PRESENCE_EVENT));
 }
 
 /** Чужие выделения для отрисовки рамок (только активная страница). */
@@ -908,6 +1025,11 @@ export function stopCollab(): void {
   usersKnown = false;
   followHost = false;
   myUserId = -1;
+  clearTimeout(viewTimer);
+  viewTimer = 0;
+  viewSent = null;
+  presenceKey = '';
+  hostPages.clear();
   setChatSender(null);
   setChatAvailable(false);
   clearPills();

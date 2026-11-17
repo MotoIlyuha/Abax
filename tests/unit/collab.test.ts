@@ -940,3 +940,105 @@ describe('уведомления и чат комнаты (Ночь №5)', () =
     expect(collab.sendChat('x')).toBe(false);
   });
 });
+
+describe('присутствие: камера, автопереход, «Позвать всех» (Ночь №5, TASK-06)', () => {
+  type RoomClient = { uid: number; host: boolean; view?: { pageId: string; vx: number; vy: number; vz: number } | null };
+  const guestClient = () => [...server.room.clients.values()].find(c => !(c as unknown as RoomClient).host) as unknown as RoomClient | undefined;
+  const hostUrl = () => `${base}&host=1&key=${encodeURIComponent(server.hostKey)}`;
+
+  it('view: сразу после входа и при смене страницы; камера — после остановки (дебаунс)', async () => {
+    await collab.startCollab(base, false, 'Ученик');
+    await until(() => st.state.project.id === 'proj');
+    const first = await until(() => guestClient()?.view);
+    expect(first.pageId).toBe(st.state.pageId);
+    expect(first.vz).toBe(st.state.camera.zoom);
+    // камера двигается: пока движется — не отправляется
+    for (let i = 1; i <= 5; i++) { st.state.camera = { ...st.state.camera, x: st.state.camera.x + 10 }; st.update(); }
+    await new Promise(r => setTimeout(r, collab.VIEW_SEND_MS / 3));
+    expect(guestClient()!.view!.vx).toBe(first.vx);
+    await until(() => guestClient()!.view!.vx === first.vx + 50);
+    // смена страницы — сразу
+    const other = st.state.project.pages.find(p => p.id !== st.state.pageId)!;
+    st.switchPage(other.id);
+    await until(() => guestClient()!.view!.pageId === other.id, 200);
+  });
+
+  it('автопереход: автор сменил страницу — гость переходит к нему; на скрытой странице — нет', async () => {
+    const host = await peer(hostUrl());
+    peers.push(host);
+    host.ws.send(JSON.stringify({ t: 'follow-host', enabled: true }));
+    await until(() => last(host, 'follow-host'));
+    await collab.startCollab(base, false, 'Ученик');
+    await until(() => st.state.project.id === 'proj');
+    const goto: Msg[] = [];
+    document.addEventListener('doska:collab-goto', e => goto.push((e as CustomEvent).detail));
+    host.ws.send(JSON.stringify({ t: 'view', pageId: 'pg2', vx: 100, vy: 50, vz: 2 }));
+    await until(() => goto.length === 1);
+    expect(goto[0]).toEqual({ pageId: 'pg2', x: 100, y: 50, zoom: 2, reason: 'follow' });
+    // только камера автора — гостя не двигает
+    host.ws.send(JSON.stringify({ t: 'view', pageId: 'pg2', vx: 300, vy: 50, vz: 2 }));
+    await until(() => collab.collabUsers().some(u => u.host && u.view?.vx === 300));
+    expect(goto).toHaveLength(1);
+    // страница pg1 скрыта от гостя: автор на ней — гость остаётся
+    server.setRights(guestClient()!.uid, { pages: { pg1: 'hidden' } });
+    host.ws.send(JSON.stringify({ t: 'view', pageId: 'pg1', vx: 1, vy: 1, vz: 1 }));
+    await until(() => collab.collabUsers().some(u => u.host && u.hiddenPage));
+    expect(goto).toHaveLength(1);
+    // вернулся на открытую страницу — гость снова за ним
+    host.ws.send(JSON.stringify({ t: 'view', pageId: 'pg2', vx: 7, vy: 8, vz: 1 }));
+    await until(() => goto.length === 2);
+    expect(goto[1]).toMatchObject({ pageId: 'pg2', x: 7, y: 8 });
+    // хаб общий для всех тестов: выключаем автопереход
+    host.ws.send(JSON.stringify({ t: 'follow-host', enabled: false }));
+    await until(() => !collab.hostFollowEnabled());
+  });
+
+  it('без автоперехода смена страницы автором гостя не двигает', async () => {
+    const host = await peer(hostUrl());
+    peers.push(host);
+    await collab.startCollab(base, false, 'Ученик');
+    await until(() => st.state.project.id === 'proj');
+    expect(collab.hostFollowEnabled()).toBe(false);
+    const goto: Msg[] = [];
+    document.addEventListener('doska:collab-goto', e => goto.push((e as CustomEvent).detail));
+    host.ws.send(JSON.stringify({ t: 'view', pageId: 'pg2', vx: 1, vy: 1, vz: 1 }));
+    await until(() => collab.collabUsers().some(u => u.host && u.pageId === 'pg2'));
+    expect(goto).toEqual([]);
+  });
+
+  it('автор: sendSummon и sendFollowHost уходят в комнату; гостю они не доступны', async () => {
+    const guest = await peer(`${base}&name=Гость`);
+    peers.push(guest);
+    st.openProject(demo());
+    await collab.startHostConnection(server.port, server.code, server.hostKey, 'Автор');
+    await until(() => collab.myCollabId() >= 0);
+    expect(collab.sendSummon('pg2')).toBe(true);
+    const s = await until(() => last(guest, 'summon'));
+    expect(s.pageId).toBe('pg2');
+    expect(Number.isFinite(s.vx) && Number.isFinite(s.vy) && s.vz > 0).toBe(true);
+    expect(collab.sendFollowHost(true)).toBe(true);
+    expect(collab.hostFollowEnabled()).toBe(true);
+    await until(() => last(guest, 'follow-host')?.enabled === true);
+    collab.sendFollowHost(false);
+    await until(() => last(guest, 'follow-host')?.enabled === false);
+    collab.stopCollab();
+    await collab.startCollab(base, false, 'Ученик');
+    expect(collab.sendSummon('pg1')).toBe(false);
+    expect(collab.sendFollowHost(true)).toBe(false);
+  });
+
+  it('sendProjectNow: проект уходит сразу, следом — summon (гость видит открытую страницу)', async () => {
+    const guest = await peer(`${base}&name=Гость`);
+    peers.push(guest);
+    const p = demo();
+    p.permissions = { pageRights: { pg2: 'hidden' } };
+    st.openProject(p);
+    await collab.startHostConnection(server.port, server.code, server.hostKey, 'Автор');
+    await until(() => collab.myCollabId() >= 0 && server.room.project?.permissions?.pageRights?.pg2 === 'hidden');
+    st.state.project.permissions = { pageRights: { pg2: 'view' } };
+    collab.sendProjectNow(st.state.project);
+    collab.sendSummon('pg2');
+    const s = await until(() => last(guest, 'summon'));
+    expect(s.pageId).toBe('pg2');
+  });
+});

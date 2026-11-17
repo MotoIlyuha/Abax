@@ -32,7 +32,9 @@ import * as pdfjsLib from 'pdfjs-dist';
 // ?worker&inline: воркер инлайнится в бандл и работает из file:// (Electron)
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker&inline';
 import { initChatButton } from './collab-chat';
-import { collabActive, isHost, myColor, noteSelection, readOnly, startHostConnection, stopCollab, type CollabSummonDetail } from './collab';
+import { collabActive, isHost, myColor, noteSelection, readOnly, startHostConnection, stopCollab, type CollabGotoDetail, type CollabSummonDetail } from './collab';
+import { animateCameraTo } from './camera-anim';
+import { fillPageAvatars, initCollabPresence } from './collab-presence';
 import { closePresent, openPresent, presentOpen } from './present';
 import { renderProfileSettings } from './profile-settings';
 import { cursorSvg } from './cursors';
@@ -3070,6 +3072,22 @@ function dropPageOnCanvas(index: number, x: number, y: number): void {
   selectInserted(el.id);
 }
 
+/** Перейти к участнику: его страница, затем плавный перелёт камеры к точке (SPEC_NIGHT5 §8). */
+async function goToCollabPoint(d: CollabGotoDetail): Promise<void> {
+  if (state.view !== 'board' || !state.project.pages.some(p => p.id === d.pageId)) return;
+  if (d.pageId !== state.pageId) await switchPageHandler(d.pageId);
+  if (state.pageId !== d.pageId) return;
+  if (d.x !== undefined && d.y !== undefined) animateCameraTo(d.x, d.y, d.zoom);
+}
+
+/** Аватары участников у карточек страниц (состав комнаты изменился). */
+function refreshPageAvatars(): void {
+  for (const page of state.project.pages) {
+    const card = pageCards.get(page.id);
+    if (card) fillPageAvatars(card.avatars, page.id);
+  }
+}
+
 async function switchPageHandler(pageId: string): Promise<void> {
   if (pageId === state.pageId || state.view !== 'board') return;
   await saveNow();
@@ -3205,6 +3223,8 @@ let pagesOpen = false;
 
 interface PageCard {
   el: HTMLElement;
+  /** Аватары участников на этой странице (SPEC_NIGHT5 §8). */
+  avatars: HTMLElement;
   thumb: HTMLCanvasElement;
   /** Рамка видимой области (только у текущей страницы). */
   view: HTMLElement;
@@ -3242,7 +3262,10 @@ function makePageCard(pageId: string, draft = false): PageCard {
   const view = document.createElement('div');
   view.className = 'page-view';
   view.hidden = true;
-  thumbBox.append(thumb, view, num);
+  const avatars = document.createElement('div');
+  avatars.className = 'page-avatars';
+  avatars.hidden = true;
+  thumbBox.append(thumb, view, num, avatars);
   const row = document.createElement('div');
   row.className = 'page-row';
   const grid = document.createElement('span');
@@ -3257,7 +3280,7 @@ function makePageCard(pageId: string, draft = false): PageCard {
   del.title = draft ? 'Удалить черновик' : 'Удалить страницу';
   del.innerHTML = ICONS.del;
   el.append(thumbBox, row, del);
-  const card: PageCard = { el, thumb, view, cam: null, content: null, num, grid, name, gridMode: null, shot: null };
+  const card: PageCard = { el, avatars, thumb, view, cam: null, content: null, num, grid, name, gridMode: null, shot: null };
   el.addEventListener('click', e => {
     if ((e.target as HTMLElement).closest('.page-del, input')) return;
     void switchPageHandler(pageId);
@@ -3445,6 +3468,7 @@ function renderPages(): void {
       card.el.classList.toggle('active', page.id === state.pageId);
       card.el.style.setProperty('--i', String(i));
       card.num.textContent = String(i + 1);
+      fillPageAvatars(card.avatars, page.id);
       if (card.name.textContent !== page.name) card.name.textContent = page.name;
       const pageGridKey = `${page.grid}:${page.coordLabels !== false}`;
       if (card.gridMode !== pageGridKey) {
@@ -5428,12 +5452,18 @@ export function initApp(c: HTMLCanvasElement): void {
     if (!project || project.id !== state.project.id || state.dirty || state.linkMode || state.collabRole !== null) return;
     void showCloudProject(project, { keepView: true });
   });
-  // автор позвал всех на страницу (SPEC_NIGHT5 §8): гость переходит на неё; наведение камеры — TASK-06
+  // автор позвал всех на страницу (SPEC_NIGHT5 §8): гость переходит на неё и плавно наводит камеру на центр экрана автора
   document.addEventListener('doska:collab-summon', ev => {
     const d = (ev as CustomEvent<CollabSummonDetail>).detail;
-    if (!d || state.view !== 'board' || !state.project.pages.some(p => p.id === d.pageId)) return;
-    void switchPageHandler(d.pageId);
+    if (!d) return;
+    void goToCollabPoint({ pageId: d.pageId, x: d.vx, y: d.vy, zoom: d.vz, reason: 'follow' });
   });
+  // к участнику: краевой курсор, аватар, автопереход за автором
+  document.addEventListener('doska:collab-goto', ev => {
+    const d = (ev as CustomEvent<CollabGotoDetail>).detail;
+    if (d) void goToCollabPoint(d);
+  });
+  initCollabPresence(refreshPageAvatars);
   initSyncIndicator();
   c.addEventListener('dragover', e => { if (draggedColor && canEditBoard()) e.preventDefault(); });
   c.addEventListener('drop', e => {

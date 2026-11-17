@@ -19,6 +19,10 @@ import { myCursorId, onProfileChange } from './profile';
 import { fxForget, fxMove } from './cursor-fx';
 import { settingsDialogOpen } from './settings-dialog';
 import { presenting, requestRender, renderScene } from './renderer';
+import { animateCameraTo, cancelCameraAnim } from './camera-anim';
+
+/** Плавный перелёт камеры к мировой точке (SPEC_NIGHT5 §8); прерывается жестом пользователя. */
+export { animateCameraTo };
 import { eraserRadius, resetEraser, trackEraser } from './eraser-size';
 import { fitSolid, SOLID_CLICK_SIZE, solidKeepsAspect } from './solid';
 import { spreadElements, spreadTargets } from './spread';
@@ -1386,6 +1390,9 @@ export function initController(canvas: HTMLCanvasElement): void {
   }, true);
 
   addGestureProbe(() => (action !== null && action.kind !== 'pan' && action.kind !== 'marquee' && action.kind !== 'fade') || nudge !== null);
+  // любой жест пользователя прерывает плавный перелёт камеры (SPEC_NIGHT5 §8)
+  canvas.addEventListener('pointerdown', () => cancelCameraAnim(), { capture: true });
+  canvas.addEventListener('wheel', () => cancelCameraAnim(), { capture: true, passive: true });
   canvas.addEventListener('pointerdown', onPointerDown);
   canvas.addEventListener('pointermove', onPointerMove);
   canvas.addEventListener('pointerup', onPointerUp);

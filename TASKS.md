@@ -38,7 +38,7 @@
   - Пилюли из разницы `users`, соединение, `summon`, права (§5); чат: кнопка с бейджем, панель, превью, история из `init` (§6).
   - **Тесты**: `tests/unit/activity-pills.test.ts`, `collab-chat.test.ts` (DOM: нет `innerHTML`, ссылки с `rel`), дополнения `collab.test.ts`.
 
-- [ ] **TASK-06: Присутствие**
+- [x] **TASK-06: Присутствие**
   - **Файлы**: `src/controller.ts`, `src/collab.ts`, `src/app.ts`, `src/style.css`.
   - `animateCameraTo`, отправка `view`, краевые курсоры, аватары у страниц и в списке участников, «Позвать всех сюда» с поповером для скрытой страницы, «Автопереход за мной» (§8).
   - **Тесты**: дополнения `collab.test.ts`, новые unit-тесты навигации за хостом и `animateCameraTo` (reduced motion — мгновенно).

@@ -3516,3 +3516,154 @@ body.no-motion .activity-pill, body.no-ui-anim .activity-pill { animation: none;
 .chat-input:focus { outline: none; border-color: var(--accent); }
 .chat-foot { display: flex; justify-content: space-between; gap: 8px; min-height: 18px; padding: 4px 12px 8px; font-size: 11px; color: var(--muted); }
 .chat-hint { color: var(--danger); }
+
+/* ----- Присутствие участников (SPEC_NIGHT5 §8) ----- */
+#btn-summon[hidden], #btn-follow[hidden] { display: none; }
+#btn-follow { position: relative; }
+#btn-follow.active { background: var(--accent-soft); color: var(--accent); }
+#btn-follow.locked { opacity: 0.55; }
+#btn-follow.locked::after {
+  content: 'Pro';
+  position: absolute;
+  right: -6px;
+  bottom: -3px;
+  padding: 0 3px;
+  border-radius: 4px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 12px;
+  pointer-events: none;
+}
+#collab-presence { display: inline-flex; align-items: center; gap: 2px; margin-left: 4px; }
+#collab-presence[hidden] { display: none; }
+.presence-avatar, .page-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  padding: 0;
+  border: 2px solid var(--panel);
+  border-radius: 50%;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+.presence-avatar { width: 26px; height: 26px; font-size: 10px; margin-left: -6px; }
+.presence-avatar:first-child { margin-left: 0; }
+.presence-avatar.more, .page-avatar.more { background: var(--panel); color: var(--muted); cursor: default; border-color: var(--border); }
+.presence-avatar.on-hidden, .page-avatar.on-hidden { opacity: 0.6; border-style: dashed; border-color: var(--muted); }
+.presence-avatar:hover, .page-avatar:hover { transform: translateY(-1px); }
+.page-avatars {
+  position: absolute;
+  right: 6px;
+  top: 6px;
+  display: flex;
+  gap: 0;
+  z-index: 1;
+}
+.page-avatars[hidden] { display: none; }
+.page-avatar { width: 20px; height: 20px; font-size: 8px; margin-left: -5px; }
+.page-avatar:first-child { margin-left: 0; }
+
+/* краевые курсоры: участник на моей странице, но за краем экрана */
+#edge-pointers { position: absolute; inset: 0; pointer-events: none; z-index: 9; }
+.collab-edge-pointer {
+  position: absolute;
+  /* кнопка 28×28 с центром в точке на рамке: по ней легко попасть */
+  width: 28px;
+  height: 28px;
+  margin: -14px 0 0 -14px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  pointer-events: auto;
+  opacity: 0.65;
+  cursor: pointer;
+  transition: opacity 120ms ease;
+}
+.collab-edge-pointer:hover, .collab-edge-pointer:focus-visible { opacity: 1; }
+/* остриё стрелки (3, 3 в сетке 32 → 2.25 px при 24 px) — в центре кнопки; поворот вокруг острия */
+.collab-edge-pointer .ep-arrow {
+  position: absolute;
+  left: 11.75px;
+  top: 11.75px;
+  width: 24px;
+  height: 24px;
+  line-height: 0;
+  transform-origin: 2.25px 2.25px;
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.3));
+}
+.collab-edge-pointer .ep-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  padding: 2px 7px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+.collab-edge-pointer:hover .ep-label, .collab-edge-pointer:focus-visible .ep-label { opacity: 1; }
+body.no-motion .collab-edge-pointer, body.no-motion .collab-edge-pointer .ep-label,
+body.no-ui-anim .collab-edge-pointer, body.no-ui-anim .collab-edge-pointer .ep-label { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  .collab-edge-pointer, .collab-edge-pointer .ep-label { transition: none; }
+}
+
+/* «Позвать всех сюда» на скрытой странице: открыть её и позвать */
+.summon-popover {
+  position: fixed;
+  top: 56px;
+  right: 16px;
+  z-index: 75;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 280px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+.summon-popover-text { font-size: 13px; margin-bottom: 4px; }
+.summon-choice {
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.summon-choice:hover { background: var(--accent-soft); }
+.summon-choice.cancel { color: var(--muted); }
+
+/* автор с автопереходом на скрытой странице: участники остались на предыдущей */
+#follow-hidden-badge {
+  position: absolute;
+  top: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  max-width: calc(100% - 24px);
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  background: var(--panel);
+  font-size: 12px;
+  box-shadow: var(--shadow);
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#follow-hidden-badge[hidden] { display: none; }
