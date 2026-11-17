@@ -1,13 +1,14 @@
 import { ApiError, currentSession, getApi } from './api-client';
 import { myCursorId, profileName } from './profile';
-import { cloudStorage, setCloudRoomProject } from './cloud-sync';
+import { cloudStorage, openFresh, setCloudRoomProject } from './cloud-sync';
 import { cloudRoomTransport } from './collab-transport';
 import { collabActive, collabReady, connectCloudHost, connectCollab, stopCollab } from './collab';
 import { NOTICE_INVITE_GONE, NOTICE_INVITE_OFFLINE, openInviteView } from './link-view-ui';
 import { loadInvite } from './link-view-cloud';
 import { showCollabNotice } from './collab';
 import { onDraft, onChange, state } from './state';
-import { getSyncedRev } from './sync-state';
+import { getSyncedRev, isDirty } from './sync-state';
+import { signedIn } from './profile-sync';
 
 // Облачные комнаты на стороне клиента: гость по приглашению входит в комнату на сервере (а если не получилось —
 // видит проект для чтения), автор автоматически подключается к комнате своего проекта, пока у проекта есть приглашение.
@@ -72,12 +73,15 @@ export async function connectOwnerRoom(): Promise<boolean> {
   try {
     await cloud.flush();
     if (state.project.id !== id || getSyncedRev(id) === null) return false; // проект не в облаке или сменился
-    let hasInvite = false;
-    try {
-      hasInvite = !!(await api.request<{ invite: unknown }>('GET', `/api/invites?projectId=${encodeURIComponent(id)}`)).invite;
-    } catch (e) {
-      if (!(e instanceof ApiError)) throw e;
-      return false;
+    // вошедший в аккаунт владелец подключается и без приглашения: его другие устройства видят правки вживую (SPEC_NIGHT5 §2.3)
+    let hasInvite = signedIn();
+    if (!hasInvite) {
+      try {
+        hasInvite = !!(await api.request<{ invite: unknown }>('GET', `/api/invites?projectId=${encodeURIComponent(id)}`)).invite;
+      } catch (e) {
+        if (!(e instanceof ApiError)) throw e;
+        return false;
+      }
     }
     if (!hasInvite || state.project.id !== id) return false;
     const session = await api.ensureSession();
@@ -116,4 +120,39 @@ export function watchOwnerRoom(): void {
     ownerRoom = null;
     setCloudRoomProject(null);
   });
+  // вошли в аккаунт — открытый проект становится общим для своих устройств
+  document.addEventListener('doska:account-changed', () => { if (ownerRoom === null) void connectOwnerRoom(); });
+  // вернулись на вкладку или в окно (планшет мог усыпить соединение) — догнать другие устройства
+  const wake = () => { if (!document.hidden) void catchUpOnWake(); };
+  document.addEventListener('visibilitychange', wake);
+  window.addEventListener('focus', wake);
+}
+
+/** Не чаще раза в WAKE_MIN_MS. */
+export const WAKE_MIN_MS = 5000;
+let lastWake = -Infinity;
+
+/**
+ * Возврат на вкладку (SPEC_NIGHT5 §2.3): связь с комнатой автора жива — ничего; комнаты нет — попытка подключиться
+ * (комната сама пришлёт свежее состояние), иначе — свежая версия с сервера, если своих несохранённых правок нет
+ * (событие doska:cloud-fresh, доску обновляет приложение). true — запрос выполнялся.
+ */
+export async function catchUpOnWake(now = Date.now()): Promise<boolean> {
+  if (now - lastWake < WAKE_MIN_MS) return false;
+  lastWake = now;
+  if (!getApi() || !cloudStorage() || state.linkMode || state.collabRole === 'guest') return false;
+  if (ownerRoom !== null && collabActive()) return false;
+  if (await connectOwnerRoom()) return true;
+  const id = state.project.id;
+  const before = getSyncedRev(id);
+  if (before === null || isDirty(id) || state.dirty || collabActive()) return true;
+  const fresh = await openFresh(id).catch(() => null);
+  if (!fresh || state.project.id !== id || state.dirty || getSyncedRev(id) === before) return true;
+  document.dispatchEvent(new CustomEvent('doska:cloud-fresh', { detail: { project: fresh } }));
+  return true;
+}
+
+/** Для тестов: сбросить паузу между пробуждениями. */
+export function resetWakeForTests(): void {
+  lastWake = -Infinity;
 }

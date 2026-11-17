@@ -3,11 +3,13 @@ import { ApiError, getApi, type ApiClient } from './api-client';
 import { AssetStore, forgetUploadedAssets, uploadMissingAssets } from './asset-store';
 import { assetStore, hydrateFromCloud } from './cloud-assets';
 import { showToast } from './about';
-import { state, uid } from './state';
+import { projectMeta, state, uid } from './state';
 import { setStorage, storage, type BoardsStorage } from './storage';
 import {
-  addPendingDelete, clearDirty, clearSyncedRev, getSyncedRev, isDirty, pendingDeletes, removePendingDelete, setDirty, setSyncedRev,
+  addPendingDelete, clearDirty, clearStarter, clearSyncBase, clearSyncedRev, getSyncBase, getSyncedRev, isDirty, isPristineStarterProject,
+  pendingDeletes, removePendingDelete, setDirty, setSyncBase, setSyncedRev, starterId, syncStatusOf, type SyncStatus,
 } from './sync-state';
+import { contentSignature } from './sync-conflict';
 
 // Облачная синхронизация проектов: обёртка над хранилищем устройства. Локальное хранилище остаётся главным и работает
 // как раньше (без сети и без адреса сервера — ровно так); облако получает копию: проект уходит на сервер через PUT
@@ -15,7 +17,20 @@ import {
 
 export const LIMIT_SYNC_TEXT = 'Лимит бесплатного тарифа: проект остаётся только на этом устройстве';
 
-export type PushStatus = 'ok' | 'skipped' | 'network' | 'limit' | 'error';
+export type PushStatus = 'ok' | 'skipped' | 'network' | 'limit' | 'error' | 'conflict';
+
+/** Суффикс имени копии при настоящем офлайн-конфликте (SPEC_NIGHT5 §2.4). */
+export const CONFLICT_COPY_SUFFIX = ' (копия с устройства)';
+export const CONFLICT_TEXT = 'Проект обновился с другого устройства. Ваши офлайн-правки сохранены в копию';
+
+/** Итог офлайн-конфликта: основной проект — серверная версия, локальные правки — в копии. */
+export interface ConflictResolution {
+  id: string;
+  /** Серверная версия основного проекта (с картинками), уже сохранённая на устройстве. */
+  project: Project;
+  /** Копия с локальными правками. */
+  copy: ProjectMeta;
+}
 
 export interface CloudStorageOptions {
   /** Клиент сервера; null — облако выключено. По умолчанию — общий (getApi). */
@@ -29,6 +44,10 @@ export interface CloudStorageOptions {
   notify?: (text: string) => void;
   /** Проекты, которые есть только на сервере (на главный экран). */
   onRemoteProjects?: (metas: ProjectMeta[]) => void;
+  /** Начальная синхронизация получила список проектов сервера (все, кроме удаляемых) — замена стартовой заглушки. */
+  onSynced?: (metas: ProjectMeta[]) => void;
+  /** Настоящий офлайн-конфликт разрешён: основной проект взят с сервера, локальные правки — в копии. */
+  onConflict?: (r: ConflictResolution) => void;
 }
 
 export interface CloudStorage extends BoardsStorage {
@@ -36,6 +55,14 @@ export interface CloudStorage extends BoardsStorage {
   openFresh(id: string): Promise<Project | null>;
   /** Немедленно отправить всё накопленное и дождаться ответов. */
   flush(): Promise<void>;
+  /** То же, что flush, но и без ожидания паузы перед повтором после сбоя сети (клик по индикатору «офлайн»). */
+  flushNow(): Promise<void>;
+  /** Статус синхронизации проекта для индикатора в шапке (SPEC_NIGHT5 §2.2). */
+  status(project: Project): SyncStatus;
+  /** Подписка на изменения статусов; возвращает отписку. */
+  onStatus(fn: () => void): () => void;
+  /** Удалить проект только с устройства: без запроса на сервер и без отложенного удаления (замена заглушки). */
+  removeLocal(id: string): Promise<void>;
   /** Начальная синхронизация: удаления, список с сервера, отправка проектов, которых там нет. */
   syncAll(): Promise<void>;
   /** Пока автор подключён к облачной комнате проекта, его сохраняет комната: PUT этого проекта не отправляется. */
@@ -46,8 +73,12 @@ export interface CloudStorage extends BoardsStorage {
 }
 
 interface RemoteMeta { id: string; name?: string; title?: string; createdAt: number; updatedAt: number; pageCount: number; pinned?: boolean; icon?: string }
-interface PutResult { id: string; rev: number; /** Сервер добавил к присланному то, чего у клиента нет (ответы, реакции, комментарии). */ merged?: boolean }
-interface OwnView { role: string; rev: number; project: Project }
+interface PutResult {
+  id: string; rev: number;
+  /** Сервер добавил к присланному то, чего у клиента нет (ответы, реакции, комментарии). */ merged?: boolean;
+  /** Подпись содержимого записанной версии (SPEC_NIGHT5 §2.4). */ sig?: string;
+}
+interface OwnView { role: string; rev: number; project: Project; sig?: string }
 
 const metaOfRemote = (r: RemoteMeta): ProjectMeta => ({
   id: r.id, name: r.name ?? r.title ?? 'Без названия', createdAt: r.createdAt, updatedAt: r.updatedAt, pageCount: r.pageCount,
@@ -68,6 +99,12 @@ export function createCloudStorage(base: BoardsStorage, opts: CloudStorageOption
   const inflight = new Map<string, Promise<PushStatus>>();
   /** Проекты, которые облако не принимает (лимит тарифа, слишком велик): до перезапуска остаются на устройстве. */
   const localOnly = new Set<string>();
+  /** Из них — не принятые по лимиту тарифа (индикатор «только на устройстве»). */
+  const limited = new Set<string>();
+  /** Последняя попытка отправки не дошла до сервера (сеть, 5xx), повтор впереди. */
+  const netFailed = new Set<string>();
+  const statusListeners = new Set<() => void>();
+  const emit = () => { for (const fn of [...statusListeners]) { try { fn(); } catch (e) { console.error(e); } } };
   let activeRoom: string | null = null;
   let remote: ProjectMeta[] = [];
   let retryAttempt = 0;
@@ -80,6 +117,7 @@ export function createCloudStorage(base: BoardsStorage, opts: CloudStorageOption
   function schedule(id: string, ms = debounceMs): void {
     window.clearTimeout(timers.get(id));
     timers.set(id, window.setTimeout(() => { timers.delete(id); void pushNow(id); }, ms));
+    emit();
   }
 
   function scheduleRetry(): void {
@@ -97,7 +135,8 @@ export function createCloudStorage(base: BoardsStorage, opts: CloudStorageOption
     const prev = inflight.get(id) ?? Promise.resolve<PushStatus>('ok');
     const p = prev.then(() => doPush(id, force), () => doPush(id, force));
     inflight.set(id, p);
-    const done = () => { if (inflight.get(id) === p) inflight.delete(id); };
+    emit();
+    const done = () => { if (inflight.get(id) === p) inflight.delete(id); emit(); };
     p.then(done, done);
     return p;
   }
@@ -105,9 +144,14 @@ export function createCloudStorage(base: BoardsStorage, opts: CloudStorageOption
   async function putProject(api: ApiClient, project: Project): Promise<PutResult> {
     const { strippedProject, assets } = await store.extractProjectAssets(project);
     await uploadMissingAssets(assets, api);
-    const send = () => api.request<PutResult>('PUT', `/api/projects/${encodeURIComponent(project.id)}`, {
-      project: strippedProject, ...(getSyncedRev(project.id) !== null ? { expectedRev: getSyncedRev(project.id) } : {}),
-    });
+    // baseSig — подпись версии, совпавшей с сервером: по ней сервер отличает настоящий конфликт от правок мимо автора
+    const send = () => {
+      const expectedRev = getSyncedRev(project.id);
+      const baseSig = expectedRev !== null ? getSyncBase(project.id) : null;
+      return api.request<PutResult>('PUT', `/api/projects/${encodeURIComponent(project.id)}`, {
+        project: strippedProject, ...(expectedRev !== null ? { expectedRev } : {}), ...(baseSig ? { baseSig } : {}),
+      });
+    };
     try {
       return await send();
     } catch (e) {
@@ -129,25 +173,76 @@ export function createCloudStorage(base: BoardsStorage, opts: CloudStorageOption
     if (!force && !pending.has(id)) return 'skipped';
     const project = pending.get(id) ?? await base.load(id).catch(() => null);
     if (!project) { pending.delete(id); clearDirty(id); return 'skipped'; }
+    // нетронутая стартовая заглушка в облако не уходит (SPEC_NIGHT5 §2.1)
+    if (isPristineStarterProject(project, starterId())) { pending.delete(id); clearDirty(id); return 'skipped'; }
     const version = versions.get(id) ?? 0;
     try {
       const res = await putProject(api, project);
       // сервер добавил чужой ввод, которого в нашей копии нет: помним предыдущую ревизию — следующее сохранение сольётся снова,
       // а при открытии (если своих правок нет) подтянется серверная версия
       setSyncedRev(id, res.merged && res.rev > 1 ? res.rev - 1 : res.rev);
+      if (typeof res.sig === 'string') setSyncBase(id, res.sig);
+      netFailed.delete(id);
       retryAttempt = 0;
       if ((versions.get(id) ?? 0) === version) { pending.delete(id); clearDirty(id); } else schedule(id);
       return 'ok';
     } catch (e) {
+      if (e instanceof ApiError && e.status === 409 && e.code === 'rev-conflict') return resolveConflict(api, id, project);
       return handlePushError(id, e);
     }
+  }
+
+  /**
+   * Настоящий офлайн-конфликт (SPEC_NIGHT5 §2.4): локальная версия уходит в копию «<Имя> (копия с устройства)»,
+   * основной проект берётся с сервера. Сервер недоступен — повтор позже (отправка снова получит 409).
+   */
+  async function resolveConflict(api: ApiClient, id: string, local: Project): Promise<PushStatus> {
+    let view: OwnView;
+    let server: Project;
+    try {
+      view = await api.request<OwnView>('GET', `/api/projects/${encodeURIComponent(id)}`);
+      if (view.role !== 'host') throw new Error('not-owner');
+      server = await hydrateFromCloud(view.project, api, store);
+    } catch {
+      scheduleRetry();
+      netFailed.add(id);
+      emit();
+      return 'network';
+    }
+    const now = Date.now();
+    const copy: Project = { ...structuredClone(local), id: uid(), name: `${local.name}${CONFLICT_COPY_SUFFIX}`, createdAt: now, updatedAt: now };
+    await base.save(copy);
+    clearSyncBase(copy.id);
+    clearSyncedRev(copy.id);
+    pending.set(copy.id, copy);
+    versions.set(copy.id, 1);
+    setDirty(copy.id);
+    schedule(copy.id, 0);
+    // основной — серверная версия; правки, пришедшие после неудачной отправки, тоже в копии
+    pending.delete(id);
+    versions.delete(id);
+    window.clearTimeout(timers.get(id));
+    timers.delete(id);
+    await base.save(server);
+    setSyncedRev(id, view.rev);
+    setSyncBase(id, typeof view.sig === 'string' ? view.sig : contentSignature(view.project));
+    clearDirty(id);
+    netFailed.delete(id);
+    const copyMeta = projectMeta(copy);
+    state.projects = [copyMeta, ...state.projects.filter(m => m.id !== copy.id)];
+    emit();
+    opts.onConflict?.({ id, project: server, copy: copyMeta });
+    return 'conflict';
   }
 
   function handlePushError(id: string, e: unknown): PushStatus {
     if (e instanceof ApiError) {
       if (e.status === 403 && (e.code === 'plan-limit-projects' || e.code === 'plan-limit-pages')) {
         localOnly.add(id);
+        limited.add(id);
+        netFailed.delete(id);
         pending.delete(id);
+        emit();
         if (!limitNotified) { limitNotified = true; notify(LIMIT_SYNC_TEXT); }
         return 'limit';
       }
@@ -156,13 +251,16 @@ export function createCloudStorage(base: BoardsStorage, opts: CloudStorageOption
         void rekey(id);
         return 'ok';
       }
-      if (e.status === 0 || e.status >= 500 || e.status === 401 || e.status === 429) { scheduleRetry(); return 'network'; }
+      if (e.status === 0 || e.status >= 500 || e.status === 401 || e.status === 429) { scheduleRetry(); netFailed.add(id); emit(); return 'network'; }
       // 400, 413 и прочее: повтор ничего не изменит
       localOnly.add(id);
       pending.delete(id);
+      emit();
       return 'error';
     }
     scheduleRetry();
+    netFailed.add(id);
+    emit();
     return 'network';
   }
 
@@ -178,6 +276,7 @@ export function createCloudStorage(base: BoardsStorage, opts: CloudStorageOption
     window.clearTimeout(timers.get(oldId));
     timers.delete(oldId);
     clearSyncedRev(oldId);
+    clearSyncBase(oldId);
     clearDirty(oldId);
     if (state.project.id === oldId) {
       state.project = { ...state.project, id: next.id };
@@ -221,6 +320,7 @@ export function createCloudStorage(base: BoardsStorage, opts: CloudStorageOption
     const project = await hydrateFromCloud(view.project, api, store);
     await base.save(project);
     setSyncedRev(id, view.rev);
+    setSyncBase(id, typeof view.sig === 'string' ? view.sig : contentSignature(view.project));
     clearDirty(id);
     return project;
   }
@@ -251,10 +351,13 @@ export function createCloudStorage(base: BoardsStorage, opts: CloudStorageOption
     const localIds = new Set(localMetas.map(m => m.id));
     remote = list.filter(r => !gone.has(r.id) && !localIds.has(r.id)).map(metaOfRemote);
     opts.onRemoteProjects?.(remote);
+    opts.onSynced?.(list.filter(r => !gone.has(r.id)).map(metaOfRemote));
     const onServer = new Set(list.map(r => r.id));
+    const starter = starterId();
     for (const m of localMetas) {
       if (localOnly.has(m.id) || activeRoom === m.id || pending.has(m.id)) continue;
       if (onServer.has(m.id) && getSyncedRev(m.id) !== null && !isDirty(m.id)) continue; // уже в облаке и без новых правок
+      if (m.id === starter && isPristineStarterProject(await base.load(m.id).catch(() => null), starter)) continue;
       const status = await pushNow(m.id, true);
       if (status === 'network') return; // сети нет — остальное в следующий раз
     }
@@ -283,6 +386,12 @@ export function createCloudStorage(base: BoardsStorage, opts: CloudStorageOption
     async save(project) {
       await base.save(project);
       if (!getClient() || disposed) return;
+      // заглушка, в которой что-то поменяли (имя, настройки, страницы), — обычный проект
+      const starter = starterId();
+      if (starter === project.id) {
+        if (isPristineStarterProject(project, starter)) return;
+        clearStarter(project.id);
+      }
       pending.set(project.id, project);
       versions.set(project.id, (versions.get(project.id) ?? 0) + 1);
       setDirty(project.id);
@@ -296,8 +405,12 @@ export function createCloudStorage(base: BoardsStorage, opts: CloudStorageOption
       pending.delete(id);
       versions.delete(id);
       clearSyncedRev(id);
+      clearSyncBase(id);
       clearDirty(id);
+      limited.delete(id);
+      netFailed.delete(id);
       remote = remote.filter(m => m.id !== id);
+      emit();
       const api = getClient();
       if (!api) return;
       try {
@@ -316,11 +429,52 @@ export function createCloudStorage(base: BoardsStorage, opts: CloudStorageOption
       await Promise.all([...inflight.values()]);
     },
 
+    async flushNow() {
+      window.clearTimeout(retryTimer);
+      retryTimer = 0;
+      retryAttempt = 0;
+      for (const t of timers.values()) window.clearTimeout(t);
+      timers.clear();
+      emit();
+      await Promise.all([...pending.keys()].map(id => pushNow(id)));
+      await Promise.all([...inflight.values()]);
+    },
+
+    status(project) {
+      const id = project.id;
+      return syncStatusOf({
+        cloud: !!getClient() && !disposed,
+        suppressed: isPristineStarterProject(project, starterId()),
+        limit: limited.has(id),
+        busy: pending.has(id) || inflight.has(id) || timers.has(id),
+        networkError: netFailed.has(id) && (pending.has(id) || inflight.has(id)),
+        room: activeRoom === id ? 'open' : null,
+      });
+    },
+
+    onStatus(fn) {
+      statusListeners.add(fn);
+      return () => { statusListeners.delete(fn); };
+    },
+
+    async removeLocal(id) {
+      await base.remove(id);
+      window.clearTimeout(timers.get(id));
+      timers.delete(id);
+      pending.delete(id);
+      versions.delete(id);
+      clearSyncedRev(id);
+      clearSyncBase(id);
+      clearDirty(id);
+      emit();
+    },
+
     syncAll,
 
     setCloudRoom(projectId) {
       activeRoom = projectId;
       if (projectId === null) for (const id of pending.keys()) schedule(id);
+      emit();
     },
 
     remoteOnly: () => remote,
@@ -340,7 +494,7 @@ export function createCloudStorage(base: BoardsStorage, opts: CloudStorageOption
 let shared: CloudStorage | null = null;
 
 /** Подключает облако к приложению: хранилище проектов становится облачным. Без адреса сервера — ничего не меняется. */
-export function initCloudSync(hooks: Pick<CloudStorageOptions, 'onRemoteProjects'> = {}): CloudStorage | null {
+export function initCloudSync(hooks: Pick<CloudStorageOptions, 'onRemoteProjects' | 'onSynced' | 'onConflict'> = {}): CloudStorage | null {
   if (shared) return shared;
   if (!getApi()) return null;
   const cloud = createCloudStorage(storage, hooks);

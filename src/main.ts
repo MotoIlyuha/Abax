@@ -20,7 +20,8 @@ import { myCursorId, profileName } from './profile';
 import { startProfileSync, syncAccount } from './profile-sync';
 import { completePendingAuth, type AuthOutcome } from './auth';
 import { needsOnboarding, openOnboarding } from './onboarding';
-import { openProfileAfterAuth } from './app';
+import { applyCloudConflict, openProfileAfterAuth, replaceStarterWithCloud } from './app';
+import { STARTER_PROJECT_NAME, markStarter } from './sync-state';
 
 /** Уведомление гостю, когда комната закрылась или отказала. */
 function watchGuestClose(): void {
@@ -76,6 +77,10 @@ async function boot(): Promise<void> {
       state.projects = mergeRemoteMetas(state.projects, remote);
       document.dispatchEvent(new CustomEvent('doska:projects-changed'));
     },
+    // открыта нетронутая стартовая доска, а в облаке есть проекты — открыть самый свежий (SPEC_NIGHT5 §2.1)
+    onSynced: metas => { void replaceStarterWithCloud(metas).catch(() => {}); },
+    // офлайн-правки поверх версии с другого устройства — в копию (SPEC_NIGHT5 §2.4)
+    onConflict: applyCloudConflict,
   });
 
   // вернулись от провайдера входа (#abaxAuth=…) — завершить вход до открытия доски
@@ -114,7 +119,9 @@ async function boot(): Promise<void> {
     let project = last.pid ? await openFresh(last.pid) : null;
     if (!project && metas.length > 0) project = await storage.load(metas[0].id);
     if (!project) {
-      project = blankProject('Проект 1');
+      // стартовая заглушка: пока пользователь в ней ничего не сделал, в облако она не уходит (SPEC_NIGHT5 §2.1)
+      project = blankProject(STARTER_PROJECT_NAME);
+      markStarter(project.id);
       await storage.save(project);
     }
     if (!metas.some(m => m.id === project!.id)) {

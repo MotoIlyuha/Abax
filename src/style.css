@@ -1400,6 +1400,10 @@ body:not(.no-motion) .ctx-panel[data-kind="shapes"] { animation: none; }
 /* тост с действием («Скачать») должен принимать клики; обычный — не мешает холсту */
 #toast.has-action { pointer-events: auto; }
 #toast a { color: var(--toast-link); text-decoration: underline; text-underline-offset: 2px; }
+#toast .toast-action {
+  margin-left: 6px; padding: 2px 8px; border: 1px solid currentColor; border-radius: 6px;
+  background: transparent; color: var(--toast-link); font: inherit; cursor: pointer;
+}
 @keyframes toast-in { from { opacity: 0; transform: translate(-50%, 8px); } }
 #toast.show { animation: toast-in 0.22s cubic-bezier(0.22, 0.8, 0.24, 1); }
 body.no-ui-anim #toast.show { animation: none; }
@@ -3393,3 +3397,23 @@ form.ob-email { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin
 }
 .ob-dice:hover { border-color: var(--border-strong); background: var(--hover); }
 .ob-dice:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ----- Индикатор облачной синхронизации в шапке (SPEC_NIGHT5 §2.2) ----- */
+#sync-indicator {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; padding: 0; margin-left: 2px;
+  border: none; border-radius: 6px; background: transparent; color: var(--muted, #868e96); cursor: default;
+}
+#sync-indicator[hidden] { display: none; }
+#sync-indicator svg { width: 18px; height: 18px; display: block; }
+#sync-indicator[data-status="offline"], #sync-indicator[data-status="limit"] { cursor: pointer; }
+#sync-indicator[data-status="offline"]:hover, #sync-indicator[data-status="limit"]:hover { background: var(--hover, rgba(0, 0, 0, 0.06)); }
+#sync-indicator[data-status="synced"] { color: #2f9e44; }
+#sync-indicator[data-status="offline"] { color: #e67700; }
+#sync-indicator[data-status="limit"] { color: #c92a2a; }
+@keyframes sync-spin { to { transform: rotate(360deg); } }
+#sync-indicator[data-status="syncing"] svg .sync-arrows { transform-origin: 12px 13px; animation: sync-spin 1.2s linear infinite; }
+body.no-motion #sync-indicator[data-status="syncing"] svg .sync-arrows { animation: none; }
+@media (prefers-reduced-motion: reduce) {
+  #sync-indicator[data-status="syncing"] svg .sync-arrows { animation: none; }
+}

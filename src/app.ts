@@ -58,7 +58,9 @@ import { hideHeldTooltip, showHeldTooltip } from './tooltip';
 import { LIMIT_PROJECTS_TEXT, copyBoardLink, currentBoardLink, registerLinkViewHooks } from './link-view-ui';
 import { canCreateProject, isOverPageLimit, isOverProjectLimit, PLAN_LIMITS } from './limits';
 import { limitsEnforced, userPlan } from './plan';
-import { openFresh } from './cloud-sync';
+import { CONFLICT_TEXT, cloudStorage, openFresh, type ConflictResolution } from './cloud-sync';
+import { clearStarter, isPristineStarterProject, starterId } from './sync-state';
+import { initSyncIndicator } from './sync-indicator';
 import { createInviteBox, refreshInviteBox } from './invite-ui';
 import { addGestureProbe } from './gesture';
 import { initTaskOverlay, isTeacher } from './task-overlay';
@@ -3708,6 +3710,67 @@ async function openFromHome(projectId: string, pageId?: string): Promise<void> {
   if (p) await openProjectHandler(p, pageId);
 }
 
+/**
+ * Проект из облака — на холст (SPEC_NIGHT5 §2.3, §2.4). keepView — обновление открытого проекта: та же страница и камера,
+ * несохранённое состояние открытой версии отбрасывается (вызывающий проверил, что своих правок нет или они в копии).
+ */
+export async function showCloudProject(project: Project, opts: { keepView?: boolean } = {}): Promise<void> {
+  homeProjects.delete(project.id);
+  const meta = projectMeta(project);
+  state.projects = [meta, ...state.projects.filter(m => m.id !== meta.id)];
+  if (opts.keepView && project.id === state.project.id) {
+    clearTimeout(saveTimer);
+    state.dirty = false;
+    const camera = { ...state.camera };
+    openProject(project, realPageId());
+    state.camera = camera;
+    refresh();
+    update();
+  } else {
+    await openProjectHandler(project);
+  }
+  document.dispatchEvent(new CustomEvent('doska:projects-changed'));
+}
+
+let replacingStarter = false;
+
+/**
+ * Стартовая заглушка уступает место облачному проекту (SPEC_NIGHT5 §2.1): открыт нетронутый автоматически созданный
+ * проект, а на сервере у пользователя есть проекты — открывается самый свежий, заглушка удаляется только с устройства.
+ */
+export async function replaceStarterWithCloud(metas: ProjectMeta[]): Promise<void> {
+  const sid = starterId();
+  const cloud = cloudStorage();
+  if (!sid || !cloud || replacingStarter || state.linkMode || state.collabRole !== null) return;
+  if (state.project.id !== sid || !isPristineStarterProject(state.project, sid)) return;
+  const latest = metas.filter(m => m.id !== sid).sort((a, b) => b.updatedAt - a.updatedAt)[0];
+  if (!latest) return;
+  replacingStarter = true;
+  try {
+    const p = await openFresh(latest.id);
+    // пока проект грузился, пользователь мог начать рисовать — тогда заглушка уже его доска
+    if (!p || starterId() !== sid || state.project.id !== sid || !isPristineStarterProject(state.project, sid)) return;
+    clearTimeout(saveTimer);
+    state.dirty = false;
+    await openProjectHandler(p);
+    await cloud.removeLocal(sid);
+    clearStarter(sid);
+    homeProjects.delete(sid);
+    state.projects = [projectMeta(p), ...state.projects.filter(m => m.id !== sid && m.id !== p.id)];
+    document.dispatchEvent(new CustomEvent('doska:projects-changed'));
+  } finally {
+    replacingStarter = false;
+  }
+}
+
+/** Офлайн-конфликт разрешён: открытая доска — серверная версия, тост с переходом к копии (SPEC_NIGHT5 §2.4). */
+export function applyCloudConflict(r: ConflictResolution): void {
+  homeProjects.delete(r.id);
+  if (state.project.id === r.id && !state.linkMode && state.collabRole === null) void showCloudProject(r.project, { keepView: true });
+  else document.dispatchEvent(new CustomEvent('doska:projects-changed'));
+  showToast(CONFLICT_TEXT, { label: 'Открыть копию', run: () => { void openFromHome(r.copy.id); } });
+}
+
 async function newProjectHandler(): Promise<void> {
   if (limitsEnforced() && !canCreateProject(userPlan(), state.projects.length)) { showToast(LIMIT_PROJECTS_TEXT); return; }
   await saveNow();
@@ -5357,6 +5420,13 @@ function syncSelectionToCollab(): void {
 export function initApp(c: HTMLCanvasElement): void {
   // облако нашло проекты, которых нет на устройстве: показываем их на главном экране
   document.addEventListener('doska:projects-changed', () => { if (state.view === 'home') renderHome(); });
+  // вернулись на вкладку: с другого устройства пришла более новая версия открытого проекта (SPEC_NIGHT5 §2.3)
+  document.addEventListener('doska:cloud-fresh', ev => {
+    const project = (ev as CustomEvent<{ project: Project }>).detail?.project;
+    if (!project || project.id !== state.project.id || state.dirty || state.linkMode || state.collabRole !== null) return;
+    void showCloudProject(project, { keepView: true });
+  });
+  initSyncIndicator();
   c.addEventListener('dragover', e => { if (draggedColor && canEditBoard()) e.preventDefault(); });
   c.addEventListener('drop', e => {
     if (!draggedColor || !canEditBoard()) return;

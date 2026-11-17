@@ -2,7 +2,8 @@
 // Настоящий сервер (в памяти) и настоящие WebSocket.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { SESSION_KEY, createApiClient, setApiForTests, type ApiClient } from '../../src/api-client';
-import { connectOwnerRoom, joinCloudInvite, leaveOwnerRoom, ownerRoomProject } from '../../src/cloud-room';
+import { WAKE_MIN_MS, catchUpOnWake, connectOwnerRoom, joinCloudInvite, leaveOwnerRoom, ownerRoomProject, resetWakeForTests } from '../../src/cloud-room';
+import { setAccount, signedIn, syncAccount } from '../../src/profile-sync';
 import { cloudStorage, initCloudSync } from '../../src/cloud-sync';
 import { collabActive, collabReady, connectCollab, sendTaskSubmit, stopCollab, type CollabClosedDetail } from '../../src/collab';
 import { openProject, state, blankProject } from '../../src/state';
@@ -10,7 +11,7 @@ import { storage } from '../../src/storage';
 import { getSyncedRev } from '../../src/sync-state';
 import { resetUploadedAssets } from '../../src/asset-store';
 import type { Project, TaskEl } from '../../src/types';
-import { addInvite, anon, call, closeApps, makeApp, proj, putProject, rectEl, setPlan, taskEl, type TestApp } from '../server/helpers';
+import { addInvite, anon, call, closeApps, editStored, makeApp, proj, putProject, rectEl, setPlan, taskEl, type TestApp } from '../server/helpers';
 
 const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 
@@ -198,6 +199,49 @@ describe('автор в своей облачной комнате', () => {
     expect(state.collabRole).toBeNull();
     openProject(blankProject('Новый'));
     expect(await connectOwnerRoom()).toBe(false);
+  });
+
+  it('вошедший в аккаунт автор подключается к комнате своего проекта и без приглашения (SPEC_NIGHT5 §2.3)', async () => {
+    const cloud = await ownerSetup();
+    app.db.exec('DELETE FROM invites');
+    app.db.prepare('UPDATE users SET email = ? WHERE id = ?').run('owner@example.com', owner.id);
+    try {
+      expect(await syncAccount(api)).toBe(true);
+      expect(signedIn()).toBe(true);
+      const mine = (await call(app, 'GET', '/api/projects/a', undefined, { token: owner.token })).body.project as Project;
+      await storage.save(mine);
+      await cloud.flush();
+      openProject((await storage.load('a'))!);
+      expect(await connectOwnerRoom()).toBe(true);
+      expect(state.collabRole).toBe('host');
+      expect(app.rooms.connections('a')).toBe(1);
+    } finally {
+      leaveOwnerRoom();
+      setAccount(null);
+    }
+  });
+
+  it('возврат на вкладку без комнаты: свежая версия с другого устройства приходит событием, не чаще раза в 5 с', async () => {
+    const cloud = await ownerSetup();
+    app.db.exec('DELETE FROM invites');
+    resetWakeForTests();
+    const mine = (await call(app, 'GET', '/api/projects/a', undefined, { token: owner.token })).body.project as Project;
+    await storage.save(mine);
+    await cloud.flush();
+    openProject((await storage.load('a'))!);
+    const fresh: Project[] = [];
+    const on = (e: Event) => fresh.push((e as CustomEvent<{ project: Project }>).detail.project);
+    document.addEventListener('doska:cloud-fresh', on);
+    try {
+      expect(await catchUpOnWake(1_000_000)).toBe(true);
+      expect(fresh).toHaveLength(0); // на сервере ничего нового
+      editStored(app, 'a', p => { p.name = 'С планшета'; });
+      expect(await catchUpOnWake(1_000_000 + WAKE_MIN_MS - 1)).toBe(false); // слишком часто
+      expect(await catchUpOnWake(1_000_000 + WAKE_MIN_MS)).toBe(true);
+      expect(fresh.map(p => p.name)).toEqual(['С планшета']);
+    } finally {
+      document.removeEventListener('doska:cloud-fresh', on);
+    }
   });
 
   it('ученик в комнате и автор вместе: автор видит ответ ученика сразу', async () => {

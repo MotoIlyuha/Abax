@@ -28,7 +28,7 @@
   - `PUT` с `baseSig` → `409 rev-conflict` (§2.4); `multiHost` и закрытие гостей Free после последнего хоста; `invite-updated` (§3.2, §4.3).
   - **Тесты**: `tests/server/email-invites.test.ts`, дополнения `cloud-room.test.ts` (два устройства владельца, лимит гостей, invite-updated), `projects.test.ts` (конфликт и прежнее слияние), `invites.test.ts`, `auth.test.ts` (список таблиц), миграция V3 поверх базы V2.
 
-- [ ] **TASK-04: Облако без швов на клиенте**
+- [x] **TASK-04: Облако без швов на клиенте**
   - **Файлы**: `src/cloud-sync.ts`, `src/main.ts`, `src/state.ts`, `src/cloud-room.ts`, `src/app.ts`, `index.html`, `src/style.css`.
   - Заглушка не уходит в облако и заменяется облачным проектом (§2.1); `#sync-indicator` (§2.2); автоподключение владельца, вошедшего в аккаунт, + `visibilitychange`/`focus` (§2.3); `baseSig`, копия «(копия с устройства)» и тост «Открыть копию» (§2.4).
   - **Тесты**: дополнения `tests/unit/cloud-sync.test.ts`, `cloud-room.test.ts`.
