@@ -7,6 +7,7 @@ import type {
 import { resolveAnimationMode } from './motion';
 import { setZoomCounter } from './zoom-counter';
 import { initZoomChevron } from './zoom-chevron';
+import { claimMenu, closeMenu, drillMenu, menuShown, openMenu, releaseMenu } from './menu-motion';
 import {
   state, update, onChange, undo, redo, canUndo, canRedo, setTool, setGrid, setCoordLabels, setStyleColor,
   setStyleWidth, setStyleOpacity, pickTool, setNoteColor, selectPreset, presetKind, addElement, replaceElements, pushHistory, uid,
@@ -4780,12 +4781,13 @@ function wireTopbar(): void {
   menuButton.innerHTML = `<span class="logo-mark"><img src="logo.svg" alt="Abax" /></span><span class="logo-menu-mark" aria-hidden="true">${svg('<path d="M4 7h16M4 12h16M4 17h16"/>')}</span>`;
   const menu = document.createElement('div');
   menu.id = 'main-menu';
+  menu.className = 'popup-menu menu-list';
   menu.hidden = true;
   const menuIcon = (icon = '') => `<span class="main-menu-icon" aria-hidden="true">${icon}</span>`;
   const menuItem = (action: string, label: string, icon = '', extra = '') =>
     `<button data-action="${action}">${menuIcon(icon)}<span class="main-menu-text">${label}</span>${extra}</button>`;
   const section = (id: string, label: string, icon: string, content: string) =>
-    `<button class="main-menu-section" data-section="${id}" aria-expanded="false" aria-controls="menu-${id}">${menuIcon(icon)}<span class="main-menu-text">${label}</span><span class="main-menu-chevron" aria-hidden="true">›</span></button><div class="main-submenu" id="menu-${id}" hidden>${content}</div>`;
+    `<button class="main-menu-section" data-section="${id}" aria-expanded="false" aria-controls="menu-${id}">${menuIcon(icon)}<span class="main-menu-text">${label}</span><span class="main-menu-chevron" aria-hidden="true">›</span></button><div class="main-submenu popup-menu menu-list" id="menu-${id}" hidden>${content}</div>`;
   const checkItem = (action: string, label: string) =>
     `<button data-action="${action}" role="menuitemcheckbox" aria-checked="false">${menuIcon()}<span class="main-menu-text">${label}</span><span class="main-menu-check" aria-hidden="true"></span></button>`;
   menu.innerHTML = `${menuItem('home', 'Домой', ICONS.home)}<hr>
@@ -4800,14 +4802,10 @@ function wireTopbar(): void {
     ${menuItem('settings', 'Настройки', ICONS.settings)}<hr>
     ${!doskaApi && !isNativeApp() ? menuItem('app', 'Открыть в приложении', svg('<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 17h6M12 6v7m-3-3 3 3 3-3"/>')) : ''}`;
   document.body.append(menu);
-  const setMenuOpen = (open: boolean) => {
-    menu.hidden = !open;
-    if (!open) {
-      menu.querySelectorAll<HTMLButtonElement>('[data-section]').forEach(button => button.setAttribute('aria-expanded', 'false'));
-      menu.querySelectorAll<HTMLElement>('.main-submenu').forEach(submenu => { submenu.hidden = true; });
-    }
-    menuButton.setAttribute('aria-expanded', String(open));
-    document.body.classList.toggle('main-menu-open', open);
+  const submenus = () => [...menu.querySelectorAll<HTMLButtonElement>('[data-section]')]
+    .map(button => ({ button, panel: document.getElementById(button.getAttribute('aria-controls')!)! }));
+  /** Отметки «Скрыть» и недоступные пункты — по текущему состоянию шапки. */
+  const syncMenuChecks = () => {
     menu.querySelector('[data-action="undo"]')!.setAttribute('aria-checked', String(state.settings.hideUndoRedo));
     menu.querySelector('[data-action="imports"]')!.setAttribute('aria-checked', String(document.body.classList.contains('hide-import-buttons')));
     menu.querySelector('[data-action="hide-export"]')!.setAttribute('aria-checked', String(document.body.classList.contains('hide-export-button')));
@@ -4819,34 +4817,52 @@ function wireTopbar(): void {
       item.title = item.disabled ? 'Не хватает места в шапке' : '';
     }
   };
-  document.addEventListener('topbar-fit', () => { if (!menu.hidden) setMenuOpen(true); });
+  const setMenuOpen = (open: boolean) => {
+    if (open) {
+      syncMenuChecks();
+      if (!menuShown(menu)) {
+        claimMenu('main', () => setMenuOpen(false));
+        openMenu(menu, { from: menuButton, items: () => [...menu.children].filter((c): c is HTMLElement => c instanceof HTMLElement && !c.classList.contains('main-submenu')) });
+      }
+    } else if (menuShown(menu)) {
+      // подменю прячутся сразу: меню втягивается в кнопку вместе с ними
+      for (const { button, panel } of submenus()) { button.setAttribute('aria-expanded', 'false'); closeMenu(panel, true); }
+      closeMenu(menu);
+      releaseMenu('main');
+    }
+    menuButton.setAttribute('aria-expanded', String(open));
+    document.body.classList.toggle('main-menu-open', open);
+  };
+  document.addEventListener('topbar-fit', () => { if (menuShown(menu)) syncMenuChecks(); });
   document.body.classList.toggle('hide-import-buttons', localStorage.getItem('abax.hideImports') === 'true');
   document.body.classList.toggle('hide-export-button', localStorage.getItem('abax.hideExport') === 'true');
-  menuButton.addEventListener('click', () => setMenuOpen(menu.hidden));
+  menuButton.addEventListener('click', () => setMenuOpen(!menuShown(menu)));
   menu.addEventListener('click', e => {
     const target = e.target as HTMLElement;
     const sectionButton = target.closest<HTMLButtonElement>('button[data-section]');
     if (sectionButton) {
+      // подменю одно: открытое втягивается в свой пункт, новое выходит из нажатого
       const opening = sectionButton.getAttribute('aria-expanded') !== 'true';
-      menu.querySelectorAll<HTMLButtonElement>('[data-section]').forEach(button => {
+      for (const { button, panel } of submenus()) {
         const expanded = button === sectionButton && opening;
+        if (expanded === (button.getAttribute('aria-expanded') === 'true')) continue;
         button.setAttribute('aria-expanded', String(expanded));
-        const panel = document.getElementById(button.getAttribute('aria-controls')!);
-        if (panel) panel.hidden = !expanded;
-      });
+        if (expanded) openMenu(panel, { from: button });
+        else closeMenu(panel);
+      }
       return;
     }
     const action = target.closest<HTMLButtonElement>('button[data-action]')?.dataset.action;
     if (!action) return;
-    if (action === 'undo') { setSettings({ hideUndoRedo: !state.settings.hideUndoRedo }); persistSettings(); applyUndoRedoVisibility(); setMenuOpen(true); return; }
+    if (action === 'undo') { setSettings({ hideUndoRedo: !state.settings.hideUndoRedo }); persistSettings(); applyUndoRedoVisibility(); syncMenuChecks(); return; }
     if (action === 'imports') {
       const hidden = document.body.classList.toggle('hide-import-buttons');
-      localStorage.setItem('abax.hideImports', String(hidden)); setMenuOpen(true); return;
+      localStorage.setItem('abax.hideImports', String(hidden)); syncMenuChecks(); return;
     }
     if (action === 'hide-export') {
       const hidden = document.body.classList.toggle('hide-export-button');
       if (hidden) closeExportMenu();
-      localStorage.setItem('abax.hideExport', String(hidden)); setMenuOpen(true); return;
+      localStorage.setItem('abax.hideExport', String(hidden)); syncMenuChecks(); return;
     }
     setMenuOpen(false);
     if (action === 'home') void (async () => { await saveNow(); setView('home'); })();
@@ -4872,8 +4888,8 @@ function wireTopbar(): void {
       openDesktopApp();
     }
   });
-  document.addEventListener('pointerdown', e => { if (!menu.hidden && !menu.contains(e.target as Node) && !menuButton.contains(e.target as Node)) setMenuOpen(false); });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !menu.hidden) { setMenuOpen(false); menuButton.focus(); } });
+  document.addEventListener('pointerdown', e => { if (menuShown(menu) && !menu.contains(e.target as Node) && !menuButton.contains(e.target as Node)) setMenuOpen(false); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && menuShown(menu)) { setMenuOpen(false); menuButton.focus(); } });
   document.getElementById('btn-undo')!.addEventListener('click', () => undo());
   document.getElementById('btn-redo')!.addEventListener('click', () => redo());
   document.getElementById('btn-fit')!.addEventListener('click', () => fitContent());
@@ -4882,18 +4898,28 @@ function wireTopbar(): void {
   exportButton.setAttribute('aria-expanded', 'false');
   const exportMenu = document.createElement('div');
   exportMenu.id = 'export-menu';
+  exportMenu.className = 'popup-menu menu-list';
   exportMenu.hidden = true;
   exportMenu.innerHTML = menu.querySelector<HTMLElement>('#menu-export')!.innerHTML;
   document.body.append(exportMenu);
-  closeExportMenu = () => { exportMenu.hidden = true; exportButton.setAttribute('aria-expanded', 'false'); };
+  closeExportMenu = () => {
+    exportButton.setAttribute('aria-expanded', 'false');
+    if (!menuShown(exportMenu)) return;
+    closeMenu(exportMenu);
+    releaseMenu('export');
+  };
   exportButton.addEventListener('click', () => {
-    if (!exportMenu.hidden) { closeExportMenu(); return; }
-    setMenuOpen(false);
-    const group = exportButton.closest('.topbar-group')!;
-    const bounds = group.getBoundingClientRect();
-    exportMenu.hidden = false;
-    exportMenu.style.left = `${Math.max(8, Math.min(bounds.left, window.innerWidth - exportMenu.offsetWidth - 8))}px`;
-    exportMenu.style.top = `${bounds.bottom + 6}px`;
+    if (menuShown(exportMenu)) { closeExportMenu(); return; }
+    claimMenu('export', closeExportMenu);
+    openMenu(exportMenu, {
+      from: exportButton,
+      // под плашкой экспорта, по её левому краю
+      place: () => {
+        const bounds = exportButton.closest('.topbar-group')!.getBoundingClientRect();
+        exportMenu.style.left = `${Math.max(8, Math.min(bounds.left, window.innerWidth - exportMenu.offsetWidth - 8))}px`;
+        exportMenu.style.top = `${bounds.bottom + 6}px`;
+      },
+    });
     exportButton.setAttribute('aria-expanded', 'true');
   });
   exportMenu.addEventListener('click', e => {
@@ -4902,8 +4928,8 @@ function wireTopbar(): void {
     closeExportMenu();
     menu.querySelector<HTMLButtonElement>(`#menu-export [data-action="${action}"]`)?.click();
   });
-  document.addEventListener('pointerdown', e => { if (!exportMenu.hidden && !exportMenu.contains(e.target as Node) && !exportButton.contains(e.target as Node)) closeExportMenu(); });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !exportMenu.hidden) { closeExportMenu(); exportButton.focus(); } });
+  document.addEventListener('pointerdown', e => { if (menuShown(exportMenu) && !exportMenu.contains(e.target as Node) && !exportButton.contains(e.target as Node)) closeExportMenu(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && menuShown(exportMenu)) { closeExportMenu(); exportButton.focus(); } });
   document.getElementById('btn-present')!.addEventListener('click', togglePresent);
   wireHelpMenu();
   initTopbarFit();
@@ -4965,6 +4991,7 @@ function wireHelpMenu(): void {
   button.innerHTML = svg('<circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.6 2.6 0 0 1 5 .9c0 1.7-2.5 2.3-2.5 4"/><path d="M12 17.2h.01"/>');
   const menu = document.createElement('div');
   menu.id = 'help-menu';
+  menu.className = 'popup-menu menu-list';
   menu.setAttribute('role', 'menu');
   menu.setAttribute('aria-label', 'Помощь и советы');
   menu.hidden = true;
@@ -4976,19 +5003,31 @@ function wireHelpMenu(): void {
   note.textContent = 'Скоро здесь появятся справка и советы по работе с доской.';
   menu.append(title, note);
   document.body.append(menu);
-  const close = () => { menu.hidden = true; button.setAttribute('aria-expanded', 'false'); };
+  const close = () => {
+    button.setAttribute('aria-expanded', 'false');
+    if (!menuShown(menu)) return;
+    closeMenu(menu);
+    releaseMenu('help');
+  };
   const open = () => {
-    menu.hidden = false;
-    const r = button.closest('.topbar-group')!.getBoundingClientRect();
-    menu.style.left = `${Math.max(8, r.right - menu.offsetWidth)}px`;
-    menu.style.bottom = `${window.innerHeight - r.top + 6}px`;
+    claimMenu('help', close);
+    openMenu(menu, {
+      from: button,
+      reverse: true,
+      // над плашкой помощи, по её правому краю
+      place: () => {
+        const r = button.closest('.topbar-group')!.getBoundingClientRect();
+        menu.style.left = `${Math.max(8, r.right - menu.offsetWidth)}px`;
+        menu.style.bottom = `${window.innerHeight - r.top + 6}px`;
+      },
+    });
     button.setAttribute('aria-expanded', 'true');
   };
-  const toggle = () => { if (menu.hidden) open(); else close(); };
+  const toggle = () => { if (menuShown(menu)) close(); else open(); };
   button.addEventListener('click', toggle);
-  document.addEventListener('pointerdown', e => { if (!menu.hidden && !menu.contains(e.target as Node) && !button.contains(e.target as Node)) close(); });
+  document.addEventListener('pointerdown', e => { if (menuShown(menu) && !menu.contains(e.target as Node) && !button.contains(e.target as Node)) close(); });
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && !menu.hidden) { close(); button.focus(); return; }
+    if (e.key === 'Escape' && menuShown(menu)) { close(); button.focus(); return; }
     // F1 — и на доске, и в полях ввода; браузер свою справку не открывает
     if (e.code === 'F1' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && state.view === 'board' && !settingsDialogOpen()) {
       e.preventDefault();
@@ -4997,45 +5036,146 @@ function wireHelpMenu(): void {
   });
 }
 
-// ----- Масштаб в шапке: клик — ввод точного значения -----
+// ----- «Масштаб и вид»: меню над группой в правом нижнем углу -----
 
+/** Цвета фона страницы в подменю «Фон страницы». */
+const PAGE_BACKGROUNDS: readonly [string, string][] = [
+  ['Белый', '#ffffff'], ['Светло-серый', '#f1f1f1'], ['Серый', '#aaaaaa'], ['Тёмно-серый', '#444444'], ['Чёрный', '#000000'],
+  ['Голубой', '#e7f7ff'], ['Сиреневый', '#eeeaff'], ['Розовый', '#fdebef'], ['Жёлтый', '#fff8db'], ['Зелёный', '#edf8e5'],
+];
+const BACKGROUND_ICON = svg('<path d="M12 3C9.5 6.4 5 10 5 14a7 7 0 0 0 14 0c0-4-4.5-7.6-7-11z"/><path d="M12 3v18a7 7 0 0 0 7-7c0-4-4.5-7.6-7-11z" fill="currentColor" stroke="none"/>');
+const BACK_ICON = svg('<path d="M19 12H5"/><path d="M11 6l-6 6 6 6"/>');
+
+type ViewLevel = 'root' | 'grid' | 'background';
+
+/**
+ * Меню «Масштаб и вид»: всегда шириной с группу масштаба и выходит из всей группы (src/menu-motion.ts).
+ * «Тип сетки» и «Фон страницы» открываются внутри того же меню: заголовок со стрелкой «назад» и пункты подменю.
+ */
 function wireZoomInput(): void {
   const label = document.getElementById('zoom-label')!;
   initZoomChevron(label, label.querySelector<HTMLElement>('.zoom-chevron')!);
+  const group = document.querySelector<HTMLElement>('.view-group')!;
+  const gridTrigger = document.getElementById('view-grid-icon')!;
   const menu = document.createElement('div');
-  menu.id = 'view-menu'; menu.hidden = true;
+  menu.id = 'view-menu';
+  menu.className = 'popup-menu menu-list';
+  menu.hidden = true;
   document.body.append(menu);
-  const close = () => { menu.hidden = true; label.setAttribute('aria-expanded', 'false'); };
-  const render = () => {
-    const zoomIcon = svg('<circle cx="10" cy="10" r="6"/><path d="M14.5 14.5L21 21M10 7v6M7 10h6"/>');
-    const row = (action: string, icon: string, label: string, arrow = '') => `<button ${action}><span class="view-icon">${icon}</span><span class="view-text">${label}</span>${arrow}</button>`;
-    // в режиме просмотра по ссылке тип сетки и фон страницы не меняются: пункты не показываем
+  let level: ViewLevel = 'root';
+  let page: HTMLElement | null = null;
+
+  const zoomIcon = svg('<circle cx="10" cy="10" r="6"/><path d="M14.5 14.5L21 21M10 7v6M7 10h6"/>');
+  const row = (attrs: string, icon: string, text: string, sub = false) =>
+    `<button ${attrs}><span class="view-icon">${icon}</span><span class="view-text">${text}</span>${sub ? '<span class="view-arrow" aria-hidden="true">›</span>' : ''}</button>`;
+  const makePage = (lvl: ViewLevel, html: string): HTMLElement => {
+    const p = document.createElement('div');
+    p.className = 'view-page';
+    p.dataset.level = lvl;
+    p.innerHTML = html;
+    return p;
+  };
+  const subTitle = (lvl: 'grid' | 'background') => (lvl === 'grid' ? 'Тип сетки' : 'Фон страницы');
+  const subIcon = (lvl: 'grid' | 'background') => (lvl === 'grid' ? GRID_ICONS.square : BACKGROUND_ICON);
+  const rootPage = (): HTMLElement => {
+    // в режиме просмотра по ссылке тип сетки и фон страницы не меняются: пунктов нет
     const viewOnly = state.linkMode !== null;
-    const gridRows = viewOnly ? '' : `${row('data-view="grid"', GRID_ICONS.square, 'Тип сетки', '›')}<div id="view-grid-options" hidden></div>
-      ${row('data-view="background"', svg('<path d="M12 3C9.5 6.4 5 10 5 14a7 7 0 0 0 14 0c0-4-4.5-7.6-7-11z"/><path d="M12 3v18a7 7 0 0 0 7-7c0-4-4.5-7.6-7-11z" fill="currentColor" stroke="none"/>'), 'Фон страницы', '›')}<div id="view-color-options" hidden></div>`;
-    menu.innerHTML = `${row('data-view="fullscreen"', svg('<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/>'), 'Полный экран')}<hr>
-      ${gridRows}
-      ${row('data-view="fit"', ICONS.fit, 'Показать всё')}<hr>
+    const subRows = viewOnly ? '' : row('data-view="grid"', subIcon('grid'), subTitle('grid'), true) + row('data-view="background"', subIcon('background'), subTitle('background'), true);
+    return makePage('root', `${row('data-view="fullscreen"', svg('<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/>'), 'Полный экран')}<hr>
+      ${subRows}${row('data-view="fit"', ICONS.fit, 'Показать всё')}<hr>
       ${[50, 70, 100, 200, 400, 800].map(n => row(`data-zoom="${n}"`, zoomIcon, `${n}%`)).join('')}
-      ${row('data-view="custom"', zoomIcon, 'Другой масштаб…')}`;
-    const options = menu.querySelector<HTMLElement>('#view-grid-options');
-    if (options) {
+      ${row('data-view="custom"', zoomIcon, 'Другой масштаб…')}`);
+  };
+  const check = (on: boolean) => (on ? '<span class="view-check" aria-hidden="true">✓</span>' : '');
+  const subPage = (lvl: 'grid' | 'background'): HTMLElement => {
+    // заголовок — тот же пункт, что в меню (иконка, название, стрелка), поверх — стрелка «назад»
+    const p = makePage(lvl, `<button class="view-back" data-view="back" aria-label="Назад"><span class="view-icon"><span class="vb-arrow">${BACK_ICON}</span><span class="vb-ghost">${subIcon(lvl)}</span></span><span class="view-text">${subTitle(lvl)}</span><span class="view-arrow vb-ghost" aria-hidden="true">›</span></button><hr>`);
+    if (lvl === 'grid') {
+      const labels = state.board.coordLabels !== false;
       for (const g of Object.keys(GRID_LABELS) as GridMode[]) {
-        const b = document.createElement('button'); b.innerHTML = `${gridIcon(g, state.board.coordLabels !== false)}<span>${GRID_LABELS[g]}</span>${g === state.board.grid ? '✓' : ''}`;
-        b.addEventListener('click', () => { setGrid(g); void saveNow(); close(); }); options.append(b);
+        const b = document.createElement('button');
+        b.dataset.grid = g;
+        b.innerHTML = `<span class="view-icon">${gridIcon(g, labels)}</span>`;
+        const text = document.createElement('span');
+        text.className = 'view-text';
+        text.textContent = GRID_LABELS[g];
+        b.append(text);
+        b.insertAdjacentHTML('beforeend', check(g === state.board.grid));
+        p.append(b);
       }
       const coordSwitch = coordLabelsSwitch();
-      if (coordSwitch) options.append(coordSwitch);
+      if (coordSwitch) p.append(coordSwitch);
+    } else {
+      const current = state.board.backgroundColor ?? '#ffffff';
+      for (const [name, color] of PAGE_BACKGROUNDS) {
+        const b = document.createElement('button');
+        b.dataset.bg = color;
+        const icon = document.createElement('span');
+        icon.className = 'view-icon';
+        const swatch = document.createElement('span');
+        swatch.className = 'view-swatch';
+        swatch.style.background = color;
+        icon.append(swatch);
+        const text = document.createElement('span');
+        text.className = 'view-text';
+        text.textContent = name;
+        b.append(icon, text);
+        b.insertAdjacentHTML('beforeend', check(color === current));
+        p.append(b);
+      }
     }
+    return p;
   };
-  const group = document.querySelector<HTMLElement>('.view-group')!;
+  const pageFor = (lvl: ViewLevel) => (lvl === 'root' ? rootPage() : subPage(lvl));
+
   const positionMenu = () => {
-    // группа в правом нижнем углу: меню раскрывается вверх, по правому краю группы
+    // группа в правом нижнем углу: меню раскрывается вверх и всегда шириной с группу
     const r = group.getBoundingClientRect();
-    menu.style.width = `${Math.max(r.width, 240)}px`;
-    menu.style.left = `${Math.max(8, r.right - menu.offsetWidth)}px`; menu.style.right = 'auto';
+    menu.style.width = `${r.width}px`;
+    menu.style.left = `${r.left}px`; menu.style.right = 'auto';
     menu.style.top = 'auto'; menu.style.bottom = `${window.innerHeight - r.top + 6}px`;
   };
+  const close = () => {
+    label.setAttribute('aria-expanded', 'false');
+    if (!menuShown(menu)) return;
+    closeMenu(menu);
+    releaseMenu('view');
+  };
+  const open = (lvl: ViewLevel) => {
+    level = lvl;
+    page = pageFor(lvl);
+    menu.replaceChildren(page);
+    claimMenu('view', close);
+    openMenu(menu, {
+      from: group,
+      whole: true,
+      reverse: true,
+      place: positionMenu,
+      items: () => (page ? [...page.children].filter((c): c is HTMLElement => c instanceof HTMLElement) : []),
+      onSettled: () => { if (menuShown(menu)) positionMenu(); },
+    });
+    label.setAttribute('aria-expanded', 'true');
+  };
+  /** Переход внутри открытого меню: в подменю, назад или из одного подменю в другое. */
+  const go = (target: ViewLevel) => {
+    if (!page || target === level) return;
+    const from = page;
+    const to = pageFor(target);
+    const focused = menu.contains(document.activeElement);
+    if (level === 'root') {
+      drillMenu(menu, from, to, { dir: 'in', row: from.querySelector<HTMLElement>(`[data-view="${target}"]`) ?? undefined, head: to.querySelector<HTMLElement>('.view-back') ?? undefined, bottom: true });
+    } else if (target === 'root') {
+      drillMenu(menu, from, to, { dir: 'out', row: to.querySelector<HTMLElement>(`[data-view="${level}"]`) ?? undefined, head: from.querySelector<HTMLElement>('.view-back') ?? undefined, bottom: true });
+    } else {
+      drillMenu(menu, from, to, { dir: 'swap', bottom: true });
+    }
+    const back = level;
+    level = target;
+    page = to;
+    // с клавиатуры фокус переходит на заголовок подменю, а после «назад» — на пункт, из которого пришли
+    if (focused) (target === 'root' ? to.querySelector<HTMLElement>(`[data-view="${back}"]`) : to.querySelector<HTMLElement>('.view-back'))?.focus();
+  };
+
   for (const [id, factor, icon] of [
     ['zoom-out', 1 / 1.25, '<path d="M5 12h14"/>'],
     ['zoom-in', 1.25, '<path d="M5 12h14M12 5v14"/>'],
@@ -5047,45 +5187,36 @@ function wireZoomInput(): void {
       zoomAtPoint(state.camera.zoom * factor, r.width / 2, r.height / 2);
     });
   }
-  const gridTrigger = document.getElementById('view-grid-icon')!;
   gridTrigger.addEventListener('click', () => {
     if (state.linkMode !== null) return; // в режиме просмотра по ссылке сетку не меняют
-    if (!menu.hidden && !menu.querySelector('#view-grid-options')) { close(); return; }
-    render(); menu.hidden = false; label.setAttribute('aria-expanded', 'true');
-    positionMenu();
-    const options = menu.querySelector<HTMLElement>('#view-grid-options')!;
-    options.hidden = false;
-    menu.replaceChildren(...Array.from(options.children));
+    if (!menuShown(menu)) open('grid');
+    else if (level === 'grid') close();
+    else go('grid');
   });
   label.addEventListener('click', () => {
-    if (!menu.hidden) { close(); return; }
-    render(); menu.hidden = false; label.setAttribute('aria-expanded', 'true');
-    positionMenu();
+    if (menuShown(menu)) close();
+    else open('root');
   });
   menu.addEventListener('click', e => {
-    const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button'); if (!b) return;
-    if (b.dataset.view === 'background') {
-      const options = menu.querySelector<HTMLElement>('#view-color-options')!;
-      const opening = options.hidden;
-      menu.querySelector<HTMLElement>('#view-grid-options')!.hidden = true;
-      options.hidden = !opening;
-      options.innerHTML = '';
-      for (const [name, color] of [['Белый','#ffffff'], ['Светло-серый','#f1f1f1'], ['Серый','#aaaaaa'], ['Тёмно-серый','#444444'], ['Чёрный','#000000'], ['Голубой','#e7f7ff'], ['Сиреневый','#eeeaff'], ['Розовый','#fdebef'], ['Жёлтый','#fff8db'], ['Зелёный','#edf8e5']]) {
-        const item = document.createElement('button'); const swatch = document.createElement('span'); swatch.className = 'view-swatch'; swatch.style.background = color;
-        item.append(swatch, document.createTextNode(name), document.createTextNode((state.board.backgroundColor ?? '#ffffff') === color ? ' ✓' : ''));
-        item.addEventListener('click', event => { event.stopPropagation(); state.board.backgroundColor = color; state.board.elements = [...state.board.elements]; update(true); void saveNow(); close(); }); options.append(item);
-      }
-      return;
+    const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button'); if (!b || !menuShown(menu)) return;
+    const view = b.dataset.view;
+    if (view === 'grid' || view === 'background') { go(view); return; }
+    if (view === 'back') { go('root'); return; }
+    if (b.dataset.grid) { setGrid(b.dataset.grid as GridMode); void saveNow(); close(); return; }
+    if (b.dataset.bg) {
+      state.board.backgroundColor = b.dataset.bg; state.board.elements = [...state.board.elements]; update(true); void saveNow(); close(); return;
     }
-    if (b.dataset.view === 'grid') { const options = menu.querySelector<HTMLElement>('#view-grid-options')!; const opening = options.hidden; menu.querySelector<HTMLElement>('#view-color-options')!.hidden = true; options.hidden = !opening; return; }
-    if (b.dataset.view === 'fullscreen') { if (document.fullscreenElement) void document.exitFullscreen(); else void document.documentElement.requestFullscreen(); }
-    if (b.dataset.view === 'fit') fitContent();
+    if (view === 'fullscreen') { if (document.fullscreenElement) void document.exitFullscreen(); else void document.documentElement.requestFullscreen(); }
+    if (view === 'fit') fitContent();
     if (b.dataset.zoom) { const r = canvas.getBoundingClientRect(); zoomAtPoint(Number(b.dataset.zoom) / 100, r.width / 2, r.height / 2); }
-    if (b.dataset.view === 'custom') { close(); openZoomInput(label); return; }
+    if (view === 'custom') { close(); openZoomInput(label); return; }
     close();
   });
-  document.addEventListener('pointerdown', e => { if (!menu.hidden && !menu.contains(e.target as Node) && !label.contains(e.target as Node) && !gridTrigger.contains(e.target as Node)) close(); });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !menu.hidden) { close(); label.focus(); } });
+  // ширина группы меняется (число масштаба, узкое окно) — меню вместе с ней
+  new ResizeObserver(() => { if (menuShown(menu)) positionMenu(); }).observe(group);
+  window.addEventListener('resize', () => { if (menuShown(menu)) positionMenu(); });
+  document.addEventListener('pointerdown', e => { if (menuShown(menu) && !menu.contains(e.target as Node) && !label.contains(e.target as Node) && !gridTrigger.contains(e.target as Node)) close(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && menuShown(menu)) { close(); label.focus(); } });
 }
 
 /** Поле вместо подписи масштаба: Enter применяет (ошибку объясняет подсказка), Esc и уход из поля с ошибкой — отмена. */

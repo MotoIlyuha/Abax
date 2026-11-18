@@ -2,6 +2,7 @@
 // и загрузка своей картинки. Эмодзи (src/emoji-data.json, см. scripts/emoji.mjs) грузятся
 // отдельным куском при первом открытии окна.
 
+import { claimMenu, closeMenu, openMenu, releaseMenu, settleMenu } from './menu-motion';
 import { svg } from './toolbar';
 
 /** Категория → [эмодзи, «название и теги» в нижнем регистре]. */
@@ -39,11 +40,14 @@ export function iconPickerOpen(): boolean {
   return open !== null;
 }
 
-export function closeIconPicker(): void {
+/** Закрыть окно; instant — без анимации (окно сменяется другим или меняется размер окна). */
+export function closeIconPicker(instant = false): void {
   if (!open) return;
-  open.off();
-  open.el.remove();
+  const { el, off } = open;
   open = null;
+  off();
+  releaseMenu('icon');
+  closeMenu(el, instant);
 }
 
 /** Картинка → квадрат UPLOAD_PX (обрезка по центру) в PNG; null — не прочиталась. */
@@ -72,9 +76,12 @@ async function fileToIcon(file: File): Promise<string | null> {
  */
 export function openIconPicker(anchor: HTMLElement, current: string | null, onPick: (icon: string | null) => void): void {
   if (open?.anchor === anchor) { closeIconPicker(); return; }
-  closeIconPicker();
+  closeIconPicker(true);
+  // прошлое окно ещё втягивается в свою кнопку — убираем его, чтобы id не повторялся
+  for (const old of document.querySelectorAll<HTMLElement>('#icon-picker')) settleMenu(old);
   const el = document.createElement('div');
   el.id = 'icon-picker';
+  el.className = 'popup-menu';
   el.setAttribute('role', 'dialog');
   el.setAttribute('aria-label', 'Иконка проекта');
 
@@ -130,7 +137,8 @@ export function openIconPicker(anchor: HTMLElement, current: string | null, onPi
   foot.append(upload, file);
   el.append(head, tabs, body, foot);
   document.body.appendChild(el);
-  place(el, anchor);
+  claimMenu('icon', () => closeIconPicker());
+  openMenu(el, { from: anchor, place: () => place(el, anchor), remove: true, items: () => [head, tabs, body, foot] });
 
   const pick = (emoji: string) => { closeIconPicker(); onPick(emoji); };
   const emojiButton = ([emoji, words]: [string, string]): HTMLButtonElement => {
@@ -252,15 +260,16 @@ export function openIconPicker(anchor: HTMLElement, current: string | null, onPi
     if (!el.contains(t) && !anchor.contains(t)) closeIconPicker();
   };
   const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeIconPicker(); };
+  const onResize = () => closeIconPicker(true);
   document.addEventListener('pointerdown', onDown, true);
   document.addEventListener('keydown', onKey, true);
-  window.addEventListener('resize', closeIconPicker);
+  window.addEventListener('resize', onResize);
   open = {
     el, anchor,
     off: () => {
       document.removeEventListener('pointerdown', onDown, true);
       document.removeEventListener('keydown', onKey, true);
-      window.removeEventListener('resize', closeIconPicker);
+      window.removeEventListener('resize', onResize);
     },
   };
   search.focus();
