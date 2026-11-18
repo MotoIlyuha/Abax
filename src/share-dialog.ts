@@ -144,6 +144,11 @@ function tabbable(e: HTMLElement, root: HTMLElement): boolean {
 }
 const FOCUSABLE = 'button, input, select, textarea, summary, a[href], [tabindex]';
 
+/** Значение для атрибутного селектора `[data-key="…"]`: экранируются кавычки и обратная косая (CSS.escape в jsdom нет). */
+function attrValue(s: string): string {
+  return s.replace(/["\\]/g, '\\$&').replace(/\n/g, '\\a ');
+}
+
 // ----- Окно -----
 
 let current: { close(): void } | null = null;
@@ -801,7 +806,7 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
       p2pBox.appendChild(stopBtn);
       renderParticipants(p2pBox);
     }
-    if (focusKey) p2pBox.querySelector<HTMLElement>(`[data-key="${CSS.escape(focusKey)}"]`)?.focus();
+    if (focusKey) p2pBox.querySelector<HTMLElement>(`[data-key="${attrValue(focusKey)}"]`)?.focus();
   }
 
   /** Размещение блоков: без облака путь без сервера — первым и развёрнут; с облаком — свёрнут, но не скрыт. */
@@ -942,7 +947,7 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
           c.append(yes, no);
           li.appendChild(c);
         } else {
-          const rel = btn('share-inline-btn', 'Освободить', () => { aliasUi.confirmRelease = f; renderSettings(); settingsBox.querySelector<HTMLElement>(`[data-key="release-no-${CSS.escape(f)}"]`)?.focus(); }, `Освободить адрес ${f}`);
+          const rel = btn('share-inline-btn', 'Освободить', () => { aliasUi.confirmRelease = f; renderSettings(); settingsBox.querySelector<HTMLElement>(`[data-key="release-no-${attrValue(f)}"]`)?.focus(); }, `Освободить адрес ${f}`);
           rel.dataset.key = `release-${f}`;
           li.appendChild(rel);
         }
@@ -1059,7 +1064,7 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
     }
     people.appendChild(maxRow);
     settingsBox.appendChild(people);
-    if (focusKey) settingsBox.querySelector<HTMLElement>(`[data-key="${CSS.escape(focusKey)}"]`)?.focus();
+    if (focusKey) settingsBox.querySelector<HTMLElement>(`[data-key="${attrValue(focusKey)}"]`)?.focus();
     if (cloudShareAvailable() && cloudSynced() && aliasUi.loadedFor !== state.project.id) void loadAlias();
   }
 
