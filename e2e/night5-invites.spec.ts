@@ -2,7 +2,7 @@
 // к просмотру только для чтения и приглашение по почте внутри приложения.
 import { expect, test } from '@playwright/test';
 import { Board } from './fixtures';
-import { createInvite, device, login, openAt, stateOf, useNight5Server, userIdOf } from './night5-helpers';
+import { createInvite, device, login, openAt, shareTab, stateOf, useNight5Server, userIdOf } from './night5-helpers';
 
 const env = useNight5Server();
 
@@ -30,6 +30,7 @@ test.describe('приглашения', () => {
     await g.mouse.move(box.x + 700, box.y + 500);
     await g.mouse.down();
     await g.mouse.move(box.x + 800, box.y + 600, { steps: 3 });
+    await shareTab(a, 'settings'); // Ночь №6: права страниц — на вкладке «Настройки доступа»
     const right = (id: string) => a.locator(`#share-dialog .share-page-right[data-page-id="${id}"] select`);
     await right(first).selectOption('hidden');
     await expect.poll(() => stateOf(g, s => s.pageId as string), { timeout: 10000 }).toBe(other);
@@ -65,6 +66,7 @@ test.describe('приглашения', () => {
     const link = await createInvite(a);
     const pid = await stateOf(a, s => s.project.id as string);
     await expect.poll(() => stateOf(a, s => s.collabRole), { timeout: 15000 }).toBe('host');
+    await shareTab(a, 'settings');
     await a.locator('#share-dialog select[data-field="maxGuests"]').selectOption('1');
     await expect.poll(() => srv.rooms.projectOf(pid)?.permissions?.maxGuests, { timeout: 10000 }).toBe(1);
 
@@ -103,12 +105,12 @@ test.describe('приглашения', () => {
     const input = box.locator('.share-email-input');
     await expect(input).toBeVisible({ timeout: 15000 });
     await input.fill('Student@Abax.example');
-    await box.locator('.share-email-role').selectOption('view');
+    await box.locator('.share-email-role').selectOption('reader'); // Ночь №6: роли Редактор / Комментатор / Читатель
     await box.locator('.share-email-send').click();
     const item = box.locator('.share-email-item');
     await expect(item).toHaveCount(1, { timeout: 10000 });
     await expect(item.locator('.share-email-addr')).toHaveText('student@abax.example');
-    await expect(item.locator('.share-email-meta')).toContainText('читатель');
+    await expect(item.locator('.share-email-meta')).toContainText('Читатель');
     const mail = outbox.find(m => m.to === 'student@abax.example');
     expect(mail?.text).toMatch(/\?route=collab&token=[A-Za-z0-9_-]+/);
 

@@ -343,3 +343,27 @@ describe('вкладка «Настройки доступа»', () => {
     expect(dlg().querySelector('.share-alias .share-people')).toBeNull();
   });
 });
+
+describe('роль общей ссылки до её создания', () => {
+  it('выбор роли без ссылки ничего не создаёт; выключатель создаёт ссылку с выбранной ролью', async () => {
+    setSyncedRev('p1', 3);
+    const calls: [string, string, any][] = [];
+    setApiForTests(fakeApi((m, p, body) => {
+      calls.push([m, p, body]);
+      if (m === 'GET' && p.startsWith('/api/invites?')) return { invite: null };
+      if (m === 'GET' && p.endsWith('/email-invites')) return { invites: [] };
+      if (m === 'POST' && p === '/api/invites') return { token: 'T', url: 'u', prettyUrl: null, defaultRole: 'view', role: body.defaultRole, allowCopy: true, pageRights: {}, enabled: true, alias: null };
+      return new ApiError(404, 'not-found');
+    }));
+    await openShareDialog(deps());
+    await flush(6);
+    const sel = q<HTMLSelectElement>('select.share-link-role');
+    sel.value = 'reader';
+    sel.dispatchEvent(new Event('change'));
+    await flush(4);
+    expect(calls.some(c => c[0] === 'POST')).toBe(false);
+    q<HTMLButtonElement>('.share-switch').click();
+    await flush(6);
+    expect(calls.find(c => c[0] === 'POST')![2]).toMatchObject({ defaultRole: 'reader', enabled: true });
+  });
+});

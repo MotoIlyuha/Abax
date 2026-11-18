@@ -180,6 +180,9 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
   let statusKey = '';
   const cloudUi = { starting: false, error: null as string | null, askRelay: false, relayDraft: savedRelayUrl() };
   let lanChoice = 0;
+  /** Кто сейчас на доске (для перезапроса приглашений при входе и выходе). */
+  let presentKey = '';
+  let emailsTimer = 0;
   /** Ошибка последнего действия без облака (например, лимит редакторов) — видна в окне, а не системным alert. */
   let p2pMessage = '';
 
@@ -273,7 +276,8 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
   linkRow.dataset.key = 'link';
   const linkRoleSel = selectEl('share-invite-select share-link-role', roleOptions(), 'editor', 'Роль по общей ссылке');
   linkRoleSel.dataset.field = 'role';
-  linkRoleSel.addEventListener('change', () => { void changeLink({ defaultRole: linkRoleSel.value as StoredRole }); });
+  // до создания ссылки роль — лишь выбор формы: ссылку создаёт выключатель (с этой ролью)
+  linkRoleSel.addEventListener('change', () => { if (link) void changeLink({ defaultRole: linkRoleSel.value as StoredRole }); });
   const linkSwitch = btn('share-switch', '', () => { void toggleLink(); });
   linkSwitch.setAttribute('role', 'switch');
   linkSwitch.setAttribute('aria-label', 'Общая ссылка');
@@ -471,6 +475,18 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
       return personRow(prev, { bg: preset.badgeBg, fg: preset.badgeText }, getParticipantInitials(u.name), u.name, meta);
     });
     presentEmpty.hidden = guests.length > 0;
+    // кто-то вошёл или вышел — у приглашений по почте мог появиться «заходил(а)»: список перезапрашивается
+    const who = guests.map(g => g.userId).sort((x, y) => x - y).join(',');
+    if (who !== presentKey) {
+      presentKey = who;
+      if (cloudShareAvailable() && cloudSynced() && loadedFor === state.project.id) {
+        clearTimeout(emailsTimer);
+        emailsTimer = window.setTimeout(() => {
+          const id = state.project.id;
+          void fetchEmailInvites(id).then(list => { if (state.project.id === id && current) { emails = list; renderEmails(); } }, () => {});
+        }, 600);
+      }
+    }
   }
 
   function renderAccess(): void {
@@ -1081,6 +1097,7 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
     if (!current) return;
     current = null;
     clearInterval(timer);
+    clearTimeout(emailsTimer);
     document.removeEventListener(PRESENCE_EVENT, onPresence);
     dlg.remove();
     const back = opener && opener.isConnected ? opener : document.getElementById('btn-share');
