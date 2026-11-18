@@ -19,7 +19,7 @@ import { myCursorId, onProfileChange } from './profile';
 import { fxForget, fxMove } from './cursor-fx';
 import { settingsDialogOpen } from './settings-dialog';
 import { presenting, requestRender, renderScene } from './renderer';
-import { animateCameraTo, cancelCameraAnim } from './camera-anim';
+import { animateCameraTo, cancelCameraAnim, clampZoom, motionReduced } from './camera-anim';
 import { cancelActiveInteraction, onCancelInteraction } from './interaction';
 
 /** Плавный перелёт камеры к мировой точке (SPEC_NIGHT5 §8); прерывается жестом пользователя. */
@@ -272,8 +272,48 @@ export function initController(canvas: HTMLCanvasElement): void {
     state.liveEdit = orig.size === state.selection.size;
   }
 
+  /** Плавный масштаб: событие колеса сдвигает цель, кадры подтягивают к ней текущий масштаб вокруг курсора. */
+  const ZOOM_SMOOTH_TAU_MS = 90;
+  let zoomGlide: { target: number; sx: number; sy: number; last: number; raf: number; set: number } | null = null;
+
+  function stopZoomGlide(): void {
+    if (!zoomGlide) return;
+    cancelAnimationFrame(zoomGlide.raf);
+    zoomGlide = null;
+  }
+
+  function zoomGlideTick(t: number): void {
+    const g = zoomGlide;
+    if (!g) return;
+    // камеру изменили не мы (перетаскивание, перелёт, ввод масштаба) — цель устарела
+    if (Math.abs(state.camera.zoom - g.set) > 1e-9) { zoomGlide = null; return; }
+    const dt = Math.min(Math.max(t - g.last, 0), 50);
+    g.last = t;
+    const cur = state.camera.zoom;
+    const k = 1 - Math.exp(-dt / ZOOM_SMOOTH_TAU_MS);
+    // интерполяция по логарифму: одинаковая скорость приближения и удаления
+    let next = Math.exp(Math.log(cur) + (Math.log(g.target) - Math.log(cur)) * k);
+    const done = Math.abs(Math.log(g.target / next)) < 0.0005;
+    if (done) next = g.target;
+    zoomAtPoint(next, g.sx, g.sy);
+    g.set = state.camera.zoom;
+    if (done) { zoomGlide = null; return; }
+    g.raf = requestAnimationFrame(zoomGlideTick);
+  }
+
   function zoomAtScreen(sx: number, sy: number, factor: number): void {
-    zoomAtPoint(state.camera.zoom * factor, sx, sy);
+    if (motionReduced() || typeof requestAnimationFrame !== 'function') {
+      zoomAtPoint(state.camera.zoom * factor, sx, sy);
+      return;
+    }
+    const base = zoomGlide && Math.abs(state.camera.zoom - zoomGlide.set) <= 1e-9 ? zoomGlide.target : state.camera.zoom;
+    const target = clampZoom(base * factor);
+    if (zoomGlide) {
+      zoomGlide.target = target; zoomGlide.sx = sx; zoomGlide.sy = sy;
+      return;
+    }
+    zoomGlide = { target, sx, sy, last: performance.now(), raf: 0, set: state.camera.zoom };
+    zoomGlide.raf = requestAnimationFrame(zoomGlideTick);
   }
 
   function zoomAtCenter(factor: number): void {
@@ -1415,7 +1455,7 @@ export function initController(canvas: HTMLCanvasElement): void {
   });
   addGestureProbe(() => (action !== null && action.kind !== 'pan' && action.kind !== 'marquee' && action.kind !== 'fade') || nudge !== null);
   // любой жест пользователя прерывает плавный перелёт камеры (SPEC_NIGHT5 §8)
-  canvas.addEventListener('pointerdown', () => cancelCameraAnim(), { capture: true });
+  canvas.addEventListener('pointerdown', () => { cancelCameraAnim(); stopZoomGlide(); }, { capture: true });
   canvas.addEventListener('wheel', () => cancelCameraAnim(), { capture: true, passive: true });
   canvas.addEventListener('pointerdown', onPointerDown);
   canvas.addEventListener('pointermove', onPointerMove);
