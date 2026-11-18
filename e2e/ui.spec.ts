@@ -319,6 +319,73 @@ test.describe('настройки доски', () => {
     }
   });
 
+  test('привязка к сетке — переключатель в меню «Масштаб и вид»', async ({ board, page }) => {
+    await page.locator('#zoom-label').click();
+    const sw = page.locator('#view-menu .view-switch', { hasText: 'Привязка к сетке' });
+    await expect(sw.locator('.view-icon svg')).toHaveCount(1);
+    const cb = sw.locator('input[role="switch"]');
+    await expect(cb).not.toBeChecked();
+    await sw.click();
+    await expect(cb).toBeChecked();
+    // меню не закрывается: можно сразу переключить обратно
+    await expect(page.locator('#view-menu')).toBeVisible();
+    expect((await board.state()).settings.snapToGrid).toBe(true);
+    // та же настройка, что в меню настроек
+    await page.keyboard.press('Escape');
+    await page.locator('#btn-settings').dispatchEvent('click');
+    await expect(page.locator('#settings-popover label', { hasText: 'Привязка к сетке' }).locator('input')).toBeChecked();
+  });
+
+  test('меню «Скрыть» — переключатели, меню не закрывается', async ({ board, page }) => {
+    await page.locator('#btn-home').click();
+    await page.locator('#main-menu [data-section="hide"]').click();
+    const undo = page.locator('#menu-hide .main-switch', { hasText: 'Кнопки отмены и повтора' });
+    const imports = page.locator('#menu-hide .main-switch', { hasText: 'Кнопки импорта' });
+    await expect(undo.locator('input[role="switch"]')).not.toBeChecked();
+    await undo.click();
+    await expect(undo.locator('input')).toBeChecked();
+    expect((await board.state()).settings.hideUndoRedo).toBe(true);
+    await imports.click();
+    await expect(page.locator('.import-group')).toBeHidden();
+    await expect(page.locator('#main-menu')).toBeVisible();
+    await imports.click();
+    await expect(page.locator('.import-group')).toBeVisible();
+    // после закрытия и открытия меню состояние то же
+    await page.keyboard.press('Escape');
+    await page.locator('#btn-home').click();
+    await page.locator('#main-menu [data-section="hide"]').click();
+    await expect(undo.locator('input')).toBeChecked();
+    await expect(imports.locator('input')).not.toBeChecked();
+  });
+
+  test('«Скрыть»: при улучшенных анимациях группа уезжает влево и растворяется, без анимаций — сразу', async ({ board, page }) => {
+    const undoGroup = page.locator('.undo-group');
+    const importGroup = page.locator('.import-group');
+    const importX = async () => (await importGroup.boundingBox())!.x;
+    const startX = await importX();
+    await page.locator('#btn-home').click();
+    await page.locator('#main-menu [data-section="hide"]').click();
+    await page.locator('#menu-hide .main-switch', { hasText: 'Кнопки отмены и повтора' }).click();
+    // в пути: сдвиг влево, прозрачность и место под соседом
+    const mid = await undoGroup.evaluate(e => ({ ml: parseFloat(e.style.marginLeft), op: parseFloat(e.style.opacity), z: getComputedStyle(e).zIndex }));
+    expect(mid.ml).toBeLessThan(0);
+    expect(mid.op).toBeLessThan(1);
+    expect(mid.z).toBe('-1');
+    await expect(undoGroup).toBeHidden();
+    // импорт съехал на место отмены
+    expect(await importX()).toBeLessThan(startX - 40);
+    await expect(undoGroup).toHaveAttribute('style', '');
+    // обратно — выезжает
+    await page.locator('#menu-hide .main-switch', { hasText: 'Кнопки отмены и повтора' }).click();
+    await expect(undoGroup).toBeVisible();
+    await expect.poll(importX).toBeCloseTo(startX, 0);
+    // без анимаций — пропадает сразу
+    await page.evaluate(() => document.body.classList.add('no-motion', 'no-ui-anim'));
+    await page.locator('#menu-hide .main-switch', { hasText: 'Кнопки импорта' }).click();
+    expect(await importGroup.isHidden()).toBe(true);
+    void board;
+  });
+
   test('подписи координатной плоскости — переключатель в меню фона', async ({ board, page }) => {
     // в настройках такого пункта больше нет
     await page.locator('#btn-settings').dispatchEvent('click');
@@ -573,9 +640,9 @@ test.describe('вёрстка шапки', () => {
     await page.locator('#btn-home').click();
     await page.locator('#main-menu [data-section="hide"]').click();
     const item = page.locator('#main-menu [data-action="hide-export"]');
-    await expect(item).toHaveAttribute('aria-checked', 'false');
+    await expect(item).not.toBeChecked();
     await item.click();
-    await expect(item).toHaveAttribute('aria-checked', 'true');
+    await expect(item).toBeChecked();
     await expect(page.locator('#btn-export')).toBeHidden();
     await page.reload();
     await board.ready();

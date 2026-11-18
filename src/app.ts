@@ -76,6 +76,8 @@ import { initTaskOverlay, isTeacher } from './task-overlay';
 import { annotationButtons, initCommentsUi } from './comments-ui';
 import { openTaskDialog, taskDialogOpen, type TaskFormValues } from './task-dialog';
 import { TASK_H, TASK_W, createTaskElement } from './task-element';
+import { createToggleSwitch } from './toggle-switch';
+import { setTopbarGroupHidden } from './topbar-hide';
 import {
   browserSetRights, browserShareStatus, startBrowserCloud, startBrowserHost, stopBrowserCloud, stopBrowserHost,
 } from './browser-host';
@@ -123,6 +125,9 @@ const GRID_ICONS: Record<GridMode, string> = {
   square: svg('<rect x="4" y="4" width="7" height="7"/><rect x="13" y="4" width="7" height="7"/><rect x="4" y="13" width="7" height="7"/><rect x="13" y="13" width="7" height="7"/>'),
   coord: svg('<path d="M5 19V5M5 19h14"/><path d="M5 5l-2 3M5 5l2 3M19 19l-3-2M19 19l-3 2"/><circle cx="12" cy="12" r="1"/>'),
 };
+
+/** «Привязка к сетке»: магнит-подкова. */
+const SNAP_ICON = svg('<path d="M6 4h4v9a2 2 0 0 0 4 0V4h4v9a6 6 0 0 1-12 0z"/><path d="M6 8h4M14 8h4"/>');
 
 /** Иконка координатной плоскости с нулём в начале координат — когда деления включены. */
 const COORD_ICON_ZERO = svg('<path d="M5 19V5M5 19h14"/><path d="M5 5l-2 3M5 5l2 3M19 19l-3-2M19 19l-3 2"/><circle cx="12" cy="12" r="1"/><ellipse class="coord-zero" cx="2.6" cy="20.8" rx="1.3" ry="1.9" stroke-width="1.3"/>');
@@ -272,8 +277,11 @@ function applyAnimationMode(): void {
 }
 
 /** Кнопки отмены/повтора в шапке прячутся вместе с разделителями вокруг них (см. style.css). */
-function applyUndoRedoVisibility(): void {
-  document.body.classList.toggle('hide-undo-redo', state.settings.hideUndoRedo);
+/** animate — плавно (при «Улучшенных» анимациях), иначе сразу, как при запуске. */
+function applyUndoRedoVisibility(animate = false): void {
+  const setClass = (hidden: boolean) => document.body.classList.toggle('hide-undo-redo', hidden);
+  if (!animate) { setClass(state.settings.hideUndoRedo); return; }
+  setTopbarGroupHidden(document.querySelector<HTMLElement>('.undo-group')!, state.settings.hideUndoRedo, setClass);
 }
 
 let styleColorTab: 'border' | 'fill' = 'border';
@@ -2002,23 +2010,12 @@ const GRID_LABELS: Record<GridMode, string> = {
 /** Переключатель «Показать деления»: только для координатной плоскости, меняет фон страницы у всех участников. */
 function coordLabelsSwitch(): HTMLElement | null {
   if (state.board.grid !== 'coord') return null;
-  const label = document.createElement('label');
-  label.className = 'grid-switch';
-  const text = document.createElement('span');
-  text.textContent = 'Показать деления';
-  const input = document.createElement('input');
-  input.type = 'checkbox';
-  input.setAttribute('role', 'switch');
-  input.className = 'switch-input';
-  input.checked = state.board.coordLabels !== false;
-  input.addEventListener('change', () => {
-    setCoordLabels(input.checked);
-    void saveNow();
+  return createToggleSwitch({
+    className: 'grid-switch',
+    label: 'Показать деления',
+    checked: state.board.coordLabels !== false,
+    onChange: on => { setCoordLabels(on); void saveNow(); },
   });
-  const track = document.createElement('span');
-  track.className = 'switch-track';
-  label.append(text, input, track);
-  return label;
 }
 
 function gridButton(): HTMLElement {
@@ -2397,7 +2394,7 @@ function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
   cb7.addEventListener('change', () => {
     setSettings({ hideUndoRedo: cb7.checked });
     persistSettings();
-    applyUndoRedoVisibility();
+    applyUndoRedoVisibility(true);
   });
   const span7 = document.createElement('span');
   span7.textContent = 'Скрыть кнопки отмены и повтора';
@@ -4786,8 +4783,6 @@ function wireTopbar(): void {
     `<button data-action="${action}">${menuIcon(icon)}<span class="main-menu-text">${label}</span>${extra}</button>`;
   const section = (id: string, label: string, icon: string, content: string) =>
     `<button class="main-menu-section" data-section="${id}" aria-expanded="false" aria-controls="menu-${id}">${menuIcon(icon)}<span class="main-menu-text">${label}</span><span class="main-menu-chevron" aria-hidden="true">›</span></button><div class="main-submenu" id="menu-${id}" hidden>${content}</div>`;
-  const checkItem = (action: string, label: string) =>
-    `<button data-action="${action}" role="menuitemcheckbox" aria-checked="false">${menuIcon()}<span class="main-menu-text">${label}</span><span class="main-menu-check" aria-hidden="true"></span></button>`;
   menu.innerHTML = `${menuItem('home', 'Домой', ICONS.home)}<hr>
     ${section('import', 'Импорт', ICONS.pdf,
       menuItem('import', 'Импорт документа', ICONS.pdf) + menuItem('image', 'Вставить изображение', ICONS.image, `<kbd>${macKeys('Ctrl+V')}</kbd>`))}
@@ -4795,11 +4790,46 @@ function wireTopbar(): void {
       menuItem('project', 'Скачать проект как файл', ICONS.export) + '<hr>' + menuItem('pdf', 'Экспорт в PDF', ICONS.pdf) + menuItem('png', 'Экспорт в PNG', ICONS.image)
         + '<hr>' + menuItem('link-project', 'Ссылка на проект (просмотр)', svg('<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>')) + menuItem('link-page', 'Ссылка на текущую страницу', svg('<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>')))}<hr>
     ${section('hide', 'Скрыть', svg('<path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M9.9 5.2A10 10 0 0 1 12 5c5 0 8.5 5 9 7a13 13 0 0 1-2.4 3.6M6.3 6.3A13 13 0 0 0 3 12c.5 2 4 7 9 7a10 10 0 0 0 4-.8"/>'),
-      checkItem('undo', 'Кнопки отмены и повтора') + checkItem('imports', 'Кнопки импорта') + checkItem('hide-export', 'Кнопка экспорта'))}
+      '')}
     ${menuItem('task', 'Добавить задание…', svg('<rect x="4" y="3.5" width="16" height="17" rx="2"/><path d="M8 8.5h8M8 12h8"/><path d="M8 16l1.8 1.8L13 14.5"/>'))}
     ${menuItem('settings', 'Настройки', ICONS.settings)}<hr>
     ${!doskaApi && !isNativeApp() ? menuItem('app', 'Открыть в приложении', svg('<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 17h6M12 6v7m-3-3 3 3 3-3"/>')) : ''}`;
   document.body.append(menu);
+  // «Скрыть»: переключатели на пружинах (src/toggle-switch.ts), меню при щелчке не закрывается
+  const hideUndoSwitch = createToggleSwitch({
+    className: 'grid-switch main-switch',
+    label: 'Кнопки отмены и повтора',
+    icon: ICONS.undo,
+    checked: state.settings.hideUndoRedo,
+    onChange: on => { setSettings({ hideUndoRedo: on }); persistSettings(); applyUndoRedoVisibility(true); },
+  });
+  const hideImportsSwitch = createToggleSwitch({
+    className: 'grid-switch main-switch',
+    label: 'Кнопки импорта',
+    icon: ICONS.pdf,
+    checked: localStorage.getItem('abax.hideImports') === 'true',
+    onChange: on => {
+      localStorage.setItem('abax.hideImports', String(on));
+      setTopbarGroupHidden(document.querySelector<HTMLElement>('.import-group')!, on, hidden => document.body.classList.toggle('hide-import-buttons', hidden));
+    },
+  });
+  const hideExportSwitch = createToggleSwitch({
+    className: 'grid-switch main-switch',
+    label: 'Кнопка экспорта',
+    icon: ICONS.export,
+    checked: localStorage.getItem('abax.hideExport') === 'true',
+    onChange: on => {
+      localStorage.setItem('abax.hideExport', String(on));
+      if (on) closeExportMenu();
+      setTopbarGroupHidden(document.querySelector<HTMLElement>('.export-group')!, on, hidden => document.body.classList.toggle('hide-export-button', hidden));
+    },
+  });
+  const switchInput = (row: HTMLElement) => row.querySelector<HTMLInputElement>('input')!;
+  // data-action — на самом переключателе: по нему пункт находят тесты и проверяют доступность
+  switchInput(hideUndoSwitch).dataset.action = 'undo';
+  switchInput(hideImportsSwitch).dataset.action = 'imports';
+  switchInput(hideExportSwitch).dataset.action = 'hide-export';
+  menu.querySelector<HTMLElement>('#menu-hide')!.append(hideUndoSwitch, hideImportsSwitch, hideExportSwitch);
   const setMenuOpen = (open: boolean) => {
     menu.hidden = !open;
     if (!open) {
@@ -4808,15 +4838,16 @@ function wireTopbar(): void {
     }
     menuButton.setAttribute('aria-expanded', String(open));
     document.body.classList.toggle('main-menu-open', open);
-    menu.querySelector('[data-action="undo"]')!.setAttribute('aria-checked', String(state.settings.hideUndoRedo));
-    menu.querySelector('[data-action="imports"]')!.setAttribute('aria-checked', String(document.body.classList.contains('hide-import-buttons')));
-    menu.querySelector('[data-action="hide-export"]')!.setAttribute('aria-checked', String(document.body.classList.contains('hide-export-button')));
+    // настройку могли поменять и в другом месте (окно настроек)
+    switchInput(hideUndoSwitch).checked = state.settings.hideUndoRedo;
+    switchInput(hideImportsSwitch).checked = localStorage.getItem('abax.hideImports') === 'true';
+    switchInput(hideExportSwitch).checked = localStorage.getItem('abax.hideExport') === 'true';
     // элемент, которому в шапке не хватает места, показать нельзя: пункт недоступен
     const { noRoom } = topbarFit();
-    for (const [action, step] of [['imports', 'import'], ['hide-export', 'export']] as const) {
-      const item = menu.querySelector<HTMLButtonElement>(`[data-action="${action}"]`)!;
-      item.disabled = noRoom.has(step);
-      item.title = item.disabled ? 'Не хватает места в шапке' : '';
+    for (const [row, step] of [[hideImportsSwitch, 'import'], [hideExportSwitch, 'export']] as const) {
+      const disabled = noRoom.has(step);
+      switchInput(row).disabled = disabled;
+      row.title = disabled ? 'Не хватает места в шапке' : '';
     }
   };
   document.addEventListener('topbar-fit', () => { if (!menu.hidden) setMenuOpen(true); });
@@ -4838,16 +4869,6 @@ function wireTopbar(): void {
     }
     const action = target.closest<HTMLButtonElement>('button[data-action]')?.dataset.action;
     if (!action) return;
-    if (action === 'undo') { setSettings({ hideUndoRedo: !state.settings.hideUndoRedo }); persistSettings(); applyUndoRedoVisibility(); setMenuOpen(true); return; }
-    if (action === 'imports') {
-      const hidden = document.body.classList.toggle('hide-import-buttons');
-      localStorage.setItem('abax.hideImports', String(hidden)); setMenuOpen(true); return;
-    }
-    if (action === 'hide-export') {
-      const hidden = document.body.classList.toggle('hide-export-button');
-      if (hidden) closeExportMenu();
-      localStorage.setItem('abax.hideExport', String(hidden)); setMenuOpen(true); return;
-    }
     setMenuOpen(false);
     if (action === 'home') void (async () => { await saveNow(); setView('home'); })();
     if (action === 'import') void importDocument();
@@ -5027,6 +5048,15 @@ function wireZoomInput(): void {
       const coordSwitch = coordLabelsSwitch();
       if (coordSwitch) options.append(coordSwitch);
     }
+    // «Привязка к сетке» — та же настройка, что во всплывающем меню настроек (в просмотре по ссылке пункта нет)
+    menu.querySelector<HTMLElement>('#view-color-options')?.after(createToggleSwitch({
+      className: 'grid-switch view-switch',
+      label: 'Привязка к сетке',
+      icon: SNAP_ICON,
+      title: 'Точки, фигуры и рамки при перемещении встают на узлы сетки',
+      checked: state.settings.snapToGrid,
+      onChange: on => { setSettings({ snapToGrid: on }); persistSettings(); },
+    }));
   };
   const group = document.querySelector<HTMLElement>('.view-group')!;
   const positionMenu = () => {
