@@ -1,4 +1,5 @@
 import type { Element, FadeStroke, GridMode, Page, Project, ProjectMeta, Pt } from './types';
+import type { AccessRole, ParticipantCaps } from './access';
 import { state, openProject, setSelection, isDraftId, onDraft, onChange, touchProject, update } from './state';
 import { MAX_PATCH_OPS, applyBoardPatch, diffElements, isBoardPatch, type BoardPatch } from './delta';
 import { gestureActive } from './gesture';
@@ -66,6 +67,16 @@ export interface CollabGotoDetail { pageId: string; x?: number; y?: number; zoom
 /** Событие на document 'doska:collab-presence': участники, их страницы или моя камера изменились (перерисовать присутствие). */
 export const PRESENCE_EVENT = 'doska:collab-presence';
 
+/** Роль и возможности из init / rights. */
+function noteAccess(m: Record<string, unknown>): void {
+  const r = m.role;
+  if (r === 'owner' || r === 'editor' || r === 'commenter' || r === 'reader') myAccessRole = r;
+  const c = m.caps as Record<string, unknown> | undefined;
+  if (c && typeof c === 'object') {
+    myCaps = { comment: c.comment === true, chat: c.chat === true, pointer: c.pointer === true, copy: c.copy === true, summon: c.summon === true };
+  }
+}
+
 let transport: CollabTransport | null = null;
 let myUserId = -1;
 let users: CollabUser[] = [];
@@ -86,6 +97,31 @@ const RESTORE_WINDOW_MS = 10 * 60 * 1000;
 let lastDenied: CollabDenied | null = null;
 /** Автор скрыл от гостя все страницы: на холсте заглушка, ничего не сохраняется и не отправляется. */
 let allHidden = false;
+/** Роль и возможности, присланные хабом (SPEC_NIGHT6 §3.2); старый хаб их не шлёт — null. */
+let myAccessRole: AccessRole | 'owner' | null = null;
+let myCaps: ParticipantCaps | null = null;
+/** Автор моих элементов (by), выданный хабом (SPEC_NIGHT6 §4.2). */
+let myPrincipalId: string | null = null;
+/** Новый секрет хаба на случай, если прежний не подошёл. */
+let pendingResume: string | null = null;
+
+const resumeKey = (projectId: string) => `doska.resume.${projectId}`;
+function storeResume(projectId: string, secret: string): void {
+  try { sessionStorage.setItem(resumeKey(projectId), secret); } catch { /* хранилище недоступно — авторство живёт до переподключения */ }
+}
+/** Секрет возобновления (P2P): при переподключении к той же комнате свои элементы снова свои (SPEC_NIGHT6 §4.3). */
+function handleResume(m: Record<string, unknown>): void {
+  const projectId = (m.project as { id?: unknown } | null | undefined)?.id;
+  if (role === 'host' || typeof projectId !== 'string' || typeof m.resume !== 'string') return;
+  let stored: string | null = null;
+  try { stored = sessionStorage.getItem(resumeKey(projectId)); } catch { /* недоступно */ }
+  if (stored && stored !== m.resume) {
+    pendingResume = m.resume;
+    send({ t: 'resume', secret: stored });
+  } else {
+    storeResume(projectId, m.resume);
+  }
+}
 
 
 export function collabActive(): boolean { return connected; }
@@ -96,6 +132,12 @@ export function myName(): string { return users.find(u => u.userId === myUserId)
 export function isHost(): boolean { return role === 'host'; }
 /** Автор включил автопереход участников за собой. */
 export function hostFollowEnabled(): boolean { return followHost; }
+/** Моя роль в комнате по данным хаба (owner — автор); null — хаб старой версии. */
+export function myCollabRole(): AccessRole | 'owner' | null { return myAccessRole; }
+/** Мои возможности по данным хаба; null — хаб старой версии (действуют прежние правила). */
+export function myCollabCaps(): ParticipantCaps | null { return myCaps; }
+/** Автор моих элементов (поле by), выданный хабом; null — не в комнате или хаб старой версии. */
+export function myPrincipal(): string | null { return myPrincipalId; }
 /** Участники комнаты (как их видит этот клиент: с маскировкой скрытых страниц). */
 export function collabUsers(): readonly CollabUser[] { return users; }
 /** Мой номер участника в комнате (-1 — не подключён). */
@@ -191,6 +233,9 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
       }
       myUserId = m.userId as number;
       myRights = (m.rights as typeof myRights) || myRights;
+      noteAccess(m);
+      myPrincipalId = typeof m.principal === 'string' ? m.principal : null;
+      handleResume(m);
       usersKnown = Array.isArray(m.users);
       if (Array.isArray(m.users)) users = m.users as CollabUser[];
       followHost = m.followHost === true;
@@ -218,6 +263,7 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
       const nextRights = (m.rights as typeof myRights) || myRights;
       if (role === 'guest' && JSON.stringify(nextRights) !== JSON.stringify(myRights)) showPill({ kind: 'info', text: 'Автор изменил права доступа' });
       myRights = nextRights;
+      noteAccess(m);
       // перерисовываем UI — тулбар и список страниц зависят от прав
       setSelection([...state.selection]);
     } else if (m.t === 'project') {
@@ -228,6 +274,13 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
       applyIncomingComments(m.pageId, m.comments);
     } else if (m.t === 'pointer') {
       applyIncomingPointer(m);
+    } else if (m.t === 'resume') {
+      // хаб принял прежний секрет — мои прежние элементы снова мои; не принял — запоминаем новый
+      const pid = state.project.id;
+      if (m.ok === true && typeof m.principal === 'string') myPrincipalId = m.principal;
+      else if (pendingResume) storeResume(pid, pendingResume);
+      pendingResume = null;
+      setSelection([...state.selection]);
     } else if (m.t === 'chat') {
       chatReceive(m);
     } else if (m.t === 'follow-host') {
@@ -1125,6 +1178,10 @@ export function stopCollab(): void {
   usersKnown = false;
   followHost = false;
   myUserId = -1;
+  myAccessRole = null;
+  myCaps = null;
+  myPrincipalId = null;
+  pendingResume = null;
   clearTimeout(viewTimer);
   viewTimer = 0;
   viewSent = null;

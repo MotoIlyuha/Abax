@@ -35,7 +35,7 @@
   - **Тесты**: `tests/server/night6-access.test.ts` (миграция V4 поверх V3, все случаи §5.2–§5.4), дополнения `projects.test.ts` (D2, D7), `cloud-room.test.ts` (D1: гость по почте не снимает запрет у гостя по ссылке; вход по адресу; пауза закрывает 4403), `email-invites.test.ts`, `invites.test.ts`, `profile.test.ts` (`user_version` 4), `auth.test.ts` (список таблиц).
   - **Проверяемый результат**: ссылки Ночи №5 (`?route=collab&token=`) открываются; отзыв и пауза действительно закрывают доступ, в т.ч. просмотр по id при `linkView: false`.
 
-- [ ] **TASK-04: Защита чужих элементов — сервер, оба хаба и подписи**
+- [x] **TASK-04: Защита чужих элементов — сервер, оба хаба и подписи**
   - **Файлы**: `src/element-guard.ts` (новый), `src/room-host.ts`, `electron/room.cjs`, `server/projects.ts`, `server/cloud-room-manager.ts`, `src/sync-conflict.ts`, `src/cloud-room.ts`, `src/collab.ts` (приём `principal`, `resume`, исправляющего ответа).
   - `guardPatch`/`guardPageReplace` (§4.1) в `acceptPatch` и `mergePages` обоих хабов и в `POST /api/projects/:id/patch` (`refused`); проставление `by` новым элементам гостей всегда, защита — при `protectElements`; при защите гость не добавляет страниц и не меняет настройки страницы (Решение 18).
   - Автор: `u:<userId>` из сессии (облако; гость по ссылке вызывает `api.ensureSession()`), `c:<id>` + секрет возобновления `{t:'resume'}` в P2P-хабах (§4.2, §4.3).

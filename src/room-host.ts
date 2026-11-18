@@ -10,6 +10,7 @@ import { sanitizeElement } from './file';
 import { CLOSE_FREE_LIMIT, CLOSE_ROOM_FULL, PROTO } from './collab-transport';
 import { CHAT_HISTORY, createRateLimiter, normalizeChatText, type ChatMessage } from './room-chat';
 import { cleanCursorId } from './cursors';
+import { guardPageReplace, guardPatch, type GuardWho } from './element-guard';
 import { addCommentReply, createCommentThread, resolveCommentThread, toggleElementReaction } from './comments';
 import { mergeGuestTask, mergeHostTask, projectTaskForRole, submitTaskAttempt, updateStudentDraft } from './task-element';
 
@@ -153,6 +154,8 @@ interface Client {
   view: ParticipantView | null;
   /** Ограничитель частоты сообщений чата. */
   chatOk: (now: number) => boolean;
+  /** Участник уже присылал правки (после этого секрет возобновления не принимается). */
+  edited: boolean;
 }
 
 /** Где участник смотрит: страница, центр экрана в мировых координатах, зум. */
@@ -293,23 +296,10 @@ export function guardedElement(known: Element | undefined, incoming: Element): E
   return mergeGuestTask(known, incoming) as Element;
 }
 
-/** Страница участника поверх страницы автора с защитой заданий. */
-function guardedPage(known: Page, incoming: Page): Page {
-  if (!incoming.elements.some(isTask)) return incoming;
-  const byId = new Map(known.elements.map(e => [e.id, e]));
-  return { ...incoming, elements: incoming.elements.map(el => guardedElement(byId.get(el.id), el)) };
-}
-
 /** Элемент от автора поверх известного: ввод ученика в задании остаётся хабу. */
 export function hostElement(known: Element | undefined, incoming: Element): Element {
   if (!isTask(incoming) || !known || !isTask(known)) return incoming;
   return mergeHostTask(known, incoming) as Element;
-}
-
-function hostPage(known: Page, incoming: Page): Page {
-  if (!incoming.elements.some(isTask)) return incoming;
-  const byId = new Map(known.elements.map(e => [e.id, e]));
-  return { ...incoming, elements: incoming.elements.map(el => hostElement(byId.get(el.id), el)) };
 }
 
 /** Идентификатор автора реакции или комментария из сообщения участника: короткая строка без управляющих символов. */
@@ -325,6 +315,16 @@ function keepHubComments(known: Page, incoming: Page): Page {
   if (known.comments === incoming.comments) return incoming;
   const { comments: _c, ...rest } = incoming;
   return known.comments ? { ...rest, comments: known.comments } : rest;
+}
+
+/** Случайные байты в base64url / hex (браузер и Node: Web Crypto). */
+function randomToken(bytes: number, hex = false): string {
+  const b = new Uint8Array(bytes);
+  globalThis.crypto.getRandomValues(b);
+  if (hex) return [...b].map(x => x.toString(16).padStart(2, '0')).join('');
+  let bin = '';
+  for (const x of b) bin += String.fromCharCode(x);
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 const decoder = new TextDecoder();
@@ -377,6 +377,8 @@ export class Room {
   followHost = false;
   /** Слепок permissions проекта, известный хабу: его смену хаб доносит до гостей (SPEC_NIGHT5 §3.2, SPEC_NIGHT6 §3.3). */
   permsKey = '{}';
+  /** Секреты возобновления P2P-участников → их автор элементов (SPEC_NIGHT6 §4.3): только в памяти комнаты. */
+  resumes = new Map<string, string>();
 
   constructor(readonly code: string, private readonly opts: { now: () => number; awayMs: number; maxEditors: () => number }) {}
 
@@ -585,11 +587,43 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
     return { rights: rightsOf(info.uid), allowCopy: caps.copy, role: roleOf(info), caps };
   };
 
-  const initFor = (info: Client) => ({
-    t: 'init', proto: PROTO, userId: info.uid, color: info.color, name: info.name,
-    project: projectFor(info), ...accessFor(info), users: usersFor(info),
-    patches: true, chat: room.chat, followHost: room.followHost,
+  /** Автор элементов участника (у автора доски — нет: его элементы без поля by). */
+  const principalOf = (info: Client): string | null => (info.host ? null : room.access.get(info.uid)?.principal ?? null);
+  /** Кто правит: владелец, автор элементов участника и включена ли защита (SPEC_NIGHT6 §4). */
+  const whoOf = (info: Client | null): GuardWho => ({
+    privileged: !info || info.host, principal: info ? principalOf(info) : null, protect: perms().protectElements === true,
   });
+  /** Секрет возобновления, выданный хабом этому участнику (P2P). */
+  const resumeOf = (info: Client): string | undefined => {
+    const p = principalOf(info);
+    if (!p) return undefined;
+    for (const [secret, who] of room.resumes) if (who === p) return secret;
+    return undefined;
+  };
+
+  const initFor = (info: Client) => {
+    const principal = principalOf(info);
+    const resume = resumeOf(info);
+    return {
+      t: 'init', proto: PROTO, userId: info.uid, color: info.color, name: info.name,
+      project: projectFor(info), ...accessFor(info), users: usersFor(info),
+      patches: true, chat: room.chat, followHost: room.followHost,
+      ...(principal ? { principal } : {}), ...(resume ? { resume } : {}),
+    };
+  };
+
+  /** Участник предъявил секрет возобновления (SPEC_NIGHT6 §4.3): до первой правки, автор свободен — он снова его. */
+  function acceptResume(info: Client, m: Rec): void {
+    if (info.host) return;
+    const a = room.access.get(info.uid);
+    const want = typeof m.secret === 'string' ? room.resumes.get(m.secret) : undefined;
+    const busy = !!want && [...room.clients.values()].some(c => c !== info && c.sock.readyState === 1 && room.access.get(c.uid)?.principal === want);
+    if (!a || !want || busy || info.edited) { sendTo(info.sock, { t: 'resume', ok: false }); return; }
+    // выданный этому соединению секрет больше не нужен
+    for (const [secret, p] of room.resumes) if (p === a.principal && secret !== m.secret) room.resumes.delete(secret);
+    a.principal = want;
+    sendTo(info.sock, { t: 'resume', ok: true, principal: want });
+  }
 
   /** Доступ нового гостя: из параметров подключения (облако), старых прав (rights) или по умолчанию (P2P). */
   function initialAccess(rights: UserRights | undefined, access: AttachAccess | undefined): ParticipantAccess {
@@ -640,11 +674,19 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
       color: isHost ? '#e03131' : COLORS[uid % COLORS.length],
       last: now(), cursor: null, pageId: null, selection: [], patches,
       cursorId: cleanCursorId(cursorId, allowProCursor), allowProCursor,
-      view: null, chatOk: createRateLimiter(),
+      view: null, chatOk: createRateLimiter(), edited: false,
     };
     room.clients.set(sock, info);
     if (isHost) room.access.delete(uid);
-    else room.access.set(uid, initialAccess(rights, access));
+    else {
+      const a = initialAccess(rights, access);
+      // автора не передал транспорт (P2P, гость облака без сессии) — хаб выдаёт своего и секрет возобновления
+      if (!a.principal) {
+        a.principal = `c:${randomToken(6, true)}`;
+        room.resumes.set(randomToken(16), a.principal);
+      }
+      room.access.set(uid, a);
+    }
 
     sendTo(sock, initFor(info));
     broadcastUsers(); // остальные сразу видят нового участника
@@ -683,15 +725,16 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
         return;
       }
       if (m.t === 'project') {
-        if (validProject(m.project)) acceptProject(info, m.project);
+        if (validProject(m.project)) { acceptProject(info, m.project); info.edited = true; }
         return;
       }
+      if (m.t === 'resume') { acceptResume(info, m); return; }
       if (m.t === 'chat') { acceptChat(info, m); return; }
       if (m.t === 'view') { acceptView(info, m); return; }
       if (m.t === 'summon') { acceptSummon(info, m); return; }
       if (m.t === 'follow-host') { acceptFollowHost(info, m); return; }
       if (m.t === 'patch') {
-        if (isBoardPatch(m)) acceptPatch(info, m);
+        if (isBoardPatch(m)) { acceptPatch(info, m); info.edited = true; }
         return;
       }
       // ученик печатает и отправляет ответ даже на странице с правом view (не читатель); проверяет хаб по настоящему ответу
@@ -706,40 +749,66 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
     return uid;
   }
 
-  /** Страницы присланного проекта поверх известных — только те, где у отправителя есть edit. */
-  function mergePages(uid: number, isHost: boolean, project: Project): Project {
+  /**
+   * Страницы присланного проекта поверх известных — только те, где у отправителя есть edit; чужие элементы,
+   * задания и авторы элементов — под защитой хаба (SPEC_NIGHT6 §4). refused — что-то не принято (отправителю — проект хаба).
+   */
+  function mergePages(info: Client, project: Project): { project: Project; refused: boolean } {
+    const uid = info.uid;
+    const isHost = info.host;
+    const who = whoOf(info);
+    let refused = false;
     const merged: Project = { ...project, pages: room.project!.pages.map(oldPg => {
       const newPg = project.pages.find(p => p.id === oldPg.id);
       if (!newPg || room.userPageRight(uid, oldPg.id) !== 'edit') return oldPg;
-      return keepHubComments(oldPg, isHost ? hostPage(oldPg, newPg) : guardedPage(oldPg, newPg));
+      const g = guardPageReplace(oldPg, newPg, who);
+      if (g.refused) refused = true;
+      // хаб поставил или вернул автора элемента — отправителю уйдёт проект хаба
+      const sentBy = new Map(newPg.elements.map(e => [e.id, e.by]));
+      if (g.page.elements.some(e => sentBy.has(e.id) && sentBy.get(e.id) !== e.by)) refused = true;
+      return keepHubComments(oldPg, g.page);
     }) };
-    // новые страницы разрешаем добавлять только тем, у кого есть хоть одна edit; на free — не больше лимита
+    // новые страницы разрешаем добавлять только тем, у кого есть хоть одна edit; на free — не больше лимита;
+    // при защите чужих элементов гости страниц не добавляют (Решение 18)
     for (const newPg of project.pages) {
       if (merged.pages.some(p => p.id === newPg.id) || !room.userCanEditAnything(uid)) continue;
-      if (!isHost && !canCreatePage(planNow(), merged.pages.length)) continue;
-      merged.pages.push(newPg);
+      if (!isHost && (who.protect || !canCreatePage(planNow(), merged.pages.length))) { if (who.protect) refused = true; continue; }
+      if (!isHost && newPg.elements.some(el => el.by !== (who.principal ?? undefined))) refused = true;
+      merged.pages.push(isHost ? newPg : { ...newPg, elements: newPg.elements.map(el => guardElementOrOwn(el, who)) });
     }
-    return merged;
+    return { project: merged, refused };
   }
+
+  /** Элемент новой страницы гостя: его автор (без автора — элемент владельца). */
+  const guardElementOrOwn = (el: Element, who: GuardWho): Element => {
+    const { by: _b, ...rest } = el;
+    return (who.principal ? { ...rest, by: who.principal } : rest) as Element;
+  };
 
   function acceptProject(info: Client, project: Project): void {
     // права проекта меняет только автор; их смену хаб доносит до гостей (SPEC_NIGHT6 §3.3)
     const before = info.host ? accessBefore(project) : null;
+    let refusedProject = false;
     if (!room.project) {
       // первый проект задаёт только автор
       if (!info.host) return;
       room.project = project;
     } else if (info.host) {
-      room.project = mergePages(info.uid, true, project);
+      const merged = mergePages(info, project);
+      room.project = merged.project;
+      if (merged.refused) refusedProject = true;
     } else {
       // id, название, иконку, тариф и права проекта меняет только автор: иначе гость мог бы подменить id,
       // и автор сохранил бы доску поверх другой своей доски, или снять запрет на копирование
-      const merged = mergePages(info.uid, false, project);
-      room.project = { ...room.project, pages: merged.pages, updatedAt: isNum(project.updatedAt) ? project.updatedAt : room.project.updatedAt };
+      const merged = mergePages(info, project);
+      room.project = { ...room.project, pages: merged.project.pages, updatedAt: isNum(project.updatedAt) ? project.updatedAt : room.project.updatedAt };
+      // отклонённое — отправителю: его доска снова совпадает с хабом
+      if (merged.refused) refusedProject = true;
     }
     for (const c of room.clients.values()) {
       if (c.sock !== info.sock) sendTo(c.sock, { t: 'project', project: projectFor(c), by: info.uid });
     }
+    if (refusedProject) sendTo(info.sock, { t: 'project', project: projectFor(info), by: -1 });
     afterAccessChange(before);
     if (room.project) options.onChange?.(room.project, 'project');
   }
@@ -859,16 +928,59 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
     const project = room.project;
     if (!project || !project.pages.some(p => p.id === patch.pageId)) return false;
     if (info && room.userPageRight(info.uid, patch.pageId) !== 'edit') return false;
-    const known = new Map(project.pages.find(p => p.id === patch.pageId)!.elements.map(e => [e.id, e]));
-    const fromGuest = !!info && !info.host;
+    const page = project.pages.find(p => p.id === patch.pageId)!;
     const ops: ElementOp[] = [];
     for (const op of patch.ops) {
       if (op.op !== 'put') { ops.push(op); continue; }
       const el = sanitizeElement(op.el);
-      if (el) ops.push({ op: 'put', el: fromGuest ? guardedElement(known.get(el.id), el) : hostElement(known.get(el.id), el) });
+      if (el) ops.push({ op: 'put', el });
     }
-    commitPatch({ ...patch, ops }, info ? info.uid : -1, info ? info.sock : null);
+    // задания, авторы элементов и (при защите) чужие элементы — решает хаб (SPEC_NIGHT6 §4)
+    const { patch: allowed, refused } = guardPatch(page, { ...patch, ops }, whoOf(info));
+    const anyRefused = refused.ids.length > 0 || refused.order || refused.page;
+    const empty = allowed.ops.length === 0 && allowed.grid === undefined && allowed.backgroundColor === undefined && allowed.coordLabels === undefined;
+    if (!(anyRefused && empty)) commitPatch(allowed, info ? info.uid : -1, info ? info.sock : null);
+    // автора элемента ставит хаб: отправитель получает свои элементы с ним (иначе его доска разошлась бы с хабом)
+    const sentBy = new Map(ops.map(op => [op.op === 'put' ? op.el.id : '', op.op === 'put' ? op.el.by : undefined]));
+    const stamped = allowed.ops.flatMap(op => (op.op === 'put' && sentBy.get(op.el.id) !== op.el.by ? [op.el.id] : []));
+    if (info && (anyRefused || stamped.length > 0)) sendCorrection(info, patch.pageId, { ...refused, ids: [...refused.ids, ...stamped] });
     return true;
+  }
+
+  /** Операции без повторов одного id (последняя побеждает). */
+  const dedupe = (ops: ElementOp[]): ElementOp[] => {
+    const seen = new Set<string>();
+    const out: ElementOp[] = [];
+    for (let i = ops.length - 1; i >= 0; i--) {
+      const op = ops[i];
+      const key = op.op === 'put' ? op.el.id : op.op === 'del' ? op.id : '#order';
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.unshift(op);
+    }
+    return out;
+  };
+
+  /** Отправителю — состояние хаба там, где его правку не приняли или поставили автора (SPEC_NIGHT6 §4.4). */
+  function sendCorrection(info: Client, pageId: string, refused: ReturnType<typeof guardPatch>['refused']): void {
+    const page = room.project?.pages.find(p => p.id === pageId);
+    if (!page) return;
+    if (!info.patches) { sendTo(info.sock, { t: 'project', project: projectFor(info), by: -1 }); return; }
+    const byId = new Map(page.elements.map(e => [e.id, e]));
+    const ops: ElementOp[] = [];
+    for (const id of refused.ids) {
+      const el = byId.get(id);
+      if (el) ops.push(info.host ? { op: 'put', el } : opsForGuest([{ op: 'put', el }])[0]);
+      else ops.push({ op: 'del', id });
+    }
+    if (refused.order || refused.ids.length > 0) ops.push({ op: 'order', ids: page.elements.map(e => e.id) });
+    const fix: BoardPatch = { t: 'patch', pageId, rev: room.revs.get(pageId) ?? 0, ops: dedupe(ops) };
+    if (refused.page) {
+      fix.grid = page.grid;
+      fix.backgroundColor = page.backgroundColor ?? null;
+      fix.coordLabels = page.coordLabels !== false;
+    }
+    sendTo(info.sock, { ...fix, by: -1 });
   }
 
   /**

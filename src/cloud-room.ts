@@ -31,8 +31,10 @@ export async function joinCloudInvite(token: string, name: string): Promise<Join
   }
   const inv = res.value;
   if (inv.isOwner) return 'none';
-  // сессия (если уже есть) нужна комнате только чтобы проверить тариф для Pro-курсора
-  const session = currentSession();
+  // сессия устройства (анонимная, если не вошли) — автор элементов гостя, который переживает переподключение
+  // (SPEC_NIGHT6 §4.2), и тариф для Pro-курсора; не вышло — входим без неё (автора выдаст комната)
+  let session = currentSession();
+  if (!session) session = await api.ensureSession().catch(() => null);
   await connectCollab(cloudRoomTransport(api.base, inv.roomCode, { name, invite: token, cursorId: myCursorId(), ...(session ? { session } : {}) }), false);
   if (await collabReady()) return 'room';
   const closed = lastCollabClose();

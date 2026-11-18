@@ -63,7 +63,7 @@ function room(hub: any, project: Msg = demo()) {
 beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(1_000_000); });
 afterEach(() => { vi.useRealTimers(); });
 
-const task = { id: 't1', type: 'task', x: 0, y: 0, w: 100, h: 50, subject: 'math', examType: 'custom', topic: '', text: 'Сколько?', answer: '4' };
+const task = { id: 't1', type: 'task', x: 0, y: 0, w: 100, h: 50, taskId: 'tk', examType: 'custom', topic: '', statementMd: 'Сколько?', answer: '4' };
 
 describe.each(kinds)('$name', kind => {
   describe('роль и возможности в init и rights', () => {
@@ -244,5 +244,129 @@ describe('src/room-host.ts: доступ из параметров подклю�
     const { join } = room(hub);
     const g = join('X', { access: { role: 'admin' }, rights: { default: 'edit', pages: {} } });
     expect(g.s.last('init')!.role).toBe('editor');
+  });
+});
+
+describe.each(kinds)('$name: защита чужих элементов (SPEC_NIGHT6 §4)', kind => {
+  const rectEl = (id: string, x = 0) => ({ id, type: 'shape', shape: 'rect', x, y: 0, w: 5, h: 5, color: '#000', width: 1 });
+  const lesson = (protect: boolean) => demo({
+    permissions: protect ? { protectElements: true } : {},
+    pages: [{ id: 'pg1', name: 'Задачи', grid: 'square', elements: [rectEl('teacher'), task] }, { id: 'pg2', name: 'Вторая', grid: 'square', elements: [] }],
+  });
+  function setup(protect = true) {
+    const r = room(kind.make(), lesson(protect));
+    r.host.recv({ t: 'caps', patches: true });
+    const g = r.join('Аня');
+    r.hub.setRights(g.uid, { role: 'editor' });
+    g.s.recv({ t: 'caps', patches: true });
+    const by = g.s.last('init')!.principal as string;
+    const els = () => r.hub.room.project.pages[0].elements;
+    return { ...r, g, by, els };
+  }
+  const p = (ops: unknown[], extra: Msg = {}) => ({ t: 'patch', pageId: 'pg1', rev: 1, ops, ...extra });
+
+  it('хаб выдаёт гостю автора элементов; свой новый элемент — его, чужой автор не принимается', () => {
+    const { g, by, els } = setup();
+    expect(by).toMatch(/^c:[0-9a-f]{12}$/);
+    g.s.recv(p([{ op: 'put', el: { ...rectEl('mine'), by: 'c:someone' } }]));
+    expect(els().find((e: Msg) => e.id === 'mine').by).toBe(by);
+    // хаб поставил другого автора — отправителю уходит его элемент с автором хаба
+    const fix = g.s.last('patch')!;
+    expect(fix.by).toBe(-1);
+    expect(fix.ops.find((o: Msg) => o.op === 'put').el).toMatchObject({ id: 'mine', by });
+  });
+
+  it('свой штрих правится и стирается; элемент учителя — нет, отправителю — исправление', () => {
+    const { host, g, by, els } = setup();
+    g.s.recv(p([{ op: 'put', el: { ...rectEl('mine'), by } }]));
+    g.s.recv(p([{ op: 'put', el: { ...rectEl('mine', 7), by } }]));
+    expect(els().find((e: Msg) => e.id === 'mine').x).toBe(7);
+    const hostPatches = host.all('patch').length;
+    g.s.recv(p([{ op: 'del', id: 'teacher' }]));
+    g.s.recv(p([{ op: 'put', el: rectEl('teacher', 50) }]));
+    expect(els().find((e: Msg) => e.id === 'teacher')).toEqual(rectEl('teacher'));
+    expect(host.all('patch').length).toBe(hostPatches); // отклонённое никому не рассылается
+    const fix = g.s.last('patch')!;
+    expect(fix).toMatchObject({ by: -1, pageId: 'pg1' });
+    expect(fix.ops).toContainEqual({ op: 'put', el: rectEl('teacher') });
+    g.s.recv(p([{ op: 'del', id: 'mine' }]));
+    expect(els().some((e: Msg) => e.id === 'mine')).toBe(false);
+  });
+
+  it('ответ в чужом задании принимается, условие и положение — нет', () => {
+    const { g, els } = setup();
+    g.s.recv(p([{ op: 'put', el: { ...task, statementMd: 'Подмена', x: 300, studentDraft: 'черновик' } }]));
+    const t = els().find((e: Msg) => e.id === 't1');
+    expect(t).toMatchObject({ statementMd: 'Сколько?', x: 0, studentDraft: 'черновик' });
+  });
+
+  it('порядок чужих и настройки страницы не меняются; свои слои — да', () => {
+    const { g, by, els, hub } = setup();
+    g.s.recv(p([{ op: 'put', el: { ...rectEl('mine'), by } }]));
+    g.s.recv(p([{ op: 'order', ids: ['mine', 'teacher', 't1'] }]));
+    expect(els().map((e: Msg) => e.id)).toEqual(['mine', 'teacher', 't1']);
+    g.s.recv(p([{ op: 'order', ids: ['t1', 'teacher', 'mine'] }]));
+    expect(els().map((e: Msg) => e.id)).toEqual(['mine', 'teacher', 't1']);
+    g.s.recv(p([], { grid: 'none', backgroundColor: '#ff0000' }));
+    expect(hub.room.project.pages[0].grid).toBe('square');
+    expect(g.s.last('patch')).toMatchObject({ grid: 'square', backgroundColor: null, by: -1 });
+  });
+
+  it('полный проект от гостя: чужое остаётся, удалённое возвращается, страниц не добавить; отправителю — проект хаба', () => {
+    const { g, by, els, hub } = setup();
+    const n = g.s.all('project').length;
+    g.s.recv({ t: 'project', project: demo({
+      pages: [
+        { id: 'pg1', name: 'Подмена', grid: 'none', elements: [{ ...rectEl('mine'), by }] },
+        { id: 'pg2', name: 'Вторая', grid: 'square', elements: [] },
+        { id: 'pg3', name: 'Новая', grid: 'square', elements: [] },
+      ],
+    }) });
+    expect(els().map((e: Msg) => e.id)).toEqual(['teacher', 't1', 'mine']);
+    expect(hub.room.project.pages[0].name).toBe('Задачи');
+    expect(hub.room.project.pages.map((x: Msg) => x.id)).toEqual(['pg1', 'pg2']);
+    expect(g.s.all('project').length).toBe(n + 1);
+  });
+
+  it('без защиты — как раньше: гость правит и стирает элемент учителя', () => {
+    const { g, els } = setup(false);
+    g.s.recv(p([{ op: 'put', el: rectEl('teacher', 9) }]));
+    expect(els().find((e: Msg) => e.id === 'teacher').x).toBe(9);
+    g.s.recv(p([{ op: 'del', id: 'teacher' }]));
+    expect(els().some((e: Msg) => e.id === 'teacher')).toBe(false);
+  });
+
+  it('автор правит всё и не меняет автора элемента гостя', () => {
+    const { host, g, by, els } = setup();
+    g.s.recv(p([{ op: 'put', el: { ...rectEl('mine'), by } }]));
+    host.recv(p([{ op: 'put', el: rectEl('mine', 3) }]));
+    expect(els().find((e: Msg) => e.id === 'mine')).toMatchObject({ x: 3, by });
+    host.recv(p([{ op: 'del', id: 'teacher' }]));
+    expect(els().some((e: Msg) => e.id === 'teacher')).toBe(false);
+  });
+
+  it('секрет возобновления: переподключившийся гость снова автор своих элементов; чужой и после правки — нет', () => {
+    const { hub, g, by, els } = setup();
+    const secret = g.s.last('init')!.resume as string;
+    expect(typeof secret).toBe('string');
+    g.s.recv(p([{ op: 'put', el: { ...rectEl('mine'), by } }]));
+    g.s.close();
+    const s2 = new FakeSock();
+    const uid2 = hub.attach(s2, { name: 'Аня' });
+    hub.setRights(uid2, { role: 'editor' });
+    s2.recv({ t: 'caps', patches: true });
+    expect(s2.last('init')!.principal).not.toBe(by);
+    s2.recv({ t: 'resume', secret });
+    expect(s2.last('resume')).toEqual({ t: 'resume', ok: true, principal: by });
+    s2.recv(p([{ op: 'put', el: { ...rectEl('mine', 4), by } }]));
+    expect(els().find((e: Msg) => e.id === 'mine')).toMatchObject({ x: 4, by });
+    // чужой секрет не подходит; после правки секрет не принимается
+    const s3 = new FakeSock();
+    hub.attach(s3, { name: 'Боря' });
+    s3.recv({ t: 'resume', secret: 'нет такого' });
+    expect(s3.last('resume')).toEqual({ t: 'resume', ok: false });
+    s3.recv(p([]));
+    s3.recv({ t: 'resume', secret });
+    expect(s3.last('resume')).toEqual({ t: 'resume', ok: false });
   });
 });

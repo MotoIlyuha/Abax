@@ -67,3 +67,14 @@ describe('подпись содержимого', () => {
     expect(contentSignature(round)).toBe(contentSignature(a));
   });
 });
+
+describe('автор элемента не входит в подпись (SPEC_NIGHT6 §4.5)', () => {
+  const base = (by?: string): Project => ({
+    id: 'p', name: 'П', createdAt: 1, updatedAt: 1,
+    pages: [{ id: 'g', name: 'С', grid: 'none', elements: [{ id: 'r', type: 'shape', shape: 'rect', x: 0, y: 0, w: 1, h: 1, color: '#000', width: 1, ...(by ? { by } : {}) } as never] }],
+  });
+  it('с автором и без — одна подпись (старый клиент, потерявший by, не даёт ложного конфликта)', () => {
+    expect(contentSignature(base('u:anna'))).toBe(contentSignature(base()));
+    expect(contentSignature(base('u:anna'))).toBe(contentSignature(base('c:boris')));
+  });
+});

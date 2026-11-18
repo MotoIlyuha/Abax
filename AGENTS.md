@@ -32,7 +32,7 @@
 - Старт ночи (ветка, журнал, первый коммит) — по п. 0.1 Locked Decisions текущей спецификации. Журнал прошлой ночи переименовывается в `NIGHT_LOG_NIGHT<N>.md`.
 
 ## 4. Сервер (`server/`, Ночи №3–6)
-- Каталог `server/` — Node + TypeScript + `better-sqlite3`; он импортирует из `src/` только чистые модули без DOM (`types`, `file`, `delta`, `limits`, `task-element`, `room-host`, `asset-store`, `project-access`, `cursors`, `sync-conflict`, `room-chat`, `board-url`, `comments`, `collab-transport`, `access`, `element-guard`).
+- Каталог `server/` — Node + TypeScript + `better-sqlite3`; он импортирует из `src/` только чистые модули без DOM (`types`, `file`, `delta`, `limits`, `task-element`, `room-host`, `asset-store`, `project-access`, `cursors`, `sync-conflict`, `room-chat`, `board-url`, `comments`, `collab-transport`, `access`, `element-guard`). Зеркала для `electron/room.cjs`: `electron/room-access.cjs`, `electron/room-guard.cjs` (паритет — `tests/server/room-pointer.test.ts`).
 - Клиент без настроенного адреса API (`apiUrl`) не делает сетевых запросов: все старые тесты работают как раньше.
 - Серверные тесты — `tests/server/*.test.ts` (`createAppServer({ dbPath: ':memory:' })`); типы сервера проверяет `npm run typecheck:tests`.
 

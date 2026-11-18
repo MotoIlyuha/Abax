@@ -111,12 +111,16 @@ describe('гость по приглашению', () => {
     expect(state.collabRole).toBeNull();
   });
 
-  it('гостю по приглашению не создаётся учётная запись', async () => {
+  it('гость по приглашению входит с анонимной сессией устройства — автор его элементов (SPEC_NIGHT6 Решение 16)', async () => {
     await setup();
     const before = (app.db.prepare('SELECT COUNT(*) n FROM users').get() as { n: number }).n;
-    await joinCloudInvite('inv', 'Гость');
-    expect((app.db.prepare('SELECT COUNT(*) n FROM users').get() as { n: number }).n).toBe(before);
-    expect(localStorage.getItem(SESSION_KEY)).toBeNull();
+    expect(await joinCloudInvite('inv', 'Гость')).toBe('room');
+    expect((app.db.prepare('SELECT COUNT(*) n FROM users').get() as { n: number }).n).toBe(before + 1);
+    expect(localStorage.getItem(SESSION_KEY)).not.toBeNull();
+    stopCollab();
+    // повторный вход — та же сессия, новой записи нет
+    expect(await joinCloudInvite('inv', 'Гость')).toBe('room');
+    expect((app.db.prepare('SELECT COUNT(*) n FROM users').get() as { n: number }).n).toBe(before + 1);
   });
 
   it('автор, открывший ссылку на свою доску, в комнату как гость не попадает', async () => {

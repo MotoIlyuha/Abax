@@ -288,3 +288,73 @@ describe('приглашения по почте: роли и последний
     expect(mailer.outbox.at(-1)!.text).toContain('посмотреть доску');
   });
 });
+
+describe('защита чужих элементов на сервере (SPEC_NIGHT6 §4)', () => {
+  async function lesson(protect = true) {
+    const ctx = await setup();
+    await putProject(ctx.app, ctx.owner.token, proj('a', {
+      permissions: protect ? { protectElements: true } : {},
+      pages: [{ id: 'a-p1', name: 'Задачи', grid: 'square', elements: [rectEl('teacher')] }],
+    }), 1);
+    addInvite(ctx.app, 'inv-ed', 'a', ctx.owner.id, { defaultRole: 'editor' });
+    return ctx;
+  }
+  const stored = (app: TestApp) => JSON.parse((app.db.prepare("SELECT data_json FROM projects WHERE id = 'a'").get() as { data_json: string }).data_json);
+  const patch = (ops: unknown[]) => ({ t: 'patch', pageId: 'a-p1', rev: 1, ops });
+
+  it('REST-патч: свой элемент — с автором из сессии, элемент учителя не стирается и не меняется (refused)', async () => {
+    const { app } = await lesson();
+    const guest = await anon(app);
+    const a = await call(app, 'POST', '/api/projects/a/patch?invite=inv-ed', patch([{ op: 'put', el: { ...rectEl('mine'), by: 'u:teacher' } }]), { token: guest.token });
+    expect(a.body).toMatchObject({ ok: true, refused: [] });
+    expect(stored(app).pages[0].elements.find((e: any) => e.id === 'mine').by).toBe(`u:${guest.id}`);
+    const b = await call(app, 'POST', '/api/projects/a/patch?invite=inv-ed', patch([{ op: 'del', id: 'teacher' }, { op: 'put', el: { ...rectEl('teacher'), x: 50 } }]), { token: guest.token });
+    expect(b.body.refused).toEqual(['teacher', 'teacher']);
+    expect(stored(app).pages[0].elements.find((e: any) => e.id === 'teacher')).toEqual(rectEl('teacher'));
+    // без сессии при защите новые элементы не принимаются (автор неизвестен)
+    const c = await call(app, 'POST', '/api/projects/a/patch?invite=inv-ed', patch([{ op: 'put', el: rectEl('anon') }]));
+    expect(c.body.refused).toEqual(['anon']);
+  });
+
+  it('без защиты REST-патч гостя правит элемент учителя, как раньше', async () => {
+    const { app } = await lesson(false);
+    const r = await call(app, 'POST', '/api/projects/a/patch?invite=inv-ed', patch([{ op: 'put', el: { ...rectEl('teacher'), x: 50 } }]));
+    expect(r.body.refused).toEqual([]);
+    expect(stored(app).pages[0].elements[0].x).toBe(50);
+  });
+
+  it('устаревшее сохранение владельца (mergeStale) не теряет автора элемента гостя', async () => {
+    const { app, owner } = await lesson();
+    const guest = await anon(app);
+    await call(app, 'POST', '/api/projects/a/patch?invite=inv-ed', patch([{ op: 'put', el: rectEl('mine') }]), { token: guest.token });
+    // старый клиент владельца прислал элемент без by и с устаревшей ревизией
+    await putProject(app, owner.token, proj('a', {
+      permissions: { protectElements: true },
+      pages: [{ id: 'a-p1', name: 'Задачи', grid: 'square', elements: [rectEl('teacher'), { ...rectEl('mine'), x: 2 }] }],
+    }), 1);
+    expect(stored(app).pages[0].elements.find((e: any) => e.id === 'mine')).toMatchObject({ x: 2, by: `u:${guest.id}` });
+  });
+
+  it('облачная комната: два устройства одного аккаунта — один автор; переподключение анонимного гостя — тот же автор', async () => {
+    const { app } = await lesson();
+    const guest = await anon(app);
+    const d1 = joinRoom(app, { invite: 'inv-ed', session: guest.token });
+    const init1 = await until(() => d1.last('init'));
+    const d2 = joinRoom(app, { invite: 'inv-ed', session: guest.token });
+    const init2 = await until(() => d2.last('init'));
+    expect(init1.principal).toBe(`u:${guest.id}`);
+    expect(init2.principal).toBe(`u:${guest.id}`);
+    expect(init1.resume).toBeUndefined(); // автор из сессии — секрет возобновления не нужен
+    // элемент, нарисованный на первом устройстве, правится со второго
+    const ws1 = sockets[sockets.length - 2];
+    const ws2 = sockets[sockets.length - 1];
+    ws1.send(JSON.stringify({ t: 'caps', patches: true }));
+    ws1.send(JSON.stringify(patch([{ op: 'put', el: { ...rectEl('stroke'), by: init1.principal } }])));
+    await until(() => app.rooms.projectOf('a')?.pages[0].elements.some(e => e.id === 'stroke'));
+    ws2.send(JSON.stringify(patch([{ op: 'put', el: { ...rectEl('stroke'), x: 11, by: init2.principal } }])));
+    await until(() => (app.rooms.projectOf('a')?.pages[0].elements.find(e => e.id === 'stroke') as any)?.x === 11);
+    ws2.send(JSON.stringify(patch([{ op: 'del', id: 'teacher' }])));
+    await new Promise(r => setTimeout(r, 50));
+    expect(app.rooms.projectOf('a')!.pages[0].elements.some(e => e.id === 'teacher')).toBe(true);
+  });
+});

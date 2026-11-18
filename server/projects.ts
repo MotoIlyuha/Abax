@@ -6,7 +6,7 @@ import { assetHashOf } from '../src/asset-store';
 import { preserveElementReactions } from '../src/comments';
 import { canCreateProject, isOverPageLimit, sanitizePermissionsForPlan } from '../src/limits';
 import { cloneProjectForViewer, hiddenPageIds, invitePageRight, maskPagesForGuest, stripStudentData, withoutPages } from '../src/project-access';
-import { guardedElement, hostElement } from '../src/room-host';
+import { guardPatch, withBy } from '../src/element-guard';
 import { MAX_ATTEMPTS } from '../src/task-element';
 import type { CommentThread, Element, Page, PageRight, PlanTier, Project, ProjectPermissions, TaskAttempt } from '../src/types';
 import { ingestElement, ingestProjectImages } from './assets';
@@ -134,7 +134,8 @@ export function mergeStale(current: Project, incoming: Project): Project {
     if (!cur) return pg;
     const curById = new Map(cur.elements.map(e => [e.id, e]));
     const withReactions = preserveElementReactions(pg.elements, cur.elements);
-    const elements = withReactions.map(el => { const c = curById.get(el.id); return c ? mergeTaskLive(c, el) : el; });
+    // автор элемента — поле хаба: у известного элемента он сохраняется (SPEC_NIGHT6 §4.5)
+    const elements = withReactions.map(el => { const c = curById.get(el.id); return c ? withBy(mergeTaskLive(c, el), c.by) : el; });
     const comments = mergeComments(cur.comments, pg.comments);
     const { comments: _c, ...rest } = pg;
     return { ...rest, elements, ...(comments ? { comments } : {}) };
@@ -331,15 +332,17 @@ export function registerProjectRoutes(router: Router): void {
     const page = project.pages.find(p => p.id === body.pageId);
     if (!page) throw new HttpError(404, 'page-not-found');
     if (!isOwner && invitePageRight(project, invite!, page.id) !== 'edit') throw new HttpError(403, 'no-edit-right');
-    const known = new Map(page.elements.map(e => [e.id, e]));
-    const ops: ElementOp[] = cleaned.map(op => (op.op === 'put'
-      ? { op: 'put', el: isOwner ? hostElement(known.get(op.el.id), op.el) : guardedElement(known.get(op.el.id), op.el) }
-      : op));
-    const patch: BoardPatch = { ...body, ops, rev: row.rev + 1 };
+    // задания, авторы элементов и (при защите) чужие элементы — как в комнате (SPEC_NIGHT6 §4.4)
+    const protect = sanitizePermissionsForPlan(ownerPlanOf(app, row.owner_id), project.permissions ?? {}).protectElements === true;
+    const guarded = guardPatch(page, { ...body, ops: cleaned }, {
+      privileged: isOwner, principal: !isOwner && ctx.user ? `u:${ctx.user.id}` : null, protect,
+    });
+    const refused = guarded.refused.ids;
+    const patch: BoardPatch = { ...guarded.patch, rev: row.rev + 1 };
     const next: Project = { ...project, updatedAt: app.now(), pages: project.pages.map(p => (p === page ? applyBoardPatch(p, patch) : p)) };
     const rev = writeProject(app, { existing: row, ownerId: row.owner_id, project: next, authorId, pageId: page.id, revision: patch });
     app.notifyProjectChanged(id, next);
-    return { json: { ok: true, rev } };
+    return { json: { ok: true, rev, refused } };
   }, { maxBody: MAX_PATCH_BODY });
 
   router.post('/api/projects/:id/clone', async ctx => {
