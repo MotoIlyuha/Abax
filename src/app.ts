@@ -128,6 +128,8 @@ const GRID_ICONS: Record<GridMode, string> = {
 };
 
 /** «Привязка к сетке»: магнит-подкова. */
+/** Иконка «Плавное перемещение»: стрелка с затухающим следом. */
+const SMOOTH_PAN_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h5M4 12h9M4 16h5"/><path d="M14 8l5 4-5 4"/></svg>';
 const SNAP_ICON = svg('<path d="M6 4h4v9a2 2 0 0 0 4 0V4h4v9a6 6 0 0 1-12 0z"/><path d="M6 8h4M14 8h4"/>');
 
 /** Иконка координатной плоскости с нулём в начале координат — когда деления включены. */
@@ -232,6 +234,7 @@ function restoreSettings(): void {
         animationMode: resolveAnimationMode(v),
         hideUndoRedo: typeof v.hideUndoRedo === 'boolean' ? v.hideUndoRedo : false,
         keepImageAspect: typeof v.keepImageAspect === 'boolean' ? v.keepImageAspect : true,
+        smoothPan: typeof v.smoothPan === 'boolean' ? v.smoothPan : true,
         alignGuides: typeof v.alignGuides === 'boolean' ? v.alignGuides : true,
         closePagesOnPick: typeof v.closePagesOnPick === 'boolean' ? v.closePagesOnPick : false,
         thumbViewport: typeof v.thumbViewport === 'boolean' ? v.thumbViewport : true,
@@ -2303,6 +2306,7 @@ function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
   span3.textContent = 'Привязка к сетке';
   lbl3.append(cb3, span3);
   pop.appendChild(lbl3);
+  pop.appendChild(smoothPanSwitch('grid-switch settings-switch', false));
   const lbl8 = document.createElement('label');
   lbl8.className = 'ctx-check';
   lbl8.title = macKeys('Изображения и страницы PDF не искажаются при изменении размера — Ctrl или Shift зажимать не нужно');
@@ -2422,6 +2426,18 @@ function settingCheck(key: BoolSetting, text: string, hint?: string, after?: () 
   span.textContent = text;
   lbl.append(cb, span);
   return lbl;
+}
+
+/** Переключатель «Плавное перемещение»: меняет и сразу сохраняет (в меню вида и в настройках доски). */
+function smoothPanSwitch(className: string, withIcon: boolean): HTMLElement {
+  return createToggleSwitch({
+    className,
+    label: 'Плавное перемещение',
+    icon: withIcon ? SMOOTH_PAN_ICON : undefined,
+    title: 'Небольшая инерция при перемещении по доске: после отпускания камера плавно останавливается',
+    checked: state.settings.smoothPan,
+    onChange: on => { setSettings({ smoothPan: on }); persistSettings(); },
+  });
 }
 
 function applyToolbarPos(): void {
@@ -5107,14 +5123,15 @@ function wireZoomInput(): void {
       ${[50, 70, 100, 200, 400, 800].map(n => row(`data-zoom="${n}"`, zoomIcon, `${n}%`)).join('')}
       ${row('data-view="custom"', zoomIcon, 'Другой масштаб…')}`);
     // «Привязка к сетке» — та же настройка, что во всплывающем меню настроек (в просмотре по ссылке пункта нет)
-    p.querySelector('[data-view="background"]')?.after(createToggleSwitch({
+    const snapSwitch = createToggleSwitch({
       className: 'grid-switch view-switch',
       label: 'Привязка к сетке',
       icon: SNAP_ICON,
       title: 'Точки, фигуры и рамки при перемещении встают на узлы сетки',
       checked: state.settings.snapToGrid,
       onChange: on => { setSettings({ snapToGrid: on }); persistSettings(); },
-    }));
+    });
+    p.querySelector('[data-view="background"]')?.after(snapSwitch, smoothPanSwitch('grid-switch view-switch', true));
     return p;
   };
   const check = (on: boolean) => (on ? '<span class="view-check" aria-hidden="true">✓</span>' : '');
