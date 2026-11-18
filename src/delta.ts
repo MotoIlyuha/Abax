@@ -30,7 +30,7 @@ const MAX_ID = 128;
 const GRIDS: readonly string[] = ['none', 'dots', 'square', 'coord'];
 
 /** Структурное равенство данных элемента (ключи со значением undefined — всё равно что отсутствующие). */
-function same(a: unknown, b: unknown): boolean {
+export function same(a: unknown, b: unknown): boolean {
   if (a === b) return true;
   if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
   if (Array.isArray(a) !== Array.isArray(b)) return false;

@@ -52,9 +52,9 @@ test.describe('Motion: панель страниц', () => {
     await expect.poll(() => page.locator('#btn-pages').evaluate(el => (el as HTMLElement).style.transform)).toBe('');
   });
 
-  test('«Motion анимации» выключены: рамки нет, у карточки обычная рамка, список раскрывается как раньше', async ({ page }) => {
+  test('режим «Обычные»: рамки нет, у карточки обычная рамка, список раскрывается как раньше', async ({ page }) => {
     await page.keyboard.press('Control+Comma');
-    await page.locator('.sd-general label', { hasText: 'Motion анимации' }).locator('input').uncheck();
+    await page.locator('.sd-general button', { hasText: /^Обычные$/ }).click();
     await page.keyboard.press('Escape');
     expect(await page.locator('#pages-list').evaluate(list => getComputedStyle(list, '::before').display)).toBe('none');
     const active = page.locator('#pages-list .page-item.active');

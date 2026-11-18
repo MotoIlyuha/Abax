@@ -16,7 +16,12 @@ export interface PlanLimits {
   canSetMaxGuests: boolean;
   /** Тумблер «Автопереход участников за мной». */
   canFollowHost: boolean;
+  /** Именной адрес доски /j/<адрес> (SPEC_NIGHT6 §5.3). */
+  canSetAlias: boolean;
 }
+
+/** Сколько записей именных адресов (активных, бывших и освобождённых) может быть у одного аккаунта. */
+export const MAX_ALIASES_PER_OWNER = 20;
 
 /** Верхняя граница своего лимита гостей. */
 export const MAX_GUESTS_LIMIT = 50;
@@ -25,17 +30,17 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
   free: {
     maxProjects: 3, maxPagesPerProject: 3, maxP2PGuests: 1, maxEditors: 4,
     canProtectClone: false, canProtectCopy: false, cloudSync24x7: false, tutorFeatures: false,
-    canSetMaxGuests: false, canFollowHost: false,
+    canSetMaxGuests: false, canFollowHost: false, canSetAlias: false,
   },
   pro: {
     maxProjects: Infinity, maxPagesPerProject: Infinity, maxP2PGuests: Infinity, maxEditors: Infinity,
     canProtectClone: true, canProtectCopy: true, cloudSync24x7: true, tutorFeatures: false,
-    canSetMaxGuests: true, canFollowHost: true,
+    canSetMaxGuests: true, canFollowHost: true, canSetAlias: true,
   },
   tutor: {
     maxProjects: Infinity, maxPagesPerProject: Infinity, maxP2PGuests: Infinity, maxEditors: Infinity,
     canProtectClone: true, canProtectCopy: true, cloudSync24x7: true, tutorFeatures: true,
-    canSetMaxGuests: true, canFollowHost: true,
+    canSetMaxGuests: true, canFollowHost: true, canSetAlias: true,
   },
 };
 
@@ -97,6 +102,10 @@ export function sanitizePermissionsForPlan(plan: PlanTier, perms: ProjectPermiss
   // свой лимит гостей — только Pro/Tutor и только 1..MAX_GUESTS_LIMIT; null/0 — без ограничений (поле не нужно)
   const mg = perms.maxGuests;
   if (lim.canSetMaxGuests && typeof mg === 'number' && Number.isInteger(mg) && mg >= 1 && mg <= MAX_GUESTS_LIMIT) out.maxGuests = mg;
+  // защита элементов, просмотр по ссылке и «Позвать всех» — на всех тарифах (SPEC_NIGHT6 Решения 8, 15, 6)
+  if (perms.protectElements === true) out.protectElements = true;
+  if (perms.linkView === false) out.linkView = false;
+  if (perms.summon === 'editors') out.summon = 'editors';
   return out;
 }
 

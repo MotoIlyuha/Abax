@@ -35,6 +35,8 @@ async function main(): Promise<void> {
     allowedOrigins: listEnv(env.ALLOWED_ORIGINS),
     publicWebUrl: env.PUBLIC_WEB_URL || 'https://motoilyuha.github.io/Abax',
     staticDir: env.STATIC_DIR ? resolve(env.STATIC_DIR) : null,
+    // чистые ссылки /j/… (по умолчанию — когда сервер раздаёт клиента); ABAX_PRETTY_LINKS=0 — выключить
+    ...(env.ABAX_PRETTY_LINKS !== undefined ? { prettyLinks: env.ABAX_PRETTY_LINKS === '1' } : {}),
     trustProxy: truthy(env.TRUST_PROXY),
     secureCookies: env.NODE_ENV === 'production',
     assetBackend,

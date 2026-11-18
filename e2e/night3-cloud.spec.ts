@@ -168,11 +168,13 @@ test.describe('облако', () => {
     srv.db.prepare("UPDATE users SET plan = 'pro' WHERE id = ?").run(uid);
 
     // ссылка-приглашение — из окна «Совместная работа»
+    // Ночь №6: общая ссылка включается выключателем в окне «Поделиться»
     await a.locator('#btn-share').click();
     const box = a.locator('#share-dialog .share-invite');
     await expect(box).toBeVisible();
-    await box.locator('button', { hasText: 'Создать ссылку-приглашение' }).click();
-    const inviteLink = (await box.locator('.share-link').textContent())!;
+    await box.locator('.share-switch').click();
+    await expect(box.locator('.share-url')).toBeVisible();
+    const inviteLink = await box.locator('.share-url').inputValue();
     expect(inviteLink).toMatch(/\?route=collab&token=[A-Za-z0-9_-]{24}$/);
     // автор сам подключился к своей облачной комнате
     await expect.poll(() => stateOf(a, s => s.collabRole)).toBe('host');

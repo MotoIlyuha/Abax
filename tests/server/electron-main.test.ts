@@ -372,7 +372,7 @@ describe('совместная работа', () => {
     // порт могли занять параллельные тесты (временные порты из того же диапазона) — тогда берётся ближайший свободный
     expect(r.port).toBeGreaterThanOrEqual(Number(process.env.DOSKA_SHARE_PORT));
     expect(r.port).toBeLessThan(Number(process.env.DOSKA_SHARE_PORT) + 20);
-    expect(r.code).toMatch(/^[A-Z0-9]{6}$/);
+    expect(r.code).toMatch(/^[A-Z0-9]{8}$/) // D5: 8 символов из криптостойкого генератора (было 6 из Math.random);
     expect(r.hostKey).toEqual(expect.any(String));
     expect(r.url).toBe(`http://${r.url.split('//')[1].split(':')[0]}:${r.port}/?room=${r.code}`);
     expect(await invoke('share:start')).toMatchObject({ ok: true, code: r.code }); // тот же сервер
@@ -503,5 +503,34 @@ describe('preload', () => {
       ['share:cloudStart', { relayUrl: 'wss://r.example' }],
       ['share:cloudStop'],
     ]);
+  });
+});
+
+describe('адреса комнаты в локальной сети и код комнаты (Ночь №6, D4/D5)', () => {
+  const lan = require('../../electron/lan.cjs');
+  it('обычная сеть — первой, виртуальные адаптеры и 169.254 — после, loopback не выдаётся за адрес для гостей', () => {
+    const ifaces = {
+      'vEthernet (WSL)': [{ family: 'IPv4', address: '172.20.0.1', internal: false }],
+      lo: [{ family: 'IPv4', address: '127.0.0.1', internal: true }],
+      'Wi-Fi': [{ family: 'IPv4', address: '192.168.1.23', internal: false }, { family: 'IPv6', address: 'fe80::1', internal: false }],
+      Ethernet: [{ family: 'IPv4', address: '169.254.3.4', internal: false }],
+    };
+    expect(lan.lanAddresses(ifaces).map((a: any) => [a.iface, a.kind])).toEqual([
+      ['Wi-Fi', 'lan'], ['vEthernet (WSL)', 'virtual'], ['Ethernet', 'link-local'], ['lo', 'loopback'],
+    ]);
+    const r = lan.shareUrls(ifaces, 4826, 'ABCD1234');
+    expect(r).toMatchObject({ url: 'http://192.168.1.23:4826/?room=ABCD1234', localOnly: false });
+    expect(r.urls.map((u: any) => u.address)).toEqual(['192.168.1.23', '172.20.0.1', '169.254.3.4']);
+  });
+  it('без сети — localOnly: 127.0.0.1 только для этого компьютера', () => {
+    expect(lan.shareUrls({ lo: [{ family: 'IPv4', address: '127.0.0.1', internal: true }] }, 4826, 'X'))
+      .toEqual({ url: 'http://127.0.0.1:4826/?room=X', urls: [], localOnly: true });
+  });
+  it('код комнаты: 8 символов A–Z0–9, без смещения (байты ≥ 252 пропускаются)', () => {
+    for (let i = 0; i < 50; i++) expect(lan.newRoomCode()).toMatch(/^[A-Z0-9]{8}$/);
+    // подмена генератора: 252..255 отбрасываются, 0 → A, 35 → 9
+    let n = 0;
+    const fake = (len: number) => Buffer.from(Array.from({ length: len }, () => [255, 252, 0, 35][n++ % 4]));
+    expect(lan.newRoomCode(4, fake)).toBe('A9A9');
   });
 });

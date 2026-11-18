@@ -4,6 +4,7 @@ import { normalizeEmail } from './auth-flows';
 import type { AppContext } from './context';
 import type { EmailInviteRow, UserRow } from './db';
 import { inviteUrl } from './invite-routes';
+import { isStoredRole, legacyRoleOf, normalizeRole } from '../src/access';
 import { getActiveProject } from './projects';
 import { HttpError, type Router } from './router';
 import { isAnonymousUser } from './users';
@@ -18,11 +19,16 @@ export const EMAIL_INVITE_RESEND_MS = 10 * 60_000;
 export const EMAIL_INVITE_RATE = 20;
 
 const newToken = (): string => randomBytes(18).toString('base64url');
-const isRole = (v: unknown): v is 'edit' | 'view' => v === 'edit' || v === 'view';
 
-function emailInviteJson(r: EmailInviteRow) {
-  return { id: r.id, projectId: r.project_id, email: r.email, role: r.role, status: r.status, createdAt: r.created_at, updatedAt: r.updated_at };
+/** Приглашение для автора: роль как хранится (включая старые синонимы), статус и последний вход по его ссылке. */
+function emailInviteJson(r: EmailInviteRow & { last_used_at?: number | null }) {
+  return {
+    id: r.id, projectId: r.project_id, email: r.email, role: r.role, status: r.status, createdAt: r.created_at, updatedAt: r.updated_at,
+    lastUsedAt: r.last_used_at ?? null,
+  };
 }
+
+const EMAIL_INVITE_SELECT = 'SELECT ei.*, i.last_used_at FROM project_email_invites ei LEFT JOIN invites i ON i.token = ei.token';
 
 /** Адреса, по которым пользователь получает приглашения: почта входа и подтверждённый адрес Google. */
 function addressesOf(user: UserRow): string[] {
@@ -37,7 +43,8 @@ function ownProject(ctx: { app: AppContext }, user: UserRow, projectId: string) 
 }
 
 async function sendInviteMail(app: AppContext, to: string, hostName: string, projectName: string, role: string, token: string): Promise<void> {
-  const what = role === 'view' ? 'посмотреть доску' : 'поработать вместе на доске';
+  const r = normalizeRole(role);
+  const what = !r || legacyRoleOf(r.role) === 'view' ? 'посмотреть доску' : 'поработать вместе на доске';
   await app.mailer!.send({
     to,
     subject: `${hostName} приглашает вас на доску «${projectName}» в Abax`,
@@ -54,8 +61,9 @@ export function registerEmailInviteRoutes(router: Router): void {
     const body = await ctx.body() as { email?: unknown; role?: unknown } | undefined;
     const email = normalizeEmail(body?.email);
     if (!email) throw new HttpError(400, 'bad-email');
-    const role = body?.role === undefined ? 'edit' : body.role;
-    if (!isRole(role)) throw new HttpError(400, 'bad-role');
+    // роли Ночи №6 (редактор, комментатор, читатель) и старые синонимы edit/view
+    const role = body?.role === undefined ? 'editor' : body.role;
+    if (!isStoredRole(role)) throw new HttpError(400, 'bad-role');
     if (addressesOf(user).includes(email)) throw new HttpError(400, 'self-invite');
     if (!app.mailer) throw new HttpError(503, 'mail-disabled');
     if (!app.rateLimit(`email-invite:${user.id}`, EMAIL_INVITE_RATE, 3600_000)) throw new HttpError(429, 'rate-limited');
@@ -103,14 +111,14 @@ export function registerEmailInviteRoutes(router: Router): void {
         throw new HttpError(502, 'mail-failed');
       }
     }
-    invite = app.db.prepare('SELECT * FROM project_email_invites WHERE id = ?').get(invite.id) as EmailInviteRow;
+    invite = app.db.prepare(`${EMAIL_INVITE_SELECT} WHERE ei.id = ?`).get(invite.id) as EmailInviteRow;
     return { status: created ? 201 : 200, json: { invite: emailInviteJson(invite), created, mailed } };
   });
 
   router.get('/api/projects/:id/email-invites', ctx => {
     const user = requireUser(ctx);
     const row = ownProject(ctx, user, ctx.params.id);
-    const rows = ctx.app.db.prepare("SELECT * FROM project_email_invites WHERE project_id = ? AND status != 'revoked' ORDER BY created_at")
+    const rows = ctx.app.db.prepare(`${EMAIL_INVITE_SELECT} WHERE ei.project_id = ? AND ei.status != 'revoked' ORDER BY ei.created_at`)
       .all(row.id) as EmailInviteRow[];
     return { json: { invites: rows.map(emailInviteJson) } };
   });

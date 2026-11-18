@@ -204,3 +204,15 @@ describe('приглашение /j/:token', () => {
     expect(state.project.pages.map(p => p.id)).toEqual(['a-p1']);
   });
 });
+
+describe('тексты отказа входа по ссылке (Ночь №6, SPEC_NIGHT6 §5.4)', () => {
+  it('по коду сервера — понятная причина; неизвестный — «приглашение недействительно»; сеть — «нет связи»', async () => {
+    const { inviteFailureNotice, NOTICE_INVITE_GONE, NOTICE_INVITE_OFFLINE } = await import('../../src/link-view-ui');
+    expect(inviteFailureNotice('not-found', 'link-paused')[1]).toContain('Автор закрыл доступ к доске по ссылке');
+    expect(inviteFailureNotice('not-found', 'alias-released')[0]).toBe('Адрес больше не используется');
+    expect(inviteFailureNotice('not-found', 'alias-inactive')[0]).toBe('Адрес временно неактивен');
+    expect(inviteFailureNotice('not-found', 'board-deleted')[0]).toBe('Доска удалена');
+    expect(inviteFailureNotice('not-found', 'invite-not-found')).toEqual(NOTICE_INVITE_GONE);
+    expect(inviteFailureNotice('network')).toEqual(NOTICE_INVITE_OFFLINE);
+  });
+});

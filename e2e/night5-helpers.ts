@@ -84,20 +84,36 @@ export async function openAt(ctx: BrowserContext, url: string, errors: string[],
 export const stateOf = <T>(page: Page, fn: (s: any) => T): Promise<T> =>
   page.evaluate(`(${fn.toString()})(window.__doska.state)`) as Promise<T>;
 
-/** Ссылка-приглашение из окна «Совместная работа» (окно остаётся открытым). */
-export async function createInvite(page: Page): Promise<string> {
-  await page.locator('#btn-share').click();
+/** Открыть окно «Поделиться», если оно закрыто. */
+export async function openShare(page: Page): Promise<void> {
+  if (await page.locator('#share-dialog').count() === 0) await page.locator('#btn-share').click();
+  await expect(page.locator('#share-dialog')).toBeVisible();
+}
+
+/** Вкладка окна «Поделиться» (Ночь №6): «Поделиться» или «Настройки доступа». */
+export async function shareTab(page: Page, tab: 'share' | 'settings'): Promise<void> {
+  await openShare(page);
+  await page.locator(`#share-tab-${tab}`).click();
+  await expect(page.locator(`#share-panel-${tab}`)).toBeVisible();
+}
+
+/**
+ * Общая ссылка из окна «Поделиться» (Ночь №6: выключатель «Все, у кого есть ссылка»); окно остаётся открытым.
+ * role — роль по ссылке (по умолчанию — как выбрано в окне, «Редактор»).
+ */
+export async function createInvite(page: Page, role?: 'editor' | 'commenter' | 'reader'): Promise<string> {
+  await shareTab(page, 'share');
   const box = page.locator('#share-dialog .share-invite');
   await expect(box).toBeVisible();
-  // проект должен быть в облаке: кнопка появится, когда он туда ушёл
-  await expect(box.locator('button', { hasText: 'Создать ссылку-приглашение' })).toBeVisible({ timeout: 15000 });
-  // окно перерисовывается раз в две секунды (и пока проект впервые уходит в облако, ссылки ещё нет): повторяем нажатие
+  if (role) await box.locator('select.share-link-role').selectOption(role);
+  // проект должен уйти в облако, прежде чем ссылка создастся: повторяем, пока выключатель не включится
+  const sw = box.locator('.share-switch');
   await expect(async () => {
-    const create = box.locator('button', { hasText: 'Создать ссылку-приглашение' });
-    if (await create.count() > 0) await create.click({ timeout: 1000 }).catch(() => {});
-    await expect(box.locator('.share-link')).toBeVisible({ timeout: 2500 });
+    if (await sw.getAttribute('aria-checked') !== 'true') await sw.click({ timeout: 1000 }).catch(() => {});
+    await expect(sw).toHaveAttribute('aria-checked', 'true', { timeout: 2500 });
+    await expect(box.locator('.share-url')).toBeVisible({ timeout: 2500 });
   }).toPass({ timeout: 20000 });
-  return (await box.locator('.share-link').textContent())!;
+  return box.locator('.share-url').inputValue();
 }
 
 /** Строки проектов пользователя на сервере. */

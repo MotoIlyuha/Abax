@@ -248,11 +248,13 @@ describe('дельта-патчи (t: patch)', () => {
     hub.setRights(editor.uid, { pages: { pg1: 'edit' } });
     hub.setRights(blind.uid, { pages: { pg1: 'hidden' } });
     const before = blind.s.sent.length;
-    editor.s.recv(patch('pg1', [{ op: 'put', el: rect('n1') }]));
+    // клиент Ночи №6 сам ставит своего автора элемента (init.principal) — тогда патч ему не возвращается
+    const by = editor.s.last('init')!.principal;
+    editor.s.recv(patch('pg1', [{ op: 'put', el: { ...rect('n1'), by } }]));
     expect(hub.room.project!.pages[0].elements.map(e => e.id)).toEqual(['n1']);
     const got = reader.s.last('patch')!;
     expect(got).toMatchObject({ pageId: 'pg1', rev: 1, by: editor.uid });
-    expect(got.ops[0].el.id).toBe('n1');
+    expect(got.ops[0].el).toMatchObject({ id: 'n1', by });
     expect(host.last('patch')!.rev).toBe(1);
     expect(editor.s.all('patch')).toHaveLength(0); // автору патча он не возвращается
     expect(blind.s.sent.length).toBe(before); // скрытая страница до участника не доходит

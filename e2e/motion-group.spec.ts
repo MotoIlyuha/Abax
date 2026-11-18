@@ -28,9 +28,9 @@ test.describe('Motion: вытягивание групп панели', () => {
     await expect(page.locator('.stretch-ghost')).toHaveCount(0, { timeout: 4000 });
   });
 
-  test('«Motion анимации» выключены: без вытягивания', async ({ page }) => {
+  test('режим «Обычные» (без пружин): без вытягивания', async ({ page }) => {
     await page.keyboard.press('Control+Comma');
-    await page.locator('.sd-general label', { hasText: 'Motion анимации' }).locator('input').uncheck();
+    await page.locator('.sd-general button', { hasText: /^Обычные$/ }).click();
     await page.keyboard.press('Escape');
     await page.locator('#btn-shapes').click();
     await expect(page.locator('.ctx-panel[data-kind="shapes"]')).toBeVisible();

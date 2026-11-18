@@ -1,7 +1,9 @@
 // Очистка сообщений указки на сервере (electron/room.cjs) обязана совпадать с src/room-host.ts.
 import { createRequire } from 'node:module';
 import { describe, expect, it } from 'vitest';
-import { VIEW_ZOOM_MAX, VIEW_ZOOM_MIN, cleanPointer, cleanView, maskUsersFor, type UserSnapshot } from '../../src/room-host';
+import { VIEW_ZOOM_MAX, VIEW_ZOOM_MIN, cleanPointer, cleanView, maskUsersFor, stripAccess, type UserSnapshot } from '../../src/room-host';
+import * as access from '../../src/access';
+import * as guard from '../../src/element-guard';
 import { CURSOR_IDS } from '../../src/cursors';
 import * as chat from '../../src/room-chat';
 
@@ -80,5 +82,80 @@ describe('чат, камера и маскировка room.cjs совпадаю
     for (const hidden of [new Set<string>(), new Set(['h']), new Set(['v']), new Set(['h', 'v'])]) {
       for (const viewer of [0, 1, 2]) expect(cjsRoom.maskUsersFor(users, viewer, hidden)).toEqual(maskUsersFor(users, viewer, hidden));
     }
+  });
+});
+
+describe('правила доступа room-access.cjs совпадают с src/access.ts (SPEC_NIGHT6 §2)', () => {
+  const cjsAccess = require('../../electron/room-access.cjs');
+  const RIGHTS = [undefined, 'edit', 'view', 'hidden'] as const;
+  const ROLES = ['editor', 'commenter', 'reader'] as const;
+
+  it('роли и синонимы', () => {
+    for (const raw of ['edit', 'view', 'editor', 'commenter', 'reader', 'owner', '', null, 3]) {
+      expect(cjsAccess.normalizeRole(raw)).toEqual(access.normalizeRole(raw));
+    }
+    for (const r of ROLES) expect(cjsAccess.legacyRoleOf(r)).toBe(access.legacyRoleOf(r));
+  });
+
+  it('итоговое право на странице — все сочетания', () => {
+    for (const owner of [false, true]) for (const legacy of [false, true]) for (const role of ROLES) {
+      for (const pageSetting of RIGHTS) for (const personal of RIGHTS) {
+        const input = { owner, legacy, role, pageSetting, personal };
+        expect(cjsAccess.effectivePageAccess(input)).toBe(access.effectivePageAccess(input));
+      }
+    }
+  });
+
+  it('возможности участника', () => {
+    const permsList = [undefined, {}, { allowCopy: false }, { forbidClone: true }, { summon: 'editors' as const }, { allowCopy: true, summon: 'owner' as const }];
+    for (const owner of [false, true]) for (const legacy of [false, true]) for (const role of ROLES) for (const inviteAllowCopy of [undefined, true, false]) {
+      for (const perms of permsList) {
+        const a = { owner, role, legacy, inviteAllowCopy };
+        expect(cjsAccess.participantCaps(a, perms)).toEqual(access.participantCaps(a, perms));
+      }
+    }
+  });
+
+  it('права проекта в хабе Electron: защита от копирования — только у Pro/Tutor', () => {
+    expect(cjsAccess.hubPermissions({ permissions: { allowCopy: false, forbidClone: true } })).toMatchObject({ allowCopy: true, forbidClone: false });
+    expect(cjsAccess.hubPermissions({ ownerPlan: 'pro', permissions: { allowCopy: false, forbidClone: true, summon: 'editors', protectElements: true } }))
+      .toEqual({ allowCopy: false, forbidClone: true, summon: 'editors', protectElements: true });
+  });
+
+  it('снимок для гостя без сведений о доступе', () => {
+    const users = [{ userId: 1, access: { role: 'reader', source: 'p2p' } }, { userId: 2 }];
+    expect(cjsRoom.stripAccess(users)).toEqual(stripAccess(users as never));
+  });
+});
+
+describe('защита элементов room-guard.cjs совпадает с src/element-guard.ts (SPEC_NIGHT6 §4)', () => {
+  const cjsGuard = require('../../electron/room-guard.cjs');
+  const r = (id: string, by?: string, x = 0) => ({ id, type: 'shape', shape: 'rect', x, y: 0, w: 1, h: 1, color: '#000', width: 1, ...(by ? { by } : {}) });
+  const t = (extra = {}) => ({ id: 't', type: 'task', x: 0, y: 0, w: 1, h: 1, taskId: 'k', examType: 'custom', topic: '', statementMd: 'У', answer: '1', ...extra });
+  const page = (els: unknown[], extra = {}) => ({ id: 'p', name: 'С', grid: 'square', elements: els, ...extra });
+  const whos = [
+    { privileged: true, principal: null, protect: true },
+    { privileged: false, principal: 'c:a', protect: true },
+    { privileged: false, principal: 'c:a', protect: false },
+    { privileged: false, principal: null, protect: true },
+    { privileged: false, principal: null, protect: false },
+  ];
+  const known = page([r('o'), r('a', 'c:a'), r('b', 'c:b'), t({ studentDraft: 'x' })]);
+  const patches = [
+    { t: 'patch', pageId: 'p', rev: 1, ops: [{ op: 'del', id: 'o' }, { op: 'del', id: 'a' }, { op: 'put', el: r('n', 'c:z') }] },
+    { t: 'patch', pageId: 'p', rev: 1, ops: [{ op: 'put', el: r('o', undefined, 5) }, { op: 'put', el: r('b', 'c:b') }, { op: 'put', el: t({ statementMd: 'Подмена', studentDraft: 'y' }) }] },
+    { t: 'patch', pageId: 'p', rev: 1, ops: [{ op: 'order', ids: ['b', 'o', 'a', 't'] }], grid: 'none' },
+    { t: 'patch', pageId: 'p', rev: 1, ops: [{ op: 'order', ids: ['a', 'o', 'b', 't'] }], backgroundColor: null },
+  ];
+  const pages = [
+    page([r('a', 'c:a', 3), r('o', undefined, 9), r('n')], { name: 'Другое' }),
+    page([r('b', 'c:b'), r('t'), r('a', 'c:a'), r('o')]),
+    page(known.elements),
+  ];
+  it('патчи', () => {
+    for (const who of whos) for (const p of patches) expect(cjsGuard.guardPatch(known, p, who)).toEqual(guard.guardPatch(known as never, p as never, who));
+  });
+  it('страница целиком', () => {
+    for (const who of whos) for (const p of pages) expect(cjsGuard.guardPageReplace(known, p, who)).toEqual(guard.guardPageReplace(known as never, p as never, who));
   });
 });

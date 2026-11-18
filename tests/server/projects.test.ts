@@ -372,7 +372,7 @@ describe('POST /api/projects/:id/patch', () => {
   it('владелец: put/del/order применяются, ревизия растёт, запись в журнале', async () => {
     const { app, owner } = await shared();
     const r = await call(app, 'POST', '/api/projects/a/patch', patch('a-p2', [putOp(rectEl('r9')), { op: 'del', id: 'r2' }]), { token: owner.token });
-    expect(r.body).toEqual({ ok: true, rev: 2 });
+    expect(r.body).toEqual({ ok: true, rev: 2, refused: [] }); // refused — отклонённые защитой элементы (Ночь №6)
     expect(stored(app).pages[1].elements.map((e: any) => e.id)).toEqual(['r9']);
     const rev = app.db.prepare('SELECT rev, page_id, author_id, patch_json FROM project_revisions WHERE project_id = ? ORDER BY rev DESC LIMIT 1').get('a') as any;
     expect(rev).toMatchObject({ rev: 2, page_id: 'a-p2', author_id: owner.id });

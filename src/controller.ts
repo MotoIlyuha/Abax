@@ -4,13 +4,13 @@ import {
   state, update, onChange, beginStroke, extendStroke, endStroke, pushHistory, replaceElements,
   addElement, setSelection, deleteSelected, undo, redo, pickTool, uid, commitPoly,
   bringForward, sendBackward, moveSelectionLayer, expandSelectionWithGroups, groupSelected, ungroupSelected, selectAll, selectInserted, opacityField,
-  zoomAtPoint, ZOOM_MAX, ZOOM_MIN, insertCopies, isDraftId, touchProject, canCopyCurrentBoard,
+  zoomAtPoint, ZOOM_MAX, ZOOM_MIN, insertCopies, isDraftId, touchProject, canCopyCurrentBoard, canTouchElement,
 } from './state';
 import {
   type AABB, hitTest, erasePart, aabbIntersects, aabbUnion, alignGuides, alignShift, boxAnchors, boxHandles, elementAABB, elementHandles,
   applyHandle, insertPolyNode, removePolyNode, gridStepFor, resizeBox, scaleElement, shapeHoldsText, snapValue, translateElement,
 } from './geom';
-import { collabActive, noteCursor, sendFadeStroke, sendFlash, sendLaser } from './collab';
+import { collabActive, foreignElementHint, noteCursor, protectionActive, sendFadeStroke, sendFlash, sendLaser } from './collab';
 import { addGestureProbe } from './gesture';
 import { annotationClick } from './comments-ui';
 import { isNativeApp } from './native';
@@ -227,14 +227,36 @@ export function initController(canvas: HTMLCanvasElement): void {
     autoPan.raf = requestAnimationFrame(tick);
   }
 
-  const topHit = (x: number, y: number): Element | null => {
+  /** Верхний элемент под точкой; touchable — только те, что можно менять (защита чужих элементов, SPEC_NIGHT6 §4.6). */
+  const topHit = (x: number, y: number, touchable = false): Element | null => {
     const tol = SELECT_TOL / state.camera.zoom;
     const els = state.board.elements;
     for (let i = els.length - 1; i >= 0; i--) {
+      if (touchable && !canTouchElement(els[i])) continue;
       if (hitTest(els[i], x, y, tol)) return els[i];
     }
     return null;
   };
+
+  /** Наведение на чужой элемент при защите: курсор «нельзя» и подсказка; иначе — как обычно. */
+  let foreignHover = false;
+  function hoverForeign(x: number, y: number): void {
+    if (!protectionActive() || state.tool !== 'select' || spacePan) {
+      if (foreignHover) { foreignHover = false; canvas.style.cursor = cursorFor(state.tool); canvas.removeAttribute('title'); }
+      return;
+    }
+    const hit = topHit(x, y);
+    const hint = hit && !topHit(x, y, true) ? foreignElementHint(hit) : null;
+    if (hint) {
+      foreignHover = true;
+      canvas.style.cursor = 'not-allowed';
+      canvas.title = hint;
+    } else if (foreignHover) {
+      foreignHover = false;
+      canvas.style.cursor = cursorFor(state.tool);
+      canvas.removeAttribute('title');
+    }
+  }
 
   /** Общая рамка выделения — та же, что рисуется вокруг нескольких объектов. */
   function selectionBox(): AABB | null {
@@ -292,7 +314,7 @@ export function initController(canvas: HTMLCanvasElement): void {
     // радиус маленький, шагов много: проверяем только элементы, чья рамка задевает путь
     const path = { x0: Math.min(from.x, x), y0: Math.min(from.y, y), x1: Math.max(from.x, x), y1: Math.max(from.y, y) };
     const near = state.board.elements.filter(el => {
-      if (el.type !== 'stroke') return false;
+      if (el.type !== 'stroke' || !canTouchElement(el)) return false; // чужие штрихи при защите не стираются
       const pad = r + ('width' in el ? el.width : 0); // у линии рамка без толщины
       const b = elementAABB(el);
       return aabbIntersects({ x0: b.x0 - pad, y0: b.y0 - pad, x1: b.x1 + pad, y1: b.y1 + pad }, path);
@@ -323,7 +345,7 @@ export function initController(canvas: HTMLCanvasElement): void {
       const py = from.y + ((y - from.y) * i) / steps;
       const out: Element[] = [];
       for (const el of next) {
-        if (el.type !== 'stroke') { out.push(el); continue; }
+        if (el.type !== 'stroke' || !canTouchElement(el)) { out.push(el); continue; }
         const stroke = el;
         const pieces = erasePart(stroke.pts, stroke.width, px, py, r);
         if (!pieces) { out.push(stroke); continue; }
@@ -671,7 +693,7 @@ export function initController(canvas: HTMLCanvasElement): void {
             }
           }
         }
-        const hit = topHit(s.x, s.y);
+        const hit = topHit(s.x, s.y, true);
         if (hit) {
           const groupIds = expandSelectionWithGroups(new Set([hit.id]));
           // был ли элемент уже выделен ДО этого клика (для снятия по повторному клику)
@@ -707,7 +729,7 @@ export function initController(canvas: HTMLCanvasElement): void {
       }
       case 'spread':
         // что поедет вниз, решаем один раз — по линии нажатия
-        action = { pid: e.pointerId, kind: 'spread', pre: state.board.elements, ids: spreadTargets(state.board.elements, s.y), y: s.y, dy: 0 };
+        action = { pid: e.pointerId, kind: 'spread', pre: state.board.elements, ids: new Set([...spreadTargets(state.board.elements, s.y)].filter(id => { const el = state.board.elements.find(x => x.id === id); return !el || canTouchElement(el); })), y: s.y, dy: 0 };
         state.spread = { y: s.y, dy: 0 };
         update();
         break;
@@ -802,6 +824,7 @@ export function initController(canvas: HTMLCanvasElement): void {
     if (state.tool === 'partEraser' || action?.kind === 'erasePart') trackEraser(lp.x, lp.y);
     // шлейф или искры Pro-курсора (только мышь и только у «Выделения», где виден персональный курсор)
     if (e.pointerType === 'mouse' && state.tool === 'select' && !spacePan) fxMove('me', lp.x, lp.y, myCursorId());
+    if (!action && e.pointerType !== 'touch') { const sp = toScene(lp.x, lp.y); hoverForeign(sp.x, sp.y); }
     if (collabActive()) noteCursor(lp.x / state.camera.zoom + state.camera.x, lp.y / state.camera.zoom + state.camera.y);
     if (state.tool === 'partEraser') update(); // кружок ластика под курсором
     else if (state.tool === 'spread' || presenting()) requestRender(); // линия разреза под курсором, курсор в окне демонстрации
@@ -1133,8 +1156,10 @@ export function initController(canvas: HTMLCanvasElement): void {
         }
       }
     }
-    const hit = topHit(s.x, s.y);
-    if (hit && hit.type === 'task') { editTaskElement(hit); return; }
+    const any = topHit(s.x, s.y);
+    if (any && any.type === 'task') { editTaskElement(any); return; }
+    // чужую надпись при защите не открыть на правку (SPEC_NIGHT6 §4.6)
+    const hit = topHit(s.x, s.y, true);
     if (hit && (hit.type === 'text' || hit.type === 'note')) beginTextEdit({ el: hit });
     // надпись фигуры: двойной клик (на планшете — двойное касание) сразу открывает редактор и клавиатуру
     else if (shapeHoldsText(hit) && canEditBoard()) {

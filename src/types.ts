@@ -19,6 +19,11 @@ export interface BaseEl {
   groupId?: string;
   /** Реакции: эмодзи → id пользователей, поставивших её. */
   reactions?: Record<string, string[]>;
+  /**
+   * Автор элемента: u:<userId> (сессия облака) или c:<id> (участник P2P-хаба). Ставит только хаб или сервер.
+   * Нет поля — элемент владельца доски (SPEC_NIGHT6 §2.6).
+   */
+  by?: string;
 }
 
 /** Точка в координатах сцены; p — давление 0..1 (мышь даёт 0.5). */
@@ -257,6 +262,12 @@ export interface ProjectPermissions {
   pageRights?: Record<string, PageRight>;
   /** Максимум гостей в комнате (Pro/Tutor); null, 0 или нет поля — без ограничений автора (SPEC_NIGHT5 §3.3). */
   maxGuests?: number | null;
+  /** Защита чужих элементов: участники правят только свои элементы (SPEC_NIGHT6 §4). Нет поля — выключена. */
+  protectElements?: boolean;
+  /** Просмотр по ссылке на доску и страницу (/p/…) без приглашения. Нет поля — включён. */
+  linkView?: boolean;
+  /** Кто может «Позвать всех сюда»: 'owner' (нет поля) или 'editors'. */
+  summon?: 'owner' | 'editors';
 }
 
 /** Проект — набор страниц. */
@@ -331,6 +342,9 @@ export type WheelMode = 'scroll' | 'zoom';
 /** Анимация перехода на другую страницу. */
 export type PageTransition = 'none' | 'slide' | 'fade' | 'zoom';
 
+/** Режим анимаций интерфейса (настройка доски «Анимации»). */
+export type AnimationMode = 'off' | 'normal' | 'enhanced';
+
 /** Модификатор перехода на страницу по номеру: Ctrl+1…9 или Alt+1…9. */
 export type PageKeyMod = 'ctrl' | 'alt';
 
@@ -346,10 +360,11 @@ export interface BoardSettings {
   mouseBindings: Record<'1' | '3' | '4', { action: string; label: string } | null>;
   /** Сочетание «новая страница» («Ctrl+KeyN», см. hotkeys.ts); null — без сочетания. */
   newPageKey: string | null;
-  /** Плавное появление меню и панелей (кроме плавающего меню выделения). */
-  uiAnimations: boolean;
-  /** Motion-анимации на пружинах: подсказка панели инструментов перетекает от кнопки к кнопке (morph-tooltip.ts). */
-  motionAnimations: boolean;
+  /**
+   * Режим анимаций: «off» — без движения; «normal» — меню и панели плавно выплывают, без пружин;
+   * «enhanced» — всё, включая пружины (подсказка панели перетекает, иконки пружинят, см. motion.ts).
+   */
+  animationMode: AnimationMode;
   /** Скрыть кнопки «Отменить» и «Повторить» в шапке (Ctrl+Z / Ctrl+Y работают). */
   hideUndoRedo: boolean;
   /** Изображения (и страницы PDF) меняют размер только пропорционально — без Shift и Ctrl. */

@@ -3,7 +3,7 @@
 // сервере выключены — комната ведёт себя как Pro).
 import { expect, test, type Page } from '@playwright/test';
 import { Board } from './fixtures';
-import { createInvite, device, openAt, stateOf, useNight5Server } from './night5-helpers';
+import { createInvite, device, openAt, shareTab, stateOf, useNight5Server } from './night5-helpers';
 
 const env = useNight5Server();
 
@@ -69,6 +69,7 @@ test.describe('присутствие', () => {
     expect(pages).toHaveLength(3);
     const link = await createInvite(a);
     // вторая страница скрыта от гостей
+    await shareTab(a, 'settings'); // Ночь №6: права страниц — на вкладке «Настройки доступа»
     await a.locator(`#share-dialog .share-page-right[data-page-id="${pages[1]}"] select`).selectOption('hidden');
     await closeShare(a);
 

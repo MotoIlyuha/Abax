@@ -1,8 +1,9 @@
 import { startCrop } from './crop';
 import type {
-  BoardSettings, Camera, Element, GridMode, ImageEl, NoteEl, Page, PageTransition, Project, ProjectMeta, ShapeEl, TaskEl, TextAlign, TextEl, TextVAlign,
+  AnimationMode, BoardSettings, Camera, Element, GridMode, ImageEl, NoteEl, Page, PageTransition, Project, ProjectMeta, ShapeEl, TaskEl, TextAlign, TextEl, TextVAlign,
   ToolId, ToolbarPos, WheelMode,
 } from './types';
+import { resolveAnimationMode } from './motion';
 import {
   state, update, onChange, undo, redo, canUndo, canRedo, setTool, setGrid, setCoordLabels, setStyleColor,
   setStyleWidth, setStyleOpacity, pickTool, setNoteColor, selectPreset, presetKind, addElement, replaceElements, pushHistory, uid,
@@ -32,7 +33,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 // ?worker&inline: воркер инлайнится в бандл и работает из file:// (Electron)
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker&inline';
 import { initChatButton } from './collab-chat';
-import { collabActive, isHost, myColor, noteSelection, readOnly, startHostConnection, stopCollab, type CollabGotoDetail, type CollabSummonDetail } from './collab';
+import { collabActive, isHost, myCollabCaps, myColor, noteSelection, readOnly, startHostConnection, stopCollab, type CollabGotoDetail, type CollabSummonDetail } from './collab';
 import { animateCameraTo } from './camera-anim';
 import { fillPageAvatars, initCollabPresence } from './collab-presence';
 import { closePresent, openPresent, presentOpen } from './present';
@@ -64,7 +65,7 @@ import { limitsEnforced, userPlan } from './plan';
 import { CONFLICT_TEXT, cloudStorage, openFresh, type ConflictResolution } from './cloud-sync';
 import { clearStarter, isPristineStarterProject, starterId } from './sync-state';
 import { initSyncIndicator } from './sync-indicator';
-import { createInviteBox, refreshInviteBox } from './invite-ui';
+import { openShareDialog as openShareDialogUi, type ShareApi } from './share-dialog';
 import { onCancelInteraction } from './interaction';
 import { incomingInvites, incomingInvitesSection, onIncomingInvites, refreshIncomingInvites } from './incoming-invites';
 import { addGestureProbe } from './gesture';
@@ -219,8 +220,7 @@ function restoreSettings(): void {
         mouseMode: v.mouseMode === 'history' || v.mouseMode === 'custom' ? v.mouseMode : 'pages',
         mouseBindings: Object.fromEntries(['1', '3', '4'].map(key => { const b = v.mouseBindings?.[key]; return [key, b && typeof b.action === 'string' && typeof b.label === 'string' ? { action: b.action, label: b.label } : null]; })) as BoardSettings['mouseBindings'],
         newPageKey: DEFAULT_NEW_PAGE_KEY,
-        uiAnimations: typeof v.uiAnimations === 'boolean' ? v.uiAnimations : true,
-        motionAnimations: typeof v.motionAnimations === 'boolean' ? v.motionAnimations : true,
+        animationMode: resolveAnimationMode(v),
         hideUndoRedo: typeof v.hideUndoRedo === 'boolean' ? v.hideUndoRedo : false,
         keepImageAspect: typeof v.keepImageAspect === 'boolean' ? v.keepImageAspect : true,
         alignGuides: typeof v.alignGuides === 'boolean' ? v.alignGuides : true,
@@ -249,16 +249,22 @@ function persistSettings(): void {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings));
 }
 
-/** Анимации появления панелей живут в CSS; выключенные — класс на body их гасит. */
-function applyUiAnimations(): void {
-  document.body.classList.toggle('no-ui-anim', !state.settings.uiAnimations);
-}
+/** Варианты режима анимаций (настройка доски «Анимации»). */
+const ANIMATION_MODES: { mode: AnimationMode; name: string; hint: string }[] = [
+  { mode: 'off', name: 'Выкл', hint: 'Без движения: меню и панели появляются сразу, пружин нет' },
+  { mode: 'normal', name: 'Обычные', hint: 'Меню и панели плавно выплывают, подсказка и пружины выключены' },
+  { mode: 'enhanced', name: 'Улучшенные', hint: 'Меню и панели выплывают, подсказка панели перетекает от кнопки к кнопке, иконки пружинят' },
+];
 
-/** Motion-анимации (пружины): выключенные — класс на body, подсказка панели снова обычная, без подсветки и «нажатия» иконок. */
-function applyMotionAnimations(): void {
-  const on = state.settings.motionAnimations;
-  document.body.classList.toggle('no-motion', !on);
-  if (!on) morphLeave(true);
+/**
+ * Режим анимаций на классах body: «выкл» гасит появление панелей (no-ui-anim) и пружины (no-motion);
+ * «обычные» — только пружины; «улучшенные» — ничего не гасит.
+ */
+function applyAnimationMode(): void {
+  const mode = state.settings.animationMode;
+  document.body.classList.toggle('no-ui-anim', mode === 'off');
+  document.body.classList.toggle('no-motion', mode !== 'enhanced');
+  if (mode !== 'enhanced') morphLeave(true);
   morphPagesReset(pagesOpen);
 }
 
@@ -2359,23 +2365,26 @@ function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
   lblPages.textContent = 'Список страниц';
   pop.appendChild(lblPages);
   pop.appendChild(settingCheck('closePagesOnPick', 'Закрывать после выбора страницы'));
-  const lbl6 = document.createElement('label');
-  lbl6.className = 'ctx-check';
-  lbl6.title = 'Меню и панели плавно выплывают при открытии';
-  const cb6 = document.createElement('input');
-  cb6.type = 'checkbox';
-  cb6.checked = state.settings.uiAnimations;
-  cb6.addEventListener('change', () => {
-    setSettings({ uiAnimations: cb6.checked });
-    persistSettings();
-    applyUiAnimations();
-  });
-  const span6 = document.createElement('span');
-  span6.textContent = 'Анимация меню и панелей';
-  lbl6.append(cb6, span6);
-  pop.appendChild(lbl6);
-  pop.appendChild(settingCheck('motionAnimations', 'Motion анимации',
-    'Подсказка панели инструментов плавно перетекает от кнопки к кнопке, иконки пружинят при нажатии', applyMotionAnimations));
+  const lblAnim = document.createElement('div');
+  lblAnim.className = 'ctx-label';
+  lblAnim.textContent = 'Анимации';
+  pop.appendChild(lblAnim);
+  const animRow = document.createElement('div');
+  animRow.className = 'ctx-toolbar-pos ctx-options';
+  for (const { mode, name, hint } of ANIMATION_MODES) {
+    const b = document.createElement('button');
+    b.textContent = name;
+    b.title = hint;
+    b.className = state.settings.animationMode === mode ? 'active' : '';
+    b.addEventListener('click', () => {
+      setSettings({ animationMode: mode });
+      persistSettings();
+      applyAnimationMode();
+      rerender();
+    });
+    animRow.appendChild(b);
+  }
+  pop.appendChild(animRow);
   const lbl7 = document.createElement('label');
   lbl7.className = 'ctx-check';
   lbl7.title = macKeys('Отмена и повтор по-прежнему работают на Ctrl+Z и Ctrl+Y');
@@ -2393,7 +2402,7 @@ function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
   pop.appendChild(lbl7);
 }
 
-type BoolSetting = 'motionAnimations' | 'alignGuides' | 'closePagesOnPick' | 'thumbViewport' | 'pageLinks' | 'recursionEnabled';
+type BoolSetting = 'alignGuides' | 'closePagesOnPick' | 'thumbViewport' | 'pageLinks' | 'recursionEnabled';
 
 /** Флажок настройки доски: меняет и сразу сохраняет. */
 function settingCheck(key: BoolSetting, text: string, hint?: string, after?: () => void): HTMLElement {
@@ -4899,19 +4908,24 @@ function wireZoomInput(): void {
   const render = () => {
     const zoomIcon = svg('<circle cx="10" cy="10" r="6"/><path d="M14.5 14.5L21 21M10 7v6M7 10h6"/>');
     const row = (action: string, icon: string, label: string, arrow = '') => `<button ${action}><span class="view-icon">${icon}</span><span class="view-text">${label}</span>${arrow}</button>`;
+    // в режиме просмотра по ссылке тип сетки и фон страницы не меняются: пункты не показываем
+    const viewOnly = state.linkMode !== null;
+    const gridRows = viewOnly ? '' : `${row('data-view="grid"', GRID_ICONS.square, 'Тип сетки', '›')}<div id="view-grid-options" hidden></div>
+      ${row('data-view="background"', svg('<path d="M12 3C9.5 6.4 5 10 5 14a7 7 0 0 0 14 0c0-4-4.5-7.6-7-11z"/><path d="M12 3v18a7 7 0 0 0 7-7c0-4-4.5-7.6-7-11z" fill="currentColor" stroke="none"/>'), 'Фон страницы', '›')}<div id="view-color-options" hidden></div>`;
     menu.innerHTML = `${row('data-view="fullscreen"', svg('<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/>'), 'Полный экран')}<hr>
-      ${row('data-view="grid"', GRID_ICONS.square, 'Тип сетки', '›')}<div id="view-grid-options" hidden></div>
-      ${row('data-view="background"', svg('<path d="M12 3C9.5 6.4 5 10 5 14a7 7 0 0 0 14 0c0-4-4.5-7.6-7-11z"/><path d="M12 3v18a7 7 0 0 0 7-7c0-4-4.5-7.6-7-11z" fill="currentColor" stroke="none"/>'), 'Фон страницы', '›')}<div id="view-color-options" hidden></div>
+      ${gridRows}
       ${row('data-view="fit"', ICONS.fit, 'Показать всё')}<hr>
       ${[50, 70, 100, 200, 400, 800].map(n => row(`data-zoom="${n}"`, zoomIcon, `${n}%`)).join('')}
       ${row('data-view="custom"', zoomIcon, 'Другой масштаб…')}`;
-    const options = menu.querySelector<HTMLElement>('#view-grid-options')!;
-    for (const g of Object.keys(GRID_LABELS) as GridMode[]) {
-      const b = document.createElement('button'); b.innerHTML = `${gridIcon(g, state.board.coordLabels !== false)}<span>${GRID_LABELS[g]}</span>${g === state.board.grid ? '✓' : ''}`;
-      b.addEventListener('click', () => { setGrid(g); void saveNow(); close(); }); options.append(b);
+    const options = menu.querySelector<HTMLElement>('#view-grid-options');
+    if (options) {
+      for (const g of Object.keys(GRID_LABELS) as GridMode[]) {
+        const b = document.createElement('button'); b.innerHTML = `${gridIcon(g, state.board.coordLabels !== false)}<span>${GRID_LABELS[g]}</span>${g === state.board.grid ? '✓' : ''}`;
+        b.addEventListener('click', () => { setGrid(g); void saveNow(); close(); }); options.append(b);
+      }
+      const coordSwitch = coordLabelsSwitch();
+      if (coordSwitch) options.append(coordSwitch);
     }
-    const coordSwitch = coordLabelsSwitch();
-    if (coordSwitch) options.append(coordSwitch);
   };
   const group = document.querySelector<HTMLElement>('.view-group')!;
   const positionMenu = () => {
@@ -4932,6 +4946,7 @@ function wireZoomInput(): void {
   }
   const gridTrigger = document.getElementById('view-grid-icon')!;
   gridTrigger.addEventListener('click', () => {
+    if (state.linkMode !== null) return; // в режиме просмотра по ссылке сетку не меняют
     if (!menu.hidden && !menu.querySelector('#view-grid-options')) { close(); return; }
     render(); menu.hidden = false; label.setAttribute('aria-expanded', 'true');
     positionMenu();
@@ -5036,30 +5051,7 @@ export function togglePresent(): void {
   if (!openPresent()) alert('Не удалось открыть окно демонстрации: разрешите всплывающие окна для этой страницы');
 }
 
-// ----- Совместная работа: диалог автора -----
-
-interface ShareUser { userId: number; name: string; color: string; host?: boolean; away?: boolean; rights?: { default?: string; pages?: Record<string, string> } }
-/** Комната на облачном ретрансляторе (electron/cloud-link.cjs): гости из интернета. */
-interface ShareCloudStatus {
-  state: 'connecting' | 'online' | 'reconnecting' | 'failed' | 'stopped';
-  /** Ссылка для гостей; null — комнаты пока нет. */
-  url: string | null;
-  error: string | null;
-  guests: number;
-  relayUrl: string;
-}
-interface ShareStatus { active: boolean; url?: string; code?: string; port?: number; maxEditors?: number; users?: ShareUser[]; cloud?: ShareCloudStatus | null }
-interface ShareApi {
-  /** connected — автор уже подключён к комнате (браузерный хост): в окне приложения подключаться должен сам диалог. */
-  shareStart(): Promise<{ ok: boolean; port?: number; code?: string; hostKey?: string; connected?: boolean; error?: string }>;
-  shareStop(): Promise<{ ok: boolean }>;
-  shareStatus(): Promise<ShareStatus>;
-  shareSetRights(uid: number, patch: { pages?: Record<string, string>; default?: string; all?: string }): Promise<{ ok: boolean; error?: string }>;
-  shareOpenTestWindow(): Promise<{ ok: boolean }>;
-  /** Только в Electron; без relayUrl — ретранслятор по умолчанию. */
-  shareCloudStart?(opts?: { relayUrl?: string }): Promise<{ ok: boolean; error?: string; cloud?: ShareCloudStatus | null }>;
-  shareCloudStop?(): Promise<{ ok: boolean }>;
-}
+// ----- Совместная работа: окно «Поделиться» (src/share-dialog.ts) -----
 
 /** Совместная работа во вкладке браузера: комната и хаб живут в самой странице, гости приходят через ретранслятор. */
 const browserShareApi: ShareApi = {
@@ -5091,249 +5083,29 @@ async function collabApi(): Promise<ShareApi> {
   return api?.shareStart ? api : browserShareApi;
 }
 
-let shareInfo: ShareStatus = { active: false };
-
 /** Свой адрес ретранслятора (сервер не по умолчанию); хранится только у автора. */
-const RELAY_KEY = 'doska.relayUrl';
 function savedRelayUrl(): string {
-  try { return localStorage.getItem(RELAY_KEY) || ''; } catch { return ''; }
+  try { return localStorage.getItem('doska.relayUrl') || ''; } catch { return ''; }
 }
 /** Ретранслятор по умолчанию из сборки (vite.config.ts); вне Vite (unit-тесты) — не задан. */
 function defaultRelayUrl(): string {
   return typeof __DEFAULT_RELAY_URL__ === 'string' ? __DEFAULT_RELAY_URL__ : '';
 }
-/** Состояние раздела «Через интернет» между перерисовками диалога (раз в 2 с). */
-const cloudUi = { starting: false, error: null as string | null, askRelay: false };
-/** Ошибки, при которых стоит предложить ввести адрес ретранслятора. */
-const RELAY_ADDRESS_ERRORS = /адрес ретранслятора|подключиться к ретранслятору/i;
-
-async function startCloudShare(api: ShareApi, relayUrl: string, rerender: () => Promise<void>): Promise<void> {
-  cloudUi.starting = true;
-  cloudUi.error = null;
-  await rerender();
-  const r = await api.shareCloudStart!(relayUrl ? { relayUrl } : undefined);
-  cloudUi.starting = false;
-  if (r.ok) {
-    cloudUi.askRelay = false;
-    if (relayUrl) try { localStorage.setItem(RELAY_KEY, relayUrl); } catch { /* не запомним — введут снова */ }
-  } else {
-    cloudUi.error = r.error || 'Не удалось подключиться к ретранслятору';
-    if (RELAY_ADDRESS_ERRORS.test(cloudUi.error)) cloudUi.askRelay = true;
-  }
-  await rerender();
-}
-
-/** Раздел «Через интернет»: комната на облачном ретрансляторе для гостей из любой сети. */
-function renderCloudShare(api: ShareApi, status: ShareStatus, rerender: () => Promise<void>): HTMLElement | null {
-  if (!api.shareCloudStart) return null; // только в приложении: облачное подключение держит main-процесс
-  const box = document.createElement('div');
-  box.className = 'share-cloud';
-  const h = document.createElement('div');
-  h.className = 'share-cloud-title';
-  h.textContent = 'Через интернет';
-  box.appendChild(h);
-  const cloud = status.cloud;
-  const running = !!cloud && (cloud.state === 'online' || cloud.state === 'reconnecting' || cloud.state === 'connecting');
-
-  if (running) {
-    if (cloud!.url) {
-      const url = cloud!.url;
-      const link = document.createElement('div');
-      link.className = 'share-link share-link-cloud';
-      link.textContent = url;
-      link.title = 'Клик — скопировать ссылку';
-      link.addEventListener('click', () => {
-        void navigator.clipboard.writeText(url);
-        link.textContent = 'Ссылка скопирована';
-        setTimeout(() => { link.textContent = url; }, 1200);
-      });
-      box.appendChild(link);
-    }
-    const note = document.createElement('div');
-    note.className = 'share-cloud-status';
-    if (cloud!.state === 'reconnecting') {
-      note.classList.add('warn');
-      note.textContent = 'Связь с сервером прервалась — переподключаемся. Гости подождут.';
-    } else {
-      note.textContent = 'Ссылка откроется на любом устройстве с интернетом.';
-    }
-    box.appendChild(note);
-    const stop = document.createElement('button');
-    stop.className = 'ctx-custom-btn danger';
-    stop.textContent = 'Закрыть доступ через интернет';
-    stop.addEventListener('click', async () => {
-      await api.shareCloudStop?.();
-      cloudUi.error = null;
-      await rerender();
-    });
-    box.appendChild(stop);
-    return box;
-  }
-
-  const error = cloudUi.error || (cloud?.state === 'failed' ? cloud.error : null);
-  if (error) {
-    const e = document.createElement('div');
-    e.className = 'share-cloud-error';
-    e.textContent = error;
-    box.appendChild(e);
-  }
-  let input: HTMLInputElement | null = null;
-  if (cloudUi.askRelay) {
-    input = document.createElement('input');
-    input.className = 'share-relay-input';
-    input.type = 'url';
-    input.placeholder = 'wss://relay.example.com';
-    input.value = savedRelayUrl();
-    input.setAttribute('aria-label', 'Адрес сервера-ретранслятора');
-    box.appendChild(input);
-  }
-  const start = document.createElement('button');
-  start.className = 'ctx-custom-btn';
-  start.disabled = cloudUi.starting;
-  start.textContent = cloudUi.starting ? 'Подключение…' : error ? 'Подключиться снова' : 'Пригласить через интернет';
-  start.addEventListener('click', () => {
-    const relay = input ? input.value.trim() : savedRelayUrl();
-    void startCloudShare(api, relay, rerender);
-  });
-  input?.addEventListener('keydown', ev => { if (ev.key === 'Enter') start.click(); });
-  box.appendChild(start);
-  return box;
-}
 
 async function openShareDialog(): Promise<void> {
   const api = await collabApi();
-  let dlg = document.getElementById('share-dialog');
-  if (dlg) { dlg.remove(); return; }
-  dlg = document.createElement('div');
-  dlg.id = 'share-dialog';
-  document.body.appendChild(dlg);
-  // блок облачной ссылки-приглашения живёт между перерисовками окна (иначе каждые 2 с — запрос к серверу)
-  const inviteBox = createInviteBox();
-  const render = async () => {
-    const status = await api.shareStatus();
-    shareInfo = status; void shareInfo; // доступно другим частям UI
-    const users = (status.users || []).filter(u => !u.host);
-    dlg!.textContent = '';
-    const title = document.createElement('div');
-    title.className = 'ctx-title';
-    title.textContent = 'Совместная работа';
-    dlg!.appendChild(title);
-    if (!status.active) {
-      const start = document.createElement('button');
-      start.className = 'ctx-custom-btn';
-      start.textContent = 'Включить совместную работу';
-      start.addEventListener('click', async () => {
-        await saveNow();
-        const r = await api.shareStart();
-        if (!r.ok || (!r.connected && (!r.port || !r.code || !r.hostKey))) {
-          alert(r.error || 'Не удалось запустить сервер совместной работы');
-          await render();
-          return;
-        }
-        if (!r.connected) await startHostConnection(r.port!, r.code!, r.hostKey!, profileName() || 'Автор');
-        await render();
-      });
-      dlg!.appendChild(start);
-    } else {
-      // ссылка в локальной сети и тестовое окно есть только у приложения; во вкладке гостей зовут через интернет
-      if (status.url) {
-        const link = document.createElement('div');
-        link.className = 'share-link';
-        link.textContent = status.url;
-        link.title = 'Клик — скопировать ссылку';
-        link.addEventListener('click', () => {
-          void navigator.clipboard.writeText(status.url || '');
-          link.textContent = 'Ссылка скопирована';
-          setTimeout(() => { link.textContent = status.url || ''; }, 1200);
-        });
-        dlg!.appendChild(link);
-        const testBtn = document.createElement('button');
-        testBtn.className = 'ctx-custom-btn';
-        testBtn.textContent = '+ Тестовое окно гостя';
-        testBtn.addEventListener('click', () => { void api.shareOpenTestWindow(); });
-        dlg!.appendChild(testBtn);
-      }
-      const cloudBox = renderCloudShare(api, status, render);
-      if (cloudBox) dlg!.appendChild(cloudBox);
-      const stopBtn = document.createElement('button');
-      stopBtn.className = 'ctx-custom-btn danger';
-      stopBtn.textContent = 'Выключить совместную работу';
-      stopBtn.addEventListener('click', async () => {
-        await api.shareStop();
-        stopCollab();
-        Object.assign(cloudUi, { starting: false, error: null, askRelay: false });
-        await render();
-      });
-      dlg!.appendChild(stopBtn);
-      if (users.length > 0) {
-        const h = document.createElement('div');
-        h.className = 'ctx-label';
-        h.textContent = `Участники (${users.length}) — права по страницам:`;
-        dlg!.appendChild(h);
-        const table = document.createElement('div');
-        table.className = 'share-table';
-        for (const u of users) {
-          const row = document.createElement('div');
-          row.className = 'share-user';
-          const head = document.createElement('div');
-          head.className = 'share-user-head';
-          const dot = document.createElement('i');
-          dot.style.background = u.away ? '#9aa0ab' : u.color;
-          head.append(dot);
-          const nm = document.createElement('span');
-          nm.textContent = u.name + (u.away ? ' · Отошёл' : '');
-          head.appendChild(nm);
-          row.appendChild(head);
-          for (const pg of state.project.pages) {
-            const sel = document.createElement('select');
-            const cur = u.rights?.pages?.[pg.id] || u.rights?.default || 'view';
-            for (const [v, lbl] of [['view', 'Просмотр'], ['edit', 'Редактирование'], ['hidden', 'Скрыть']] as const) {
-              const opt = document.createElement('option');
-              opt.value = v;
-              opt.textContent = `${pg.name}: ${lbl}`;
-              if (cur === v) opt.selected = true;
-              sel.appendChild(opt);
-            }
-            sel.addEventListener('change', async () => {
-              const patch: Record<string, string> = {};
-              patch[pg.id] = sel.value;
-              const r = await api.shareSetRights(u.userId, { pages: patch });
-              if (!r.ok) alert(r.error || 'Не удалось изменить права');
-              await render();
-            });
-            row.appendChild(sel);
-          }
-          table.appendChild(row);
-        }
-        dlg!.appendChild(table);
-      } else {
-        const hint = document.createElement('div');
-        hint.className = 'ctx-label';
-        hint.textContent = 'Откройте ссылку на другом устройстве или в тестовом окне';
-        dlg!.appendChild(hint);
-      }
-    }
-    dlg!.appendChild(inviteBox);
-    refreshInviteBox(inviteBox);
-    const close = document.createElement('button');
-    close.className = 'ctx-custom-btn';
-    close.textContent = 'Закрыть';
-    close.addEventListener('click', () => dlg!.remove());
-    dlg!.appendChild(close);
-  };
-  await render();
-  // периодическое обновление списка участников, пока диалог открыт
-  const timer = window.setInterval(() => {
-    if (!document.getElementById('share-dialog')) { clearInterval(timer); return; }
-    // перерисовка пересоздаёт поля: не мешаем вводу адреса и выбору прав
-    const active = document.activeElement;
-    if (active && dlg!.contains(active) && (active.tagName === 'INPUT' || active.tagName === 'SELECT')) return;
-    void render();
-  }, 2000);
+  await openShareDialogUi({
+    api,
+    saveNow,
+    startHost: (port, code, hostKey) => startHostConnection(port, code, hostKey, profileName() || 'Автор'),
+    stopCollab,
+  });
 }
 
 /** Инструменты, которые читателю безвредны: ничего не рисуют и не меняют. */
 const READER_TOOLS = new Set<ToolId>(['select', 'pan', 'laser', 'fadePen', 'flash']);
+/** Указка: лазер, исчезающий маркер, подсветка. */
+const POINTER_KINDS = new Set<ToolId>(['laser', 'fadePen', 'flash']);
 /** Инструмент гостя до того, как ему оставили только чтение. */
 let toolBeforeReader: ToolId | null = null;
 
@@ -5341,9 +5113,13 @@ function refresh(): void {
   // совместный режим: скрываем тулбар на страницах без права edit
   if (collabActive() && !isHost()) {
     document.body.classList.toggle('readonly-mode', readOnly());
-    // читателю панели нет: инструмент — «Выделение» (реакции, копирование), а если копировать нельзя — «Панорама»
+    // читателю панели нет: инструмент — «Выделение» (реакции, копирование), а если копировать нельзя — «Панорама»;
+    // без указки (роль «Читатель», SPEC_NIGHT6 §2.3) лазер, исчезающий маркер и подсветка недоступны
+    const noPointer = myCollabCaps()?.pointer === false;
+    const allowed = (t: ToolId) => READER_TOOLS.has(t) && !(noPointer && POINTER_KINDS.has(t));
+    if (noPointer && POINTER_KINDS.has(state.tool)) setTool(canCopyCurrentBoard() ? 'select' : 'pan');
     if (readOnly()) {
-      if (!READER_TOOLS.has(state.tool) || (state.tool === 'select' && !canCopyCurrentBoard())) {
+      if (!allowed(state.tool) || (state.tool === 'select' && !canCopyCurrentBoard())) {
         if (!READER_TOOLS.has(state.tool)) toolBeforeReader = state.tool;
         setTool(canCopyCurrentBoard() ? 'select' : 'pan');
       }
@@ -5494,8 +5270,7 @@ export function initApp(c: HTMLCanvasElement): void {
   restoreCamera();
   restoreStyle();
   restoreSettings();
-  applyUiAnimations();
-  applyMotionAnimations();
+  applyAnimationMode();
   applyUndoRedoVisibility();
   restoreToolbar();
   buildToolbar();

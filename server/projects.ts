@@ -6,14 +6,16 @@ import { assetHashOf } from '../src/asset-store';
 import { preserveElementReactions } from '../src/comments';
 import { canCreateProject, isOverPageLimit, sanitizePermissionsForPlan } from '../src/limits';
 import { cloneProjectForViewer, hiddenPageIds, invitePageRight, maskPagesForGuest, stripStudentData, withoutPages } from '../src/project-access';
-import { guardedElement, hostElement } from '../src/room-host';
+import { guardPatch, withBy } from '../src/element-guard';
 import { MAX_ATTEMPTS } from '../src/task-element';
 import type { CommentThread, Element, Page, PageRight, PlanTier, Project, ProjectPermissions, TaskAttempt } from '../src/types';
 import { ingestElement, ingestProjectImages } from './assets';
 import { requireUser } from './auth';
 import type { AppContext } from './context';
 import { MAX_REVISIONS_PER_PROJECT, type ProjectRow } from './db';
-import { findActiveInvite, type InviteRights } from './invites';
+import { findActiveInvite, inviteCopyAllowed, type InviteRights } from './invites';
+import { legacyRoleOf, participantCaps } from '../src/access';
+
 import { HttpError, type Router } from './router';
 import { effectivePlan, getUser } from './users';
 
@@ -132,7 +134,8 @@ export function mergeStale(current: Project, incoming: Project): Project {
     if (!cur) return pg;
     const curById = new Map(cur.elements.map(e => [e.id, e]));
     const withReactions = preserveElementReactions(pg.elements, cur.elements);
-    const elements = withReactions.map(el => { const c = curById.get(el.id); return c ? mergeTaskLive(c, el) : el; });
+    // автор элемента — поле хаба: у известного элемента он сохраняется (SPEC_NIGHT6 §4.5)
+    const elements = withReactions.map(el => { const c = curById.get(el.id); return c ? withBy(mergeTaskLive(c, el), c.by) : el; });
     const comments = mergeComments(cur.comments, pg.comments);
     const { comments: _c, ...rest } = pg;
     return { ...rest, elements, ...(comments ? { comments } : {}) };
@@ -149,6 +152,11 @@ function liveSignature(project: Project): string {
 }
 
 // ----- Просмотр -----
+
+/** Просмотр по ссылке на доску без приглашения (/p/…): выключается permissions.linkView = false. */
+export function linkViewAllowed(row: ProjectRow): boolean {
+  return projectOf(row).permissions?.linkView !== false;
+}
 
 type Access =
   | { role: 'host' }
@@ -174,17 +182,25 @@ export function viewFor(app: AppContext, row: ProjectRow, access: Access) {
   if (access.role === 'viewer') pages = stripStudentData(pages);
   const perms = sanitizePermissionsForPlan(plan, stored.permissions ?? {});
   const forbidClone = perms.forbidClone === true || access.pageId !== undefined;
-  const allowCopy = perms.allowCopy !== false && perms.forbidClone !== true && (access.role !== 'guest' || access.invite.allowCopy);
+  // копирование гостя — по его роли, правам доски и (старые ссылки) запрету ссылки (SPEC_NIGHT6 §2.3)
+  const caps = access.role === 'guest'
+    ? participantCaps({ owner: false, role: access.invite.role, legacy: access.invite.legacy, inviteAllowCopy: access.invite.allowCopy }, perms)
+    : null;
+  const allowCopy = caps ? caps.copy : perms.allowCopy !== false && perms.forbidClone !== true;
   const { pinned: _pin, ...rest } = stored;
   const project: Project = {
     ...rest, ownerPlan: plan, pages,
-    permissions: { forbidClone, allowCopy: perms.allowCopy !== false && (access.role !== 'guest' || access.invite.allowCopy) },
+    permissions: {
+      forbidClone, allowCopy: caps ? caps.copy : perms.allowCopy !== false,
+      ...(perms.protectElements ? { protectElements: true } : {}), ...(perms.summon ? { summon: perms.summon } : {}),
+    },
   };
   const out = { role: access.role, rev: row.rev, canClone: !forbidClone, allowCopy, ownerPlan: plan, project };
   if (access.role === 'guest') {
     const pageRights: Record<string, PageRight> = {};
     for (const p of pages) pageRights[p.id] = invitePageRight(stored, access.invite, p.id);
-    return { ...out, pageRights, defaultRole: access.invite.defaultRole };
+    // defaultRole — старый синоним для клиентов Ночей №3–5; accessRole и caps — Ночь №6
+    return { ...out, pageRights, defaultRole: legacyRoleOf(access.invite.role), accessRole: access.invite.role, caps };
   }
   return out;
 }
@@ -236,6 +252,8 @@ export function registerProjectRoutes(router: Router): void {
       if (!invite) throw new HttpError(404, 'invite-not-found');
       return { json: viewFor(app, row, { role: 'guest', invite, ...(pageId ? { pageId } : {}) }) };
     }
+    // просмотр по ссылке на доску выключен — доска неотличима от несуществующей (SPEC_NIGHT6 D2)
+    if (!linkViewAllowed(row)) throw new HttpError(404, 'project-not-found');
     return { json: viewFor(app, row, { role: 'viewer', ...(pageId ? { pageId } : {}) }) };
   });
 
@@ -314,15 +332,17 @@ export function registerProjectRoutes(router: Router): void {
     const page = project.pages.find(p => p.id === body.pageId);
     if (!page) throw new HttpError(404, 'page-not-found');
     if (!isOwner && invitePageRight(project, invite!, page.id) !== 'edit') throw new HttpError(403, 'no-edit-right');
-    const known = new Map(page.elements.map(e => [e.id, e]));
-    const ops: ElementOp[] = cleaned.map(op => (op.op === 'put'
-      ? { op: 'put', el: isOwner ? hostElement(known.get(op.el.id), op.el) : guardedElement(known.get(op.el.id), op.el) }
-      : op));
-    const patch: BoardPatch = { ...body, ops, rev: row.rev + 1 };
+    // задания, авторы элементов и (при защите) чужие элементы — как в комнате (SPEC_NIGHT6 §4.4)
+    const protect = sanitizePermissionsForPlan(ownerPlanOf(app, row.owner_id), project.permissions ?? {}).protectElements === true;
+    const guarded = guardPatch(page, { ...body, ops: cleaned }, {
+      privileged: isOwner, principal: !isOwner && ctx.user ? `u:${ctx.user.id}` : null, protect,
+    });
+    const refused = guarded.refused.ids;
+    const patch: BoardPatch = { ...guarded.patch, rev: row.rev + 1 };
     const next: Project = { ...project, updatedAt: app.now(), pages: project.pages.map(p => (p === page ? applyBoardPatch(p, patch) : p)) };
     const rev = writeProject(app, { existing: row, ownerId: row.owner_id, project: next, authorId, pageId: page.id, revision: patch });
     app.notifyProjectChanged(id, next);
-    return { json: { ok: true, rev } };
+    return { json: { ok: true, rev, refused } };
   }, { maxBody: MAX_PATCH_BODY });
 
   router.post('/api/projects/:id/clone', async ctx => {
@@ -331,11 +351,17 @@ export function registerProjectRoutes(router: Router): void {
     const row = getActiveProject(app, ctx.params.id);
     if (!row) throw new HttpError(404, 'project-not-found');
     const isOwner = row.owner_id === user.id;
-    if (!isOwner && row.forbid_clone) throw new HttpError(403, 'clone-forbidden');
-    const plan = effectivePlan(user, app.now());
-    if (app.opts.enforceLimits && !canCreateProject(plan, activeCount(app, user.id))) throw new HttpError(403, 'plan-limit-projects');
     const token = ctx.query.get('invite');
     const invite = token ? findActiveInvite(app, token, row.id) : null;
+    // без приглашения — только при включённом просмотре по ссылке (D2)
+    if (!isOwner && !invite && !linkViewAllowed(row)) throw new HttpError(404, 'project-not-found');
+    if (!isOwner && row.forbid_clone) throw new HttpError(403, 'clone-forbidden');
+    // по приглашению — если роль участника может копировать (D7)
+    if (!isOwner && invite && !inviteCopyAllowed(invite, sanitizePermissionsForPlan(ownerPlanOf(app, row.owner_id), projectOf(row).permissions ?? {}))) {
+      throw new HttpError(403, 'clone-forbidden');
+    }
+    const plan = effectivePlan(user, app.now());
+    if (app.opts.enforceLimits && !canCreateProject(plan, activeCount(app, user.id))) throw new HttpError(403, 'plan-limit-projects');
     const source = projectOf(row);
     const hidden = isOwner ? new Set<string>() : new Set([
       ...hiddenPageIds(source),

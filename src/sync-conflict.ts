@@ -8,8 +8,8 @@ import type { Project } from './types';
 
 type Json = null | boolean | number | string | Json[] | { [k: string]: Json };
 
-/** Поля элемента, которые меняются мимо автора. */
-const LIVE_ELEMENT_KEYS = new Set(['reactions', 'attempts', 'studentDraft']);
+/** Поля элемента, которые меняются мимо автора; by — автор элемента, его ставит хаб (SPEC_NIGHT6 §4.5). */
+const LIVE_ELEMENT_KEYS = new Set(['reactions', 'attempts', 'studentDraft', 'by']);
 /** Поля проекта, не относящиеся к содержимому автора. */
 const SKIP_PROJECT_KEYS = new Set(['createdAt', 'updatedAt', 'ownerPlan', 'permissions']);
 

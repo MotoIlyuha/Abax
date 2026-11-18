@@ -4,7 +4,7 @@ import { cloudStorage, openFresh, setCloudRoomProject } from './cloud-sync';
 import { cloudRoomTransport } from './collab-transport';
 import { collabActive, collabReady, connectCloudHost, connectCollab, lastCollabClose, stopCollab } from './collab';
 import { roomFullInfo, showRoomFullModal } from './room-full';
-import { NOTICE_INVITE_GONE, NOTICE_INVITE_OFFLINE, openInviteView } from './link-view-ui';
+import { inviteFailureNotice, openInviteView } from './link-view-ui';
 import { loadInvite } from './link-view-cloud';
 import { showCollabNotice } from './collab';
 import { onDraft, onChange, state } from './state';
@@ -25,14 +25,16 @@ export async function joinCloudInvite(token: string, name: string): Promise<Join
   if (!api) return 'none';
   const res = await loadInvite(api, token);
   if (!res.ok) {
-    const [title, text] = res.reason === 'not-found' ? NOTICE_INVITE_GONE : NOTICE_INVITE_OFFLINE;
+    const [title, text] = inviteFailureNotice(res.reason, res.code);
     showCollabNotice(title, text);
     return 'none';
   }
   const inv = res.value;
   if (inv.isOwner) return 'none';
-  // сессия (если уже есть) нужна комнате только чтобы проверить тариф для Pro-курсора
-  const session = currentSession();
+  // сессия устройства (анонимная, если не вошли) — автор элементов гостя, который переживает переподключение
+  // (SPEC_NIGHT6 §4.2), и тариф для Pro-курсора; не вышло — входим без неё (автора выдаст комната)
+  let session = currentSession();
+  if (!session) session = await api.ensureSession().catch(() => null);
   await connectCollab(cloudRoomTransport(api.base, inv.roomCode, { name, invite: token, cursorId: myCursorId(), ...(session ? { session } : {}) }), false);
   if (await collabReady()) return 'room';
   const closed = lastCollabClose();
