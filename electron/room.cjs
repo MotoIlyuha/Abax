@@ -4,6 +4,7 @@
 
 const tasks = require('./room-tasks.cjs');
 const notes = require('./room-comments.cjs');
+const access = require('./room-access.cjs');
 
 /** Версия протокола сообщений. Поднимать при несовместимых изменениях формата. */
 const PROTO = 1;
@@ -78,17 +79,23 @@ function normalizeName(raw) {
  *   on(ev: 'message' | 'close', fn: (...args: any[]) => void): void }} RoomSocket
  */
 
+/** Доступ гостя по умолчанию: старая роль (edit — редактор, view — комментатор), как раньше (зеркало defaultAccess). */
+function defaultAccess(openEdit = false) {
+  return { role: openEdit ? 'editor' : 'commenter', legacy: true, personal: {}, source: 'p2p' };
+}
+const defaultRightOf = a => a.personalAll || (a.role === 'editor' ? 'edit' : 'view');
+
 class Room {
   constructor(code) {
     this.code = code;
     this.project = null; // последний известный проект
     this.clients = new Map(); // sock -> info
-    this.rights = new Map(); // uid -> { default: 'view'|'edit', pages: {pageId: 'view'|'edit'} }
+    this.access = new Map(); // uid гостя -> доступ по слоям (роль, личные права страниц) — зеркало ParticipantAccess
     this.nextUid = 1;
     this.revs = new Map(); // pageId -> ревизия: растёт с каждым принятым патчем
     this.chat = []; // последние сообщения чата (только в памяти)
     this.followHost = false; // «Автопереход участников за мной»
-    this.pageRights = {}; // права страниц из permissions проекта, известные хабу
+    this.permsKey = '{}'; // слепок permissions проекта, известный хабу
   }
   clientOf(uid) {
     return [...this.clients.values()].find(c => c.uid === uid);
@@ -106,62 +113,108 @@ class Room {
     for (const pg of this.project.pages) if (this.userPageRight(uid, pg.id) === 'hidden') out.add(pg.id);
     return out;
   }
-  editorsCount() {
+  pageSetting(pageId) {
+    const r = this.project && this.project.permissions && this.project.permissions.pageRights && this.project.permissions.pageRights[pageId];
+    return access.isPageRight(r) ? r : undefined;
+  }
+  rightWith(a, pageId) {
+    return access.effectivePageAccess({
+      owner: false, role: a.role, legacy: a.legacy, pageSetting: this.pageSetting(pageId), personal: a.personal[pageId] || a.personalAll,
+    });
+  }
+  canEditWith(a) {
+    if (!a) return false;
+    if (this.project && this.project.pages.length > 0) return this.project.pages.some(pg => this.rightWith(a, pg.id) === 'edit');
+    return (a.role === 'editor' && !a.personalAll) || a.personalAll === 'edit' || Object.values(a.personal).some(m => m === 'edit');
+  }
+  editorsCount(probe = this.access) {
     let n = 0;
     for (const info of this.clients.values()) {
-      if (this.userCanEditAnything(info.uid)) n++;
+      if (info.host || this.canEditWith(probe.get(info.uid))) n++;
     }
     return n;
   }
   userCanEditAnything(uid) {
-    const r = this.rights.get(uid);
-    if (!r) return false;
-    if (r.default === 'edit') return true;
-    for (const m of Object.values(r.pages || {})) if (m === 'edit') return true;
-    return false;
+    const info = this.clientOf(uid);
+    if (info && info.host) return true;
+    return this.canEditWith(this.access.get(uid));
   }
   userPageRight(uid, pageId) {
-    const info = [...this.clients.values()].find(c => c.uid === uid);
+    const info = this.clientOf(uid);
     if (info && info.host) return 'edit';
-    const r = this.rights.get(uid);
-    if (!r) return 'view';
-    return r.pages[pageId] || r.default || 'view';
+    const a = this.access.get(uid);
+    return a ? this.rightWith(a, pageId) : 'view';
   }
   visiblePages(uid) {
     if (!this.project) return [];
-    const info = [...this.clients.values()].find(c => c.uid === uid);
+    const info = this.clientOf(uid);
     if (info && info.host) return this.project.pages;
     return this.project.pages.filter(pg => this.userPageRight(uid, pg.id) !== 'hidden');
   }
+  /** patch: { role? } | { default? } | { all? } | { pages: { pageId: право | null } } — зеркало Room.setRights. */
   setRights(uid, patch) {
-    // patch: { pageId: 'edit'|'view' } | { default: ... } | { all: ... }
-    const info = [...this.clients.values()].find(c => c.uid === uid);
+    const info = this.clientOf(uid);
     if (info && info.host) return { ok: false, error: 'Автор всегда редактор' };
-    const r = this.rights.get(uid) || { default: 'view', pages: {} };
-    const next = { default: r.default, pages: { ...r.pages } };
-    if (patch.default) next.default = patch.default;
-    if (patch.all) { next.default = patch.all; next.pages = {}; }
-    for (const [pid, mode] of Object.entries(patch.pages || {})) next.pages[pid] = mode;
+    const cur = this.access.get(uid) || defaultAccess();
+    const next = { ...cur, personal: { ...cur.personal } };
+    const applyDefault = d => {
+      if (d === 'hidden') { next.personalAll = 'hidden'; return; }
+      delete next.personalAll;
+      next.role = d === 'edit' ? 'editor' : 'commenter';
+      next.legacy = true;
+    };
+    const nr = access.normalizeRole(patch.role);
+    if (nr) { next.role = nr.role; next.legacy = nr.legacy; delete next.personalAll; }
+    if (access.isPageRight(patch.default)) applyDefault(patch.default);
+    if (access.isPageRight(patch.all)) { next.personal = {}; applyDefault(patch.all); }
+    for (const [pid, mode] of Object.entries(patch.pages || {})) {
+      if (mode === null) delete next.personal[pid];
+      else if (access.isPageRight(mode)) next.personal[pid] = mode;
+    }
     // лимит редакторов: применяем патч и проверяем, не превысил ли юзер порог
     const wasEditor = this.userCanEditAnything(uid);
-    const probe = new Map(this.rights); probe.set(uid, next);
-    const countEditors = () => { let n = 0; for (const i of this.clients.values()) { const rr = probe.get(i.uid); if (i.host) { n++; continue; } if (!rr) continue; if (rr.default === 'edit') { n++; continue; } for (const m of Object.values(rr.pages)) if (m === 'edit') { n++; break; } } return n; };
-    if (!wasEditor && countEditors() > MAX_EDITORS) {
+    const probe = new Map(this.access); probe.set(uid, next);
+    if (!wasEditor && this.editorsCount(probe) > MAX_EDITORS) {
       return { ok: false, error: `Максимум ${MAX_EDITORS} одновременных редакторов` };
     }
-    this.rights.set(uid, next);
+    this.access.set(uid, next);
     return { ok: true };
   }
-  usersSnapshot() {
-    return [...this.clients.values()].map(c => ({
-      userId: c.uid, name: c.name, color: c.color, host: !!c.host,
-      away: Date.now() - c.last > AWAY_MS,
-      cursor: c.cursor || null, pageId: c.pageId || null,
-      selection: c.selection || [], rights: { default: c.host ? 'edit' : (this.rights.get(c.uid)?.default || 'view'), pages: c.host ? {} : (this.rights.get(c.uid)?.pages || {}) },
-      ...(c.cursorId ? { cursorId: c.cursorId } : {}),
-      ...(c.view ? { view: c.view } : {}),
-    }));
+  snapshotRights(c) {
+    if (c.host) return { default: 'edit', pages: {} };
+    const a = this.access.get(c.uid);
+    if (!a) return { default: 'view', pages: {} };
+    const def = defaultRightOf(a);
+    const pages = {};
+    for (const pg of (this.project && this.project.pages) || []) {
+      const r = this.rightWith(a, pg.id);
+      if (r !== def) pages[pg.id] = r;
+    }
+    return { default: def, pages };
   }
+  usersSnapshot() {
+    return [...this.clients.values()].map(c => {
+      const a = this.access.get(c.uid);
+      return {
+        userId: c.uid, name: c.name, color: c.color, host: !!c.host,
+        away: Date.now() - c.last > AWAY_MS,
+        cursor: c.cursor || null, pageId: c.pageId || null,
+        selection: c.selection || [], rights: this.snapshotRights(c),
+        ...(c.cursorId ? { cursorId: c.cursorId } : {}),
+        ...(c.view ? { view: c.view } : {}),
+        access: c.host ? { role: 'owner', source: 'owner' } : { role: (a && a.role) || 'commenter', source: (a && a.source) || 'p2p' },
+      };
+    });
+  }
+}
+
+/** Снимок для гостя: без сведений о доступе остальных (зеркало stripAccess). */
+function stripAccess(users) {
+  return users.map(u => {
+    if (!u.access) return u;
+    const { access: _a, ...rest } = u;
+    return rest;
+  });
 }
 
 /** Камера из пакета view / summon (зеркало cleanView из src/room-host.ts). */
@@ -352,19 +405,30 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
     return paid && Number.isInteger(own) && own >= 1 && own <= MAX_GUESTS_LIMIT ? own : Infinity;
   }
 
-  const usersFor = info => maskUsersFor(room.usersSnapshot(), info.uid, room.hiddenPagesFor(info.uid));
+  const usersFor = info => {
+    const base = room.usersSnapshot();
+    return maskUsersFor(info.host ? base : stripAccess(base), info.uid, room.hiddenPagesFor(info.uid));
+  };
 
   function broadcastUsers() {
     const base = room.usersSnapshot();
-    let shared = null;
+    let guestBase = null;
+    let sharedHost = null;
+    let sharedGuest = null;
     for (const c of room.clients.values()) {
       if (c.sock.readyState !== 1) continue;
+      if (c.host) {
+        if (sharedHost === null) sharedHost = JSON.stringify({ t: 'users', users: base });
+        try { c.sock.send(sharedHost); } catch { /* канал закрывается */ }
+        continue;
+      }
+      if (guestBase === null) guestBase = stripAccess(base);
       const hidden = room.hiddenPagesFor(c.uid);
       if (hidden.size === 0) {
-        if (shared === null) shared = JSON.stringify({ t: 'users', users: base });
-        try { c.sock.send(shared); } catch { /* канал закрывается */ }
+        if (sharedGuest === null) sharedGuest = JSON.stringify({ t: 'users', users: guestBase });
+        try { c.sock.send(sharedGuest); } catch { /* канал закрывается */ }
       } else {
-        sendTo(c.sock, { t: 'users', users: maskUsersFor(base, c.uid, hidden) });
+        sendTo(c.sock, { t: 'users', users: maskUsersFor(guestBase, c.uid, hidden) });
       }
     }
   }
@@ -372,49 +436,56 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
   const projectFor = info => info.host ? room.project : (room.project ? { ...room.project, pages: projectPagesForGuest(room.visiblePages(info.uid)) } : null);
 
   function rightsOf(uid) {
-    const r = room.rights.get(uid);
+    const a = room.access.get(uid);
+    const info = room.clientOf(uid);
     const pages = {};
     if (room.project) for (const pg of room.project.pages) pages[pg.id] = room.userPageRight(uid, pg.id);
-    return { default: r?.default || 'view', pages };
+    return { default: info && info.host ? 'edit' : a ? defaultRightOf(a) : 'view', pages };
   }
+
+  /** Возможности участника (зеркало capsOf из src/room-host.ts). */
+  function capsOf(info) {
+    if (info.host) return { ...access.OWNER_CAPS };
+    const a = room.access.get(info.uid) || defaultAccess(openEdit);
+    return access.participantCaps({ owner: false, role: a.role, legacy: a.legacy, inviteAllowCopy: a.inviteAllowCopy }, access.hubPermissions(room.project));
+  }
+  const roleOf = info => (info.host ? 'owner' : (room.access.get(info.uid) || defaultAccess(openEdit)).role);
+  const accessFor = info => {
+    const caps = capsOf(info);
+    return { rights: rightsOf(info.uid), allowCopy: caps.copy, role: roleOf(info), caps };
+  };
 
   // patches: true — хаб понимает t: 'patch'; клиент отвечает { t: 'caps', patches: true }, и ему шлются патчи вместо проектов
   const initFor = info => ({
-    t: 'init', proto: PROTO, userId: info.uid, color: info.color, name: info.name, project: projectFor(info), rights: rightsOf(info.uid),
+    t: 'init', proto: PROTO, userId: info.uid, color: info.color, name: info.name, project: projectFor(info), ...accessFor(info),
     users: usersFor(info), patches: true, chat: room.chat, followHost: room.followHost,
   });
 
-  /** Живые права страниц (зеркало syncPageRights из src/room-host.ts): гости, чьи права изменились. */
-  function syncPageRights() {
-    const next = {};
-    const raw = (room.project && room.project.permissions && room.project.permissions.pageRights) || {};
-    for (const [id, r] of Object.entries(raw)) if (r === 'edit' || r === 'view' || r === 'hidden') next[id] = r;
-    const prev = room.pageRights;
-    room.pageRights = next;
-    const diff = [...new Set([...Object.keys(prev), ...Object.keys(next)])].filter(id => prev[id] !== next[id]);
-    if (diff.length === 0) return [];
-    const changed = [];
+  const permsKeyOf = p => JSON.stringify((p && p.permissions) || {});
+  /** Права и возможности гостей перед сменой прав проекта (зеркало accessBefore); null — права не меняются. */
+  function accessBefore(next) {
+    if (permsKeyOf(next) === room.permsKey) return null;
+    const out = new Map();
+    for (const c of room.clients.values()) if (!c.host) out.set(c.uid, JSON.stringify(accessFor(c)));
+    return out;
+  }
+  /** Гостям с изменившимися правами — { t: 'rights' }, затем всем — { t: 'users' } (зеркало afterAccessChange). */
+  function afterAccessChange(before) {
+    room.permsKey = permsKeyOf(room.project);
+    if (!before) return;
+    let any = false;
     for (const c of room.clients.values()) {
       if (c.host) continue;
-      const r = room.rights.get(c.uid) || { default: 'view', pages: {} };
-      const pages = { ...r.pages };
-      for (const id of diff) { if (next[id]) pages[id] = next[id]; else delete pages[id]; }
-      room.rights.set(c.uid, { default: r.default, pages });
-      changed.push(c.uid);
+      const cur = accessFor(c);
+      if (before.get(c.uid) === JSON.stringify(cur)) continue;
+      any = true;
+      sendTo(c.sock, { t: 'rights', ...cur });
     }
-    return changed;
-  }
-
-  function afterRightsSync(changed) {
-    if (changed.length === 0) return;
-    for (const uid of changed) {
-      const c = room.clientOf(uid);
-      if (c) sendTo(c.sock, { t: 'rights', rights: rightsOf(uid) });
-    }
-    broadcastUsers();
+    if (any) broadcastUsers();
   }
 
   function acceptChat(info, m) {
+    if (!capsOf(info).chat) return; // читатель чат читает, но не пишет
     const text = normalizeChatText(m.text);
     if (text === null) return;
     const ts = Date.now();
@@ -434,7 +505,7 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
   }
 
   function acceptSummon(info, m) {
-    if (!info.host) return;
+    if (!info.host && !capsOf(info).summon) return;
     const view = cleanView(m);
     if (!view || !(room.project && room.project.pages.some(p => p.id === view.pageId))) return;
     for (const c of room.clients.values()) {
@@ -477,9 +548,9 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
       view: null, chatOk: createRateLimiter(),
     };
     room.clients.set(sock, info);
-    if (isHost) room.rights.set(uid, { default: 'edit', pages: {} });
-    // права нового гостя: по умолчанию и по страницам из permissions проекта (зеркало initialRights в src/room-host.ts)
-    else room.rights.set(uid, { default: openEdit ? 'edit' : 'view', pages: { ...room.pageRights } });
+    // доступ нового гостя: старая роль по умолчанию; права страниц проекта хаб читает сам (зеркало initialAccess)
+    if (isHost) room.access.delete(uid);
+    else room.access.set(uid, defaultAccess(openEdit));
 
     sendTo(sock, initFor(info));
     broadcastUsers(); // остальные сразу видят нового участника
@@ -505,10 +576,10 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
         info.name = nextName; info.cursorId = nextCursor; broadcastUsers(); return;
       }
       if (m.t === 'patch') { if (validPatch(m)) acceptPatch(info, m); return; }
-      // ученик печатает и отправляет ответ даже на странице с правом view; проверяет хаб по настоящему ответу
+      // ученик печатает и отправляет ответ даже на странице с правом view (не читатель); проверяет хаб по настоящему ответу
       if (m.t === 'task-draft') { acceptTaskInput(info, m, 'draft'); return; }
       if (m.t === 'task-submit') { acceptTaskInput(info, m, 'submit'); return; }
-      // реакции и комментарии доступны каждому, кто видит страницу, — и читателю тоже
+      // реакции и комментарии — кто видит страницу и может комментировать (не читатель)
       if (m.t === 'pointer') { relayPointer(info, m); return; }
       if (m.t === 'react') { acceptReaction(info, m); return; }
       if (m.t === 'comment') { acceptComment(info, m); return; }
@@ -517,6 +588,8 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
       if (m.t === 'summon') { acceptSummon(info, m); return; }
       if (m.t === 'follow-host') { acceptFollowHost(info, m); return; }
       if (m.t === 'project' && validProject(m.project)) {
+        // права проекта меняет только автор; их смену хаб доносит до гостей
+        const before = isHost ? accessBefore(m.project) : null;
         // серверный enforcement: чужие view-страницы не применяем
         if (!room.project) {
           // первый проект задаёт только автор
@@ -530,11 +603,10 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
           const merged = mergePages(m.project);
           room.project = { ...room.project, pages: merged.pages, updatedAt: isNum(m.project.updatedAt) ? m.project.updatedAt : room.project.updatedAt };
         }
-        const changed = isHost ? syncPageRights() : [];
         for (const c of room.clients.values()) {
           if (c.sock !== sock) sendTo(c.sock, { t: 'project', project: projectFor(c), by: uid });
         }
-        afterRightsSync(changed);
+        afterAccessChange(before);
       }
     });
     sock.on('close', () => { room.clients.delete(sock); broadcastUsers(); });
@@ -595,7 +667,7 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
     if (!isId(m.pageId) || !isId(m.elId)) return;
     if (typeof (kind === 'draft' ? m.draft : m.value) !== 'string') return;
     const page = room.project && room.project.pages.find(p => p.id === m.pageId);
-    if (!page || room.userPageRight(info.uid, page.id) === 'hidden') return;
+    if (!page || !capsOf(info).comment || room.userPageRight(info.uid, page.id) === 'hidden') return;
     const el = page.elements.find(e => e.id === m.elId);
     if (!el || !tasks.isTask(el)) return;
     let next;
@@ -614,7 +686,7 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
   function relayPointer(info, m) {
     const clean = cleanPointer(m);
     if (!clean || !(room.project && room.project.pages.some(p => p.id === clean.pageId))) return;
-    if (room.userPageRight(info.uid, clean.pageId) === 'hidden') return;
+    if (!capsOf(info).pointer || room.userPageRight(info.uid, clean.pageId) === 'hidden') return;
     for (const c of room.clients.values()) {
       if (c === info || room.userPageRight(c.uid, clean.pageId) === 'hidden') continue;
       sendTo(c.sock, { t: 'pointer', ...clean, by: info.uid });
@@ -625,7 +697,7 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
   function acceptReaction(info, m) {
     if (!isId(m.pageId) || !isId(m.elId) || typeof m.emoji !== 'string') return;
     const page = room.project && room.project.pages.find(p => p.id === m.pageId);
-    if (!page || room.userPageRight(info.uid, page.id) === 'hidden') return;
+    if (!page || !capsOf(info).comment || room.userPageRight(info.uid, page.id) === 'hidden') return;
     const el = page.elements.find(e => e.id === m.elId);
     if (!el) return;
     const next = notes.toggleElementReaction(el, m.emoji, notes.cleanUserId(m.userId) || `u${info.uid}`);
@@ -638,7 +710,7 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
     const project = room.project;
     if (!project || !isId(m.pageId)) return;
     const page = project.pages.find(p => p.id === m.pageId);
-    if (!page || room.userPageRight(info.uid, page.id) === 'hidden') return;
+    if (!page || !capsOf(info).comment || room.userPageRight(info.uid, page.id) === 'hidden') return;
     const author = { authorId: notes.cleanUserId(m.userId) || `u${info.uid}`, authorName: info.name };
     let next = page;
     if (m.op === 'create') {
@@ -662,7 +734,7 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
   function pushRights(uid) {
     const c = [...room.clients.values()].find(x => x.uid === uid);
     if (!c) return;
-    sendTo(c.sock, { t: 'rights', rights: rightsOf(uid) });
+    sendTo(c.sock, { t: 'rights', ...accessFor(c) });
     // состав видимых страниц мог измениться: скрытая страница пропадает у гостя сразу, открытая — появляется
     if (room.project) sendTo(c.sock, { t: 'project', project: projectFor(c), by: -1 });
   }
@@ -687,10 +759,10 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
     setRights: (uid, patch) => { const r = room.setRights(uid, patch); broadcastUsers(); pushRights(uid); return r; },
     pushPatch: patch => validPatch(patch) && acceptPatch(null, patch),
     pushProject: project => {
+      const before = accessBefore(project);
       room.project = project;
-      const changed = syncPageRights();
       for (const c of room.clients.values()) sendTo(c.sock, { t: 'project', project: projectFor(c), by: -1 });
-      afterRightsSync(changed);
+      afterAccessChange(before);
     },
     users: () => room.usersSnapshot(),
     closeAll: () => { for (const sock of room.clients.keys()) try { sock.close(); } catch { /* уже закрыт */ } },
@@ -698,6 +770,6 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
 }
 
 module.exports = {
-  createRoomHub, Room, PROTO, MAX_EDITORS, MAX_ID, MAX_SELECTION, MAX_NAME, CURSOR_IDS, normalizeName, cleanPointer,
+  createRoomHub, Room, defaultAccess, stripAccess, PROTO, MAX_EDITORS, MAX_ID, MAX_SELECTION, MAX_NAME, CURSOR_IDS, normalizeName, cleanPointer,
   CHAT_MAX_LEN, CHAT_HISTORY, CHAT_RATE_COUNT, CHAT_RATE_MS, VIEW_ZOOM_MIN, VIEW_ZOOM_MAX, normalizeChatText, createRateLimiter, cleanView, maskUsersFor,
 };

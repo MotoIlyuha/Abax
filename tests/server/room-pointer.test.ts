@@ -1,7 +1,8 @@
 // Очистка сообщений указки на сервере (electron/room.cjs) обязана совпадать с src/room-host.ts.
 import { createRequire } from 'node:module';
 import { describe, expect, it } from 'vitest';
-import { VIEW_ZOOM_MAX, VIEW_ZOOM_MIN, cleanPointer, cleanView, maskUsersFor, type UserSnapshot } from '../../src/room-host';
+import { VIEW_ZOOM_MAX, VIEW_ZOOM_MIN, cleanPointer, cleanView, maskUsersFor, stripAccess, type UserSnapshot } from '../../src/room-host';
+import * as access from '../../src/access';
 import { CURSOR_IDS } from '../../src/cursors';
 import * as chat from '../../src/room-chat';
 
@@ -80,5 +81,48 @@ describe('чат, камера и маскировка room.cjs совпадаю
     for (const hidden of [new Set<string>(), new Set(['h']), new Set(['v']), new Set(['h', 'v'])]) {
       for (const viewer of [0, 1, 2]) expect(cjsRoom.maskUsersFor(users, viewer, hidden)).toEqual(maskUsersFor(users, viewer, hidden));
     }
+  });
+});
+
+describe('правила доступа room-access.cjs совпадают с src/access.ts (SPEC_NIGHT6 §2)', () => {
+  const cjsAccess = require('../../electron/room-access.cjs');
+  const RIGHTS = [undefined, 'edit', 'view', 'hidden'] as const;
+  const ROLES = ['editor', 'commenter', 'reader'] as const;
+
+  it('роли и синонимы', () => {
+    for (const raw of ['edit', 'view', 'editor', 'commenter', 'reader', 'owner', '', null, 3]) {
+      expect(cjsAccess.normalizeRole(raw)).toEqual(access.normalizeRole(raw));
+    }
+    for (const r of ROLES) expect(cjsAccess.legacyRoleOf(r)).toBe(access.legacyRoleOf(r));
+  });
+
+  it('итоговое право на странице — все сочетания', () => {
+    for (const owner of [false, true]) for (const legacy of [false, true]) for (const role of ROLES) {
+      for (const pageSetting of RIGHTS) for (const personal of RIGHTS) {
+        const input = { owner, legacy, role, pageSetting, personal };
+        expect(cjsAccess.effectivePageAccess(input)).toBe(access.effectivePageAccess(input));
+      }
+    }
+  });
+
+  it('возможности участника', () => {
+    const permsList = [undefined, {}, { allowCopy: false }, { forbidClone: true }, { summon: 'editors' as const }, { allowCopy: true, summon: 'owner' as const }];
+    for (const owner of [false, true]) for (const legacy of [false, true]) for (const role of ROLES) for (const inviteAllowCopy of [undefined, true, false]) {
+      for (const perms of permsList) {
+        const a = { owner, role, legacy, inviteAllowCopy };
+        expect(cjsAccess.participantCaps(a, perms)).toEqual(access.participantCaps(a, perms));
+      }
+    }
+  });
+
+  it('права проекта в хабе Electron: защита от копирования — только у Pro/Tutor', () => {
+    expect(cjsAccess.hubPermissions({ permissions: { allowCopy: false, forbidClone: true } })).toMatchObject({ allowCopy: true, forbidClone: false });
+    expect(cjsAccess.hubPermissions({ ownerPlan: 'pro', permissions: { allowCopy: false, forbidClone: true, summon: 'editors', protectElements: true } }))
+      .toEqual({ allowCopy: false, forbidClone: true, summon: 'editors', protectElements: true });
+  });
+
+  it('снимок для гостя без сведений о доступе', () => {
+    const users = [{ userId: 1, access: { role: 'reader', source: 'p2p' } }, { userId: 2 }];
+    expect(cjsRoom.stripAccess(users)).toEqual(stripAccess(users as never));
   });
 });

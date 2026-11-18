@@ -86,9 +86,12 @@ export function copyAllowedBy(perms: ProjectPermissions | null | undefined, invi
   return perms?.allowCopy !== false && perms?.forbidClone !== true && inviteAllowCopy !== false;
 }
 
-/** Возможности участника (SPEC_NIGHT6 §2.3). perms — уже с поправкой на тариф владельца. */
+/**
+ * Возможности участника (SPEC_NIGHT6 §2.3). perms — уже с поправкой на тариф владельца.
+ * Редактор новой роли копирует всегда; старая ссылка edit — по правам доски, как в Ночах №3–5 (без молчаливого расширения).
+ */
 export function participantCaps(
-  a: { owner: boolean; role: AccessRole; inviteAllowCopy?: boolean },
+  a: { owner: boolean; role: AccessRole; legacy?: boolean; inviteAllowCopy?: boolean },
   perms: ProjectPermissions | null | undefined,
 ): ParticipantCaps {
   if (a.owner) return { ...OWNER_CAPS };
@@ -97,7 +100,7 @@ export function participantCaps(
     comment: talk,
     chat: talk,
     pointer: talk,
-    copy: a.role === 'editor' || copyAllowedBy(perms, a.inviteAllowCopy),
+    copy: (a.role === 'editor' && a.legacy !== true) || copyAllowedBy(perms, a.inviteAllowCopy),
     summon: a.role === 'editor' && perms?.summon === 'editors',
   };
 }

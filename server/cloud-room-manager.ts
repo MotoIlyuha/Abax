@@ -3,10 +3,9 @@ import type { Duplex } from 'node:stream';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { parseProject } from '../src/file';
 import { CLOSE_BAD_CODE, CLOSE_BAD_REQUEST, CLOSE_HOST_OFFLINE, CLOSE_PROTOCOL_MISMATCH, CLOSE_RATE_LIMITED, CLOSE_ROOM_CLOSED, CLOSE_ROOM_NOT_FOUND, PROTO } from '../src/collab-transport';
-import { effectivePermissions, sanitizePermissionsForPlan } from '../src/limits';
-import { invitePageRight } from '../src/project-access';
-import { createRoomHub, normalizeName, type ChangeKind, type RoomHub, type RoomSocket, type UserRights } from '../src/room-host';
-import type { PageRight, PlanTier, Project } from '../src/types';
+import { sanitizePermissionsForPlan } from '../src/limits';
+import { createRoomHub, normalizeName, type AttachAccess, type ChangeKind, type RoomHub, type RoomSocket } from '../src/room-host';
+import type { PlanTier, Project } from '../src/types';
 import { ingestElement, ingestProjectImages } from './assets';
 import { verifySession } from './auth';
 import type { AppContext } from './context';
@@ -61,14 +60,13 @@ class WsRoomSocket implements RoomSocket {
   }
 }
 
-interface Conn { sock: WsRoomSocket; isHost: boolean; inviteToken: string | null; uid: number }
+interface Conn { sock: WsRoomSocket; isHost: boolean; inviteToken: string | null; uid: number; userId: string | null }
 
 interface CloudRoom {
   id: string;
   hub: RoomHub;
   conns: Set<Conn>;
   plan: PlanTier;
-  inviteAllowCopy: boolean;
   /** Что случилось с момента последней записи в базу. */
   kinds: Map<ChangeKind | 'rest', number>;
   saveTimer: NodeJS.Timeout | null;
@@ -165,15 +163,12 @@ export function createCloudRooms(app: AppContext, attach: { onUpgrade(fn: (req: 
     const row = getActiveProject(app, id);
     if (!row) return null;
     const plan = roomPlan(app, row.owner_id);
-    const room: CloudRoom = { id, conns: new Set(), plan, inviteAllowCopy: true, kinds: new Map(), saveTimer: null, unloadTimer: null, hub: null as never };
+    const room: CloudRoom = { id, conns: new Set(), plan, kinds: new Map(), saveTimer: null, unloadTimer: null, hub: null as never };
     room.hub = createRoomHub({
       code: `cloud:${id}`, plan,
       // автор может быть подключён с нескольких своих устройств (SPEC_NIGHT5 §2.3): гостевые слоты они не занимают
       multiHost: true,
-      allowCopy: () => {
-        const perms = effectivePermissions(room.hub.room.project);
-        return perms.allowCopy !== false && perms.forbidClone !== true && room.inviteAllowCopy;
-      },
+      // копирование считается на участника (роль, права доски и запрет его ссылки) — SPEC_NIGHT6 D1
       onChange: (_p, kind) => onChange(room, kind),
     });
     room.hub.pushProject(projectOf(row));
@@ -196,11 +191,15 @@ export function createCloudRooms(app: AppContext, attach: { onUpgrade(fn: (req: 
 
   // ----- Подключение -----
 
-  /** Права гостя по приглашению: на каждую страницу — своё, остальное — роль по умолчанию. */
-  function guestRights(project: Project, invite: InviteRights): UserRights {
-    const pages: Record<string, PageRight> = {};
-    for (const pg of project.pages) pages[pg.id] = invitePageRight(project, invite, pg.id);
-    return { default: invite.defaultRole, pages };
+  /**
+   * Доступ гостя по приглашению (SPEC_NIGHT6 §3.1): роль, личные права страниц приглашения (старые записи),
+   * запрет копирования его ссылки; права страниц проекта хаб читает сам — живая смена их не теряется.
+   */
+  function guestAccess(invite: InviteRights, userId: string | null): AttachAccess {
+    return {
+      role: invite.defaultRole, personal: invite.pageRights, inviteAllowCopy: invite.allowCopy,
+      source: 'link', principal: userId ? `u:${userId}` : null,
+    };
   }
 
   function join(ws: WebSocket, projectId: string, hello: Rec, ip: string): void {
@@ -234,14 +233,13 @@ export function createCloudRooms(app: AppContext, attach: { onUpgrade(fn: (req: 
     }
 
     const sock = new WsRoomSocket(ws, makePreprocess(app, user?.id ?? null));
-    const conn: Conn = { sock, isHost: isOwner, inviteToken: invite?.token ?? null, uid: -1 };
+    const conn: Conn = { sock, isHost: isOwner, inviteToken: invite?.token ?? null, uid: -1, userId: user?.id ?? null };
     const name = normalizeName(hello.name) || (user && (!isAnonymousUser(user) || user.name_custom === 1) ? user.display_name : '');
-    if (invite) room.inviteAllowCopy = invite.allowCopy;
     // Pro-курсор — только при эффективном тарифе pro/tutor того, чья это сессия (гость без сессии — классический)
     const allowProCursor = !!user && effectivePlan(user, app.now()) !== 'free';
     const uid = room.hub.attach(sock, {
       isHost: isOwner, name, cursorId: hello.cursorId, allowProCursor,
-      ...(invite ? { rights: guestRights(room.hub.room.project ?? projectOf(row), invite) } : {}),
+      ...(invite ? { access: guestAccess(invite, user?.id ?? null) } : {}),
     });
     if (uid === null) { if (room.conns.size === 0) unload(room); return; } // хаб отказал и сам закрыл сокет
     conn.uid = uid;
@@ -291,12 +289,9 @@ export function createCloudRooms(app: AppContext, attach: { onUpgrade(fn: (req: 
       // роль и копирование ссылки изменились: подключённые по ней гости получают новые права сразу (SPEC_NIGHT5 §3.2)
       const invite = ev.token ? findActiveInvite(app, ev.token, ev.projectId) : null;
       if (!invite) return;
-      room.inviteAllowCopy = invite.allowCopy;
-      const project = room.hub.room.project;
       for (const c of [...room.conns]) {
         if (c.isHost || c.inviteToken !== ev.token) continue;
-        if (project) room.hub.setRights(c.uid, { default: invite.defaultRole, pages: guestRights(project, invite).pages });
-        else room.hub.setRights(c.uid, { default: invite.defaultRole });
+        room.hub.setAccess(c.uid, guestAccess(invite, c.userId));
       }
       return;
     }

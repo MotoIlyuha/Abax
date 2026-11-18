@@ -74,8 +74,10 @@ describe('participantCaps', () => {
     expect(participantCaps({ owner: false, role: 'commenter', inviteAllowCopy: false }, {}).copy).toBe(false);
     expect(participantCaps({ owner: false, role: 'commenter' }, { forbidClone: true }).copy).toBe(false);
   });
-  it('редактор копирует всегда, зовёт всех только по настройке доски', () => {
+  it('редактор копирует всегда (старая ссылка edit — по доске), зовёт всех только по настройке доски', () => {
     expect(participantCaps({ owner: false, role: 'editor', inviteAllowCopy: false }, { allowCopy: false }).copy).toBe(true);
+    expect(participantCaps({ owner: false, role: 'editor', legacy: true }, { allowCopy: false }).copy).toBe(false);
+    expect(participantCaps({ owner: false, role: 'editor', legacy: true }, {}).copy).toBe(true);
     expect(participantCaps({ owner: false, role: 'editor' }, {}).summon).toBe(false);
     expect(participantCaps({ owner: false, role: 'editor' }, { summon: 'editors' }).summon).toBe(true);
     expect(participantCaps({ owner: false, role: 'commenter' }, { summon: 'editors' }).summon).toBe(false);

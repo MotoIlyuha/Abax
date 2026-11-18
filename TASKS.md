@@ -19,7 +19,7 @@
   - **Тесты**: `tests/unit/access.test.ts` (все примеры таблицы §2.2, синонимы, возможности по ролям, формы токена и адреса, резерв), дополнения `file.test.ts` (новые поля переживают сохранение/загрузку, мусор отбрасывается, `by` не влияет на `elementAABB`/`hitTest`), `limits.test.ts`, `project-access` (старые `page_rights_json` работают как раньше).
   - **Проверяемый результат**: модель покрыта тестами, поведение существующих ссылок `edit`/`view` не изменилось (прежние тесты зелёные без правок).
 
-- [ ] **TASK-02: Протокол и права в обоих хабах**
+- [x] **TASK-02: Протокол и права в обоих хабах**
   - **Файлы**: `src/room-host.ts`, `electron/room.cjs`, `src/collab-transport.ts`, `src/browser-host.ts`, `electron/share.cjs` (проброс `role` в `setRights`).
   - `ParticipantAccess` и `AttachOptions.access` (старая опция `rights` работает); `UserRights.pages` — вычисляемые через `effectivePageAccess`, личные права не затираются `syncPageRights` (§3.1).
   - `init`/`rights`: `role`, `caps`; `users`: `access` только хостам (§3.2). Применение `caps` в `acceptComment`/`acceptReaction`/`acceptTaskInput`/`acceptChat`/`relayPointer`/`acceptSummon`; `allowCopy` — на участника (§3.3). Пересчёт `pages` и `caps` при смене `permissions` хостом.

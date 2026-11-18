@@ -105,7 +105,7 @@ export function participantCaps(a: { owner: boolean; role: AccessRole; inviteAll
 | `copy` (выделить и скопировать, экспорт PNG/PDF) | ✓ | ✓ | `copyAllowed` | `copyAllowed` |
 | `summon` («Позвать всех сюда») | ✓ | `perms.summon === 'editors'` | — | — |
 
-`copyAllowed = perms.allowCopy !== false && perms.forbidClone !== true && inviteAllowCopy !== false` — считается **для каждого участника** (исправление D1). «Автопереход за мной» — только владелец (как сейчас).
+`copyAllowed = perms.allowCopy !== false && perms.forbidClone !== true && inviteAllowCopy !== false` — считается **для каждого участника** (исправление D1). **Уточнение (TASK-02):** «редактор копирует всегда» — только новая роль `editor`; старая ссылка `edit` копирует по `copyAllowed`, как в Ночах №3–5 (без молчаливого расширения). «Автопереход за мной» — только владелец (как сейчас).
 
 ### 2.4. Новые поля `ProjectPermissions` (`src/types.ts`)
 ```ts
