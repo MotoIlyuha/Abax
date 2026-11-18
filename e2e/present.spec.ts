@@ -117,6 +117,7 @@ test.describe('окно демонстрации', () => {
     await page.mouse.move(box.x + 500, box.y + 400, { steps: 5 });
     await page.mouse.up();
     await page.keyboard.up('Space');
+    await board.settleCamera();
     const after = await toPresent(board, popup, { x: 400, y: 350 });
     expect(Math.hypot(after.x - before.x, after.y - before.y)).toBeGreaterThan(50);
     await expect.poll(() => countColor(popup, '#1f2329', around(after, 5))).toBeGreaterThan(3);
