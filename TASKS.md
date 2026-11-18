@@ -1,53 +1,71 @@
-# TASKS.md — План задач Ночи №5 (`night/5`)
+# TASKS.md — План задач Ночи №6 (`night/6`)
 
 > **Правило выполнения для агента:**
-> 1. Задачи выполняются строго по порядку (`TASK-01` → `TASK-08`). Решения — в разделе 11 (Locked Decisions) `SPEC_NIGHT5.md`.
-> 2. На каждую задачу: реализация → тесты → `npm run typecheck && npm run typecheck:tests && npm test` → отметка `[x]` → запись в `NIGHT_LOG.md` → атомарный коммит в ветку `night/5`.
-> 3. Вопросов не задавать. Мелкие развилки решать в пользу надёжности, UX и зелёных тестов и записывать в `NIGHT_LOG.md`.
-> 4. Базовая линия: 1125 unit/server тестов, 304 E2E (фактическая, проверено первым прогоном — Решение 0.2).
+> 0. Перед первой задачей — подготовка ветки строго по `SPEC_NIGHT6.md` §11, п. 0.1 (подтянуть `main` до `origin/main` без checkout, `night/6` от `main`, `NIGHT_LOG.md` → `NIGHT_LOG_NIGHT5.md`, новый `NIGHT_LOG.md`, первый коммит), затем базовая линия (п. 0.2).
+> 1. Задачи выполняются строго по порядку (`TASK-01` → `TASK-08`). Решения — в разделе 11 (Locked Decisions) `SPEC_NIGHT6.md`.
+> 2. На каждую задачу: реализация → тесты → `npm run typecheck && npm run typecheck:tests && npm test` → отметка `[x]` → запись в `NIGHT_LOG.md` → атомарный коммит в ветку `night/6`.
+> 3. Вопросов не задавать. Мелкие развилки решать в пользу надёжности, обратной совместимости и зелёных тестов и записывать в `NIGHT_LOG.md`.
+> 4. Базовая линия: 1327 unit/server тестов, 314 E2E (по журналу Ночи №5; перепроверить первым прогоном — Решение 0.2).
 > 5. Любое изменение протокола хаба — одновременно в `src/room-host.ts` и `electron/room.cjs`, с одинаковыми сценариями тестов.
+> 6. Новых npm-зависимостей нет (Решение 0.3). QR-кода нет (Решение 14).
 
 ---
 
-- [x] **TASK-01: Чистые модели**
-  - **Файлы**: `src/types.ts`, `src/limits.ts`, `src/file.ts`, `src/sync-state.ts`, `src/sync-conflict.ts`, `src/edge-pointer.ts`, `src/presence.ts`, `src/collab-chat.ts` (только чистые функции), `AGENTS.md` (список модулей для сервера).
-  - `isPristineStarterProject`, метка `doska.starter`, `SyncStatus` + `syncStatusOf` (§2.1, §2.2); `contentSignature`, `doska.syncBase.*` (§2.4).
-  - `ProjectPermissions.maxGuests` в `sanitizeElement`/`parseProject` и `sanitizePermissionsForPlan` (Free — отбрасывается, Pro/Tutor — 1..50); `effectiveMaxGuests(plan, perms)`; в `PlanLimits` — `canSetMaxGuests`, `canFollowHost` (§3.3).
-  - `computeEdgePointer`, `getParticipantInitials`, `tokenizeChat`, `normalizeChatText`, ограничитель частоты 5/3 с (§6, §8).
-  - **Тесты**: `tests/unit/sync-state.test.ts`, `sync-conflict.test.ts`, `edge-pointer.test.ts`, `presence.test.ts`, `collab-chat.test.ts` (чистая часть), дополнения `limits.test.ts` и `file.test.ts` (поле `maxGuests` переживает сохранение/загрузку).
+- [ ] **TASK-01: Чистая модель доступа**
+  - **Файлы**: `src/access.ts` (новый), `src/types.ts`, `src/file.ts`, `src/limits.ts`, `src/project-access.ts`, `AGENTS.md`.
+  - `AccessRole`, `StoredRole`, `normalizeRole`, `legacyRoleOf` (§2.1); `effectivePageAccess` с порядком правил §2.2; `invitePageRight` — через неё; `ParticipantCaps` + `participantCaps` (§2.3); `TOKEN_RE`, `ALIAS_RE`, `RESERVED_ALIASES`, `isTokenShaped`, `isAliasShaped` (§2.5).
+  - `ProjectPermissions.protectElements`, `linkView`, `summon` и `BaseEl.by` — в `parseProject`/`sanitizeElement`/`sanitizePermissionsForPlan` (§2.4, §2.6); `PlanLimits.canSetAlias`, `MAX_ALIASES_PER_OWNER = 20`.
+  - `AGENTS.md`: список модулей для сервера уже обновлён при подготовке ночи — сверить с фактическими импортами.
+  - **Тесты**: `tests/unit/access.test.ts` (все примеры таблицы §2.2, синонимы, возможности по ролям, формы токена и адреса, резерв), дополнения `file.test.ts` (новые поля переживают сохранение/загрузку, мусор отбрасывается, `by` не влияет на `elementAABB`/`hitTest`), `limits.test.ts`, `project-access` (старые `page_rights_json` работают как раньше).
+  - **Проверяемый результат**: модель покрыта тестами, поведение существующих ссылок `edit`/`view` не изменилось (прежние тесты зелёные без правок).
 
-- [x] **TASK-02: Протокол хабов**
-  - **Файлы**: `src/room-host.ts`, `electron/room.cjs`, `src/collab-transport.ts`.
-  - `chat` (буфер 100 в `init`, 1..500, флуд), `view` → `Client.view` в `users`, снимок `users` на получателя с маскировкой `hiddenPage` (§3.1), `summon`, `follow-host` (тариф), живые права страниц из `permissions.pageRights` (§3.2), `effectiveMaxGuests` и `{t:'denied', reason:'room-full', …}` + 4402/4430, опция `multiHost` (§2.3).
-  - **Тесты**: дополнения `tests/server/room.test.ts`, `room-pointer.test.ts`; одинаковые сценарии для `electron/room.cjs`.
+- [ ] **TASK-02: Протокол и права в обоих хабах**
+  - **Файлы**: `src/room-host.ts`, `electron/room.cjs`, `src/collab-transport.ts`, `src/browser-host.ts`, `electron/share.cjs` (проброс `role` в `setRights`).
+  - `ParticipantAccess` и `AttachOptions.access` (старая опция `rights` работает); `UserRights.pages` — вычисляемые через `effectivePageAccess`, личные права не затираются `syncPageRights` (§3.1).
+  - `init`/`rights`: `role`, `caps`; `users`: `access` только хостам (§3.2). Применение `caps` в `acceptComment`/`acceptReaction`/`acceptTaskInput`/`acceptChat`/`relayPointer`/`acceptSummon`; `allowCopy` — на участника (§3.3). Пересчёт `pages` и `caps` при смене `permissions` хостом.
+  - **Тесты**: новый `tests/server/room-night6.test.ts` (`describe.each` для обоих хабов: роли и возможности, читатель не комментирует/не пишет в чат/без указки, комментатор отвечает в задании, `summon` по настройке, личные права переживают живую смену права страницы, `access` только хосту, копирование на участника); паритет функций доступа в `room-pointer.test.ts`.
+  - **Проверяемый результат**: оба хаба проходят одинаковые сценарии; старые тесты хабов зелёные.
 
-- [x] **TASK-03: Сервер**
-  - **Файлы**: `server/db.ts`, `server/invites.ts`, `server/invite-routes.ts`, `server/projects.ts`, `server/cloud-room-manager.ts`, `server/auth-flows.ts`, `server/context.ts`, `server/app.ts`, `server/README.md`.
-  - Миграция V3 (§4.1), `kind='link'` в существующих запросах, `google_email`.
-  - Приглашения по почте: 5 эндпоинтов, письмо, лимиты (§4.2).
-  - `PUT` с `baseSig` → `409 rev-conflict` (§2.4); `multiHost` и закрытие гостей Free после последнего хоста; `invite-updated` (§3.2, §4.3).
-  - **Тесты**: `tests/server/email-invites.test.ts`, дополнения `cloud-room.test.ts` (два устройства владельца, лимит гостей, invite-updated), `projects.test.ts` (конфликт и прежнее слияние), `invites.test.ts`, `auth.test.ts` (список таблиц), миграция V3 поверх базы V2.
+- [ ] **TASK-03: Сервер — миграция V4, роли, ссылка, `/j/:x`, именные адреса, D1/D2/D7**
+  - **Файлы**: `server/db.ts`, `server/invites.ts`, `server/invite-routes.ts`, `server/email-invites.ts`, `server/projects.ts`, `server/cloud-room-manager.ts`, `server/app.ts`, `server/context.ts`, `server/README.md`.
+  - Миграция V4 (§5.1); пять значений роли и защита от расширения синонимом; `enabled` (пауза), `POST /api/invites/:token/reset`, ответ с `role`/`enabled`/`alias`/`prettyUrl` (§5.2).
+  - `/j/:x`: JSON — как сейчас, HTML → `302` (§5.3); маршруты именного адреса `GET/PUT/DELETE` с кодами ошибок; надгробия.
+  - Единый разбор токена или адреса в `findActiveInvite` с кодами отказа, токен ссылки не раскрывается (§5.4); новые роли и `lastUsedAt` у приглашений по почте (§5.5).
+  - Облачная комната: `Conn.linkToken/source/inviteId/userId`, `access` в `attach`, удалён `room.inviteAllowCopy` (D1), закрытие входов по адресу при паузе/сбросе (§5.6); D2 (`linkView`), D7 (клон), `viewFor` через новую модель (§5.7).
+  - **Тесты**: `tests/server/night6-access.test.ts` (миграция V4 поверх V3, все случаи §5.2–§5.4), дополнения `projects.test.ts` (D2, D7), `cloud-room.test.ts` (D1: гость по почте не снимает запрет у гостя по ссылке; вход по адресу; пауза закрывает 4403), `email-invites.test.ts`, `invites.test.ts`, `profile.test.ts` (`user_version` 4), `auth.test.ts` (список таблиц).
+  - **Проверяемый результат**: ссылки Ночи №5 (`?route=collab&token=`) открываются; отзыв и пауза действительно закрывают доступ, в т.ч. просмотр по id при `linkView: false`.
 
-- [x] **TASK-04: Облако без швов на клиенте**
-  - **Файлы**: `src/cloud-sync.ts`, `src/main.ts`, `src/state.ts`, `src/cloud-room.ts`, `src/app.ts`, `index.html`, `src/style.css`.
-  - Заглушка не уходит в облако и заменяется облачным проектом (§2.1); `#sync-indicator` (§2.2); автоподключение владельца, вошедшего в аккаунт, + `visibilitychange`/`focus` (§2.3); `baseSig`, копия «(копия с устройства)» и тост «Открыть копию» (§2.4).
-  - **Тесты**: дополнения `tests/unit/cloud-sync.test.ts`, `cloud-room.test.ts`.
+- [ ] **TASK-04: Защита чужих элементов — сервер, оба хаба и подписи**
+  - **Файлы**: `src/element-guard.ts` (новый), `src/room-host.ts`, `electron/room.cjs`, `server/projects.ts`, `server/cloud-room-manager.ts`, `src/sync-conflict.ts`, `src/cloud-room.ts`, `src/collab.ts` (приём `principal`, `resume`, исправляющего ответа).
+  - `guardPatch`/`guardPageReplace` (§4.1) в `acceptPatch` и `mergePages` обоих хабов и в `POST /api/projects/:id/patch` (`refused`); проставление `by` новым элементам гостей всегда, защита — при `protectElements`; при защите гость не добавляет страниц и не меняет настройки страницы (Решение 18).
+  - Автор: `u:<userId>` из сессии (облако; гость по ссылке вызывает `api.ensureSession()`), `c:<id>` + секрет возобновления `{t:'resume'}` в P2P-хабах (§4.2, §4.3).
+  - Исправляющий ответ отправителю (§4.4); `by` переносится в `hostElement`/`guardedElement`/`mergeStale`; `contentSignature` пропускает `by` (§4.5).
+  - **Тесты**: `tests/unit/element-guard.test.ts`; сценарии защиты в `room-night6.test.ts` (оба хаба: `put`/`del`/`order`/настройки страницы/полный проект, задание чужое — ответ принимается, условие — нет, элементы без `by` — владельца, владелец правит всё, `resume` возвращает авторство, чужой секрет — нет); `projects.test.ts` (`/patch` с `refused`, `mergeStale` сохраняет `by`); `sync-conflict.test.ts` (подписи без `by` не изменились, потеря `by` не даёт 409); `cloud-room.test.ts` (два устройства одного аккаунта — один автор; анонимный гость после переподключения правит свои штрихи).
+  - **Проверяемый результат**: нечестный клиент (сырые сообщения в тесте) не может стереть, сдвинуть или изменить элемент владельца ни патчем, ни полным проектом, ни REST.
 
-- [x] **TASK-05: Activity Pills и чат**
-  - **Файлы**: `src/activity-pills.ts`, `src/collab-chat.ts`, `src/collab.ts`, `src/app.ts`, `index.html`, `src/style.css`.
-  - Пилюли из разницы `users`, соединение, `summon`, права (§5); чат: кнопка с бейджем, панель, превью, история из `init` (§6).
-  - **Тесты**: `tests/unit/activity-pills.test.ts`, `collab-chat.test.ts` (DOM: нет `innerHTML`, ссылки с `rel`), дополнения `collab.test.ts`.
+- [ ] **TASK-05: Защита чужих элементов — клиент и безопасный Undo (D6)**
+  - **Файлы**: `src/state.ts` (`preserveForeign` в `undo()`/`redo()`), `src/collab.ts` (`canTouchElement`, `myPrincipal`), `src/controller.ts` (попадание, ластик и частичный ластик, рамка выделения, «Выделить всё», перенос, стрелки, Delete, группировка, слои, стиль, редактирование текста), `src/app.ts`, `src/style.css`.
+  - Чужие элементы пропускаются, курсор `not-allowed`, подсказка «Элемент преподавателя» / «Элемент другого участника» (§4.6); Undo/Redo в комнате не откатывает и не воскрешает чужие элементы, их взаимный порядок сохраняется.
+  - **Тесты**: unit `preserveForeign` (откат своего при чужих правках, удалённый учителем элемент не воскресает, порядок чужих), дополнения `collab.test.ts` (ластик/выделение не трогают чужое при включённой защите, без защиты — как раньше); без патчей, которые хаб отклонил бы.
+  - **Проверяемый результат**: при защите честный клиент не отправляет отклоняемых правок; без защиты поведение не изменилось.
 
-- [x] **TASK-06: Присутствие**
-  - **Файлы**: `src/controller.ts`, `src/collab.ts`, `src/app.ts`, `src/style.css`.
-  - `animateCameraTo`, отправка `view`, краевые курсоры, аватары у страниц и в списке участников, «Позвать всех сюда» с поповером для скрытой страницы, «Автопереход за мной» (§8).
-  - **Тесты**: дополнения `collab.test.ts`, новые unit-тесты навигации за хостом и `animateCameraTo` (reduced motion — мгновенно).
+- [ ] **TASK-06: Новое окно «Поделиться» — вкладка «Поделиться», доступность, списки, подключение без облака (D4/D5)**
+  - **Файлы**: `src/share-dialog.ts` (новый), `src/invite-ui.ts` (логика ссылки и почты без вёрстки окна), `src/app.ts` (`openShareDialog` → новый модуль), `electron/main.cjs` (`lanAddresses`, `shareInfo().urls`, код комнаты), `index.html`, `src/style.css`.
+  - Каркас и доступность §6.1 (диалог, вкладки, Esc, удержание и возврат фокуса, `aria-live`, узкий экран); вкладка «Поделиться» §6.2 без QR: почта с тремя ролями, «Сейчас на доске», «У кого есть доступ», тумблер/пауза/сброс общей ссылки, красивая ссылка, именной адрес (показ), честные формулировки отзыва; подключение без облака §6.3 (развёрнуто без облака, свёрнуто при облаке).
+  - **Тесты**: `tests/unit/share-dialog.test.ts` (роли и атрибуты a11y, Esc и возврат фокуса, стрелки по вкладкам, черновик адреса и фокус переживают обновление списка участников, три списка раздельны, отзыв приглашения при включённой ссылке показывает пояснение, без облака — блок P2P первым, нет `innerHTML`), `electron-main.test.ts` (адреса интерфейсов, loopback с `localOnly`, код комнаты 8 символов), дополнения `invite-ui.test.ts`.
+  - **Проверяемый результат**: всё окно управляется с клавиатуры; единственный рабочий путь без сервера виден и работает.
 
-- [x] **TASK-07: Приглашения в интерфейсе**
-  - **Файлы**: `src/invite-ui.ts`, `src/link-view-ui.ts`, `src/collab.ts`, `src/controller.ts`, `src/cloud-room.ts`, `src/app.ts`, `src/main.ts`, `index.html`, `src/style.css`.
-  - Права и `maxGuests` до создания ссылки; `cancelActiveInteraction`, уход со скрытой страницы, `#all-pages-hidden-banner`, проект без страниц у гостя; `#room-full-modal`; приглашения по почте у автора и «Приглашения для вас» у адресата (§7).
-  - **Тесты**: дополнения `invite-ui`/`link-view` тестов, `collab.test.ts` (скрытие текущей и всех страниц), новый тест входящих приглашений.
+- [ ] **TASK-07: Вкладка «Настройки доступа», UI именного адреса и гостевой интерфейс по `caps`**
+  - **Файлы**: `src/share-dialog.ts`, `src/invite-ui.ts`, `src/collab.ts`, `src/app.ts`, `src/comments-ui.ts`, `src/task-overlay.ts`, `src/collab-chat.ts`, `src/style.css`.
+  - Вкладка §7.1: права страниц («По роли / Только просмотр / Скрыта» + предупреждение о старом `edit`), защита, копирование (флаг доски + синхронизация с общей ссылкой), просмотр по ссылке, «Кто может позвать», максимум гостей; изменение именного адреса, бывшие адреса и «Освободить»; таблица участников P2P с ролью и личными правами.
+  - Гость по `caps` §7.2: читатель без комментариев, реакций, указки, ввода в чат и ответа в задании; пилюля смены роли; тексты отказов входа по ссылке/адресу (§5.4).
+  - **Тесты**: дополнения `share-dialog.test.ts` (вкладка настроек, адрес — проверка формы и ошибки по кодам, Free — блокировка), `collab.test.ts` / `comments-ui` / `collab-chat.test.ts` (интерфейс читателя и комментатора, старая ссылка `view` = комментатор), тексты отказов.
+  - **Проверяемый результат**: всё, что скрыто кнопками, дополнительно запрещено хабом/сервером (проверено в TASK-02/03/04).
 
-- [x] **TASK-08: E2E и финальная проверка**
-  - `e2e/night5-sync.spec.ts` (заглушка заменяется при входе на втором «устройстве» — второй контекст браузера, индикатор, офлайн-конфликт), `e2e/night5-room.spec.ts` (пилюли и чат между двумя вкладками), `e2e/night5-invites.spec.ts` (скрытие страницы под гостем, все страницы скрыты, room-full → только чтение, приглашение по почте внутри приложения), `e2e/night5-presence.spec.ts` (краевой курсор и перелёт, «Позвать всех», автопереход с заходом хоста на скрытую страницу).
+- [ ] **TASK-08: E2E и финальная проверка**
+  - `e2e/night6-share.spec.ts`: окно с клавиатуры (Tab/стрелки/Esc, возврат фокуса), приглашение по почте с ролью, три списка, черновик адреса переживает вход гостя, без облака — LAN-путь виден.
+  - `e2e/night6-roles.spec.ts`: урок §8 в трёх контекстах (владелец, редактор по ссылке, читатель по почте); читатель без комментариев/указки/ввода в чат; смена роли на лету; старая ссылка `view` работает как комментатор.
+  - `e2e/night6-protect.spec.ts`: при защите ученик стирает и двигает свои штрихи, не может стереть/сдвинуть условие учителя (подсказка), отвечает в карточке; Undo ученика не трогает учителя; переподключение анонимного гостя сохраняет авторство.
+  - `e2e/night6-links.spec.ts`: `/j/<token>` → комната; пауза — «Автор закрыл доступ…», включение — та же ссылка снова работает; сброс — старая мертва; именной адрес → комната, переименование — старый ведёт туда же, освобождение — «Адрес больше не используется»; просмотр по id при `linkView: false` — недоступен.
+  - Правки старых E2E под новое окно (`e2e/night5-helpers.ts` и др.) — точечно, с причиной в `NIGHT_LOG.md`.
   - Два полных прогона Playwright подряд, `npm run build`, `npm run server:build`; итог в `NIGHT_LOG.md`.
