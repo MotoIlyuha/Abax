@@ -19,6 +19,11 @@ export interface BaseEl {
   groupId?: string;
   /** Реакции: эмодзи → id пользователей, поставивших её. */
   reactions?: Record<string, string[]>;
+  /**
+   * Автор элемента: u:<userId> (сессия облака) или c:<id> (участник P2P-хаба). Ставит только хаб или сервер.
+   * Нет поля — элемент владельца доски (SPEC_NIGHT6 §2.6).
+   */
+  by?: string;
 }
 
 /** Точка в координатах сцены; p — давление 0..1 (мышь даёт 0.5). */
@@ -257,6 +262,12 @@ export interface ProjectPermissions {
   pageRights?: Record<string, PageRight>;
   /** Максимум гостей в комнате (Pro/Tutor); null, 0 или нет поля — без ограничений автора (SPEC_NIGHT5 §3.3). */
   maxGuests?: number | null;
+  /** Защита чужих элементов: участники правят только свои элементы (SPEC_NIGHT6 §4). Нет поля — выключена. */
+  protectElements?: boolean;
+  /** Просмотр по ссылке на доску и страницу (/p/…) без приглашения. Нет поля — включён. */
+  linkView?: boolean;
+  /** Кто может «Позвать всех сюда»: 'owner' (нет поля) или 'editors'. */
+  summon?: 'owner' | 'editors';
 }
 
 /** Проект — набор страниц. */

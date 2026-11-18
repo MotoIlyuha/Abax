@@ -1,5 +1,6 @@
 import type { Element, Page, PageRight, PlanTier, Project } from './types';
 import { projectTaskForRole } from './task-element';
+import { effectivePageAccess, normalizeRole, type StoredRole } from './access';
 
 // Чистая логика доступа к проекту: что видит гость и зритель, как делается копия. Без DOM и состояния —
 // общая для клиента (link-view.ts) и сервера (server/projects.ts, комнаты).
@@ -40,11 +41,18 @@ export function stripStudentData(pages: Page[]): Page[] {
   });
 }
 
-/** Право участника на страницу по ссылке-приглашению: своё в приглашении, затем в проекте, затем по умолчанию. */
+/**
+ * Право участника на страницу по приглашению (SPEC_NIGHT6 §2.2): личное право приглашения (старые записи),
+ * затем право страницы проекта и роль. Старые роли edit/view — как в Ночах №3–5.
+ */
 export function invitePageRight(
-  project: Pick<Project, 'permissions'>, invite: { defaultRole: 'edit' | 'view'; pageRights: Record<string, PageRight> }, pageId: string,
+  project: Pick<Project, 'permissions'>, invite: { defaultRole: StoredRole; pageRights: Record<string, PageRight> }, pageId: string,
 ): PageRight {
-  return invite.pageRights[pageId] ?? project.permissions?.pageRights?.[pageId] ?? invite.defaultRole;
+  const r = normalizeRole(invite.defaultRole) ?? { role: 'commenter' as const, legacy: true };
+  return effectivePageAccess({
+    owner: false, role: r.role, legacy: r.legacy,
+    pageSetting: project.permissions?.pageRights?.[pageId], personal: invite.pageRights[pageId],
+  });
 }
 
 /** Элемент клона: у задания нет ответа, решения, ввода и пометок ученика. */

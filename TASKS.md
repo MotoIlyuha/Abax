@@ -11,7 +11,7 @@
 
 ---
 
-- [ ] **TASK-01: Чистая модель доступа**
+- [x] **TASK-01: Чистая модель доступа**
   - **Файлы**: `src/access.ts` (новый), `src/types.ts`, `src/file.ts`, `src/limits.ts`, `src/project-access.ts`, `AGENTS.md`.
   - `AccessRole`, `StoredRole`, `normalizeRole`, `legacyRoleOf` (§2.1); `effectivePageAccess` с порядком правил §2.2; `invitePageRight` — через неё; `ParticipantCaps` + `participantCaps` (§2.3); `TOKEN_RE`, `ALIAS_RE`, `RESERVED_ALIASES`, `isTokenShaped`, `isAliasShaped` (§2.5).
   - `ProjectPermissions.protectElements`, `linkView`, `summon` и `BaseEl.by` — в `parseProject`/`sanitizeElement`/`sanitizePermissionsForPlan` (§2.4, §2.6); `PlanLimits.canSetAlias`, `MAX_ALIASES_PER_OWNER = 20`.

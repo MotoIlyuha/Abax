@@ -1,4 +1,5 @@
 import { MAX_GUESTS_LIMIT } from './limits';
+import { isPrincipal } from './access';
 import type { TaskAttempt, CommentMessage, CommentThread, Element, GridMode, Page, PageRight, Project, ProjectPermissions, Pt } from './types';
 import { MAX_AUTHOR_NAME, MAX_COMMENT_TEXT, MAX_REACTION_LEN } from './comments';
 import { EXAM_TYPES, MAX_ATTEMPTS, MAX_DRAFT, SUBJECTS } from './task-element';
@@ -42,6 +43,8 @@ export function sanitizeReactions(raw: unknown): Record<string, string[]> | unde
 const COMMON_OPTIONAL: Record<string, Check> = {
   groupId: isStr,
   layerPin: v => v === 'top' || v === 'bottom',
+  // автор элемента (SPEC_NIGHT6 §2.6): неверное значение отбрасывается — элемент считается элементом владельца
+  by: isPrincipal,
 };
 
 /** Обязательные и необязательные поля известных элементов: имя → проверка. */
@@ -220,6 +223,9 @@ export function sanitizePermissions(raw: unknown): ProjectPermissions | undefine
   }
   if (raw.maxGuests === null) out.maxGuests = null;
   else if (typeof raw.maxGuests === 'number' && Number.isInteger(raw.maxGuests) && raw.maxGuests >= 0 && raw.maxGuests <= MAX_GUESTS_LIMIT) out.maxGuests = raw.maxGuests;
+  if (isBool(raw.protectElements)) out.protectElements = raw.protectElements;
+  if (isBool(raw.linkView)) out.linkView = raw.linkView;
+  if (raw.summon === 'owner' || raw.summon === 'editors') out.summon = raw.summon;
   return out;
 }
 
