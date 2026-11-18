@@ -45,7 +45,7 @@ import { renderProfileSettings } from './profile-settings';
 import { cursorSvg } from './cursors';
 import { authErrorText, type AuthOutcome } from './auth';
 import { myCursorId, onProfileChange, profileName } from './profile';
-import { type ToolbarGroup, onToolbarChange, restoreToolbar, svg, toolDef, toolTip, toolUsesColor, toolbarConfig } from './toolbar';
+import { type ToolbarGroup, onToolbarChange, restoreToolbar, toolDef, toolTip, toolUsesColor, toolbarConfig } from './toolbar';
 import { canDropTool, toolDropElement } from './tool-drop';
 import {
   addSettingsSection, lastSettingsSection, openSettingsDialog, removeSettingsSection, settingsDialogOpen, type SettingsSection,
@@ -78,62 +78,13 @@ import { annotationButtons, initCommentsUi } from './comments-ui';
 import { openTaskDialog, taskDialogOpen, type TaskFormValues } from './task-dialog';
 import { TASK_H, TASK_W, createTaskElement } from './task-element';
 import { createToggleSwitch } from './toggle-switch';
+import { ALIGN_ICONS, BACKGROUND_ICON, BACK_ARROW_ICON, CLOSE_ICON_BOLD, COORD_ICON_ZERO, FONT_ICON, GRID_ICONS, GRIP_ICON, ICONS, OPACITY_ICON, PIN_ICON, PROFILE_ICON, SLIDER_TRACK_ICON, SMOOTH_PAN_ICON, SNAP_ICON, VALIGN_ICONS, WIDTH_ICON, svg } from './icons';
 import { setTopbarGroupHidden } from './topbar-hide';
 import {
   browserSetRights, browserShareStatus, startBrowserCloud, startBrowserHost, stopBrowserCloud, stopBrowserHost,
 } from './browser-host';
 
 pdfjsLib.GlobalWorkerOptions.workerPort = new PdfWorker();
-
-const ICONS = {
-  home: svg('<path d="M3 11l9-8 9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/>'),
-  pages: svg('<rect x="8" y="3" width="12" height="15" rx="2"/><path d="M4.5 7v11.5A2.5 2.5 0 0 0 7 21h9"/>'),
-  plus: svg('<path d="M12 5v14M5 12h14"/>'),
-  draft: svg('<path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L8 19z"/><path d="M14.5 6.5l3 3"/>'),
-  chevronUp: svg('<path d="M6 15l6-6 6 6"/>'),
-  chevronDown: svg('<path d="M6 9l6 6 6-6"/>'),
-  keyboard: svg('<rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M18 14h.01M9 14h6"/>'),
-  image: svg('<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M21 15l-5-5L5 19"/>'),
-  undo: svg('<path d="M4 10h9a5 5 0 0 1 0 10h-3"/><path d="M8 6l-4 4 4 4"/>'),
-  redo: svg('<path d="M20 10h-9a5 5 0 0 0 0 10h3"/><path d="M16 6l4 4-4 4"/>'),
-  fit: svg('<path d="M4 4v16M20 4v16M7 12h10M10 9l-3 3 3 3M14 9l3 3-3 3"/>'),
-  export: svg('<path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M4 19h16"/>'),
-  present: svg('<rect x="2.5" y="4" width="19" height="13" rx="2"/><path d="M8 21h8M12 17v4"/><path d="M10.5 8.2l4 2.3-4 2.3z"/>'),
-  pdf: svg('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h4"/>'),
-  del: svg('<path d="M6 6l12 12M18 6L6 18"/>'),
-  settings: svg('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.1-1.55 1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1.1 1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h.01a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/>'),
-  up: svg('<path d="M12 19V5"/><path d="M5 12l7-7 7 7"/>'),
-  down: svg('<path d="M12 5v14"/><path d="M19 12l-7 7-7-7"/>'),
-  group: svg('<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/><path d="M11 11l2 2"/>'),
-  duplicate: svg('<rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/>'),
-  ungroup: svg('<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/><path d="M13 6h4M15 4v4M7 13v4M5 15h4"/>'),
-  trash: svg('<path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/>'),
-  toolbar: svg('<rect x="3" y="3" width="7" height="18" rx="2"/><path d="M14 7h7M14 12h7M14 17h7"/>'),
-  chevron: svg('<path d="M9 6l6 6-6 6"/>'),
-  star: svg('<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/>'),
-  info: svg('<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.5v.01"/>'),
-  flask: svg('<path d="M9 3h6"/><path d="M10 3v6.2L4.6 18.4A1.7 1.7 0 0 0 6.1 21h11.8a1.7 1.7 0 0 0 1.5-2.6L14 9.2V3"/><path d="M7.3 15h9.4"/>'),
-  chevronLeft: svg('<path d="M15 6l-6 6 6 6"/>'),
-  grid: svg('<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>'),
-  list: svg('<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4.5 6h.01M4.5 12h.01M4.5 18h.01"/>'),
-  /** Иконки у проекта нет: смайлик с плюсом — «поставить». */
-  addIcon: svg('<path d="M20.5 12A8.5 8.5 0 1 1 12 3.5"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0"/><path d="M9 9.5h.01M15 9.5h.01"/><path d="M19 2.5v5M16.5 5h5"/>'),
-};
-
-const GRID_ICONS: Record<GridMode, string> = {
-  none: svg('<circle cx="12" cy="12" r="8"/><path d="M6.5 17.5l11-11"/>'),
-  dots: svg('<circle cx="6" cy="6" r="1.2"/><circle cx="12" cy="6" r="1.2"/><circle cx="18" cy="6" r="1.2"/><circle cx="6" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="18" cy="12" r="1.2"/><circle cx="6" cy="18" r="1.2"/><circle cx="12" cy="18" r="1.2"/><circle cx="18" cy="18" r="1.2"/>'),
-  square: svg('<rect x="4" y="4" width="7" height="7"/><rect x="13" y="4" width="7" height="7"/><rect x="4" y="13" width="7" height="7"/><rect x="13" y="13" width="7" height="7"/>'),
-  coord: svg('<path d="M5 19V5M5 19h14"/><path d="M5 5l-2 3M5 5l2 3M19 19l-3-2M19 19l-3 2"/><circle cx="12" cy="12" r="1"/>'),
-};
-
-/** «Привязка к сетке»: магнит-подкова. */
-/** Иконка «Плавное перемещение»: стрелка с затухающим следом. */
-const SMOOTH_PAN_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h5M4 12h9M4 16h5"/><path d="M14 8l5 4-5 4"/></svg>';
-const SNAP_ICON = svg('<path d="M6 4h4v9a2 2 0 0 0 4 0V4h4v9a6 6 0 0 1-12 0z"/><path d="M6 8h4M14 8h4"/>');
-
-/** Иконка координатной плоскости с нулём в начале координат — когда деления включены. */
-const COORD_ICON_ZERO = svg('<path d="M5 19V5M5 19h14"/><path d="M5 5l-2 3M5 5l2 3M19 19l-3-2M19 19l-3 2"/><circle cx="12" cy="12" r="1"/><ellipse class="coord-zero" cx="2.6" cy="20.8" rx="1.3" ry="1.9" stroke-width="1.3"/>');
 
 /** Иконка фона; у координатной плоскости ноль виден, пока деления не скрыты. */
 function gridIcon(g: GridMode, coordLabels = true): string {
@@ -751,10 +702,6 @@ const ctxPanels: CtxPanel[] = [];
 /** Счётчик z-index: панель, которую трогали последней, — поверх остальных. */
 let ctxZ = 0;
 
-const GRIP_ICON = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>';
-const PIN_ICON = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M15.2 2.6a1 1 0 0 1 1.4 0l4.8 4.8a1 1 0 0 1 0 1.4l-.9.9a2 2 0 0 1-2.2.4l-2.6 2.6.3 3.5a1 1 0 0 1-.3.8l-1 1a1 1 0 0 1-1.4 0l-3.2-3.2-4.6 4.6a1 1 0 0 1-1.4-1.4l4.6-4.6-3.2-3.2a1 1 0 0 1 0-1.4l1-1a1 1 0 0 1 .8-.3l3.5.3 2.6-2.6a2 2 0 0 1 .4-2.2z"/></svg>';
-const CLOSE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
-
 function ctxLayerEl(): HTMLElement {
   return document.getElementById('ctx-layer')!;
 }
@@ -841,7 +788,7 @@ function buildCtxBar(cp: CtxPanel): HTMLElement {
   const close = document.createElement('button');
   close.className = 'ctx-close';
   close.title = 'Закрыть';
-  close.innerHTML = CLOSE_ICON;
+  close.innerHTML = CLOSE_ICON_BOLD;
   close.addEventListener('click', () => closePanel(cp));
   const grip = document.createElement('div');
   grip.className = 'ctx-grip';
@@ -1135,14 +1082,10 @@ function syncFrameOff(): void {
   if (off) off.hidden = !hasFramedImage();
 }
 
-const WIDTH_ICON = svg('<path d="M4 6h16" stroke-width="1.2"/><path d="M4 12h16" stroke-width="2.4"/><path d="M4 18.5h16" stroke-width="4"/>');
-
 /** Толщина подписью: до десятых, с запятой. */
 function formatWidth(v: number): string {
   return String(Math.round(v * 10) / 10).replace('.', ',');
 }
-
-const OPACITY_ICON = svg('<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor"/>');
 
 /** Единая панель в духе Miro: толщина, прозрачность и скругление сверху, ниже свои и все цвета. */
 function buildStylePanel(cp: CtxPanel): void {
@@ -1273,7 +1216,7 @@ function buildDropSlider(host: HTMLElement, initial: number, onChange: (v: numbe
   let first = true;
   const track = document.createElement('div');
   track.className = 'qs-track';
-  track.innerHTML = `<svg viewBox="0 0 120 24" preserveAspectRatio="none"><path d="M3 12a2.4 2.4 0 0 1 2.4-2.4C40 7.5 70 3.5 103 3.5a8.5 8.5 0 0 1 0 17C70 20.5 40 16.5 5.4 14.4A2.4 2.4 0 0 1 3 12Z"/></svg>`;
+  track.innerHTML = SLIDER_TRACK_ICON;
   const thumb = document.createElement('div');
   thumb.className = 'qs-thumb';
   host.append(track, thumb);
@@ -1447,18 +1390,6 @@ function rebuildPanel(cp: CtxPanel): void {
   positionCtxPanel(cp);
 }
 
-const FONT_ICON = svg('<path d="M3 19l5-14 5 14"/><path d="M5.2 13.5h5.6"/><path d="M14.5 19l3.5-9 3.5 9"/><path d="M15.8 16h4.4"/>');
-
-const ALIGN_ICONS: Record<TextAlign, string> = {
-  left: svg('<path d="M4 6h16M4 10h10M4 14h16M4 18h10"/>'),
-  center: svg('<path d="M4 6h16M7 10h10M4 14h16M7 18h10"/>'),
-  right: svg('<path d="M4 6h16M10 10h10M4 14h16M10 18h10"/>'),
-};
-const VALIGN_ICONS: Record<TextVAlign, string> = {
-  top: svg('<path d="M4 4h16"/><rect x="8" y="8" width="8" height="7" rx="1.5"/>'),
-  middle: svg('<path d="M4 12h3.5M16.5 12h3.5"/><rect x="8" y="8.5" width="8" height="7" rx="1.5"/>'),
-  bottom: svg('<path d="M4 20h16"/><rect x="8" y="9" width="8" height="7" rx="1.5"/>'),
-};
 const ALIGN_TITLES: Record<TextAlign, string> = { left: 'По левому краю', center: 'По центру', right: 'По правому краю' };
 const VALIGN_TITLES: Record<TextVAlign, string> = { top: 'Сверху', middle: 'Посередине', bottom: 'Снизу' };
 
@@ -1680,7 +1611,7 @@ function buildLayerControl(sel: Element[], moves: { up: boolean; down: boolean }
   button.className = 'qm-btn qm-layer-icon' + (layerPanelOpen ? ' active' : '');
   button.title = 'Слои: открыть ползунок для перемещения и закрепления';
   button.setAttribute('aria-label', button.title);
-  button.innerHTML = svg('<path d="m12 3 9 5-9 5-9-5 9-5ZM3 12l9 5 9-5M3 16l9 5 9-5"/>') + (pinned ? '<span class="qm-layer-pin">📌</span>' : '');
+  button.innerHTML = ICONS.layers + (pinned ? '<span class="qm-layer-pin">📌</span>' : '');
   button.addEventListener('click', () => { layerPanelOpen = !layerPanelOpen; updateQuickMenu(); });
   root.appendChild(button);
   const arrows = document.createElement('div');
@@ -1693,7 +1624,7 @@ function buildLayerControl(sel: Element[], moves: { up: boolean; down: boolean }
       ? 'Выше на слой; двойной клик — наверх; удержание — закрепить наверху'
       : 'Ниже на слой; двойной клик — вниз; удержание — закрепить внизу';
     b.setAttribute('aria-label', b.title);
-    b.innerHTML = svg(direction === 'top' ? '<path d="m5 15 7-7 7 7"/>' : '<path d="m5 9 7 7 7-7"/>');
+    b.innerHTML = (direction === 'top' ? ICONS.layerTop : ICONS.layerBottom);
     let hold = 0, held = false;
     b.addEventListener('pointerdown', e => {
       if (e.button !== 0) return;
@@ -1797,7 +1728,7 @@ function copyImageButton(): HTMLButtonElement {
   copyImage.className = 'qm-btn';
   copyImage.title = macKeys('Копировать как изображение (Ctrl+Shift+C)');
   copyImage.setAttribute('aria-label', copyImage.title);
-  copyImage.innerHTML = svg('<rect x="3" y="3" width="14" height="14" rx="2"/><path d="m5 14 4-4 3 3 2-2 3 3M14 7h.01M7 21h12a2 2 0 0 0 2-2V7"/>');
+  copyImage.innerHTML = ICONS.copyImage;
   copyImage.addEventListener('click', () => { void copySelectionAsImage(); });
   return copyImage;
 }
@@ -1843,7 +1774,7 @@ function updateQuickMenu(): void {
     editBtn.className = 'qm-btn qm-task-edit';
     editBtn.title = 'Редактировать задание';
     editBtn.setAttribute('aria-label', editBtn.title);
-    editBtn.innerHTML = svg('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>');
+    editBtn.innerHTML = ICONS.pen;
     editBtn.addEventListener('click', () => editTaskElement(task));
     qm.appendChild(editBtn);
   }
@@ -1853,7 +1784,7 @@ function updateQuickMenu(): void {
     crop.className = 'qm-btn qm-crop';
     crop.title = 'Кадрировать';
     crop.setAttribute('aria-label', 'Кадрировать');
-    crop.innerHTML = svg('<path d="M6 3v13a2 2 0 0 0 2 2h13M3 6h13a2 2 0 0 1 2 2v13"/>');
+    crop.innerHTML = ICONS.crop;
     crop.addEventListener('click', () => startCrop(image));
     qm.appendChild(crop);
   }
@@ -1942,7 +1873,7 @@ function updateQuickMenu(): void {
     linkBtn.className = 'qm-btn qm-link';
     linkBtn.title = 'Ссылка на выделенные объекты';
     linkBtn.setAttribute('aria-label', linkBtn.title);
-    linkBtn.innerHTML = svg('<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>');
+    linkBtn.innerHTML = ICONS.link;
     linkBtn.addEventListener('click', () => { void copyBoardLink('focus'); });
     qm.appendChild(linkBtn);
   }
@@ -2164,8 +2095,6 @@ function openSettings(): void {
   pop.style.left = `${Math.max(8, br.right - pop.offsetWidth)}px`;
   pop.style.top = `${br.bottom + 6}px`;
 }
-
-const PROFILE_ICON = svg('<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.8-3.6 3.6-5.5 7-5.5s6.2 1.9 7 5.5"/>');
 
 /** Кнопка профиля в шапке домашнего экрана: мини-курсор и имя; открывает раздел «Профиль». */
 function profileButton(): HTMLButtonElement {
@@ -4115,7 +4044,7 @@ function renderHome(): void {
   logo.type = 'button';
   logo.title = 'Вернуться к доске';
   logo.setAttribute('aria-label', 'Вернуться к доске');
-  logo.innerHTML = `<span class="home-logo-image"><img src="logo.svg" alt="" /></span><span class="home-logo-back" aria-hidden="true">${svg('<path d="M19 12H5M11 6l-6 6 6 6"/>')}</span>`;
+  logo.innerHTML = `<span class="home-logo-image"><img src="logo.svg" alt="" /></span><span class="home-logo-back" aria-hidden="true">${ICONS.homeBack}</span>`;
   logo.addEventListener('click', () => setView('board'));
   const h = document.createElement('h1');
   h.textContent = 'Проекты';
@@ -4761,7 +4690,7 @@ function wireTopbar(): void {
   document.getElementById('btn-image')!.innerHTML = ICONS.image;
   document.getElementById('btn-settings')!.innerHTML = ICONS.settings;
   // иконка «Поделиться» — когда шапке не хватает места (см. topbar-fit.ts)
-  document.querySelector<HTMLElement>('#btn-share .share-icon')!.innerHTML = svg('<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/>');
+  document.querySelector<HTMLElement>('#btn-share .share-icon')!.innerHTML = ICONS.share;
   document.getElementById('btn-share')!.addEventListener('click', () => { void openShareDialog(); });
   initChatButton();
   const iconBtn = document.getElementById('project-icon') as HTMLButtonElement;
@@ -4791,7 +4720,7 @@ function wireTopbar(): void {
   menuButton.title = 'Меню';
   menuButton.setAttribute('aria-label', 'Меню');
   menuButton.setAttribute('aria-expanded', 'false');
-  menuButton.innerHTML = `<span class="logo-mark"><img src="logo.svg" alt="Abax" /></span><span class="logo-menu-mark" aria-hidden="true">${svg('<path d="M4 7h16M4 12h16M4 17h16"/>')}</span>`;
+  menuButton.innerHTML = `<span class="logo-mark"><img src="logo.svg" alt="Abax" /></span><span class="logo-menu-mark" aria-hidden="true">${ICONS.menu}</span>`;
   const menu = document.createElement('div');
   menu.id = 'main-menu';
   menu.className = 'popup-menu menu-list';
@@ -4806,12 +4735,12 @@ function wireTopbar(): void {
       menuItem('import', 'Импорт документа', ICONS.pdf) + menuItem('image', 'Вставить изображение', ICONS.image, `<kbd>${macKeys('Ctrl+V')}</kbd>`))}
     ${section('export', 'Экспорт', ICONS.export,
       menuItem('project', 'Скачать проект как файл', ICONS.export) + '<hr>' + menuItem('pdf', 'Экспорт в PDF', ICONS.pdf) + menuItem('png', 'Экспорт в PNG', ICONS.image)
-        + '<hr>' + menuItem('link-project', 'Ссылка на проект (просмотр)', svg('<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>')) + menuItem('link-page', 'Ссылка на текущую страницу', svg('<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>')))}<hr>
-    ${section('hide', 'Скрыть', svg('<path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M9.9 5.2A10 10 0 0 1 12 5c5 0 8.5 5 9 7a13 13 0 0 1-2.4 3.6M6.3 6.3A13 13 0 0 0 3 12c.5 2 4 7 9 7a10 10 0 0 0 4-.8"/>'),
+        + '<hr>' + menuItem('link-project', 'Ссылка на проект (просмотр)', ICONS.link) + menuItem('link-page', 'Ссылка на текущую страницу', ICONS.link))}<hr>
+    ${section('hide', 'Скрыть', ICONS.hideSection,
       '')}
-    ${menuItem('task', 'Добавить задание…', svg('<rect x="4" y="3.5" width="16" height="17" rx="2"/><path d="M8 8.5h8M8 12h8"/><path d="M8 16l1.8 1.8L13 14.5"/>'))}
+    ${menuItem('task', 'Добавить задание…', ICONS.task)}
     ${menuItem('settings', 'Настройки', ICONS.settings)}<hr>
-    ${!doskaApi && !isNativeApp() ? menuItem('app', 'Открыть в приложении', svg('<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 17h6M12 6v7m-3-3 3 3 3-3"/>')) : ''}`;
+    ${!doskaApi && !isNativeApp() ? menuItem('app', 'Открыть в приложении', ICONS.openApp) : ''}`;
   document.body.append(menu);
   // «Скрыть»: переключатели на пружинах (src/toggle-switch.ts), меню при щелчке не закрывается
   const hideUndoSwitch = createToggleSwitch({
@@ -5025,7 +4954,7 @@ function wireTopbar(): void {
 /** Меню помощи. Пока заготовка: пункты появятся позже, кнопка и F1 уже открывают и закрывают его. */
 function wireHelpMenu(): void {
   const button = document.getElementById('btn-help') as HTMLButtonElement;
-  button.innerHTML = svg('<circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.6 2.6 0 0 1 5 .9c0 1.7-2.5 2.3-2.5 4"/><path d="M12 17.2h.01"/>');
+  button.innerHTML = ICONS.help;
   const menu = document.createElement('div');
   menu.id = 'help-menu';
   menu.className = 'popup-menu menu-list';
@@ -5080,9 +5009,6 @@ const PAGE_BACKGROUNDS: readonly [string, string][] = [
   ['Белый', '#ffffff'], ['Светло-серый', '#f1f1f1'], ['Серый', '#aaaaaa'], ['Тёмно-серый', '#444444'], ['Чёрный', '#000000'],
   ['Голубой', '#e7f7ff'], ['Сиреневый', '#eeeaff'], ['Розовый', '#fdebef'], ['Жёлтый', '#fff8db'], ['Зелёный', '#edf8e5'],
 ];
-const BACKGROUND_ICON = svg('<path d="M12 3C9.5 6.4 5 10 5 14a7 7 0 0 0 14 0c0-4-4.5-7.6-7-11z"/><path d="M12 3v18a7 7 0 0 0 7-7c0-4-4.5-7.6-7-11z" fill="currentColor" stroke="none"/>');
-const BACK_ICON = svg('<path d="M19 12H5"/><path d="M11 6l-6 6 6 6"/>');
-
 type ViewLevel = 'root' | 'grid' | 'background';
 
 /**
@@ -5117,7 +5043,7 @@ function wireZoomInput(): void {
     // в режиме просмотра по ссылке тип сетки и фон страницы не меняются: пунктов нет
     const viewOnly = state.linkMode !== null;
     const subRows = viewOnly ? '' : row('data-view="grid"', subIcon('grid'), subTitle('grid'), true) + row('data-view="background"', subIcon('background'), subTitle('background'), true);
-    const p = makePage('root', `${row('data-view="fullscreen"', svg(document.fullscreenElement ? '<path d="M4 20l6-6M6 14h4v4M20 4l-6 6M18 10h-4V6"/>' : '<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/>'), 'Полный экран')}
+    const p = makePage('root', `${row('data-view="fullscreen"', (document.fullscreenElement ? ICONS.fullscreenExit : ICONS.fullscreenEnter), 'Полный экран')}
       ${row('data-view="fit"', ICONS.fit, 'Показать всё')}<hr>
       ${subRows}${viewOnly ? '' : '<hr>'}
       <div class="view-zoom-pills">${[50, 70, 100, 200, 400, 800].map(n => `<button data-zoom="${n}">${n}%</button>`).join('')}<button data-view="custom">Другой…</button></div>`);
@@ -5142,7 +5068,7 @@ function wireZoomInput(): void {
   const check = (on: boolean) => (on ? '<span class="view-check" aria-hidden="true">✓</span>' : '');
   const subPage = (lvl: 'grid' | 'background'): HTMLElement => {
     // заголовок — тот же пункт, что в меню (иконка, название, стрелка), поверх — стрелка «назад»
-    const p = makePage(lvl, `<button class="view-back" data-view="back" aria-label="Назад"><span class="view-icon"><span class="vb-arrow">${BACK_ICON}</span><span class="vb-ghost">${subIcon(lvl)}</span></span><span class="view-text">${subTitle(lvl)}</span><span class="view-arrow vb-ghost" aria-hidden="true">›</span></button><hr>`);
+    const p = makePage(lvl, `<button class="view-back" data-view="back" aria-label="Назад"><span class="view-icon"><span class="vb-arrow">${BACK_ARROW_ICON}</span><span class="vb-ghost">${subIcon(lvl)}</span></span><span class="view-text">${subTitle(lvl)}</span><span class="view-arrow vb-ghost" aria-hidden="true">›</span></button><hr>`);
     if (lvl === 'grid') {
       const labels = state.board.coordLabels !== false;
       for (const g of Object.keys(GRID_LABELS) as GridMode[]) {
@@ -5230,11 +5156,11 @@ function wireZoomInput(): void {
   };
 
   for (const [id, factor, icon] of [
-    ['zoom-out', 1 / 1.25, '<path d="M5 12h14"/>'],
-    ['zoom-in', 1.25, '<path d="M5 12h14M12 5v14"/>'],
+    ['zoom-out', 1 / 1.25, ICONS.zoomOut],
+    ['zoom-in', 1.25, ICONS.zoomIn],
   ] as const) {
     const button = document.getElementById(id)!;
-    button.innerHTML = svg(icon);
+    button.innerHTML = icon;
     button.addEventListener('click', () => {
       const r = canvas.getBoundingClientRect();
       zoomAtPoint(state.camera.zoom * factor, r.width / 2, r.height / 2);

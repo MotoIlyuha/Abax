@@ -34,7 +34,8 @@ import {
 import { DRAFT_KEY, comboFromEvent, pageNumberFromEvent } from './hotkeys';
 import { devModeEnabled, devPlanForCode, limitsEnforced, setLimitsEnforced, setUserPlan } from './plan';
 import { showToast } from './about';
-import { ERASER_PATHS, ERASER_TIP, TOOL_DEFS, toolByKey } from './toolbar';
+import { ERASER_PATHS, ERASER_TIP } from './icons';
+import { TOOL_DEFS, toolByKey } from './toolbar';
 import {
   arrowDirection, arrowStep, isArrowKey, NUDGE_FAST, NUDGE_HOLD_MS, NUDGE_SPEED, NUDGE_STEP, NUDGE_STEP_FAST,
 } from './nudge';

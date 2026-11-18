@@ -1,6 +1,7 @@
 import { DEFAULT_CURSOR_ID, cursorPreset, isCursorId } from './cursors';
 import { CHAT_HISTORY, CHAT_MAX_LEN, createRateLimiter, normalizeChatText, tokenizeChat, type ChatMessage } from './room-chat';
 import { showPill } from './activity-pills';
+import { CHAT_ICON } from './icons';
 
 // Чат комнаты (SPEC_NIGHT5 §6): кнопка «Чат» с бейджем непрочитанных, панель с лентой и полем ввода.
 // История приходит в init, новые сообщения — {t:'chat'} от хаба (и свои тоже: хаб возвращает их отправителю).
@@ -24,8 +25,6 @@ let limiter = createRateLimiter();
 
 interface Ui { panel: HTMLElement; list: HTMLElement; empty: HTMLElement; input: HTMLTextAreaElement; count: HTMLElement; hint: HTMLElement }
 let ui: Ui | null = null;
-
-const CHAT_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12.5a7.5 7.5 0 0 1-11.2 6.5L4 20l1.1-4.3A7.5 7.5 0 1 1 20 12.5z"/></svg>';
 
 /** Кто отправляет сообщение в комнату (collab.ts); false — нет соединения. */
 export function setChatSender(fn: ((text: string) => boolean) | null): void {

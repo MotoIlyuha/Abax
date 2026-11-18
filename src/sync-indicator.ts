@@ -9,16 +9,9 @@ import { SYNC_STATUS_TEXT, type SyncStatus } from './sync-state';
 
 export const LIMIT_INFO_TEXT = 'На бесплатном тарифе в облаке хранятся 3 проекта по 3 страницы. Этот проект сохранён только на устройстве — в подписке Pro ограничений нет.';
 
-const SVG_NS = 'http://www.w3.org/2000/svg';
+import { SYNC_ICONS } from './icons';
 
-/** Иконки — статичные константы (пути), пользовательских данных в разметке нет. */
-const CLOUD = 'M7 18h10.5a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.6 9.2 4.5 4.5 0 0 0 7 18z';
-const ICONS: Record<Exclude<SyncStatus, 'hidden'>, { d: string; cls?: string }[]> = {
-  synced: [{ d: CLOUD }, { d: 'M9.2 13.2l2 2 3.8-4' }],
-  syncing: [{ d: CLOUD }, { d: 'M9.5 12.5a2.6 2.6 0 0 1 4.6-1.3M14.5 13.5a2.6 2.6 0 0 1-4.6 1.3M14.3 10.2v1.3h-1.3M9.7 15.8v-1.3h1.3', cls: 'sync-arrows' }],
-  offline: [{ d: CLOUD }, { d: 'M5 5l14 14' }],
-  limit: [{ d: CLOUD }, { d: 'M12 10.5v3M12 15.8v.1' }],
-};
+const SVG_NS = 'http://www.w3.org/2000/svg';
 
 function iconFor(status: Exclude<SyncStatus, 'hidden'>): SVGSVGElement {
   const svg = document.createElementNS(SVG_NS, 'svg');
@@ -29,7 +22,7 @@ function iconFor(status: Exclude<SyncStatus, 'hidden'>): SVGSVGElement {
   svg.setAttribute('stroke-linecap', 'round');
   svg.setAttribute('stroke-linejoin', 'round');
   svg.setAttribute('aria-hidden', 'true');
-  for (const part of ICONS[status]) {
+  for (const part of SYNC_ICONS[status]) {
     const path = document.createElementNS(SVG_NS, 'path');
     path.setAttribute('d', part.d);
     if (part.cls) {

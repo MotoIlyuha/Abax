@@ -15,6 +15,7 @@ import { pickCursor, previewLocked, revertChoice, type CursorChoice } from './on
 import { drawSelectionPreview, renderScene } from './renderer';
 import { fitSolid } from './solid';
 import type { Camera, Handle, SolidEl } from './types';
+import { CHEVRON_UP_ICON } from './icons';
 
 export interface CursorPickerOptions {
   choice: CursorChoice;
@@ -98,8 +99,6 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
   return e;
 }
 
-const CHEVRON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg>';
-
 /** Разметка курсоров из каталога: строится один раз на пресет и размер. */
 const svgMemo = new Map<string, string>();
 function svgOf(id: string, size: number): string {
@@ -161,7 +160,7 @@ export function createCursorPicker(o: CursorPickerOptions): CursorPicker {
     b.type = 'button';
     b.tabIndex = -1;
     b.setAttribute('aria-hidden', 'true');
-    b.innerHTML = CHEVRON;
+    b.innerHTML = CHEVRON_UP_ICON;
   }
   const items: Item[] = [];
   for (const p of CURSOR_PRESETS) {
