@@ -116,7 +116,7 @@ export function linkUrlOf(info: Pick<LinkInfo, 'token' | 'prettyUrl'>): string {
 }
 
 /** Тариф заблокировал возможность (лимиты включены и на тарифе её нет). */
-export function planLocks(feature: 'canSetMaxGuests' | 'canProtectCopy' | 'canSetAlias'): boolean {
+export function planLocks(feature: 'canSetMaxGuests' | 'canProtectCopy' | 'canProtectClone' | 'canSetAlias'): boolean {
   return limitsEnforced() && !PLAN_LIMITS[userPlan()][feature];
 }
 

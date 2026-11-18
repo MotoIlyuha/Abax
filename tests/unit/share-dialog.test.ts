@@ -241,3 +241,105 @@ describe('с облаком', () => {
     expect(q('.share-email').hidden).toBe(true);
   });
 });
+
+describe('вкладка «Настройки доступа»', () => {
+  const toSettings = () => q<HTMLButtonElement>('#share-tab-settings').click();
+  const field = <T extends HTMLElement = HTMLInputElement>(name: string) => q<T>(`[data-field="${name}"]`);
+
+  it('защита, просмотр по ссылке, «Кто может позвать» и права страниц меняют права доски', async () => {
+    await openShareDialog(deps());
+    toSettings();
+    const protect = field('protectElements');
+    protect.checked = true;
+    protect.dispatchEvent(new Event('change'));
+    expect(state.project.permissions?.protectElements).toBe(true);
+    const lv = field('linkView');
+    expect(lv.checked).toBe(true);
+    lv.checked = false;
+    lv.dispatchEvent(new Event('change'));
+    expect(state.project.permissions?.linkView).toBe(false);
+    const editors = q<HTMLInputElement>('[data-key="summon-editors"]');
+    editors.checked = true;
+    editors.dispatchEvent(new Event('change'));
+    expect(state.project.permissions?.summon).toBe('editors');
+    expect(q('[role="radiogroup"]').getAttribute('aria-label')).toBe('Кто может позвать всех к себе');
+    const page = q<HTMLSelectElement>('.share-page-right[data-page-id="g2"] select');
+    expect([...page.options].map(o => o.textContent)).toEqual(['По роли', 'Только просмотр', 'Скрыта']);
+    page.value = 'hidden';
+    page.dispatchEvent(new Event('change'));
+    expect(state.project.permissions?.pageRights).toEqual({ g2: 'hidden' });
+  });
+
+  it('старое «редактирование для всех» видно как старая настройка с предупреждением; «Понятно» переводит на «По роли»', async () => {
+    state.project.permissions = { pageRights: { g1: 'edit' } };
+    await openShareDialog(deps());
+    toSettings();
+    const sel = q<HTMLSelectElement>('.share-page-right[data-page-id="g1"] select');
+    expect(sel.value).toBe('edit');
+    expect(sel.selectedOptions[0].textContent).toBe('Редактирование для всех (старая настройка)');
+    expect(q('.share-warn').textContent).toContain('больше не повышает роль');
+    q<HTMLButtonElement>('.share-warn button').click();
+    expect(state.project.permissions?.pageRights).toEqual({});
+    expect(dlg().querySelector('.share-warn')).toBeNull();
+  });
+
+  it('на Free защита копирования и клонирования и лимит гостей — с меткой Pro', async () => {
+    const { applyServerPlan } = await import('../../src/plan');
+    applyServerPlan({ plan: 'free', limitsEnforced: true });
+    await openShareDialog(deps());
+    toSettings();
+    expect(field('allowCopy').disabled).toBe(true);
+    expect(field('allowClone').disabled).toBe(true);
+    expect(field<HTMLSelectElement>('maxGuests').disabled).toBe(true);
+    expect(dlg().querySelectorAll('.share-pro-tag').length).toBeGreaterThanOrEqual(3);
+    expect(field('protectElements').disabled).toBe(false); // защита элементов — на всех тарифах
+  });
+
+  it('именной адрес: подсказка на лету, сохранение, занятый адрес, бывшие адреса и освобождение с подтверждением', async () => {
+    setSyncedRev('p1', 3);
+    let alias: string | null = null;
+    let former: string[] = [];
+    const api = fakeApi((m, p, body) => {
+      if (m === 'GET' && p.startsWith('/api/invites?')) return { invite: null };
+      if (m === 'GET' && p.endsWith('/email-invites')) return { invites: [] };
+      if (m === 'GET' && p === '/api/projects/p1/alias') return { alias, former };
+      if (m === 'PUT' && p === '/api/projects/p1/alias') {
+        if (body.alias === 'taken-one') return new ApiError(409, 'alias-taken');
+        if (alias) former = [alias, ...former];
+        alias = body.alias;
+        return { alias, former, prettyUrl: `https://abax.example/j/${alias}` };
+      }
+      if (m === 'DELETE' && p.startsWith('/api/projects/p1/alias/')) { former = former.filter(f => !p.endsWith(f)); return { ok: true }; }
+      return new ApiError(404, 'not-found');
+    });
+    setApiForTests(api);
+    await openShareDialog(deps());
+    toSettings();
+    await flush(6);
+    const input = () => q<HTMLInputElement>('.share-alias-input');
+    input().value = 'Ab';
+    input().dispatchEvent(new Event('input'));
+    expect(input().value).toBe('ab');
+    expect(q('.share-alias-problem').textContent).toBe('Не короче 3 символов');
+    input().value = 'taken-one';
+    input().dispatchEvent(new Event('input'));
+    q<HTMLButtonElement>('.share-alias-save').click();
+    await flush(6);
+    expect(q('.share-alias .share-cloud-error').textContent).toBe('Этот адрес уже занят');
+    input().value = 'physics-9a';
+    input().dispatchEvent(new Event('input'));
+    q<HTMLButtonElement>('.share-alias-save').click();
+    await flush(6);
+    input().value = 'fizika-9a';
+    input().dispatchEvent(new Event('input'));
+    q<HTMLButtonElement>('.share-alias-save').click();
+    await flush(6);
+    expect(q('.share-alias .share-person-name').textContent).toBe('/j/physics-9a');
+    q<HTMLButtonElement>('[data-key="release-physics-9a"]').click();
+    expect(q('.share-alias .share-confirm').textContent).toContain('больше никому не достанется');
+    q<HTMLButtonElement>('[data-key="release-yes-physics-9a"]').click();
+    await flush(6);
+    expect(api.calls.some(c => c[0] === 'DELETE' && c[1] === '/api/projects/p1/alias/physics-9a')).toBe(true);
+    expect(dlg().querySelector('.share-alias .share-people')).toBeNull();
+  });
+});

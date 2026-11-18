@@ -3802,3 +3802,18 @@ button.share-link { display: block; width: 100%; text-align: left; background: t
   .share-url-row { flex-direction: column; }
   .share-copy { width: 100%; }
 }
+
+/* ----- Ночь №6, TASK-07: «Настройки доступа», именной адрес, интерфейс читателя ----- */
+.share-warn { font-size: 12px; color: var(--warn); line-height: 1.4; }
+.share-alias-row { display: flex; align-items: center; gap: 6px; }
+.share-alias-prefix { font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: var(--muted); }
+.share-alias-input { flex: 1; min-width: 0; font-family: ui-monospace, Consolas, monospace; font-size: 12px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 7px; background: var(--panel); color: inherit; }
+.share-alias-input:focus { outline: none; border-color: var(--accent); }
+.share-alias-save { width: auto; margin: 0; white-space: nowrap; }
+.share-alias-problem:empty { display: none; }
+.share-radio-group { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 12px; }
+.share-radio-title { color: var(--muted); }
+.share-radio { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+.share-user-role { font: inherit; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); }
+.chat-readonly .chat-hint { color: var(--muted); }
+.cp-readonly { font-size: 12px; color: var(--muted); padding: 4px 0; }

@@ -42,7 +42,7 @@ test.describe('совместная работа', () => {
     // автор видит участника в диалоге (список обновляется сам)
     await expect(host.userRow('Ученик')).toBeVisible({ timeout: 5000 });
     await expect(host.dialog.locator('.ctx-label').first()).toHaveText('Участники (1) — права по страницам:');
-    await expect(host.userRow('Ученик').locator('select')).toHaveValue('view');
+    await expect(host.userRow('Ученик').locator('select').first()).toHaveValue('view'); // Ночь №6: в строке ещё и выбор роли
   });
 
   test('автор выдаёт право правки — гость рисует, автор видит', async ({ host, join }) => {

@@ -4,6 +4,7 @@ import { addCommentReply, createCommentThread, resolveCommentThread, toggleEleme
 import { elementAABB } from './geom';
 import { canEditPagesNote, noteName, sendComment, sendReaction, type CommentRequest } from './collab-notes';
 import { clientId } from './identity';
+import { myCollabCaps } from './collab';
 import { PIN_R, hitAnnotation, layoutPills, layoutPins } from './annotations';
 
 // Интерфейс реакций и комментариев: быстрые реакции для выделенного, нажатия на пилюли и пины, поповер ветки.
@@ -17,13 +18,21 @@ export function annotationsAvailable(): boolean {
   return state.linkMode === null && state.view === 'board' && !onDraft();
 }
 
+/**
+ * Можно ли ставить реакции и писать комментарии: читатель (SPEC_NIGHT6 §2.3) их видит, но не создаёт.
+ * Хаб старой версии возможностей не присылает — тогда как раньше.
+ */
+export function canAnnotate(): boolean {
+  return annotationsAvailable() && myCollabCaps()?.comment !== false;
+}
+
 function selected(): Element[] {
   return state.board.elements.filter(e => state.selection.has(e.id));
 }
 
 /** Реакция на элемент: через хаб в комнате, у себя — вне её (мимо истории отмены). */
 export function toggleReactionOn(elId: string, emoji: string): void {
-  if (!annotationsAvailable()) return;
+  if (!canAnnotate()) return;
   if (sendReaction(state.pageId, elId, emoji)) return;
   // читатель без хаба с поддержкой реакций поставить их не может: правка доски ему не положена
   if (!canEditPagesNote()) return;
@@ -37,7 +46,7 @@ export function reactToSelection(emoji: string): void {
 
 /** Кнопки для меню выделения: реакции и «Комментировать». */
 export function annotationButtons(): HTMLElement[] {
-  if (!annotationsAvailable() || selected().length === 0) return [];
+  if (!canAnnotate() || selected().length === 0) return [];
   const out: HTMLElement[] = [];
   const box = document.createElement('div');
   box.className = 'qm-reactions';
@@ -126,7 +135,7 @@ export function threadOpen(): boolean {
 
 /** Новая ветка к элементу: поповер с полем ввода у правого верхнего угла элемента. */
 export function startComment(el: Element): void {
-  if (!annotationsAvailable()) return;
+  if (!canAnnotate()) return;
   const a = elementAABB(el);
   openPop({ kind: 'new', targetId: el.id, x: a.x1, y: a.y0 });
 }
@@ -150,12 +159,17 @@ function openPop(st: PopState): void {
   close.title = 'Закрыть (Esc)';
   close.addEventListener('click', closeThread);
   const list = make(el, 'div', 'cp-list');
+  // читатель ветку читает, но не отвечает и не закрывает её
+  const readOnlyThread = !canAnnotate();
+  if (readOnlyThread) make(el, 'div', 'cp-readonly', 'Читатели не пишут комментарии');
   const input = make(el, 'textarea', 'cp-input');
+  input.hidden = readOnlyThread;
   input.rows = 2;
   input.maxLength = 2000;
   input.placeholder = st.kind === 'new' ? 'Напишите комментарий…' : 'Ответить…';
   input.spellcheck = false;
   const row = make(el, 'div', 'cp-actions');
+  row.hidden = readOnlyThread;
   const send = make(row, 'button', 'cp-send', st.kind === 'new' ? 'Отправить' : 'Ответить');
   send.type = 'button';
   send.addEventListener('click', () => submit());
@@ -175,11 +189,13 @@ function openPop(st: PopState): void {
   for (const type of ['pointerdown', 'dblclick', 'contextmenu', 'wheel'] as const) el.addEventListener(type, e => e.stopPropagation());
   pop = { el, state: st, list, sig: '', input };
   refresh();
-  input.focus();
+  if (readOnlyThread) close.focus();
+  else input.focus();
 }
 
 /** Правка комментариев: через хаб в комнате, иначе — у себя (мимо истории отмены). */
 function change(req: CommentRequest, local: (page: typeof state.board) => typeof state.board): void {
+  if (!canAnnotate()) return;
   if (sendComment(state.pageId, req)) return;
   if (!canEditPagesNote()) return;
   const next = local(state.board);

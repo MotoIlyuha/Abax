@@ -105,6 +105,18 @@ export async function enterLinkView(route: RouteMatch): Promise<void> {
 export const NOTICE_INVITE_GONE = ['Приглашение недействительно', 'Ссылка отозвана или устарела. Попросите автора прислать новую.'] as const;
 export const NOTICE_INVITE_OFFLINE = ['Нет связи с сервером', 'Не удалось открыть приглашение. Проверьте подключение и откройте ссылку ещё раз.'] as const;
 
+/** Почему ссылка не открылась — по коду сервера (SPEC_NIGHT6 §5.4); неизвестный код — «приглашение недействительно». */
+export function inviteFailureNotice(reason: string, code?: string): readonly [string, string] {
+  if (reason !== 'not-found') return NOTICE_INVITE_OFFLINE;
+  switch (code) {
+    case 'link-paused': return ['Доступ по ссылке закрыт', 'Автор закрыл доступ к доске по ссылке. Когда он откроет его снова, эта же ссылка заработает.'];
+    case 'alias-released': return ['Адрес больше не используется', 'Автор освободил этот адрес. Попросите у него новую ссылку.'];
+    case 'alias-inactive': return ['Адрес временно неактивен', 'Именной адрес доски сейчас не работает. Попросите автора прислать обычную ссылку.'];
+    case 'board-deleted': return ['Доска удалена', 'Автор удалил эту доску.'];
+    default: return NOTICE_INVITE_GONE;
+  }
+}
+
 /**
  * Открывает приглашение /j/:token. true — проект открыт (пока только для чтения; подключение к комнате — в collab-guest),
  * false — приглашение не открылось (причина показана) или это ссылка самого автора: тогда запускается его обычная доска.
@@ -117,7 +129,7 @@ export async function enterInvite(token: string): Promise<boolean> {
   }
   const res = await loadInvite(api, token);
   if (!res.ok) {
-    const [title, text] = res.reason === 'not-found' ? NOTICE_INVITE_GONE : NOTICE_INVITE_OFFLINE;
+    const [title, text] = inviteFailureNotice(res.reason, res.code);
     showCollabNotice(title, text);
     return false;
   }

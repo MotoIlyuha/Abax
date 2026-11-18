@@ -199,7 +199,7 @@ function renderList(): void {
 }
 
 function submit(): void {
-  if (!ui) return;
+  if (!ui || !canWrite) return;
   const text = normalizeChatText(ui.input.value);
   if (text === null) return;
   if (!sender) { ui.hint.textContent = OFFLINE_HINT; return; }
@@ -218,7 +218,9 @@ export function openChat(): void {
   ui.panel.hidden = false;
   renderList();
   renderBadge();
-  ui.input.focus();
+  renderWrite();
+  if (canWrite) ui.input.focus();
+  else ui.panel.querySelector<HTMLButtonElement>('.chat-close')?.focus();
 }
 
 export function closeChat(): void {
@@ -275,6 +277,20 @@ export function chatReceive(raw: unknown): void {
 }
 
 /** Чат доступен, пока идёт совместная работа; выключение сбрасывает ленту и закрывает панель. */
+/** Можно ли писать в чат (читатель только читает, SPEC_NIGHT6 §2.3). */
+let canWrite = true;
+export const READER_CHAT_TEXT = 'Читатели не пишут в чат';
+export function setChatCanWrite(on: boolean): void {
+  canWrite = on;
+  renderWrite();
+}
+function renderWrite(): void {
+  if (!ui) return;
+  ui.input.hidden = !canWrite;
+  ui.panel.classList.toggle('chat-readonly', !canWrite);
+  ui.hint.textContent = canWrite ? (ui.hint.textContent === READER_CHAT_TEXT ? '' : ui.hint.textContent) : READER_CHAT_TEXT;
+}
+
 export function setChatAvailable(on: boolean): void {
   available = on;
   const btn = button();

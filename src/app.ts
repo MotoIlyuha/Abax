@@ -32,7 +32,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 // ?worker&inline: воркер инлайнится в бандл и работает из file:// (Electron)
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker&inline';
 import { initChatButton } from './collab-chat';
-import { collabActive, isHost, myColor, noteSelection, readOnly, startHostConnection, stopCollab, type CollabGotoDetail, type CollabSummonDetail } from './collab';
+import { collabActive, isHost, myCollabCaps, myColor, noteSelection, readOnly, startHostConnection, stopCollab, type CollabGotoDetail, type CollabSummonDetail } from './collab';
 import { animateCameraTo } from './camera-anim';
 import { fillPageAvatars, initCollabPresence } from './collab-presence';
 import { closePresent, openPresent, presentOpen } from './present';
@@ -5089,6 +5089,8 @@ async function openShareDialog(): Promise<void> {
 
 /** Инструменты, которые читателю безвредны: ничего не рисуют и не меняют. */
 const READER_TOOLS = new Set<ToolId>(['select', 'pan', 'laser', 'fadePen', 'flash']);
+/** Указка: лазер, исчезающий маркер, подсветка. */
+const POINTER_KINDS = new Set<ToolId>(['laser', 'fadePen', 'flash']);
 /** Инструмент гостя до того, как ему оставили только чтение. */
 let toolBeforeReader: ToolId | null = null;
 
@@ -5096,9 +5098,13 @@ function refresh(): void {
   // совместный режим: скрываем тулбар на страницах без права edit
   if (collabActive() && !isHost()) {
     document.body.classList.toggle('readonly-mode', readOnly());
-    // читателю панели нет: инструмент — «Выделение» (реакции, копирование), а если копировать нельзя — «Панорама»
+    // читателю панели нет: инструмент — «Выделение» (реакции, копирование), а если копировать нельзя — «Панорама»;
+    // без указки (роль «Читатель», SPEC_NIGHT6 §2.3) лазер, исчезающий маркер и подсветка недоступны
+    const noPointer = myCollabCaps()?.pointer === false;
+    const allowed = (t: ToolId) => READER_TOOLS.has(t) && !(noPointer && POINTER_KINDS.has(t));
+    if (noPointer && POINTER_KINDS.has(state.tool)) setTool(canCopyCurrentBoard() ? 'select' : 'pan');
     if (readOnly()) {
-      if (!READER_TOOLS.has(state.tool) || (state.tool === 'select' && !canCopyCurrentBoard())) {
+      if (!allowed(state.tool) || (state.tool === 'select' && !canCopyCurrentBoard())) {
         if (!READER_TOOLS.has(state.tool)) toolBeforeReader = state.tool;
         setTool(canCopyCurrentBoard() ? 'select' : 'pan');
       }

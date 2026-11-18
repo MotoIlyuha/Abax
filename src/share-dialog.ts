@@ -6,10 +6,10 @@ import { cursorPreset } from './cursors';
 import { profileName } from './profile';
 import { state } from './state';
 import { isPageRight } from './limits';
-import { roleLabel, type AccessRole, type StoredRole } from './access';
+import { ALIAS_MAX, aliasProblem, roleLabel, type AccessRole, type StoredRole } from './access';
 import {
-  MAX_GUESTS_OPTIONS, ROLE_OPTIONS, TEXT_OFFLINE, TEXT_UNSYNCED, cloudShareAvailable, cloudSynced, emailInviteErrorText,
-  emailInviteStatusText, fetchEmailInvites, fetchLink, linkUrlOf, planLocks, resetLink, revokeEmailInvite, saveLink,
+  MAX_GUESTS_OPTIONS, ROLE_OPTIONS, TEXT_OFFLINE, TEXT_UNSYNCED, aliasErrorText, cloudShareAvailable, cloudSynced, emailInviteErrorText,
+  emailInviteStatusText, fetchAlias, fetchEmailInvites, fetchLink, linkUrlOf, planLocks, releaseAlias, resetLink, revokeEmailInvite, saveAlias, saveLink,
   sendEmailInvite, setMaxGuestsInProject, setPageRightInProject, setPermissionField, storedRoleLabel,
   type EmailInvite, type LinkInfo,
 } from './invite-ui';
@@ -701,16 +701,29 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
       row.appendChild(head2);
       for (const pg of state.project.pages) {
         const cur = u.rights?.pages?.[pg.id] || u.rights?.default || 'view';
-        const sel = selectEl('', (['view', 'edit', 'hidden'] as const).map(v => [v, `${pg.name}: ${v === 'view' ? 'Просмотр' : v === 'edit' ? 'Редактирование' : 'Скрыть'}`] as const), cur, `${u.name}, страница «${pg.name}»`);
+        const options = (['view', 'edit', 'hidden'] as const).map(v => [v, `${pg.name}: ${v === 'view' ? 'Просмотр' : v === 'edit' ? 'Редактирование' : 'Скрыть'}`] as const);
+        const sel = selectEl('', [...options, ['', `${pg.name}: как у роли`]], cur, `${u.name}, страница «${pg.name}»`);
         sel.dataset.key = `u${u.userId}-${pg.id}`;
         sel.addEventListener('change', async () => {
-          const r = await deps.api.shareSetRights(u.userId, { pages: { [pg.id]: sel.value } });
+          // «как у роли» снимает личное право участника на страницу
+          const r = await deps.api.shareSetRights(u.userId, { pages: { [pg.id]: sel.value === '' ? null : sel.value } });
           p2pMessage = r.ok ? '' : r.error || 'Не удалось изменить права';
           if (!r.ok) say(p2pMessage);
           await refreshStatus(true);
         });
         row.appendChild(sel);
       }
+      // роль участника (Ночь №6): после прав страниц, чтобы их порядок в строке не менялся
+      const role = u.access && u.access.role !== 'owner' ? u.access.role : 'commenter';
+      const roleSel = selectEl('share-user-role', ROLE_OPTIONS.map(r => [r, `Роль: ${roleLabel(r)}`] as const), role, `Роль участника ${u.name}`);
+      roleSel.dataset.key = `u${u.userId}-role`;
+      roleSel.addEventListener('change', async () => {
+        const r = await deps.api.shareSetRights(u.userId, { role: roleSel.value });
+        p2pMessage = r.ok ? '' : r.error || 'Не удалось изменить роль';
+        if (!r.ok) say(p2pMessage);
+        await refreshStatus(true);
+      });
+      row.appendChild(roleSel);
       table.appendChild(row);
     }
     box.appendChild(table);
@@ -800,12 +813,138 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
 
   // ----- Вкладка «Настройки доступа» -----
 
+  /** Состояние редактора именного адреса между перерисовками. */
+  const aliasUi = { loadedFor: '', alias: null as string | null, former: [] as string[], draft: '', message: '', busy: false, confirmRelease: '' };
+
+  async function loadAlias(): Promise<void> {
+    if (!cloudShareAvailable() || !cloudSynced()) return;
+    const id = state.project.id;
+    aliasUi.loadedFor = id;
+    try {
+      const r = await fetchAlias(id);
+      if (state.project.id !== id) return;
+      aliasUi.alias = r.alias;
+      aliasUi.former = r.former;
+      if (!aliasUi.draft) aliasUi.draft = r.alias ?? '';
+    } catch { /* без сети — покажем при следующем открытии */ }
+    renderSettings();
+  }
+
+  async function submitAlias(): Promise<void> {
+    const draft = aliasUi.draft.trim();
+    const problem = aliasProblem(draft);
+    if (problem) { aliasUi.message = problem; renderSettings(); return; }
+    aliasUi.busy = true;
+    aliasUi.message = '';
+    renderSettings();
+    try {
+      const r = await saveAlias(state.project.id, draft);
+      aliasUi.alias = r.alias;
+      aliasUi.former = r.former;
+      if (link) link = { ...link, alias: r.alias, prettyUrl: r.prettyUrl ?? link.prettyUrl };
+      say(`Именной адрес: ${r.alias}`);
+    } catch (e) { aliasUi.message = aliasErrorText(e); } finally { aliasUi.busy = false; renderSettings(); renderLink(); }
+  }
+
+  async function doRelease(alias: string): Promise<void> {
+    aliasUi.confirmRelease = '';
+    aliasUi.busy = true;
+    try {
+      await releaseAlias(state.project.id, alias);
+      aliasUi.former = aliasUi.former.filter(a => a !== alias);
+      if (aliasUi.alias === alias) { aliasUi.alias = null; if (link) link = { ...link, alias: null }; }
+      say(`Адрес ${alias} освобождён`);
+    } catch (e) { aliasUi.message = aliasErrorText(e); } finally { aliasUi.busy = false; renderSettings(); renderLink(); }
+  }
+
+  /** Галочка настройки; locked — недоступна на тарифе (метка Pro). */
+  function check(field: string, text: string, checked: boolean, onChange: (on: boolean) => void, locked = false): HTMLElement {
+    const row = el('label', 'share-invite-check');
+    const cb = el('input');
+    cb.type = 'checkbox';
+    cb.dataset.field = field;
+    cb.dataset.key = field;
+    cb.checked = checked;
+    cb.disabled = locked;
+    cb.addEventListener('change', () => { onChange(cb.checked); renderSettings(); });
+    row.append(cb, el('span', '', text));
+    if (locked) row.appendChild(el('span', 'share-pro-tag', 'Pro'));
+    return row;
+  }
+
+  function renderAliasEditor(box: HTMLElement): void {
+    const sec = el('section', 'share-alias');
+    sec.appendChild(el('h3', 'share-cloud-title', 'Именной адрес'));
+    const locked = planLocks('canSetAlias');
+    sec.appendChild(el('div', 'share-hint', 'Короткий адрес вроде /j/physics-9a ведёт на общую ссылку доски и даёт те же права. Это не секрет: его может набрать любой.'));
+    const row = el('div', 'share-alias-row');
+    const prefix = el('span', 'share-alias-prefix', '/j/');
+    const input = el('input', 'share-alias-input');
+    input.type = 'text';
+    input.value = aliasUi.draft;
+    input.placeholder = 'physics-9a';
+    input.maxLength = ALIAS_MAX;
+    input.spellcheck = false;
+    input.autocomplete = 'off';
+    input.dataset.key = 'alias-input';
+    input.setAttribute('aria-label', 'Именной адрес доски');
+    input.disabled = locked || aliasUi.busy;
+    const save = btn('ctx-custom-btn share-alias-save', aliasUi.alias ? 'Изменить' : 'Сохранить', () => { void submitAlias(); });
+    save.dataset.key = 'alias-save';
+    save.disabled = locked || aliasUi.busy;
+    const problemEl = el('div', 'share-hint share-alias-problem');
+    problemEl.setAttribute('aria-live', 'polite');
+    const showProblem = () => {
+      const v = input.value.trim();
+      problemEl.textContent = v ? aliasProblem(v) ?? '' : '';
+    };
+    input.addEventListener('input', () => { aliasUi.draft = input.value.toLowerCase(); if (input.value !== aliasUi.draft) input.value = aliasUi.draft; aliasUi.message = ''; showProblem(); });
+    input.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); void submitAlias(); } });
+    row.append(prefix, input, save);
+    if (locked) row.appendChild(el('span', 'share-pro-tag', 'Pro'));
+    sec.appendChild(row);
+    showProblem();
+    sec.appendChild(problemEl);
+    if (aliasUi.message) {
+      const err = el('div', 'share-cloud-error', aliasUi.message);
+      err.setAttribute('role', 'alert');
+      sec.appendChild(err);
+    }
+    if (aliasUi.former.length > 0) {
+      sec.appendChild(el('div', 'share-cloud-title', 'Бывшие адреса — ведут на эту же доску'));
+      const list = el('ul', 'share-people');
+      for (const f of aliasUi.former) {
+        const li = el('li', 'share-person');
+        li.appendChild(el('span', 'share-person-name', `/j/${f}`));
+        if (aliasUi.confirmRelease === f) {
+          const c = el('span', 'share-confirm');
+          c.appendChild(el('span', '', 'Адрес перестанет вести на доску и больше никому не достанется. '));
+          const yes = btn('ctx-custom-btn danger', 'Освободить', () => { void doRelease(f); });
+          yes.dataset.key = `release-yes-${f}`;
+          const no = btn('ctx-custom-btn', 'Отмена', () => { aliasUi.confirmRelease = ''; renderSettings(); });
+          no.dataset.key = `release-no-${f}`;
+          c.append(yes, no);
+          li.appendChild(c);
+        } else {
+          const rel = btn('share-inline-btn', 'Освободить', () => { aliasUi.confirmRelease = f; renderSettings(); settingsBox.querySelector<HTMLElement>(`[data-key="release-no-${CSS.escape(f)}"]`)?.focus(); }, `Освободить адрес ${f}`);
+          rel.dataset.key = `release-${f}`;
+          li.appendChild(rel);
+        }
+        list.appendChild(li);
+      }
+      sec.appendChild(list);
+    }
+    if (!link?.enabled) sec.appendChild(el('div', 'share-hint', 'Адрес работает, пока включена общая ссылка.'));
+    box.appendChild(sec);
+  }
+
   function renderSettings(): void {
     const focusKey = settingsBox.contains(document.activeElement) ? (document.activeElement as HTMLElement).dataset.key : undefined;
     settingsBox.textContent = '';
     const perms = state.project.permissions ?? {};
+    const legacyLink = link?.role === 'edit' || link?.role === 'view';
 
-    // права страниц
+    // права страниц: «По роли» / «Только просмотр» / «Скрыта»; старое «редактирование для всех» — пока стоит
     const pages = el('section', 'share-page-rights');
     pages.appendChild(el('h3', 'share-cloud-title', 'Страницы'));
     for (const pg of state.project.pages) {
@@ -813,7 +952,9 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
       row.dataset.pageId = pg.id;
       row.appendChild(el('span', 'share-page-name', pg.name || 'Без названия'));
       const cur = perms.pageRights?.[pg.id];
-      const sel = selectEl('share-invite-select', [['', 'По роли'], ['edit', 'Редактирование (старая настройка)'], ['view', 'Только просмотр'], ['hidden', 'Скрыта']], isPageRight(cur) ? cur : '', `Доступ к странице «${pg.name}»`);
+      const options: (readonly [string, string])[] = [['', 'По роли'], ['view', 'Только просмотр'], ['hidden', 'Скрыта']];
+      if (cur === 'edit') options.splice(1, 0, ['edit', 'Редактирование для всех (старая настройка)']);
+      const sel = selectEl('share-invite-select', options, isPageRight(cur) ? cur : '', `Доступ к странице «${pg.name}»`);
       sel.dataset.key = `page-${pg.id}`;
       sel.addEventListener('change', () => {
         const v = sel.value;
@@ -822,12 +963,69 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
       });
       row.appendChild(sel);
       pages.appendChild(row);
+      if (cur === 'edit') {
+        const warn = el('div', 'share-warn');
+        warn.appendChild(el('span', '', legacyLink
+          ? `«${pg.name}»: по старой настройке гости старой ссылки могут её редактировать. Для новых ролей действует роль. `
+          : `«${pg.name}»: старая настройка «редактирование для всех» больше не повышает роль — действует роль. `));
+        const ok = btn('share-inline-btn', 'Понятно', () => { setPageRightInProject(pg.id, ''); renderSettings(); }, `Понятно: страница «${pg.name}» — по роли`);
+        ok.dataset.key = `page-ok-${pg.id}`;
+        warn.appendChild(ok);
+        pages.appendChild(warn);
+      }
     }
     settingsBox.appendChild(pages);
+
+    // защита чужих элементов
+    const protect = el('section', 'share-protect');
+    protect.appendChild(el('h3', 'share-cloud-title', 'Защита'));
+    protect.appendChild(check('protectElements', 'Участники не могут сдвигать, менять и стирать чужие элементы (свои — могут)',
+      perms.protectElements === true, on => setPermissionField('protectElements', on ? true : undefined)));
+    settingsBox.appendChild(protect);
+
+    // копирование и копия доски
+    const copy = el('section', 'share-copy-settings');
+    copy.appendChild(el('h3', 'share-cloud-title', 'Копирование'));
+    const copyLocked = planLocks('canProtectCopy');
+    copy.appendChild(check('allowCopy', 'Читатели и комментаторы могут копировать и экспортировать (видимое на экране всё равно можно сфотографировать)',
+      copyLocked ? true : perms.allowCopy !== false, on => {
+        setPermissionField('allowCopy', on ? undefined : false);
+        // старые ссылки с запретом копирования не должны молча его потерять — ссылка получает тот же флаг
+        if (link) void saveLink(state.project.id, { defaultRole: link.role, allowCopy: on }).then(r => { link = r; }, () => {});
+      }, copyLocked));
+    const cloneLocked = planLocks('canProtectClone');
+    copy.appendChild(check('allowClone', 'Можно сделать копию доски себе', cloneLocked ? true : perms.forbidClone !== true,
+      on => setPermissionField('forbidClone', on ? undefined : true), cloneLocked));
+    settingsBox.appendChild(copy);
+
+    // ссылки
+    const links = el('section', 'share-links-settings');
+    links.appendChild(el('h3', 'share-cloud-title', 'Ссылки'));
+    links.appendChild(check('linkView', 'Просмотр по ссылке на доску и страницу (без приглашения, только чтение)', perms.linkView !== false,
+      on => setPermissionField('linkView', on ? undefined : false)));
+    settingsBox.appendChild(links);
+    if (cloudShareAvailable() && cloudSynced()) renderAliasEditor(settingsBox);
 
     // участники
     const people = el('section', 'share-settings-people');
     people.appendChild(el('h3', 'share-cloud-title', 'Участники'));
+    const group = el('div', 'share-radio-group');
+    group.setAttribute('role', 'radiogroup');
+    group.setAttribute('aria-label', 'Кто может позвать всех к себе');
+    group.appendChild(el('span', 'share-radio-title', 'Кто может позвать всех к себе:'));
+    for (const [v, t] of [['owner', 'Только я'], ['editors', 'Я и редакторы']] as const) {
+      const lbl = el('label', 'share-radio');
+      const r = el('input');
+      r.type = 'radio';
+      r.name = 'share-summon';
+      r.value = v;
+      r.dataset.key = `summon-${v}`;
+      r.checked = (perms.summon ?? 'owner') === v;
+      r.addEventListener('change', () => { if (r.checked) { setPermissionField('summon', v === 'editors' ? 'editors' : undefined); renderSettings(); } });
+      lbl.append(r, el('span', '', t));
+      group.appendChild(lbl);
+    }
+    people.appendChild(group);
     const maxLocked = planLocks('canSetMaxGuests');
     const maxRow = el('label', 'share-invite-role share-max-guests');
     maxRow.appendChild(el('span', '', 'Максимум гостей: '));
@@ -846,6 +1044,7 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
     people.appendChild(maxRow);
     settingsBox.appendChild(people);
     if (focusKey) settingsBox.querySelector<HTMLElement>(`[data-key="${CSS.escape(focusKey)}"]`)?.focus();
+    if (cloudShareAvailable() && cloudSynced() && aliasUi.loadedFor !== state.project.id) void loadAlias();
   }
 
   // ----- Открытие, клавиатура, закрытие -----

@@ -1,6 +1,6 @@
 import type { Element, FadeStroke, GridMode, Page, Project, ProjectMeta, Pt } from './types';
-import type { AccessRole, ParticipantCaps } from './access';
-import { state, openProject, setSelection, setTouchGuard, isDraftId, onDraft, onChange, touchProject, update } from './state';
+import { roleLabel, type AccessRole, type ParticipantCaps } from './access';
+import { state, openProject, setSelection, setCopyGuard, setTouchGuard, isDraftId, onDraft, onChange, touchProject, update } from './state';
 import { MAX_PATCH_OPS, applyBoardPatch, diffElements, isBoardPatch, type BoardPatch } from './delta';
 import { gestureActive } from './gesture';
 import { sanitizeComments } from './file';
@@ -12,7 +12,7 @@ import { setStorage, storage, type BoardsStorage } from './storage';
 import { getApi } from './api-client';
 import { hydrateFromCloud } from './cloud-assets';
 import { clearPills, diffUsers, showPill, showUserEvents } from './activity-pills';
-import { chatReceive, chatReset, setChatAvailable, setChatSender } from './collab-chat';
+import { chatReceive, chatReset, setChatAvailable, setChatCanWrite, setChatSender } from './collab-chat';
 import { viewCenter, viewportSize } from './camera-anim';
 import { cancelActiveInteraction } from './interaction';
 import { nearestAvailablePage } from './presence';
@@ -69,15 +69,23 @@ export interface CollabGotoDetail { pageId: string; x?: number; y?: number; zoom
 /** Событие на document 'doska:collab-presence': участники, их страницы или моя камера изменились (перерисовать присутствие). */
 export const PRESENCE_EVENT = 'doska:collab-presence';
 
-/** Роль и возможности из init / rights. */
-function noteAccess(m: Record<string, unknown>): void {
+/** Роль и возможности из init / rights; смена роли у гостя — пилюля (кроме первого init). */
+function noteAccess(m: Record<string, unknown>, initial = false): void {
+  const prevRole = myAccessRole;
   const r = m.role;
   if (r === 'owner' || r === 'editor' || r === 'commenter' || r === 'reader') myAccessRole = r;
   const c = m.caps as Record<string, unknown> | undefined;
   if (c && typeof c === 'object') {
     myCaps = { comment: c.comment === true, chat: c.chat === true, pointer: c.pointer === true, copy: c.copy === true, summon: c.summon === true };
   }
+  setChatCanWrite(myCaps?.chat !== false);
+  if (!initial && role === 'guest' && prevRole && myAccessRole && myAccessRole !== 'owner' && prevRole !== myAccessRole) {
+    showPill({ kind: 'info', text: `Автор изменил вашу роль: ${roleLabel(myAccessRole)}` });
+    roleChangedPill = true;
+  }
 }
+/** Пилюля смены роли уже показана — общая «Автор изменил права доступа» не нужна. */
+let roleChangedPill = false;
 
 let transport: CollabTransport | null = null;
 let myUserId = -1;
@@ -186,6 +194,8 @@ function ownsElement(el: Element): boolean {
   return el.by === myPrincipalId || (el.by === undefined && createdByMe.has(el.id));
 }
 setTouchGuard(el => canTouchElement(el), el => ownsElement(el));
+// копирование гостя в комнате — по возможностям от хаба (на участника, SPEC_NIGHT6 D1); старый хаб — по правам доски
+setCopyGuard(() => (connected && role === 'guest' && myCaps ? myCaps.copy : null));
 
 /** Участники комнаты (как их видит этот клиент: с маскировкой скрытых страниц). */
 export function collabUsers(): readonly CollabUser[] { return users; }
@@ -282,7 +292,7 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
       }
       myUserId = m.userId as number;
       myRights = (m.rights as typeof myRights) || myRights;
-      noteAccess(m);
+      noteAccess(m, true);
       myPrincipalId = typeof m.principal === 'string' ? m.principal : null;
       handleResume(m);
       usersKnown = Array.isArray(m.users);
@@ -310,9 +320,10 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
       renderRemoteCursors();
     } else if (m.t === 'rights') {
       const nextRights = (m.rights as typeof myRights) || myRights;
-      if (role === 'guest' && JSON.stringify(nextRights) !== JSON.stringify(myRights)) showPill({ kind: 'info', text: 'Автор изменил права доступа' });
-      myRights = nextRights;
+      roleChangedPill = false;
       noteAccess(m);
+      if (role === 'guest' && !roleChangedPill && JSON.stringify(nextRights) !== JSON.stringify(myRights)) showPill({ kind: 'info', text: 'Автор изменил права доступа' });
+      myRights = nextRights;
       // перерисовываем UI — тулбар и список страниц зависят от прав
       setSelection([...state.selection]);
     } else if (m.t === 'project') {

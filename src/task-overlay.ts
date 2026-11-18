@@ -1,6 +1,6 @@
 import type { Element, TaskEl } from './types';
 import { canCopyCurrentBoard, onChange, pushHistory, replaceElements, state } from './state';
-import { sendTaskDraft, sendTaskSubmit, taskInputOnline } from './collab';
+import { myCollabCaps, sendTaskDraft, sendTaskSubmit, taskInputOnline } from './collab';
 import { submitTaskAttempt, taskStatus, toggleTaskHardFlag, updateStudentDraft } from './task-element';
 import { showToast } from './about';
 
@@ -191,11 +191,12 @@ function renderDetails(p: Panel, el: TaskEl, teacher: boolean): void {
 function update(p: Panel, el: TaskEl): void {
   const teacher = isTeacher();
   const online = taskInputOnline();
-  // ответ без сети возможен у автора и у зрителя по ссылке; ученик в комнате отвечает через хаб
-  const canAnswer = state.collabRole !== 'guest' || online;
+  // ответ без сети возможен у автора и у зрителя по ссылке; ученик в комнате отвечает через хаб; читатель — не отвечает
+  const reader = state.collabRole === 'guest' && myCollabCaps()?.comment === false;
+  const canAnswer = !reader && (state.collabRole !== 'guest' || online);
   p.input.disabled = !canAnswer;
   p.check.disabled = !canAnswer;
-  p.input.title = canAnswer ? '' : 'Ответ сейчас недоступен: нет связи с автором';
+  p.input.title = reader ? 'Читатели не отвечают на задания' : canAnswer ? '' : 'Ответ сейчас недоступен: нет связи с автором';
   if (document.activeElement !== p.input) {
     const draft = el.studentDraft ?? '';
     if (p.input.value !== draft) p.input.value = draft;

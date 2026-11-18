@@ -1204,3 +1204,29 @@ describe('защита чужих элементов у гостя (Ночь №
     expect([...st.state.selection]).toEqual(['teacher']);
   });
 });
+
+describe('интерфейс гостя по возможностям (Ночь №6, TASK-07)', () => {
+  it('старая ссылка — комментатор: комментирует и пишет в чат; читатель — нет; смена роли — пилюля; копирование — по возможностям', async () => {
+    const { canAnnotate } = await import('../../src/comments-ui');
+    const chat = await import('../../src/collab-chat');
+    server.room.project = { ...demo(), ownerPlan: 'pro', permissions: { allowCopy: false } } as Project;
+    await collab.startCollab(base, false, 'Пётр');
+    await until(() => st.state.project.id === 'proj' && collab.myCollabId() > 0);
+    expect(collab.myCollabRole()).toBe('commenter');
+    expect(collab.myCollabCaps()).toMatchObject({ comment: true, chat: true, pointer: true, copy: false });
+    expect(canAnnotate()).toBe(true);
+    expect(st.canCopyCurrentBoard()).toBe(false);
+    server.setRights(collab.myCollabId(), { role: 'reader' });
+    await until(() => collab.myCollabRole() === 'reader');
+    expect(collab.myCollabCaps()).toMatchObject({ comment: false, chat: false, pointer: false });
+    expect(canAnnotate()).toBe(false);
+    expect(document.querySelector('#activity-pills, .activity-pill') ? document.body.textContent : '').toContain('Автор изменил вашу роль: Читатель');
+    chat.openChat();
+    expect(document.querySelector<HTMLTextAreaElement>('.chat-input')!.hidden).toBe(true);
+    expect(document.querySelector('.chat-hint')!.textContent).toBe('Читатели не пишут в чат');
+    server.setRights(collab.myCollabId(), { role: 'editor' });
+    await until(() => collab.myCollabRole() === 'editor');
+    expect(st.canCopyCurrentBoard()).toBe(true); // редактор копирует всегда
+    expect(document.querySelector<HTMLTextAreaElement>('.chat-input')!.hidden).toBe(false);
+  });
+});

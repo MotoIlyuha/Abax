@@ -399,7 +399,16 @@ function viewingForeign(): boolean {
  * Можно ли копировать, вырезать и дублировать элементы. Автор может всегда; читатель — пока автор
  * не запретил (allowCopy: false или forbidClone: true). Права берутся с поправкой на тариф владельца.
  */
+/**
+ * Копирование в комнате решает хаб (возможности участника, SPEC_NIGHT6 D1): true/false — его решение,
+ * null — решения нет (вне комнаты или хаб старой версии), действуют права доски. Регистрирует collab.ts.
+ */
+let copyGuard: (() => boolean | null) | null = null;
+export function setCopyGuard(fn: (() => boolean | null) | null): void { copyGuard = fn; }
+
 export function canCopyCurrentBoard(): boolean {
+  const room = copyGuard ? copyGuard() : null;
+  if (room !== null) return room;
   if (!viewingForeign()) return true;
   const perms = effectivePermissions(state.project);
   return perms.allowCopy !== false && perms.forbidClone !== true;
