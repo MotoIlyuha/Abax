@@ -18,19 +18,23 @@ import { createSpringSelect, type SelectOption, type SpringSelect } from './spri
 import { createToggleSwitch, setToggleChecked } from './toggle-switch';
 import { createNumberStepper } from './number-stepper';
 import { createSegmented } from './segmented';
-import { createStackNav, type StackLevel } from './stack-nav';
+import { attachOverlayScroll, type OverlayScroll } from './overlay-scroll';
+import { createSpoiler } from './spoiler';
+import { clamp, reduceMotion, uiAnimOff } from './motion';
 import { createRoll } from './roll-text';
 import { flyInvite, shakeField } from './invite-motion';
 import type { PageRight } from './types';
 
 // Окно «Поделиться» (SPEC_NIGHT6 §6; редизайн — ветка design/share-dialog).
-// Главная страница — только частое: общая ссылка (выключатель, роль, «Копировать»), приглашение по почте
-// и список «Есть доступ» (владелец и приглашения; роль и «Отозвать приглашение» — в выпадающем списке строки).
-// Редкое — на вложенных страницах «Настройки доступа» и «Без облака» (src/stack-nav.ts, по мотивам Stack panel).
+// Две вкладки прямо в шапке (Smooth tab, src/segmented.ts): «Поделиться» и «Настройки доступа»; панели едут
+// от той же пружины, что и «пилюля» вкладок, высота окна — между высотами панелей; на сенсорном экране — свайп.
+// «Поделиться» — только частое: общая ссылка (выключатель, роль, «Копировать»), приглашение по почте и список
+// «Есть доступ» (роль и «Отозвать приглашение» — в выпадающем списке строки); «Без облака» — спойлер внизу.
+// Полосы прокрутки панелей — тонкие, поверх содержимого (src/overlay-scroll.ts).
 // Пояснения — в подсказках (title), а не текстом в окне. Списка «Сейчас на доске» в окне нет: кто на доске,
 // показывает отдельный виджет. Узлы формы создаются один раз: фоновое обновление списков не сбивает ввод и фокус.
 // Движение — по трём режимам анимаций доски (компоненты spring-select, toggle-switch, number-stepper, segmented,
-// roll-text, invite-motion). Только createElement/textContent; SVG — константы кода.
+// roll-text, invite-motion, spoiler). Только createElement/textContent; SVG — константы кода.
 
 // ----- Совместная работа без облака: интерфейс транспорта (приложение Electron или вкладка браузера) -----
 
@@ -103,7 +107,6 @@ const PAGE_RIGHT_OPTIONS: readonly SelectOption[] = [
 
 const CHECK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
 const CLOSE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg>';
-const WIFI_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 9a14 14 0 0 1 19 0"/><path d="M5.5 12.5a9.5 9.5 0 0 1 13 0"/><path d="M8.7 15.9a5 5 0 0 1 6.6 0"/><path d="M12 19.5h.01"/></svg>';
 
 // ----- Мелкие строители разметки -----
 
@@ -164,10 +167,12 @@ function tabbable(e: HTMLElement, root: HTMLElement): boolean {
   if ((e as HTMLButtonElement).disabled || e.tabIndex < 0) return false;
   for (let p: HTMLElement | null = e; p && p !== root; p = p.parentElement) {
     if (p.hidden || p.hasAttribute('inert')) return false;
+    const d = p.parentElement;
+    if (d instanceof HTMLDetailsElement && !d.open && p.tagName !== 'SUMMARY') return false;
   }
   return true;
 }
-const FOCUSABLE = 'button, input, select, textarea, a[href], [tabindex]';
+const FOCUSABLE = 'button, input, select, textarea, summary, a[href], [tabindex]';
 
 /** Значение для атрибутного селектора `[data-key="…"]`: экранируются кавычки и обратная косая (CSS.escape в jsdom нет). */
 function attrValue(s: string): string {
@@ -223,48 +228,141 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
   /** Ошибка последнего действия без облака (например, лимит редакторов) — видна в окне, а не системным alert. */
   let p2pMessage = '';
 
-  // ----- Шапка: «назад», заголовок страницы, закрыть -----
+  // ----- Шапка: вкладки (Smooth tab) и «закрыть» -----
   const head = el('div', 'share-head');
-  const back = btn('share-back', '', () => stack.pop(), 'Назад');
-  back.append(icon('share-back-icon', ICONS.chevronLeft));
-  const titles = el('div', 'share-titles');
-  const title = el('h2', 'share-title', 'Поделиться');
+  const title = el('h2', 'share-title share-live', `Поделиться: «${state.project.name || 'Без названия'}»`);
   title.id = 'share-dialog-title';
-  titles.append(title);
   const closeX = btn('share-close', '', () => close(), 'Закрыть');
   closeX.append(icon('share-close-icon', CLOSE_ICON));
-  head.append(back, titles, closeX);
 
   const live = el('div', 'share-live');
   live.setAttribute('role', 'status');
   live.setAttribute('aria-live', 'polite');
   const say = (text: string) => { live.textContent = ''; live.textContent = text; };
 
-  /** Страница окна: прокручиваемая рамка и содержимое (за его размером следит stack-nav). */
-  const makePage = (id: string): { page: HTMLElement; inner: HTMLElement } => {
-    const page = el('div', 'share-page');
-    page.id = id;
+  /** Панель вкладки: рамка (под полосу прокрутки), прокручиваемая панель и содержимое. */
+  const makePanel = (id: string, tabId: string): { box: HTMLElement; panel: HTMLElement; inner: HTMLElement } => {
+    const box = el('div', 'share-panel-box');
+    const panel = el('div', 'share-panel');
+    panel.id = id;
+    panel.setAttribute('role', 'tabpanel');
+    panel.setAttribute('aria-labelledby', tabId);
     const inner = el('div', 'share-page-inner');
-    page.append(inner);
-    return { page, inner };
+    panel.append(inner);
+    box.append(panel);
+    return { box, panel, inner };
   };
-  const main = makePage('share-page-main');
-  const settings = makePage('share-page-settings');
-  const p2p = makePage('share-page-p2p');
-  const settingsTitle = el('h2', 'share-title', 'Настройки доступа');
-  settingsTitle.id = 'share-title-settings';
-  const p2pTitle = el('h2', 'share-title', 'Без облака');
-  p2pTitle.id = 'share-title-p2p';
-
+  const main = makePanel('share-panel-share', 'share-tab-share');
+  const settings = makePanel('share-panel-settings', 'share-tab-settings');
+  const panels = [main, settings];
   const view = el('div', 'share-view');
-  view.append(main.page);
-  dlg.append(head, view, live);
+  const track = el('div', 'share-track');
+  track.append(main.box, settings.box);
+  view.append(track);
+  const scrolls: OverlayScroll[] = panels.map(p => attachOverlayScroll(p.panel, { axis: 'y', host: p.box }));
 
-  const stack = createStackNav({
-    dialog: dlg, view, titles, back,
-    root: { page: main.page, title, opener: null },
-    onChange: top => dlg.setAttribute('aria-labelledby', top.title.id),
+  /** Соседняя панель видна вполовину прозрачной, пока въезжает (как в образце). */
+  const NEIGHBOUR_OPACITY = 0.35;
+  const narrow = () => !!window.matchMedia?.('(max-width: 520px)').matches;
+  let tabMoving = false;
+  /** Панели и высота окна в дробном положении p (0 — «Поделиться», 1 — «Настройки доступа»). */
+  const paintTabs = (p: number, how: 'spring' | 'css' | 'jump') => {
+    tabMoving = how === 'spring';
+    view.classList.toggle('tabs-css', how === 'css');
+    view.classList.remove('tabs-follow');
+    track.style.transform = `translate3d(${(-p * 50).toFixed(3)}%, 0, 0)`;
+    panels.forEach((x, i) => {
+      x.box.style.opacity = String(1 - Math.min(Math.abs(p - i), 1) * (1 - NEIGHBOUR_OPACITY));
+    });
+    if (narrow()) { view.style.removeProperty('height'); return; }
+    const h0 = main.box.offsetHeight;
+    const h1 = settings.box.offsetHeight;
+    view.style.height = `${(h0 + (h1 - h0) * clamp(p, 0, 1)).toFixed(2)}px`;
+  };
+  const tabs = createSegmented({
+    tabs: true, className: 'share-tabs', label: 'Разделы окна «Поделиться»', value: 'share',
+    options: [
+      { value: 'share', label: 'Поделиться', id: 'share-tab-share', controls: 'share-panel-share' },
+      { value: 'settings', label: 'Настройки доступа', id: 'share-tab-settings', controls: 'share-panel-settings' },
+    ],
+    onPaint: paintTabs,
+    onChange: v => selectTab(v as 'share' | 'settings'),
   });
+  head.append(tabs.el, closeX);
+  dlg.append(head, title, view, live);
+
+  function selectTab(t: 'share' | 'settings'): void {
+    if (t === 'settings') renderSettings();
+    tabs.setValue(t);
+    panels.forEach((x, i) => {
+      const on = (i === 0) === (t === 'share');
+      if (on) x.panel.removeAttribute('inert'); else x.panel.setAttribute('inert', '');
+    });
+    scrolls.forEach(sc => sc.sync());
+  }
+
+  /** Содержимое панели изменилось (появилась ссылка, добавилось приглашение): окно плавно подстраивает высоту. */
+  const fit = () => {
+    if (tabMoving || narrow()) return;
+    const h = (tabs.value === 'share' ? main : settings).box.offsetHeight;
+    const was = view.offsetHeight;
+    if (Math.abs(was - h) < 1 && view.style.height) return;
+    // крупный скачок (появилась ссылка, строка приглашения) — плавно; мелкие шаги (спойлер едет сам) — сразу
+    const animate = !!view.style.height && Math.abs(h - was) >= 24 && !uiAnimOff() && !reduceMotion();
+    view.classList.toggle('tabs-follow', animate);
+    view.style.height = `${h}px`;
+  };
+  const fitObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(fit) : null;
+  for (const x of panels) fitObserver?.observe(x.inner);
+
+  // свайп по панелям (палец или перо): панели и «пилюля» идут за пальцем, отпустили — пружина доводит
+  const SWIPE_VELOCITY = 0.11; // px/мс
+  const AXIS_LOCK = 6;
+  let swipe: { id: number; x0: number; y0: number; p0: number; axis: 'x' | 'y' | null; w: number; samples: { x: number; t: number }[] } | null = null;
+  let eatClick = false;
+  view.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' || uiAnimOff()) return;
+    swipe = { id: e.pointerId, x0: e.clientX, y0: e.clientY, p0: tabs.progress, axis: null, w: view.clientWidth || 1, samples: [{ x: e.clientX, t: e.timeStamp }] };
+  });
+  view.addEventListener('pointermove', e => {
+    const d = swipe;
+    if (!d || d.id !== e.pointerId) return;
+    if (!d.axis) {
+      const dx = e.clientX - d.x0, dy = e.clientY - d.y0;
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < AXIS_LOCK) return;
+      // вертикаль выигрывает ничью: чаще всего хотят прокрутить
+      d.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+      if (d.axis === 'y') { swipe = null; return; }
+      d.p0 = tabs.progress; d.x0 = e.clientX; d.samples = [{ x: e.clientX, t: e.timeStamp }];
+      try { view.setPointerCapture(e.pointerId); } catch { /* не страшно */ }
+    }
+    d.samples.push({ x: e.clientX, t: e.timeStamp });
+    while (d.samples.length > 2 && e.timeStamp - d.samples[0].t > 100) d.samples.shift();
+    const raw = d.p0 - (e.clientX - d.x0) / d.w;
+    // за крайней вкладкой панель идёт на треть хода
+    tabs.drag(raw < 0 ? raw * 0.35 : raw > 1 ? 1 + (raw - 1) * 0.35 : raw);
+  });
+  const endSwipe = (e: PointerEvent, cancelled: boolean) => {
+    const d = swipe;
+    if (!d || d.id !== e.pointerId) return;
+    swipe = null;
+    if (d.axis !== 'x') return;
+    if (!cancelled) { eatClick = true; window.setTimeout(() => { eatClick = false; }, 0); }
+    const first = d.samples[0];
+    const vx = (e.clientX - first.x) / Math.max(e.timeStamp - first.t, 1);
+    const p = tabs.progress;
+    let next = Math.round(p);
+    if (!cancelled && Math.abs(vx) > SWIPE_VELOCITY) next = vx < 0 ? Math.floor(p) + 1 : Math.ceil(p) - 1;
+    next = clamp(next, 0, 1);
+    panels.forEach((x, i) => { if (i === next) x.panel.removeAttribute('inert'); else x.panel.setAttribute('inert', ''); });
+    if (next === 1) renderSettings();
+    tabs.release(next, (-vx * 1000) / d.w);
+  };
+  // контейнер вкладок не прокручивается никогда (браузер мог бы сдвинуть его, показывая элемент в фокусе)
+  view.addEventListener('scroll', () => { view.scrollLeft = 0; view.scrollTop = 0; });
+  view.addEventListener('pointerup', e => endSwipe(e, false));
+  view.addEventListener('pointercancel', e => endSwipe(e, true));
+  view.addEventListener('click', e => { if (eatClick) { eatClick = false; e.preventDefault(); e.stopPropagation(); } }, true);
 
   // ----- Главная: облачная часть -----
   const cloudBox = el('div', 'share-invite');
@@ -336,35 +434,16 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
 
   cloudBox.append(linkBox, emailBox, accessBox);
 
-  // переходы на вложенные страницы
-  const navBox = el('nav', 'share-nav share-card');
-  navBox.setAttribute('aria-label', 'Ещё');
-  const navRow = (page: 'settings' | 'p2p', text: string, svg: string, hint: string): HTMLButtonElement => {
-    const b = btn('share-nav-row', '', () => openPage(page));
-    b.dataset.page = page;
-    const label = el('span', 'share-nav-label', text);
-    b.append(icon('share-nav-icon', svg), label, icon('share-nav-chev', ICONS.chevron));
-    tip(b, hint);
-    return b;
-  };
-  const navSettings = navRow('settings', 'Настройки доступа', ICONS.settings, 'Страницы, защита, копирование, гости и именной адрес');
-  const navP2P = navRow('p2p', 'Без облака', WIFI_ICON, 'Совместная работа без сервера Abax: по локальной сети или через ретранслятор');
-  navBox.append(navSettings, navP2P);
-
-  // ----- Подключение без облака -----
+  // ----- Подключение без облака: на «Поделиться» первым (облака нет) или спойлером внизу -----
   const p2pBox = el('div', 'share-p2p');
   /** Выпадающие списки P2P пересоздаются вместе с блоком: перед этим открытые закрываются. */
   let p2pSelects: SpringSelect[] = [];
-
-  function openPage(page: 'settings' | 'p2p'): void {
-    if (stack.busy || stack.depth > 0) return;
-    const row = page === 'settings' ? navSettings : navP2P;
-    if (page === 'settings') renderSettings(); else { layout(); renderP2P(); }
-    const level: StackLevel = page === 'settings'
-      ? { page: settings.page, title: settingsTitle, opener: row }
-      : { page: p2p.page, title: p2pTitle, opener: row };
-    stack.push(level, row.querySelector<HTMLElement>('.share-nav-label'));
-  }
+  const p2pHolder = el('div', 'share-p2p-holder');
+  const otherWays = createSpoiler({
+    className: 'share-other', summary: 'Без облака', content: p2pHolder,
+    title: 'Совместная работа без сервера Abax: по локальной сети или через ретранслятор',
+    onToggle: open => { if (open) renderP2P(); },
+  });
 
   // ----- Поведение -----
 
@@ -610,6 +689,8 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
   function renderCloud(): void {
     renderLink();
     renderEmails();
+    // вкладка «Настройки доступа» всегда в окне (её видно при свайпе): ссылка там тоже должна быть свежей
+    renderSettings();
     watchPresence();
   }
 
@@ -841,20 +922,21 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
     if (focusKey) p2pBox.querySelector<HTMLElement>(`[data-key="${attrValue(focusKey)}"]`)?.focus();
   }
 
-  /** Размещение блоков: без облака путь без сервера — на главной и первым; с облаком — на своей странице. */
+  /** Размещение блоков: без облака путь без сервера — на вкладке «Поделиться» первым и развёрнут; с облаком — в спойлере внизу. */
   function layout(): void {
     const cloud = cloudShareAvailable();
     cloudBox.hidden = !cloud;
-    navP2P.hidden = !cloud;
     if (cloud) {
-      if (p2pBox.parentElement !== p2p.inner) p2p.inner.append(p2pBox);
+      if (p2pBox.parentElement !== p2pHolder) p2pHolder.append(p2pBox);
       if (cloudBox.parentElement !== main.inner) main.inner.prepend(cloudBox);
+      if (otherWays.parentElement !== main.inner) main.inner.append(otherWays);
+      // идёт совместная работа без облака — спойлер раскрыт
+      if (status.active && !otherWays.open) otherWays.open = true;
     } else {
       if (p2pBox.parentElement !== main.inner) main.inner.prepend(p2pBox);
       if (cloudBox.parentElement !== main.inner) main.inner.append(cloudBox);
+      otherWays.remove();
     }
-    if (navBox.parentElement !== main.inner) main.inner.append(navBox);
-    else if (main.inner.lastElementChild !== navBox) main.inner.append(navBox);
   }
 
   async function refreshStatus(force = false): Promise<void> {
@@ -1189,7 +1271,6 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
       ev.stopPropagation();
       if (confirmReset) { confirmReset = false; renderReset(); return; }
       if (aliasUi.confirmRelease) { aliasUi.confirmRelease = ''; renderSettings(); return; }
-      if (stack.depth > 0) { stack.pop(); return; }
       close();
       return;
     }
@@ -1222,7 +1303,8 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
     clearTimeout(copyTimer);
     document.removeEventListener(PRESENCE_EVENT, onPresence);
     for (const s of [linkRole, emailRoleSel, ...p2pSelects, ...[...emailSelects.values()].map(x => x.sel), ...[...pageSelects.values()].map(x => x.sel)]) s.close(true);
-    stack.destroy();
+    fitObserver?.disconnect();
+    for (const sc of scrolls) sc.destroy();
     releaseMenu('share');
     closeMenu(dlg);
     const back2 = opener && opener.isConnected ? opener : document.getElementById('btn-share');
@@ -1232,6 +1314,9 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
 
   layout();
   renderCloud();
+  renderSettings();
+  selectTab('share');
+  fit();
   // до первого await кадр не рисуется: окно сразу появляется с анимацией, а не на своём месте
   claimMenu('share', () => close());
   const shareButton = document.getElementById('btn-share');
@@ -1240,6 +1325,7 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
     from: visible ?? dlg,
     remove: true,
     items: () => [head, ...[...main.inner.children].filter((c): c is HTMLElement => c instanceof HTMLElement && !c.hidden)],
+    onSettled: () => fit(),
     // под кнопкой «Поделиться», по её правому краю
     place: () => {
       // на узком экране окно во весь экран (style.css)

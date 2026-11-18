@@ -90,20 +90,12 @@ export async function openShare(page: Page): Promise<void> {
   await expect(page.locator('#share-dialog')).toBeVisible();
 }
 
-/** Страница окна «Поделиться»: главная или «Настройки доступа» (вложенная страница, «назад» — стрелка в шапке). */
+/** Вкладка окна «Поделиться» (в шапке окна): «Поделиться» или «Настройки доступа». */
 export async function shareTab(page: Page, tab: 'share' | 'settings'): Promise<void> {
   await openShare(page);
-  const dlg = page.locator('#share-dialog');
-  const target = dlg.locator(tab === 'share' ? '#share-page-main' : '#share-page-settings');
-  await expect(async () => {
-    if (await target.isVisible()) return;
-    const back = dlg.locator('.share-back');
-    if (await back.isVisible()) await back.click({ timeout: 1000 });
-    else if (tab === 'settings') await dlg.locator('.share-nav-row[data-page="settings"]').click({ timeout: 1000 });
-    await expect(target).toBeVisible({ timeout: 1500 });
-  }).toPass({ timeout: 10000 });
-  // переход закончился: нижняя страница ушла из окна
-  await expect(dlg.locator('.share-page')).toHaveCount(1);
+  await page.locator(`#share-tab-${tab}`).click();
+  await expect(page.locator(`#share-tab-${tab}`)).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator(`#share-panel-${tab}`)).not.toHaveAttribute('inert', '');
 }
 
 /**

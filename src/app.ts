@@ -8,6 +8,7 @@ import { resolveAnimationMode } from './motion';
 import { setZoomCounter } from './zoom-counter';
 import { initZoomChevron } from './zoom-chevron';
 import { claimMenu, closeMenu, drillMenu, menuShown, openMenu, releaseMenu } from './menu-motion';
+import { attachOverlayScroll } from './overlay-scroll';
 import {
   state, update, onChange, undo, redo, canUndo, canRedo, setTool, setGrid, setCoordLabels, setStyleColor,
   setStyleWidth, setStyleOpacity, pickTool, setNoteColor, selectPreset, presetKind, addElement, replaceElements, pushHistory, uid,
@@ -5071,44 +5072,9 @@ function wireZoomInput(): void {
     const p = makePage('root', `${row('data-view="fullscreen"', (document.fullscreenElement ? ICONS.fullscreenExit : ICONS.fullscreenEnter), 'Полный экран')}
       ${row('data-view="fit"', ICONS.fit, 'Показать всё')}<hr>
       ${subRows}${viewOnly ? '' : '<hr>'}
-      <div class="view-zoom-scroll"><div class="view-zoom-pills">${[50, 70, 100, 200, 400, 800].map(n => `<button data-zoom="${n}">${n}%</button>`).join('')}<button data-view="custom">Другой…</button></div><div class="view-zoom-thumb" hidden></div></div>`);
-    // колесо мыши прокручивает ряд по горизонтали
-    const pills = p.querySelector<HTMLElement>('.view-zoom-pills')!;
-    pills.addEventListener('wheel', e => {
-      if (e.deltaY === 0 || pills.scrollWidth <= pills.clientWidth) return;
-      e.preventDefault(); pills.scrollLeft += e.deltaY;
-    }, { passive: false });
-    // полоса прокрутки — собственная, поверх pills (без своего контейнера); плавно появляется при прокрутке и наведении
-    const box = pills.parentElement!;
-    const thumb = box.querySelector<HTMLElement>('.view-zoom-thumb')!;
-    let hideTimer = 0;
-    const syncThumb = () => {
-      const { scrollWidth, clientWidth, scrollLeft } = pills;
-      if (scrollWidth <= clientWidth + 1) { thumb.hidden = true; return; }
-      thumb.hidden = false;
-      const w = Math.max(24, clientWidth * clientWidth / scrollWidth);
-      thumb.style.width = `${w}px`;
-      thumb.style.transform = `translateX(${scrollLeft / (scrollWidth - clientWidth) * (clientWidth - w)}px)`;
-    };
-    const flash = () => {
-      syncThumb();
-      box.classList.add('scrolling');
-      window.clearTimeout(hideTimer);
-      hideTimer = window.setTimeout(() => box.classList.remove('scrolling'), 900);
-    };
-    pills.addEventListener('scroll', flash);
-    box.addEventListener('pointerenter', syncThumb);
-    new ResizeObserver(syncThumb).observe(pills);
-    thumb.addEventListener('pointerdown', e => {
-      e.preventDefault();
-      thumb.setPointerCapture(e.pointerId);
-      box.classList.add('dragging');
-      const startX = e.clientX, startLeft = pills.scrollLeft;
-      const ratio = (pills.scrollWidth - pills.clientWidth) / Math.max(1, pills.clientWidth - thumb.offsetWidth);
-      const move = (ev: PointerEvent) => { pills.scrollLeft = startLeft + (ev.clientX - startX) * ratio; };
-      const up = () => { box.classList.remove('dragging'); thumb.removeEventListener('pointermove', move); thumb.removeEventListener('pointerup', up); thumb.removeEventListener('pointercancel', up); };
-      thumb.addEventListener('pointermove', move); thumb.addEventListener('pointerup', up); thumb.addEventListener('pointercancel', up);
-    });
+      <div class="view-zoom-scroll"><div class="view-zoom-pills">${[50, 70, 100, 200, 400, 800].map(n => `<button data-zoom="${n}">${n}%</button>`).join('')}<button data-view="custom">Другой…</button></div></div>`);
+    // колесо мыши прокручивает ряд по горизонтали; полоса прокрутки — своя, поверх pills (src/overlay-scroll.ts)
+    attachOverlayScroll(p.querySelector<HTMLElement>('.view-zoom-pills')!, { axis: 'x', wheel: true });
     // «Привязка к сетке» — та же настройка, что во всплывающем меню настроек (в просмотре по ссылке пункта нет)
     const snapSwitch = createToggleSwitch({
       className: 'grid-switch view-switch',

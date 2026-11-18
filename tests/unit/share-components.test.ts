@@ -1,11 +1,12 @@
 // Компоненты окна «Поделиться» (по мотивам designbookmark.com/motion и Kokonut UI): выпадающий список на пружинах,
-// счётчик, сегменты, перекатывающаяся надпись, страницы окна, движение формы приглашения — в трёх режимах анимаций.
+// счётчик, сегменты и вкладки, перекатывающаяся надпись, спойлер, своя полоса прокрутки, движение формы приглашения — в трёх режимах анимаций.
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createSpringSelect } from '../../src/spring-select';
 import { createNumberStepper } from '../../src/number-stepper';
 import { createSegmented } from '../../src/segmented';
 import { createRoll } from '../../src/roll-text';
-import { createStackNav } from '../../src/stack-nav';
+import { createSpoiler } from '../../src/spoiler';
+import { attachOverlayScroll } from '../../src/overlay-scroll';
 import { flyInvite, shakeField } from '../../src/invite-motion';
 
 const frame = () => new Promise(r => requestAnimationFrame(() => r(null)));
@@ -214,6 +215,133 @@ describe('сегменты (Smooth tab)', () => {
   });
 });
 
+describe('вкладки (Smooth tab в режиме tabs)', () => {
+  const make = () => {
+    const paints: [number, string][] = [];
+    const got: string[] = [];
+    const t = createSegmented({
+      tabs: true, label: 'Разделы', value: 'a', onChange: v => got.push(v), onPaint: (p, how) => paints.push([p, how]),
+      options: [{ value: 'a', label: 'А', id: 'ta', controls: 'pa' }, { value: 'b', label: 'Б', id: 'tb', controls: 'pb' }],
+    });
+    document.body.append(t.el);
+    return { t, paints, got, tabs: [...t.el.querySelectorAll<HTMLButtonElement>('[role="tab"]')] };
+  };
+
+  it('role="tablist"/"tab", aria-selected и aria-controls; «Выкл» — панели сразу на месте', () => {
+    document.body.className = 'no-ui-anim';
+    const { t, paints, got, tabs } = make();
+    expect(t.el.getAttribute('role')).toBe('tablist');
+    expect(tabs.map(b => [b.id, b.getAttribute('aria-controls'), b.getAttribute('aria-selected')])).toEqual([['ta', 'pa', 'true'], ['tb', 'pb', 'false']]);
+    tabs[1].click();
+    expect(got).toEqual(['b']);
+    expect(paints.at(-1)).toEqual([1, 'jump']);
+  });
+
+  it('«Улучшенные»: одна пружина ведёт и пилюлю, и панели (onPaint с дробным положением)', async () => {
+    const { tabs, paints } = make();
+    tabs[1].click();
+    for (let i = 0; i < 90 && paints.at(-1)?.[0] !== 1; i++) await frame();
+    expect(paints.some(([p, how]) => how === 'spring' && p > 0 && p < 1)).toBe(true);
+    expect(paints.at(-1)).toEqual([1, 'jump']); // встал — тот, кто рисует панели, это узнаёт
+  });
+
+  it('свайп: drag ставит положение, release выбирает вкладку и доводит пружиной со скоростью пальца', async () => {
+    const { t, got, paints } = make();
+    t.drag(0.4);
+    expect(t.progress).toBe(0.4);
+    expect(paints.at(-1)).toEqual([0.4, 'jump']);
+    t.release(1, 3);
+    expect(got).toEqual(['b']);
+    for (let i = 0; i < 90 && t.progress !== 1; i++) await frame();
+    expect(t.progress).toBe(1);
+  });
+});
+
+describe('спойлер', () => {
+  const make = () => {
+    const content = document.createElement('p');
+    content.textContent = 'внутри';
+    const toggles: boolean[] = [];
+    const d = createSpoiler({ className: 'x', summary: 'Без облака', title: 'Подсказка', content, onToggle: o => toggles.push(o) });
+    document.body.append(d);
+    return { d, summary: d.querySelector('summary')!, body: d.querySelector<HTMLElement>('.spoiler-body')!, toggles };
+  };
+
+  it('«Выкл»: открывается и закрывается сразу; подсказка — у заголовка', () => {
+    document.body.className = 'no-ui-anim';
+    const { d, summary, toggles } = make();
+    expect(summary.title).toBe('Подсказка');
+    summary.click();
+    expect(d.open).toBe(true);
+    summary.click();
+    expect(d.open).toBe(false);
+    expect(toggles).toEqual([true, false]);
+  });
+
+  it('«Улучшенные»: высота едет пружиной, закрытый details — когда доехала', async () => {
+    const { d, summary, body } = make();
+    summary.click();
+    expect(d.open).toBe(true);
+    expect(body.style.overflow).toBe('hidden');
+    for (let i = 0; i < 90 && body.style.height; i++) await frame();
+    expect(body.style.height).toBe('');
+    summary.click();
+    expect(d.open).toBe(true); // ещё едет
+    expect(d.classList.contains('spoiler-closing')).toBe(true);
+    for (let i = 0; i < 90 && d.open; i++) await frame();
+    expect(d.open).toBe(false);
+  });
+
+  it('«Обычные»: CSS-переход высоты', () => {
+    vi.useFakeTimers();
+    document.body.className = 'no-motion';
+    const { d, summary, body } = make();
+    summary.click();
+    expect(body.style.transition).toContain('height');
+    vi.advanceTimersByTime(300);
+    expect(body.style.transition).toBe('');
+    expect(d.open).toBe(true);
+  });
+});
+
+describe('своя полоса прокрутки', () => {
+  function scroller(total: number, view: number) {
+    const host = document.createElement('div');
+    const sc = document.createElement('div');
+    host.append(sc);
+    document.body.append(host);
+    Object.defineProperty(sc, 'scrollHeight', { value: total, configurable: true });
+    Object.defineProperty(sc, 'clientHeight', { value: view, configurable: true });
+    return { host, sc };
+  }
+
+  it('ползунок поверх, родная полоса скрыта; размер и положение — по прокрутке, при прокрутке появляется и гаснет', () => {
+    vi.useFakeTimers();
+    const { host, sc } = scroller(400, 100);
+    const o = attachOverlayScroll(sc, { axis: 'y' });
+    expect(sc.classList.contains('oscroll')).toBe(true);
+    expect(o.thumb.parentElement).toBe(host);
+    o.sync();
+    expect(o.thumb.hidden).toBe(false);
+    expect(o.thumb.style.height).toBe('25px');
+    sc.scrollTop = 300;
+    sc.dispatchEvent(new Event('scroll'));
+    expect(o.thumb.style.transform).toBe('translateY(75px)');
+    expect(host.classList.contains('scrolling')).toBe(true);
+    vi.advanceTimersByTime(1000);
+    expect(host.classList.contains('scrolling')).toBe(false);
+    o.destroy();
+    expect(host.querySelector('.oscroll-thumb')).toBeNull();
+  });
+
+  it('содержимое помещается — ползунка нет', () => {
+    const { sc } = scroller(100, 100);
+    const o = attachOverlayScroll(sc, { axis: 'y' });
+    o.sync();
+    expect(o.thumb.hidden).toBe(true);
+  });
+});
+
 describe('перекатывающаяся надпись', () => {
   it('«Улучшенные»: новая строка въезжает, прежняя уходит и удаляется', async () => {
     const r = createRoll('x', 18);
@@ -241,57 +369,6 @@ describe('перекатывающаяся надпись', () => {
     r.set('В');
     expect(r.el.textContent).toBe('В');
     expect(r.el.querySelector('.roll-line')!.classList.contains('roll-fade')).toBe(false);
-  });
-});
-
-describe('страницы окна (Stack panel)', () => {
-  function stackOf() {
-    const dialog = document.createElement('div');
-    const view = document.createElement('div');
-    const titles = document.createElement('div');
-    const back = document.createElement('button');
-    const page = (id: string) => { const p = document.createElement('div'); p.id = id; p.append(document.createElement('div')); return p; };
-    const title = (t: string) => { const h = document.createElement('h2'); h.textContent = t; return h; };
-    const root = { page: page('root'), title: title('Поделиться'), opener: null };
-    view.append(root.page);
-    titles.append(root.title);
-    dialog.append(titles, back, view);
-    document.body.append(dialog);
-    const changes: string[] = [];
-    const nav = createStackNav({ dialog, view, titles, back, root, onChange: t => changes.push(t.title.textContent!) });
-    return { nav, view, titles, back, page, title, changes };
-  }
-
-  it('«Улучшенные»: верхняя страница въезжает над нижней (та — inert), по окончании нижняя уходит; «назад» — обратно', async () => {
-    const { nav, view, titles, back, page, title, changes } = stackOf();
-    const row = document.createElement('button');
-    view.querySelector('#root')!.append(row);
-    nav.push({ page: page('sub'), title: title('Настройки'), opener: row });
-    expect(nav.depth).toBe(1);
-    expect(back.hidden).toBe(false);
-    expect(view.querySelector('#sub')!.classList.contains('stack-top')).toBe(true);
-    expect(view.querySelector('#root')!.hasAttribute('inert')).toBe(true);
-    expect(titles.lastElementChild!.textContent).toBe('Настройки');
-    for (let i = 0; i < 120 && nav.busy; i++) await frame();
-    expect(nav.busy).toBe(false);
-    expect(view.querySelector('#root')).toBeNull();
-    expect(view.querySelector<HTMLElement>('#sub')!.style.transform).toBe('');
-    nav.pop();
-    for (let i = 0; i < 120 && nav.busy; i++) await frame();
-    expect(view.querySelector('#sub')).toBeNull();
-    expect(view.querySelector('#root')!.hasAttribute('inert')).toBe(false);
-    expect(back.hidden).toBe(true);
-    expect(changes).toEqual(['Настройки', 'Поделиться']);
-  });
-
-  it('«Выкл»: страницы меняются сразу', () => {
-    document.body.className = 'no-ui-anim no-motion';
-    const { nav, view, page, title } = stackOf();
-    nav.push({ page: page('sub'), title: title('Без облака'), opener: null });
-    expect(nav.busy).toBe(false);
-    expect([...view.children].map(c => c.id)).toEqual(['sub']);
-    nav.pop();
-    expect([...view.children].map(c => c.id)).toEqual(['root']);
   });
 });
 

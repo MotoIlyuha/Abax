@@ -3785,13 +3785,8 @@ body.fit-share .share-text { display: none; }
 #main-menu button:disabled:hover { background: transparent; }
 /* Масштаб в меню «Масштаб и вид»: ряд pills с горизонтальной прокруткой; полоса видна только при использовании */
 #view-menu .view-zoom-scroll { position: relative; }
-#view-menu .view-zoom-pills { display: flex; gap: 6px; padding: 6px 4px 6px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
-#view-menu .view-zoom-pills::-webkit-scrollbar { display: none; }
-#view-menu .view-zoom-thumb { position: absolute; left: 4px; bottom: 3px; height: 4px; pointer-events: auto; border-radius: 2px; background: var(--border-control); opacity: 0; transition: opacity 0.25s ease, height 0.15s ease; cursor: grab; }
-#view-menu .view-zoom-thumb[hidden] { display: none; }
-#view-menu .view-zoom-scroll:hover .view-zoom-thumb, #view-menu .view-zoom-scroll.scrolling .view-zoom-thumb, #view-menu .view-zoom-scroll.dragging .view-zoom-thumb { opacity: 0.9; }
-#view-menu .view-zoom-thumb:hover, #view-menu .view-zoom-scroll.dragging .view-zoom-thumb { height: 6px; bottom: 2px; }
-@media (prefers-reduced-motion: reduce) { #view-menu .view-zoom-thumb { transition: none; } }
+#view-menu .view-zoom-pills { display: flex; gap: 6px; padding: 6px 4px 6px; overflow-x: auto; overscroll-behavior-x: contain; }
+#view-menu .view-zoom-scroll .oscroll-thumb-x { left: 4px; }
 #view-menu .view-zoom-pills button { width: auto; flex: none; min-height: 30px; padding: 4px 12px; border: 1px solid var(--border); border-radius: 8px; white-space: nowrap; justify-content: center; }
 
 /* ----- Окно «Поделиться» (src/share-dialog.ts): главная страница и вложенные «Настройки доступа», «Без облака» ----- */
@@ -3802,27 +3797,40 @@ body.fit-share .share-text { display: none; }
 }
 #share-dialog section { display: flex; flex-direction: column; gap: 6px; }
 #share-dialog [hidden] { display: none !important; }
-.share-head { flex: none; display: flex; align-items: center; gap: 4px; padding: 10px 10px 6px 16px; }
-.share-head:has(.share-back:not([hidden])) { padding-left: 8px; }
-.share-titles { position: relative; flex: 1; min-width: 0; height: 28px; display: flex; align-items: center; }
-.share-title { margin: 0; min-width: 0; font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.share-title.stack-title-leaving { position: absolute; left: 0; top: 0; line-height: 28px; pointer-events: none; }
-.share-back, .share-close {
-  flex: none; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: transparent;
+.share-head { flex: none; display: flex; align-items: center; gap: 8px; padding: 10px 10px 8px 14px; }
+.share-tabs { flex: 0 1 auto; min-width: 0; }
+.share-tabs .seg-opt, .share-tabs .seg-ghost { font-size: 13px; padding: 5px 12px; }
+.share-close {
+  flex: none; margin-left: auto; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: transparent;
   color: var(--icon-secondary); cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
 }
-.share-back:hover, .share-close:hover { background: var(--hover); color: var(--fg); }
-:is(.share-back-icon, .share-close-icon) svg { width: 18px; height: 18px; display: block; }
-.share-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.share-close:hover { background: var(--hover); color: var(--fg); }
+.share-close-icon svg { width: 18px; height: 18px; display: block; }
+.share-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; margin: 0; }
 
-/* страницы: прокручивается сама страница, за размером содержимого следит stack-nav.ts */
-.share-view { position: relative; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
-.share-page { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; background: var(--panel); }
-.share-page-inner { display: flex; flex-direction: column; gap: 14px; padding: 4px 16px 16px; }
-.share-page.stack-top { position: relative; z-index: 1; box-shadow: -8px 0 24px -12px rgba(16, 24, 40, 0.18); }
-.share-page.stack-under { position: relative; }
-.stack-shade { position: absolute; inset: 0; background: #000; opacity: 0; pointer-events: none; }
-.share-page.mm-fade { animation: ui-fade 0.16s ease-out; }
+/* вкладки (Smooth tab): лента из двух панелей едет от той же пружины, что и «пилюля»; высота окна — между панелями */
+/* clip, а не hidden: фокус внутри едущей ленты не должен прокручивать контейнер */
+.share-view { position: relative; flex: none; overflow: hidden; overflow: clip; }
+.share-track { display: flex; align-items: flex-start; width: 200%; will-change: transform; }
+.share-panel-box { position: relative; width: 50%; flex: none; }
+.share-panel { max-height: calc(min(80vh, 720px) - 50px); overflow-y: auto; overscroll-behavior: contain; }
+.share-view.tabs-css { transition: height 0.2s cubic-bezier(0.22, 0.8, 0.24, 1); }
+.share-view.tabs-css .share-track { transition: transform 0.2s cubic-bezier(0.22, 0.8, 0.24, 1); }
+.share-view.tabs-css .share-panel-box { transition: opacity 0.2s; }
+.share-view.tabs-follow { transition: height 0.22s cubic-bezier(0.22, 0.8, 0.24, 1); }
+body.no-ui-anim .share-view, body.no-ui-anim .share-view :is(.share-track, .share-panel-box) { transition: none; }
+.share-page-inner { display: flex; flex-direction: column; gap: 14px; padding: 2px 16px 16px; }
+
+/* спойлер (spoiler.ts): «Без облака» */
+.spoiler > summary { list-style: none; display: flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 2px; border-radius: 7px; cursor: pointer; color: var(--fg-secondary); font-size: 12px; font-weight: 600; user-select: none; }
+.spoiler > summary::-webkit-details-marker { display: none; }
+.spoiler > summary:hover { color: var(--fg); }
+.spoiler > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.spoiler-chev { display: inline-flex; color: var(--muted); transition: transform 0.2s cubic-bezier(0.22, 0.8, 0.24, 1); }
+.spoiler-chev svg { width: 14px; height: 14px; }
+.spoiler[open]:not(.spoiler-closing) > summary .spoiler-chev { transform: rotate(90deg); }
+body.no-ui-anim .spoiler-chev { transition: none; }
+.spoiler-body { padding-top: 6px; }
 
 /* карточки и строки */
 .share-invite { display: flex; flex-direction: column; gap: 14px; }
@@ -3843,7 +3851,7 @@ body.fit-share .share-text { display: none; }
 .share-revoked { font-size: 12px; color: var(--muted); line-height: 1.4; padding: 0 2px; }
 .share-revoked:empty { display: none; }
 .share-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: var(--fg-secondary); padding: 4px 4px 4px 10px; }
-:is(.share-back, .share-close, .share-inline-btn, .share-link, .share-nav-row, .share-row-btn, .share-btn-soft, .share-btn-primary):focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+:is(.share-close, .share-inline-btn, .share-link, .share-row-btn, .share-btn-soft, .share-btn-primary):focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* кнопки */
 .share-btn-primary, .share-btn-soft {
@@ -3926,15 +3934,6 @@ body.no-ui-anim .share-toggle :is(.switch-track, .switch-knob) { transition: non
 .inv-fly-text { position: absolute; left: 12px; top: 0; white-space: nowrap; font-size: 13px; color: var(--fg); will-change: opacity, filter; }
 .inv-fly-av { position: absolute; inset: 0; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 700; background: var(--accent-soft); color: var(--accent); will-change: transform; }
 
-/* переходы на вложенные страницы */
-.share-nav-row { width: 100%; min-height: 36px; display: flex; align-items: center; gap: 10px; padding: 0 6px 0 10px; border: 0; border-radius: 7px; background: transparent; font: inherit; color: var(--fg); text-align: left; cursor: pointer; }
-.share-nav-row:hover { background: var(--hover); }
-.share-nav-label { flex: 1; min-width: 0; }
-.share-nav-icon, .share-nav-chev { flex: none; display: inline-flex; color: var(--icon-menu); }
-.share-nav-icon svg { width: 18px; height: 18px; }
-.share-nav-chev { color: var(--fg-faint); }
-.share-nav-chev svg { width: 16px; height: 16px; }
-
 /* «Настройки доступа» */
 .share-page-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .share-alias-head { min-height: 30px; }
@@ -3951,8 +3950,9 @@ body.no-ui-anim .share-toggle :is(.switch-track, .switch-knob) { transition: non
 .share-alias .share-cloud-error { padding: 0 10px 4px; }
 .share-former-title { padding: 4px 10px 0; }
 .share-former { padding: 0 4px 0 10px; }
-.share-former .share-person { min-height: 32px; justify-content: space-between; font: 12px ui-monospace, Consolas, monospace; }
-.share-former .share-confirm { padding: 0; font-family: var(--font, inherit); }
+.share-former .share-person { min-height: 32px; justify-content: space-between; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; }
+.share-former .share-person-name { font-family: ui-monospace, Consolas, monospace; }
+.share-former .share-confirm { flex-basis: 100%; padding: 0 0 6px; }
 .share-reset-box:empty { display: none; }
 
 /* без облака */
@@ -4004,7 +4004,7 @@ body:not(.no-motion) .ss-chev, body.no-ui-anim .ss-chev { transition: none; }
 .ss-hl { position: absolute; left: 4px; right: 4px; top: 0; border-radius: 7px; background: var(--accent-soft); opacity: 0; pointer-events: none; transition: transform .12s, height .12s; }
 .ss-opt.danger.hover ~ .ss-hl, .ss-menu:has(.ss-opt.danger.hover) .ss-hl { background: var(--danger-soft); }
 body:not(.no-motion) .ss-hl, body.no-ui-anim .ss-hl { transition: none; }
-@media (prefers-reduced-motion: reduce) { .ss-menu.ss-in, .ss-menu.ss-out, .share-email-item.inv-appear, .is-shaking, .share-page.mm-fade { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .ss-menu.ss-in, .ss-menu.ss-out, .share-email-item.inv-appear, .is-shaking { animation: none; } }
 
 /* перекатывающаяся надпись (roll-text.ts) */
 .roll { position: relative; display: inline-flex; height: 18px; line-height: 18px; overflow: hidden; vertical-align: middle; }
@@ -4039,6 +4039,9 @@ body:not(.no-motion) .ss-hl, body.no-ui-anim .ss-hl { transition: none; }
 
 @media (max-width: 520px) {
   #share-dialog { inset: 0; top: 0; right: 0; width: auto; max-height: none; height: 100%; border-radius: 0; }
+  .share-view { flex: 1 1 auto; min-height: 0; }
+  .share-track, .share-panel-box { height: 100%; }
+  .share-panel { max-height: none; height: 100%; }
   .share-email-form { flex-wrap: wrap; }
   .share-email-field { flex: 1 1 100%; }
   .share-email-send { flex: 1; }
@@ -4046,3 +4049,17 @@ body:not(.no-motion) .ss-hl, body.no-ui-anim .ss-hl { transition: none; }
   .share-url { flex: none; }
   .share-copy { width: 100%; }
 }
+
+/* ----- Своя тонкая полоса прокрутки поверх содержимого (src/overlay-scroll.ts): pills масштаба, страницы окна «Поделиться» ----- */
+.oscroll { scrollbar-width: none; }
+.oscroll::-webkit-scrollbar { display: none; }
+.oscroll-host { position: relative; }
+.oscroll-thumb { position: absolute; z-index: 3; border-radius: 3px; background: var(--border-control); opacity: 0; pointer-events: auto; cursor: grab; transition: opacity 0.25s ease, height 0.15s ease, width 0.15s ease; }
+.oscroll-thumb[hidden] { display: none; }
+.oscroll-thumb-x { left: 0; bottom: 3px; height: 4px; }
+.oscroll-thumb-y { top: 0; right: 3px; width: 4px; transition-property: opacity, width; }
+.oscroll-host:hover > .oscroll-thumb, .oscroll-host.scrolling > .oscroll-thumb, .oscroll-host.dragging > .oscroll-thumb { opacity: 0.9; }
+.oscroll-thumb-x:hover, .oscroll-host.dragging > .oscroll-thumb-x { height: 6px; bottom: 2px; }
+.oscroll-thumb-y:hover, .oscroll-host.dragging > .oscroll-thumb-y { width: 6px; right: 2px; }
+body.no-ui-anim .oscroll-thumb { transition: none; }
+@media (prefers-reduced-motion: reduce) { .oscroll-thumb { transition: none; } }

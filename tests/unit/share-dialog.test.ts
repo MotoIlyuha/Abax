@@ -1,5 +1,5 @@
-// Окно «Поделиться» (SPEC_NIGHT6 §6, редизайн): доступность, страницы окна, общая ссылка, почта и список доступа,
-// настройки доступа, путь без облака. Анимации выключены (body.no-ui-anim): переходы и списки — сразу.
+// Окно «Поделиться» (SPEC_NIGHT6 §6, редизайн): доступность, вкладки в шапке, общая ссылка, почта и список доступа,
+// настройки доступа, путь без облака (спойлер). Анимации выключены (body.no-ui-anim): переходы и списки — сразу.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ApiError, setApiForTests, type ApiClient } from '../../src/api-client';
 import { closeShareDialog, openShareDialog, shareDialogOpen, type ShareApi, type ShareStatus } from '../../src/share-dialog';
@@ -61,7 +61,7 @@ const optionsOf = (trigger: HTMLElement) => {
   trigger.click();
   return out;
 };
-const toSettings = () => q<HTMLButtonElement>('.share-nav-row[data-page="settings"]').click();
+const toSettings = () => q<HTMLButtonElement>('#share-tab-settings').click();
 
 beforeEach(() => {
   localStorage.clear();
@@ -74,33 +74,38 @@ beforeEach(() => {
 });
 afterEach(() => { closeShareDialog(); setApiForTests(undefined); document.body.className = ''; });
 
-describe('доступность и страницы окна', () => {
-  it('диалог с заголовком; «Настройки доступа» — вложенная страница: заголовок, «назад», Esc возвращает фокус на пункт', async () => {
+describe('доступность и вкладки', () => {
+  it('диалог с заголовком; вкладки в шапке с aria-selected, стрелки и Home/End переключают, неактивная панель — inert', async () => {
     document.getElementById('btn-share')!.focus();
     await openShareDialog(deps());
     expect(dlg().getAttribute('role')).toBe('dialog');
     expect(dlg().getAttribute('aria-modal')).toBe('true');
-    expect(document.getElementById(dlg().getAttribute('aria-labelledby')!)!.textContent).toBe('Поделиться');
-    // вкладок и «Готово» больше нет; фокус — на первой кнопке страницы
-    expect(dlg().querySelector('[role="tab"]')).toBeNull();
+    expect(document.getElementById(dlg().getAttribute('aria-labelledby')!)!.textContent).toBe('Поделиться: «Физика 9А»');
+    const tabs = [...dlg().querySelectorAll<HTMLButtonElement>('[role="tab"]')];
+    expect(q('.share-head [role="tablist"]')).not.toBeNull();
+    expect(tabs.map(t => t.textContent)).toEqual(['Поделиться', 'Настройки доступа']);
+    expect(tabs.map(t => t.getAttribute('aria-selected'))).toEqual(['true', 'false']);
+    expect(tabs.map(t => t.getAttribute('aria-controls'))).toEqual(['share-panel-share', 'share-panel-settings']);
     expect(dlg().textContent).not.toContain('Готово');
-    expect(dlg().contains(document.activeElement)).toBe(true);
-    expect(q('.share-back').hidden).toBe(true);
-    const row = q<HTMLButtonElement>('.share-nav-row[data-page="settings"]');
-    row.focus();
-    row.click();
-    expect(document.getElementById(dlg().getAttribute('aria-labelledby')!)!.textContent).toBe('Настройки доступа');
-    expect(q('#share-page-settings')).not.toBeNull();
-    expect(dlg().querySelector('#share-page-main')).toBeNull();
-    expect(q('.share-back').hidden).toBe(false);
-    expect(document.activeElement).toBe(q('.share-back'));
-    // Esc на вложенной странице — «назад», а не закрытие окна
-    dlg().dispatchEvent(key('Escape'));
-    expect(shareDialogOpen()).toBe(true);
-    expect(q('#share-page-main')).not.toBeNull();
-    expect(dlg().querySelector('#share-page-settings')).toBeNull();
-    expect(document.activeElement).toBe(row);
-    expect(q('.share-back').hidden).toBe(true);
+    expect(q('#share-panel-settings').hasAttribute('inert')).toBe(true);
+    tabs[0].focus();
+    tabs[0].dispatchEvent(key('ArrowRight'));
+    expect(tabs[1].getAttribute('aria-selected')).toBe('true');
+    expect(q('#share-panel-share').hasAttribute('inert')).toBe(true);
+    expect(q('#share-panel-settings').hasAttribute('inert')).toBe(false);
+    expect(document.activeElement).toBe(tabs[1]);
+    tabs[1].dispatchEvent(key('Home'));
+    expect(tabs[0].getAttribute('aria-selected')).toBe('true');
+    expect(q('#share-panel-share').hasAttribute('inert')).toBe(false);
+  });
+
+  it('своя тонкая полоса прокрутки у обеих панелей (родная скрыта)', async () => {
+    await openShareDialog(deps());
+    for (const id of ['share-panel-share', 'share-panel-settings']) {
+      const panel = q(`#${id}`);
+      expect(panel.classList.contains('oscroll')).toBe(true);
+      expect(panel.parentElement!.querySelector(':scope > .oscroll-thumb-y')).not.toBeNull();
+    }
   });
 
   it('Esc закрывает окно и возвращает фокус на кнопку «Поделиться»; повторное открытие — переключатель', async () => {
@@ -118,7 +123,7 @@ describe('доступность и страницы окна', () => {
 
   it('Tab не выпускает фокус из окна', async () => {
     await openShareDialog(deps());
-    const last = q<HTMLButtonElement>('.share-nav-row[data-page="settings"]');
+    const last = q<HTMLButtonElement>('.share-p2p button');
     last.focus();
     const ev = key('Tab');
     last.dispatchEvent(ev);
@@ -133,8 +138,8 @@ describe('без облака', () => {
     const api = shareApi();
     await openShareDialog(deps(api));
     expect(q('.share-invite').hidden).toBe(true);
-    expect(q('#share-page-main .share-page-inner').firstElementChild!.classList.contains('share-p2p')).toBe(true);
-    expect(q('.share-nav-row[data-page="p2p"]').hidden).toBe(true);
+    expect(q('#share-panel-share .share-page-inner').firstElementChild!.classList.contains('share-p2p')).toBe(true);
+    expect(dlg().querySelector('.share-other')).toBeNull();
     const start = [...dlg().querySelectorAll('button')].find(b => b.textContent === 'Включить совместную работу')!;
     expect(document.activeElement).toBe(start);
     start.click();
@@ -213,12 +218,15 @@ describe('с облаком', () => {
     expect(q('.share-switch').getAttribute('aria-checked')).toBe('false');
     expect(q('.share-link-row').title).toContain('Включите');
     expect(q('.share-url-row').hidden).toBe(true);
-    // путь без облака не исчезает — он на своей странице
-    const p2pRow = q<HTMLButtonElement>('.share-nav-row[data-page="p2p"]');
-    expect(p2pRow.hidden).toBe(false);
-    p2pRow.click();
-    expect(q('#share-page-p2p .share-p2p')).not.toBeNull();
-    expect(document.getElementById(dlg().getAttribute('aria-labelledby')!)!.textContent).toBe('Без облака');
+    // путь без облака не исчезает — он в спойлере «Без облака» внизу вкладки
+    const other = q<HTMLDetailsElement>('.share-other');
+    expect(other.open).toBe(false);
+    expect(other.querySelector('summary')!.textContent).toBe('Без облака');
+    expect(other.querySelector('summary')!.title).toContain('без сервера Abax');
+    expect(other.querySelector('.share-p2p')).not.toBeNull();
+    other.querySelector('summary')!.click();
+    expect(other.open).toBe(true);
+    expect(other.querySelector('.share-p2p button')!.textContent).toBe('Включить совместную работу');
   });
 
   it('черновик адреса и фокус переживают обновление списков', async () => {
@@ -299,7 +307,7 @@ describe('с облаком', () => {
     const api = cloud({ link: { token: 'TOK', url: 'https://abax.example/?route=collab&token=TOK', prettyUrl: null, defaultRole: 'edit', role: 'editor', allowCopy: true, pageRights: {}, enabled: true, alias: null } });
     await openShareDialog(deps());
     await flush(6);
-    expect(dlg().querySelector('.share-reset')).toBeNull();
+    expect(q('.share-reset').closest('[inert]')).not.toBeNull(); // на неактивной вкладке
     toSettings();
     await flush(4);
     q<HTMLButtonElement>('.share-reset').click();
@@ -308,7 +316,7 @@ describe('с облаком', () => {
     q<HTMLButtonElement>('[data-key="reset-yes"]').click();
     await flush(6);
     expect(api.calls.some(c => c[0] === 'POST' && c[1] === '/api/invites/TOK/reset')).toBe(true);
-    q<HTMLButtonElement>('.share-back').click();
+    q<HTMLButtonElement>('#share-tab-share').click();
     expect(q<HTMLInputElement>('.share-url').value).toContain('token=NEWTOKEN');
   });
 

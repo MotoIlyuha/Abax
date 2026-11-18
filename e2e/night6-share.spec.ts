@@ -1,4 +1,4 @@
-// Окно «Поделиться» (SPEC_NIGHT6 §6, редизайн): клавиатура и фокус, вложенная страница «Настройки доступа»,
+// Окно «Поделиться» (SPEC_NIGHT6 §6, редизайн): клавиатура и фокус, вкладки в шапке,
 // приглашение по почте с ролью, список «Есть доступ», черновик адреса переживает вход гостя,
 // путь без облака виден и работает без сервера.
 import { expect, test } from '@playwright/test';
@@ -8,7 +8,7 @@ import { createInvite, device, login, openAt, useNight5Server } from './night5-h
 const env = useNight5Server();
 
 test.describe('окно «Поделиться»', () => {
-  test('клавиатура: Tab до «Настроек доступа», Enter открывает страницу, Tab остаётся в окне, Esc — назад, затем закрытие', async ({ browser }) => {
+  test('клавиатура: вкладки в шапке стрелками, Tab остаётся в окне, Esc закрывает и возвращает фокус', async ({ browser }) => {
     const { base } = env.get();
     const A = await device(browser, base, { name: 'Лемур' });
     const a = await openAt(A, `${base}/`, env.errors);
@@ -17,24 +17,19 @@ test.describe('окно «Поделиться»', () => {
     const dlg = a.locator('#share-dialog');
     await expect(dlg).toHaveAttribute('role', 'dialog');
     await expect(dlg).toHaveAttribute('aria-modal', 'true');
-    await expect(a.locator('#share-dialog-title')).toHaveText('Поделиться');
+    await expect(a.locator('#share-dialog-title')).toHaveText('Поделиться: «Проект 1»');
     expect(await a.evaluate(() => !!document.activeElement?.closest('#share-dialog'))).toBe(true);
-    const row = dlg.locator('.share-nav-row[data-page="settings"]');
-    for (let i = 0; i < 20 && !(await row.evaluate(e => e === document.activeElement)); i++) await a.keyboard.press('Tab');
-    await expect(row).toBeFocused();
-    await a.keyboard.press('Enter');
-    await expect(dlg.locator('#share-page-settings')).toBeVisible();
-    await expect(dlg).toHaveAttribute('aria-labelledby', 'share-title-settings');
-    await expect(dlg.locator('.share-back')).toBeFocused();
+    await a.locator('#share-tab-share').focus();
+    await a.keyboard.press('ArrowRight');
+    await expect(a.locator('#share-tab-settings')).toHaveAttribute('aria-selected', 'true');
+    await expect(a.locator('#share-tab-settings')).toBeFocused();
+    await expect(a.locator('#share-panel-settings')).not.toHaveAttribute('inert', '');
+    await expect(a.locator('#share-panel-share')).toHaveAttribute('inert', '');
     // Tab по кругу не уходит из окна
     for (let i = 0; i < 40; i++) {
       await a.keyboard.press('Tab');
       expect(await a.evaluate(() => !!document.activeElement?.closest('#share-dialog'))).toBe(true);
     }
-    // Esc на вложенной странице — назад, фокус на пункт, из которого пришли
-    await a.keyboard.press('Escape');
-    await expect(dlg.locator('#share-page-main')).toBeVisible();
-    await expect(row).toBeFocused();
     await a.keyboard.press('Escape');
     await expect(dlg).toHaveCount(0);
     await expect(a.locator('#btn-share')).toBeFocused();
@@ -95,8 +90,8 @@ boardTest.describe('окно «Поделиться» без облака', () =
     await page.locator('#btn-share').click();
     const dlg = page.locator('#share-dialog');
     await expect(dlg.locator('.share-invite')).toBeHidden();
-    await expect(dlg.locator('#share-page-main .share-p2p')).toBeVisible();
-    await expect(dlg.locator('.share-nav-row[data-page="p2p"]')).toBeHidden();
+    await expect(dlg.locator('#share-panel-share .share-p2p')).toBeVisible();
+    await expect(dlg.locator('.share-other')).toHaveCount(0);
     await expect(dlg.locator('button', { hasText: 'Включить совместную работу' })).toBeVisible();
     await dlg.locator('button', { hasText: 'Включить совместную работу' }).click();
     await expect(dlg.locator('button', { hasText: 'Выключить совместную работу' })).toBeVisible();
