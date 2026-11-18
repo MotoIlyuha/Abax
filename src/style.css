@@ -90,6 +90,8 @@
   --spring-trail: 190 19; /* отстающий край: из-за него пузырь тянется */
   --spring-soft: 260 24; /* крупные сдвиги и смена размера */
   --spring-fade: 420 32; /* прозрачность и мелкие сдвиги надписей */
+  --spring-switch: 320 18; /* ручка переключателя: приезжает с небольшим отскоком */
+  --spring-switch-stretch: 300 20; /* растяжение ручки в пути */
   --spring-pop: 520 16; /* «нажатие» иконки при клике */
   --goo-out: 230 15; /* Goo: капли вылетают */
   --goo-in: 520 34; /* Goo: капли и карточка возвращаются */
@@ -2769,10 +2771,18 @@ body.link-view #project-icon { pointer-events: none; }
 #view-menu .grid-switch { min-height: 38px; }
 .grid-switch .switch-input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
 .grid-switch .switch-track { position: relative; flex: none; width: 34px; height: 20px; border-radius: 10px; background: var(--border-control); transition: background .15s; }
-.grid-switch .switch-track::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s; }
+.grid-switch .switch-knob { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 8px; background: #fff; transition: transform .15s; }
 .grid-switch .switch-input:checked + .switch-track { background: var(--accent); }
-.grid-switch .switch-input:checked + .switch-track::after { transform: translateX(14px); }
+.grid-switch .switch-input:checked + .switch-track .switch-knob { transform: translateX(14px); }
 .grid-switch .switch-input:focus-visible + .switch-track { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* «Привязка к сетке» в меню «Масштаб и вид»: строка как у пунктов меню, справа переключатель */
+#view-menu .view-switch { border-top: 0; margin-top: 0; gap: 10px; border-radius: 7px; justify-content: flex-start; }
+#view-menu .view-switch:hover, #view-menu .view-switch:focus-within { background: var(--accent-soft); }
+.grid-switch .switch-text { flex: 1; }
+/* «Улучшенные» анимации: ручку и дорожку двигают пружины (src/toggle-switch.ts), CSS-переходы мешали бы */
+body:not(.no-motion) .spring-switch :is(.switch-track, .switch-knob) { transition: none; }
+/* «Выкл»: без движения */
+body.no-ui-anim .grid-switch :is(.switch-track, .switch-knob) { transition: none; }
 
 /* ----- Окно первого входа (Ночь №4) ----- */
 #onboarding {

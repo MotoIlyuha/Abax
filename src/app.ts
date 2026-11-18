@@ -72,6 +72,7 @@ import { initTaskOverlay, isTeacher } from './task-overlay';
 import { annotationButtons, initCommentsUi } from './comments-ui';
 import { openTaskDialog, taskDialogOpen, type TaskFormValues } from './task-dialog';
 import { TASK_H, TASK_W, createTaskElement } from './task-element';
+import { createToggleSwitch } from './toggle-switch';
 import {
   browserSetRights, browserShareStatus, startBrowserCloud, startBrowserHost, stopBrowserCloud, stopBrowserHost,
 } from './browser-host';
@@ -119,6 +120,9 @@ const GRID_ICONS: Record<GridMode, string> = {
   square: svg('<rect x="4" y="4" width="7" height="7"/><rect x="13" y="4" width="7" height="7"/><rect x="4" y="13" width="7" height="7"/><rect x="13" y="13" width="7" height="7"/>'),
   coord: svg('<path d="M5 19V5M5 19h14"/><path d="M5 5l-2 3M5 5l2 3M19 19l-3-2M19 19l-3 2"/><circle cx="12" cy="12" r="1"/>'),
 };
+
+/** «Привязка к сетке»: клетки сетки и магнит-подкова. */
+const SNAP_ICON = svg('<rect x="3" y="3" width="8" height="8" rx="1"/><path d="M7 3v8M3 7h8"/><path d="M12 21v-5.5a4 4 0 0 1 8 0V21"/><path d="M12 18.5h2.5M17.5 18.5H20"/>');
 
 /** Иконка координатной плоскости с нулём в начале координат — когда деления включены. */
 const COORD_ICON_ZERO = svg('<path d="M5 19V5M5 19h14"/><path d="M5 5l-2 3M5 5l2 3M19 19l-3-2M19 19l-3 2"/><circle cx="12" cy="12" r="1"/><ellipse class="coord-zero" cx="2.6" cy="20.8" rx="1.3" ry="1.9" stroke-width="1.3"/>');
@@ -1993,23 +1997,12 @@ const GRID_LABELS: Record<GridMode, string> = {
 /** Переключатель «Показать деления»: только для координатной плоскости, меняет фон страницы у всех участников. */
 function coordLabelsSwitch(): HTMLElement | null {
   if (state.board.grid !== 'coord') return null;
-  const label = document.createElement('label');
-  label.className = 'grid-switch';
-  const text = document.createElement('span');
-  text.textContent = 'Показать деления';
-  const input = document.createElement('input');
-  input.type = 'checkbox';
-  input.setAttribute('role', 'switch');
-  input.className = 'switch-input';
-  input.checked = state.board.coordLabels !== false;
-  input.addEventListener('change', () => {
-    setCoordLabels(input.checked);
-    void saveNow();
+  return createToggleSwitch({
+    className: 'grid-switch',
+    label: 'Показать деления',
+    checked: state.board.coordLabels !== false,
+    onChange: on => { setCoordLabels(on); void saveNow(); },
   });
-  const track = document.createElement('span');
-  track.className = 'switch-track';
-  label.append(text, input, track);
-  return label;
 }
 
 function gridButton(): HTMLElement {
@@ -4912,6 +4905,15 @@ function wireZoomInput(): void {
     }
     const coordSwitch = coordLabelsSwitch();
     if (coordSwitch) options.append(coordSwitch);
+    // «Привязка к сетке» — та же настройка, что во всплывающем меню настроек
+    options.after(createToggleSwitch({
+      className: 'grid-switch view-switch',
+      label: 'Привязка к сетке',
+      icon: SNAP_ICON,
+      title: 'Точки, фигуры и рамки при перемещении встают на узлы сетки',
+      checked: state.settings.snapToGrid,
+      onChange: on => { setSettings({ snapToGrid: on }); persistSettings(); },
+    }));
   };
   const group = document.querySelector<HTMLElement>('.view-group')!;
   const positionMenu = () => {

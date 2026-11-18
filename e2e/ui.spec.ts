@@ -319,6 +319,23 @@ test.describe('настройки доски', () => {
     }
   });
 
+  test('привязка к сетке — переключатель в меню «Масштаб и вид»', async ({ board, page }) => {
+    await page.locator('#zoom-label').click();
+    const sw = page.locator('#view-menu .view-switch', { hasText: 'Привязка к сетке' });
+    await expect(sw.locator('.view-icon svg')).toHaveCount(1);
+    const cb = sw.locator('input[role="switch"]');
+    await expect(cb).not.toBeChecked();
+    await sw.click();
+    await expect(cb).toBeChecked();
+    // меню не закрывается: можно сразу переключить обратно
+    await expect(page.locator('#view-menu')).toBeVisible();
+    expect((await board.state()).settings.snapToGrid).toBe(true);
+    // та же настройка, что в меню настроек
+    await page.keyboard.press('Escape');
+    await page.locator('#btn-settings').click();
+    await expect(page.locator('#settings-popover label', { hasText: 'Привязка к сетке' }).locator('input')).toBeChecked();
+  });
+
   test('подписи координатной плоскости — переключатель в меню фона', async ({ board, page }) => {
     // в настройках такого пункта больше нет
     await page.locator('#btn-settings').click();
