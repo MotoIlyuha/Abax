@@ -3936,6 +3936,9 @@ body.no-ui-anim .share-toggle :is(.switch-track, .switch-knob) { transition: non
 
 /* «Настройки доступа» */
 .share-page-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* список страниц: больше шести строк — прокрутка внутри карточки */
+.share-pages-card { padding: 0; }
+.share-pages-list { display: flex; flex-direction: column; max-height: 224px; padding: 4px; overflow-y: auto; overscroll-behavior: contain; }
 .share-alias-head { min-height: 30px; }
 .share-alias-row { display: flex; gap: 6px; padding: 0 6px 6px; }
 .share-alias-field {
@@ -4033,6 +4036,7 @@ body:not(.no-motion) .ss-hl, body.no-ui-anim .ss-hl { transition: none; }
 .seg-opt { color: var(--fg-secondary); cursor: pointer; border-radius: 7px; }
 .seg-opt:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .seg-pill { position: absolute; left: 0; top: 2px; bottom: 2px; width: 0; border-radius: 7px; background: var(--panel); box-shadow: var(--shadow-segment); pointer-events: none; }
+/* слой активных подписей — того же цвета, что пилюля; обрезается по ней (segmented.ts) */
 .seg-overlay { position: absolute; inset: 0; z-index: 2; display: flex; padding: 2px; background: var(--panel); color: var(--fg); pointer-events: none; clip-path: inset(0 100% 0 0); border-radius: 9px; }
 .seg-css .seg-pill { transition: transform .2s cubic-bezier(0.22, 0.8, 0.24, 1), width .2s cubic-bezier(0.22, 0.8, 0.24, 1); }
 .seg-css .seg-overlay { transition: clip-path .2s cubic-bezier(0.22, 0.8, 0.24, 1); }

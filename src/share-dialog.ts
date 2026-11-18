@@ -1004,8 +1004,12 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
 
   // страницы: «По роли» / «Только просмотр» / «Скрыта»; старое «редактирование для всех» — пока стоит
   const pagesSec = section('share-page-rights', 'Страницы');
-  const pagesList = el('div', 'share-card share-rows');
-  pagesSec.append(pagesList);
+  // длинный список страниц прокручивается внутри своей карточки — со своей тонкой полосой прокрутки
+  const pagesCard = el('div', 'share-card share-pages-card');
+  const pagesList = el('div', 'share-rows share-pages-list');
+  pagesCard.append(pagesList);
+  pagesSec.append(pagesCard);
+  const pagesScroll = attachOverlayScroll(pagesList, { axis: 'y', host: pagesCard });
   const pageSelects = new Map<string, { sel: SpringSelect; opts: string }>();
 
   // права участников: переключатели с короткой подписью, пояснение — в подсказке
@@ -1304,7 +1308,7 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
     document.removeEventListener(PRESENCE_EVENT, onPresence);
     for (const s of [linkRole, emailRoleSel, ...p2pSelects, ...[...emailSelects.values()].map(x => x.sel), ...[...pageSelects.values()].map(x => x.sel)]) s.close(true);
     fitObserver?.disconnect();
-    for (const sc of scrolls) sc.destroy();
+    for (const sc of [...scrolls, pagesScroll]) sc.destroy();
     releaseMenu('share');
     closeMenu(dlg);
     const back2 = opener && opener.isConnected ? opener : document.getElementById('btn-share');

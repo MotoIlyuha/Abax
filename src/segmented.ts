@@ -41,7 +41,12 @@ export interface Segmented {
 const SPRING: readonly [number, number] = [420, 38];
 
 interface Rect { left: number; width: number }
-interface Inst { root: HTMLElement; pill: HTMLElement; overlay: HTMLElement; btns: HTMLButtonElement[]; P: Spring; rects: Rect[]; w: number; onPaint?: SegmentedOptions['onPaint'] }
+interface Inst {
+  root: HTMLElement; pill: HTMLElement; overlay: HTMLElement; btns: HTMLButtonElement[]; P: Spring; rects: Rect[]; w: number;
+  /** Отступы пилюли от верха и низа дорожки: по ним же обрезается слой активных подписей. */
+  top: number; bottom: number;
+  onPaint?: SegmentedOptions['onPaint'];
+}
 
 const moving = new Set<Inst>();
 let registered = false;
@@ -70,6 +75,8 @@ function ensureLoop(): void {
 function measure(it: Inst): void {
   const box = it.root.getBoundingClientRect();
   it.w = box.width;
+  it.top = it.pill.offsetTop;
+  it.bottom = Math.max(0, it.root.clientHeight - it.pill.offsetTop - it.pill.offsetHeight);
   it.rects = it.btns.map(b => {
     const r = b.getBoundingClientRect();
     return { left: r.left - box.left, width: r.width };
@@ -98,7 +105,8 @@ function paint(it: Inst, p: number, how: 'spring' | 'css' | 'jump'): void {
   it.pill.style.transform = `translateX(${left.toFixed(2)}px)`;
   it.pill.style.width = `${width.toFixed(2)}px`;
   const right = it.w - left - width;
-  it.overlay.style.clipPath = `inset(0 ${right.toFixed(2)}px 0 ${left.toFixed(2)}px round 7px)`;
+  // слой подписей обрезается ровно по пилюле — и по бокам, и сверху-снизу (иначе белое выступает за неё)
+  it.overlay.style.clipPath = `inset(${it.top}px ${right.toFixed(2)}px ${it.bottom}px ${left.toFixed(2)}px round 7px)`;
 }
 
 export function createSegmented(o: SegmentedOptions): Segmented {
@@ -131,7 +139,7 @@ export function createSegmented(o: SegmentedOptions): Segmented {
     return b;
   });
   root.append(...btns, overlay);
-  const it: Inst = { root, pill, overlay, btns, P: S(0, ...SPRING), rects: [], w: 0, onPaint: o.onPaint };
+  const it: Inst = { root, pill, overlay, btns, P: S(0, ...SPRING), rects: [], w: 0, top: 0, bottom: 0, onPaint: o.onPaint };
   let cur = Math.max(0, o.options.findIndex(x => x.value === o.value));
   it.P.x = it.P.t = cur;
 

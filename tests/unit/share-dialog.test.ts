@@ -99,13 +99,18 @@ describe('доступность и вкладки', () => {
     expect(q('#share-panel-share').hasAttribute('inert')).toBe(false);
   });
 
-  it('своя тонкая полоса прокрутки у обеих панелей (родная скрыта)', async () => {
+  it('своя тонкая полоса прокрутки у обеих панелей и у списка страниц (родная скрыта)', async () => {
     await openShareDialog(deps());
     for (const id of ['share-panel-share', 'share-panel-settings']) {
       const panel = q(`#${id}`);
       expect(panel.classList.contains('oscroll')).toBe(true);
       expect(panel.parentElement!.querySelector(':scope > .oscroll-thumb-y')).not.toBeNull();
     }
+    // список страниц прокручивается внутри карточки; ползунок — у карточки, не уезжает со строками
+    const list = q('.share-pages-list');
+    expect(list.classList.contains('oscroll')).toBe(true);
+    expect(list.querySelectorAll('.share-page-right')).toHaveLength(2);
+    expect(q('.share-pages-card > .oscroll-thumb-y')).not.toBeNull();
   });
 
   it('Esc закрывает окно и возвращает фокус на кнопку «Поделиться»; повторное открытие — переключатель', async () => {
