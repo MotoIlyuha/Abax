@@ -4,6 +4,8 @@ import type {
   ToolId, ToolbarPos, WheelMode,
 } from './types';
 import { resolveAnimationMode } from './motion';
+import { setZoomCounter } from './zoom-counter';
+import { initZoomChevron } from './zoom-chevron';
 import {
   state, update, onChange, undo, redo, canUndo, canRedo, setTool, setGrid, setCoordLabels, setStyleColor,
   setStyleWidth, setStyleOpacity, pickTool, setNoteColor, selectPreset, presetKind, addElement, replaceElements, pushHistory, uid,
@@ -4955,6 +4957,7 @@ function wireHelpMenu(): void {
 
 function wireZoomInput(): void {
   const label = document.getElementById('zoom-label')!;
+  initZoomChevron(label, label.querySelector<HTMLElement>('.zoom-chevron')!);
   const menu = document.createElement('div');
   menu.id = 'view-menu'; menu.hidden = true;
   document.body.append(menu);
@@ -5226,7 +5229,7 @@ function refresh(): void {
   (document.getElementById('btn-redo') as HTMLButtonElement).disabled = !canRedo();
   // режим просмотра (ссылка или гость без права правки): группа отмены скрывается целиком, а не остаётся пустой плашкой
   document.querySelector<HTMLElement>('.undo-group')!.style.display = canEditBoard() ? '' : 'none';
-  document.getElementById('zoom-label')!.textContent = `${Math.round(state.camera.zoom * 100)}%`;
+  setZoomCounter(document.getElementById('zoom-value')!, Math.round(state.camera.zoom * 100));
   renderGridButton();
   const nameInput = document.getElementById('page-name') as HTMLInputElement;
   if (document.activeElement !== nameInput && nameInput.value !== state.board.name) {

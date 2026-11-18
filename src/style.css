@@ -207,6 +207,11 @@ body.hide-undo-redo .undo-group { display: none; }
 
 /* масштаб: подпись-кнопка, по клику — поле для точного значения */
 #zoom-label {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
   min-width: 52px;
   height: 30px;
   padding: 0 6px;
@@ -219,6 +224,20 @@ body.hide-undo-redo .undo-group { display: none; }
   cursor: pointer;
 }
 #zoom-label:hover { background: var(--hover); }
+#zoom-value { display: inline-block; }
+/* стрелка у масштаба: вверх — меню закрыто, вниз — открыто; уровни анимации — src/zoom-chevron.ts */
+.zoom-chevron { flex: none; opacity: 0.65; transition: transform 0.18s ease; }
+#zoom-label:hover .zoom-chevron { opacity: 1; }
+#zoom-label[aria-expanded="true"] .zoom-chevron { transform: rotate(180deg); }
+body.no-ui-anim .zoom-chevron, body:not(.no-motion) .zoom-chevron { transition: none; }
+@media (prefers-reduced-motion: reduce) { .zoom-chevron { transition: none; } }
+/* «улучшенные» анимации: цифры масштаба — колёсики кодового замка (src/zoom-counter.ts) */
+.zoom-wheel { display: inline-block; width: 1ch; height: 1.2em; overflow: hidden; vertical-align: middle; }
+.zoom-strip { display: block; will-change: transform; }
+.zoom-strip > span { display: block; height: 1.2em; line-height: 1.2em; text-align: center; }
+.zoom-strip > span::before, .zoom-pct::before { content: attr(data-d); }
+.zoom-pct { display: inline-block; vertical-align: middle; line-height: 1.2em; }
+.zoom-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 #zoom-label[hidden] { display: none; }
 .zoom-edit { position: relative; display: inline-flex; align-items: center; }
 #zoom-input {
