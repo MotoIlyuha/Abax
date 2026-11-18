@@ -3868,6 +3868,11 @@ body.hide-export-button .export-group { display: none; }
 #view-menu { max-height: calc(100vh - 90px); overflow-y: auto; }
 /* список страниц не заходит под нижний правый угол (ширина — в --bottombar-w, см. app.ts) */
 #pages-dock:not([data-side="top"]) { right: calc(24px + var(--bottombar-w, 0px)); }
+/* список не помещается рядом с углом: угол («Масштаб и вид», «Помощь») поднимается вместе с кнопкой «Страницы», список — на всю ширину */
+#bottombar { transition: transform 0.38s cubic-bezier(0.22, 0.8, 0.24, 1); }
+body.pages-lift #bottombar { transform: translateY(calc(-1 * var(--tray-h, 150px) - 10px)); }
+body.pages-lift #pages-dock:not([data-side="top"]) { right: 12px; }
+body.no-ui-anim #bottombar, body:not(.no-motion) #bottombar { transition: none; }
 #help-menu {
   position: fixed; z-index: 80; width: 260px; max-width: calc(100vw - 16px);
   padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px;

@@ -3235,6 +3235,8 @@ function pagesKey(): string {
 
 /** Список страниц показан: кнопка приподнята над ним. */
 let pagesOpen = false;
+/** Последнее решение syncPagesLift: при закрытии списка сохраняется, чтобы угол опустился вместе с кнопкой. */
+let pagesLift = false;
 
 interface PageCard {
   el: HTMLElement;
@@ -3540,6 +3542,7 @@ function renderPages(): void {
     syncDraftMode();
     const tray = document.getElementById('pages-tray')!;
     document.getElementById('pages-dock')!.style.setProperty('--tray-h', `${tray.offsetHeight}px`);
+    syncPagesLift();
     if (pagesOpen && revealedPageId !== state.pageId) {
       revealedPageId = state.pageId;
       revealActivePage(true);
@@ -3583,12 +3586,37 @@ function revealActivePage(smooth: boolean): void {
   if (to !== scroll) list.scrollTo({ [vertical ? 'top' : 'left']: to, behavior: smooth ? 'smooth' : 'auto' });
 }
 
+/**
+ * Список страниц внизу не помещается в ширину рядом с правым нижним углом: «Масштаб и вид» и «Помощь»
+ * поднимаются вместе с кнопкой «Страницы» (класс pages-lift у body), и список занимает всю ширину.
+ * Решение не зависит от самого подъёма (ширина угла от него не меняется), поэтому не мигает.
+ */
+function syncPagesLift(): void {
+  if (pagesOpen) {
+    const dock = document.getElementById('pages-dock')!;
+    const list = document.getElementById('pages-list')!;
+    const last = list.lastElementChild as HTMLElement | null;
+    if (pagesAtTop() || !last) {
+      pagesLift = false;
+    } else {
+      // ширина содержимого списка (с полями 12px) минус его отрицательные поля; доступно — ширина холста без левого отступа и угла
+      const content = last.offsetLeft + last.offsetWidth + 12 - 24;
+      const wrapW = dock.parentElement!.clientWidth;
+      const bottombarW = document.getElementById('bottombar')!.offsetWidth;
+      pagesLift = content > wrapW - 36 - bottombarW;
+    }
+    document.documentElement.style.setProperty('--tray-h', `${document.getElementById('pages-tray')!.offsetHeight}px`);
+  }
+  document.body.classList.toggle('pages-lift', pagesOpen && pagesLift);
+}
+
 function setPagesOpen(open: boolean): void {
   if (pagesOpen === open) return;
   pagesOpen = open;
   renderPages();
   syncThumbViewport();
   document.getElementById('pages-dock')!.classList.toggle('open', open);
+  syncPagesLift();
   if (open) {
     revealedPageId = state.pageId;
     revealActivePage(false);
@@ -3612,6 +3640,8 @@ function wirePagesDock(): void {
     tray: document.getElementById('pages-tray')!,
     list: document.getElementById('pages-list')!,
     button: document.getElementById('btn-pages')!,
+    bottombar: document.getElementById('bottombar')!,
+    lifted: () => pagesLift,
     atTop: pagesAtTop,
     active: () => pageCards.get(state.pageId)?.el ?? null,
   });
@@ -4881,7 +4911,9 @@ function wireTopbar(): void {
   const bottombar = document.getElementById('bottombar')!;
   new ResizeObserver(() => {
     document.documentElement.style.setProperty('--bottombar-w', `${bottombar.offsetWidth}px`);
+    syncPagesLift();
   }).observe(bottombar);
+  window.addEventListener('resize', syncPagesLift);
   document.getElementById('btn-import')!.addEventListener('click', () => { void importDocument(); });
   document.getElementById('btn-settings')!.addEventListener('click', () => {
     if (settingsPopover().hidden) openSettings();
