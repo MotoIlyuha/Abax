@@ -2,6 +2,8 @@
 // Пока окно открыто, клавиатура доске не достаётся: горячие клавиши инструментов,
 // Delete и т.п. не должны срабатывать за спиной у диалога.
 
+import { CLOSE_ICON } from './icons';
+
 /** Что раздел отдаёт окну: свою обработку клавиш и уборку при уходе из раздела. */
 export interface SectionView {
   /** true — клавиша обработана разделом (окно её больше никому не отдаёт). */
@@ -34,8 +36,6 @@ interface Dialog {
 let dialog: Dialog | null = null;
 /** Раздел, открытый последним: окно открывается на нём же. */
 let lastSection = '';
-
-const CLOSE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 
 /** Раздел, открытый последним ('' — окно ещё не открывали). */
 export function lastSettingsSection(): string {

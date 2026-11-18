@@ -179,7 +179,7 @@ export const state: AppState = {
   settings: {
     toolbarPos: 'left', snapToGrid: false, wheelMode: 'scroll', pageTransition: 'slide',
     pageKeyMod: 'alt', mouseMode: 'pages', mouseBindings: { '1': null, '3': null, '4': null }, newPageKey: DEFAULT_NEW_PAGE_KEY, animationMode: 'enhanced', hideUndoRedo: false,
-    keepImageAspect: true, alignGuides: true, closePagesOnPick: false, thumbViewport: true, pageLinks: false, recursionEnabled: false,
+    keepImageAspect: true, smoothPan: true, alignGuides: true, closePagesOnPick: false, thumbViewport: true, pageLinks: false, recursionEnabled: false,
   },
   selection: new Set(),
   attachmentPreview: null,

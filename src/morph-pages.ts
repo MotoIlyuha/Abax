@@ -15,6 +15,9 @@ export interface PagesDockParts {
   tray: HTMLElement;
   list: HTMLElement;
   button: HTMLElement;
+  /** Правый нижний угол («Масштаб и вид», «Помощь»): поднимается вместе с кнопкой, когда список не помещается в ширину. */
+  bottombar: HTMLElement;
+  lifted(): boolean;
   /** Кнопка слева вверху, список колонкой (панель инструментов внизу). */
   atTop(): boolean;
   /** Карточка открытой страницы или черновика. */
@@ -158,6 +161,7 @@ function clearInline(): void {
   tray.style.removeProperty('opacity');
   tray.style.removeProperty('transform');
   button.style.removeProperty('transform');
+  parts.bottombar.style.removeProperty('transform');
   button.style.removeProperty('scale');
   button.querySelector<HTMLElement>('.pages-chev')?.style.removeProperty('transform');
   for (const el of list.children) {
@@ -198,6 +202,8 @@ function render(): void {
     tray.style.transform = `translateY(${((1 - O.x) * TRAY_SLIDE * (top ? -1 : 1)).toFixed(2)}px)`;
     // сверху кнопка стоит на месте; снизу — поднимается над списком
     if (!top) button.style.transform = `translateY(${(-(trayH + 10) * O.x).toFixed(2)}px)`;
+    // правый нижний угол поднимается вместе с кнопкой, освобождая список страниц
+    if (!top && parts.lifted()) parts.bottombar.style.transform = `translateY(${(-(trayH + 10) * O.x).toFixed(2)}px)`;
     const chev = button.querySelector<HTMLElement>('.pages-chev');
     if (chev) chev.style.transform = `rotate(${(180 * (top ? 1 - O.x : O.x)).toFixed(2)}deg)`;
   }
@@ -234,6 +240,7 @@ function render(): void {
     tray.style.removeProperty('opacity');
     tray.style.removeProperty('transform');
     button.style.removeProperty('transform');
+    parts.bottombar.style.removeProperty('transform');
     button.querySelector<HTMLElement>('.pages-chev')?.style.removeProperty('transform');
   }
 }

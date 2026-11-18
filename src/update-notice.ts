@@ -2,7 +2,7 @@
 // если он новее, показываем карточку «Вышла Abax X» со ссылкой на файл для своей платформы.
 // В разделе «О проекте» — проверка вручную и выключатель автопроверки.
 
-import { svg } from './toolbar';
+import { ICONS, UPDATE_ICON } from './icons';
 import { dayLabel } from './format';
 import { doskaApi } from './storage';
 import { isNativeApp } from './native';
@@ -13,9 +13,6 @@ import {
 
 /** Проверка — не сразу при запуске: сначала пусть откроется доска. */
 const START_DELAY_MS = 2000;
-
-const UPDATE_ICON = svg('<circle cx="12" cy="12" r="9"/><path d="M12 7.5v8"/><path d="M8.5 12.5L12 16l3.5-3.5"/>');
-const CLOSE_ICON = svg('<path d="M6 6l12 12M18 6L6 18"/>');
 
 /** Что сделать со скачанным файлом — подсказка после «Скачать». */
 const AFTER_DOWNLOAD: Partial<Record<UpdatePlatform, string>> = {
@@ -121,7 +118,7 @@ export function showUpdateCard(info: UpdateInfo, platform: UpdatePlatform): void
   const close = document.createElement('button');
   close.className = 'uc-close';
   close.title = 'Напомнить позже';
-  close.innerHTML = CLOSE_ICON;
+  close.innerHTML = ICONS.del;
   close.addEventListener('click', closeUpdateCard);
   head.append(icon, title, close);
 

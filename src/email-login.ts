@@ -12,11 +12,7 @@
 
 import { AuthError, authErrorText, startEmail, verifyEmail, type AuthMode } from './auth';
 import { S, atRest, clamp, motionEnabled, register, snap, spring, step, tune, wake, type Spring } from './motion';
-
-const ICON_ARROW = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
-// кольцо отсчёта: серая дорожка и акцентная дуга, длина дуги — 100 (pathLength)
-const ICON_RING = '<svg viewBox="0 0 20 20" aria-hidden="true"><circle class="em-ring-track" cx="10" cy="10" r="7.5"/><circle class="em-ring-arc" cx="10" cy="10" r="7.5" pathLength="100"/></svg>';
-const ICON_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+import { ICON_ARROW, ICON_CHECK, ICON_RING } from './icons';
 
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const N = 6;        // цифр в коде

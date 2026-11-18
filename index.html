@@ -33,6 +33,8 @@
   <script src="startup.js"></script>
   <div id="topbar">
     <div class="topbar-side topbar-right">
+      <!-- flex-direction: row-reverse — первый в разметке стоит правее всех: экспорт справа от импорта -->
+      <div class="topbar-group export-group"><button id="btn-export" class="icon" title="Экспорт в PNG (Ctrl+E)"></button></div>
       <div class="topbar-group import-group">
         <button id="btn-import" class="icon" title="Импорт документа"></button>
         <button id="btn-image" class="icon" title="Вставить изображение (или Ctrl+V / перетащить файл)"></button>
@@ -51,19 +53,23 @@
       <button id="btn-home" class="topbar-logo" title="Проекты (домашняя страница)" aria-label="Проекты (домашняя страница)"><img src="logo.svg" alt="Abax" /></button>
     </div>
     <div class="topbar-side topbar-left">
-      <div class="topbar-group"><button id="btn-settings" class="icon" title="Настройки доски"></button></div>
-      <div class="topbar-group">
-        <button id="btn-present" class="icon" title="Окно для демонстрации экрана: только холст, без интерфейса"></button>
-        <button id="btn-share" class="icon" title="Поделиться доской"></button>
+      <button id="btn-share" class="share-btn" type="button" title="Поделиться доской" aria-label="Поделиться доской"><span class="share-icon" aria-hidden="true"></span><span class="share-text">Поделиться</span></button>
+      <div class="topbar-group collab-group">
         <button id="btn-chat" class="icon" title="Чат" aria-label="Чат" aria-expanded="false" hidden></button>
         <button id="btn-summon" class="icon" title="Позвать всех сюда" aria-label="Позвать всех сюда" hidden></button>
         <button id="btn-follow" class="icon" title="Автопереход участников за мной" aria-label="Автопереход участников за мной" aria-pressed="false" hidden></button>
         <div id="collab-presence" aria-label="Участники" hidden></div>
-        <button id="btn-export" class="icon" title="Экспорт в PNG (Ctrl+E)"></button>
+        <!-- скрыты из шапки; обработчики остаются (окно демонстрации и быстрые настройки) -->
+        <button id="btn-present" class="icon" title="Окно для демонстрации экрана: только холст, без интерфейса" hidden></button>
+        <button id="btn-settings" class="icon" title="Настройки доски" hidden></button>
       </div>
-      <div class="topbar-group view-group"><button id="view-grid-icon" class="icon" title="Тип сетки" aria-label="Тип сетки" aria-expanded="false"></button><button id="zoom-out" class="icon" title="Уменьшить масштаб" aria-label="Уменьшить масштаб"></button><button id="zoom-label" title="Масштаб и вид" aria-expanded="false">100%</button><button id="zoom-in" class="icon" title="Увеличить масштаб" aria-label="Увеличить масштаб"></button><button id="btn-fit" class="icon" title="Сбросить вид"></button></div>
     </div>
     <button id="grid-mode" title="Фон страницы" aria-haspopup="listbox" aria-expanded="false" hidden></button>
+  </div>
+  <!-- правый нижний угол: вид и масштаб, справа — помощь -->
+  <div id="bottombar">
+    <div class="topbar-group view-group"><button id="view-grid-icon" class="icon" title="Тип сетки" aria-label="Тип сетки" aria-expanded="false"></button><button id="zoom-out" class="icon" title="Уменьшить масштаб" aria-label="Уменьшить масштаб"></button><button id="zoom-label" title="Масштаб и вид" aria-haspopup="true" aria-expanded="false"><span id="zoom-value">100%</span><svg class="zoom-chevron" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg></button><button id="zoom-in" class="icon" title="Увеличить масштаб" aria-label="Увеличить масштаб"></button><button id="btn-fit" class="icon" title="Показать всё" aria-label="Показать всё"></button></div>
+    <div class="topbar-group help-group"><button id="btn-help" class="icon" title="Помощь и советы (F1)" aria-label="Помощь и советы" aria-haspopup="menu" aria-expanded="false"></button></div>
   </div>
   <svg class="goo-defs" width="0" height="0" aria-hidden="true" focusable="false">
     <filter id="goo" x="-50%" y="-50%" width="200%" height="200%">

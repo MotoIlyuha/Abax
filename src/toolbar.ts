@@ -5,12 +5,7 @@
 import type { ToolId } from './types';
 import { cursorSvg } from './cursors';
 import { myCursorId } from './profile';
-
-export const svg = (paths: string) =>
-  `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
-
-/** Невидимые линии на иконках тел — пунктиром, как на холсте. */
-const hid = (d: string) => `<path d="${d}" stroke-dasharray="2.2 2" stroke-width="1.4"/>`;
+import { TOOL_ICONS } from './icons';
 
 export interface ToolDef {
   id: ToolId; title: string; icon: string;
@@ -18,55 +13,50 @@ export interface ToolDef {
   hint?: string;
 }
 
-/** Контуры иконки ластика (24×24): из них же курсор объектного ластика на холсте. */
-export const ERASER_PATHS = ['M20 20H8.5L3.6 15.1a2 2 0 0 1 0-2.8l8.6-8.6a2 2 0 0 1 2.8 0l6 6a2 2 0 0 1 0 2.8L13.5 19', 'M7 10.5l6.5 6.5'];
-/** Середина стирающего края иконки — горячая точка курсора ластика. */
-export const ERASER_TIP = { x: 6, y: 18 };
-
 /** Все инструменты в порядке по умолчанию. */
 export const TOOL_DEFS: ToolDef[] = [
   // вместо стандартной стрелки — персональный курсор пользователя (SPEC_NIGHT4 §4); разметка — из каталога
   { id: 'select', title: 'Выделение и перемещение', get icon() { return cursorSvg(myCursorId(), { size: 24, className: 'cursor-icon' }); } },
-  { id: 'pan', title: 'Панорама', icon: svg('<path d="M12 3v18M3 12h18"/><path d="M9.5 5.5L12 3l2.5 2.5M9.5 18.5L12 21l2.5-2.5M5.5 9.5L3 12l2.5 2.5M18.5 9.5L21 12l-2.5 2.5"/>') },
-  { id: 'pen', title: 'Перо', icon: svg('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>') },
-  { id: 'highlighter', title: 'Маркер', icon: svg('<path d="M9 11l-6 6v3h3l6-6"/><path d="M17.5 2.5l4 4L11 17l-4-4z"/>') },
-  { id: 'eraser', title: 'Ластик', icon: svg(ERASER_PATHS.map(d => `<path d="${d}"/>`).join('')) },
+  { id: 'pan', title: 'Панорама', icon: TOOL_ICONS.pan },
+  { id: 'pen', title: 'Перо', icon: TOOL_ICONS.pen },
+  { id: 'highlighter', title: 'Маркер', icon: TOOL_ICONS.highlighter },
+  { id: 'eraser', title: 'Ластик', icon: TOOL_ICONS.eraser },
   // стирает часть линии: маленький ластик над разрывом волнистой линии
-  { id: 'partEraser', title: 'Ластик для пера и маркера', icon: svg('<path d="M10 12.5l5.6-5.6a1.6 1.6 0 0 1 2.3 0l1.6 1.6a1.6 1.6 0 0 1 0 2.3L14.5 15.8H11.6l-1.6-1.6a1.2 1.2 0 0 1 0-1.7z"/><path d="M2.5 19.5c1.5-1.5 2.8-1.5 4.2 0"/><path d="M16.8 19.5c1.5 1.5 3 1.5 4.7 0"/>') },
-  { id: 'text', title: 'Текст', icon: svg('<path d="M5 7V5h14v2"/><path d="M12 5v14"/><path d="M9 19h6"/>') },
-  { id: 'note', title: 'Стикер', icon: svg('<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M8 9.5h8"/><path d="M8 13h5"/>') },
+  { id: 'partEraser', title: 'Ластик для пера и маркера', icon: TOOL_ICONS.partEraser },
+  { id: 'text', title: 'Текст', icon: TOOL_ICONS.text },
+  { id: 'note', title: 'Стикер', icon: TOOL_ICONS.note },
   // открывает форму задания; сам инструментом не остаётся
   {
     id: 'task', title: 'Задание', hint: 'откроется форма: условие, ответ, решение',
-    icon: svg('<rect x="4" y="3.5" width="16" height="17" rx="2"/><path d="M8 8.5h8M8 12h8"/><path d="M8 16l1.8 1.8L13 14.5"/>'),
+    icon: TOOL_ICONS.task,
   },
   // раздвинуть: всё, что ниже линии, уезжает вниз
   {
     id: 'spread', title: 'Раздвинуть',
     hint: 'нажмите на лист там, где не хватает места, и потяните вниз — всё, что ниже, сдвинется',
-    icon: svg('<path d="M3 4h18"/><path d="M3 20h18" stroke-dasharray="2.5 2.5"/><path d="M12 7.5v9"/><path d="M8.5 13L12 16.5 15.5 13"/>'),
+    icon: TOOL_ICONS.spread,
   },
   // фигуры
-  { id: 'rect', title: 'Прямоугольник', icon: svg('<rect x="4" y="6" width="16" height="12" rx="1.5"/>') },
-  { id: 'ellipse', title: 'Эллипс', icon: svg('<ellipse cx="12" cy="12" rx="8.5" ry="6.5"/>') },
-  { id: 'triangle', title: 'Треугольник', icon: svg('<path d="M12 4.5L20.5 19H3.5z"/>') },
-  { id: 'line', title: 'Линия', icon: svg('<path d="M5 19L19 5"/>') },
-  { id: 'arrow', title: 'Стрелка', icon: svg('<path d="M5 19L18 6"/><path d="M12 6h6v6"/>') },
-  { id: 'poly', title: 'Ломаная / многоугольник', icon: svg('<path d="M4 18l5-10 6 7 5-9"/>') },
+  { id: 'rect', title: 'Прямоугольник', icon: TOOL_ICONS.rect },
+  { id: 'ellipse', title: 'Эллипс', icon: TOOL_ICONS.ellipse },
+  { id: 'triangle', title: 'Треугольник', icon: TOOL_ICONS.triangle },
+  { id: 'line', title: 'Линия', icon: TOOL_ICONS.line },
+  { id: 'arrow', title: 'Стрелка', icon: TOOL_ICONS.arrow },
+  { id: 'poly', title: 'Ломаная / многоугольник', icon: TOOL_ICONS.poly },
   // стереометрия: каркасные тела с пунктиром невидимых рёбер
-  { id: 'cube', title: 'Куб', icon: svg('<path d="M4 9h11v11H4z"/><path d="M4 9l5-5h11l-5 5M20 4v11l-5 5"/>' + hid('M9 4v11h11M4 20l5-5')) },
-  { id: 'box', title: 'Параллелепипед', icon: svg('<path d="M2.5 11h14v9h-14z"/><path d="M2.5 11l5-5h14l-5 5M21.5 6v9l-5 5"/>' + hid('M7.5 6v9h14M2.5 20l5-5')) },
-  { id: 'prism', title: 'Призма', icon: svg('<path d="M6 4h13l-10.5 4z"/><path d="M6 4v13l2.5 4L19 17V4M8.5 8v13"/>' + hid('M6 17h13')) },
-  { id: 'pyramid', title: 'Пирамида', icon: svg('<path d="M3 20h12l5-5M3 20l8.5-17L15 20M11.5 3L20 15"/>' + hid('M20 15H8l-5 5M8 15l3.5-12')) },
-  { id: 'truncPyramid', title: 'Усечённая пирамида', icon: svg('<path d="M6 8h7l3-3H9z"/><path d="M2 20h13l6-5M2 20L6 8M15 20L13 8M21 15L16 5"/>' + hid('M21 15H8l-6 5M8 15L9 5')) },
-  { id: 'cylinder', title: 'Цилиндр', icon: svg('<ellipse cx="12" cy="5" rx="7" ry="2.5"/><path d="M5 5v14M19 5v14M5 19a7 2.5 0 0 0 14 0"/>' + hid('M5 19a7 2.5 0 0 1 14 0')) },
-  { id: 'cone', title: 'Конус', icon: svg('<path d="M4 19L12 3l8 16M4 19a8 2.8 0 0 0 16 0"/>' + hid('M4 19a8 2.8 0 0 1 16 0')) },
-  { id: 'truncCone', title: 'Усечённый конус', icon: svg('<ellipse cx="12" cy="6" rx="4" ry="1.5"/><path d="M8 6L4 19M16 6l4 13M4 19a8 2.8 0 0 0 16 0"/>' + hid('M4 19a8 2.8 0 0 1 16 0')) },
-  { id: 'sphere', title: 'Шар', icon: svg('<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12a8.5 3 0 0 0 17 0"/>' + hid('M3.5 12a8.5 3 0 0 1 17 0')) },
+  { id: 'cube', title: 'Куб', icon: TOOL_ICONS.cube },
+  { id: 'box', title: 'Параллелепипед', icon: TOOL_ICONS.box },
+  { id: 'prism', title: 'Призма', icon: TOOL_ICONS.prism },
+  { id: 'pyramid', title: 'Пирамида', icon: TOOL_ICONS.pyramid },
+  { id: 'truncPyramid', title: 'Усечённая пирамида', icon: TOOL_ICONS.truncPyramid },
+  { id: 'cylinder', title: 'Цилиндр', icon: TOOL_ICONS.cylinder },
+  { id: 'cone', title: 'Конус', icon: TOOL_ICONS.cone },
+  { id: 'truncCone', title: 'Усечённый конус', icon: TOOL_ICONS.truncCone },
+  { id: 'sphere', title: 'Шар', icon: TOOL_ICONS.sphere },
   // указка: показать, не оставляя следов на доске
-  { id: 'laser', title: 'Лазерная указка', icon: svg('<circle cx="15" cy="9" r="2.6"/><path d="M15 2.5v1.8M21.5 9h-1.8M19.6 4.4l-1.3 1.3"/><path d="M3 21c4.5-1.2 8-4.2 10.2-8.6"/>') },
-  { id: 'fadePen', title: 'Исчезающий маркер', icon: svg('<path d="M18 2.5l3.5 3.5-8.5 8.5-3.5-3.5z"/><path d="M9.5 11l-4 4v2.5H8l4-4"/><path d="M3 21h4"/><path d="M10 21h3" opacity=".55"/><path d="M16 21h2" opacity=".25"/>') },
-  { id: 'flash', title: 'Подсветка объектов', icon: svg('<rect x="7.5" y="7.5" width="9" height="9" rx="2"/><path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"/>') },
+  { id: 'laser', title: 'Лазерная указка', icon: TOOL_ICONS.laser },
+  { id: 'fadePen', title: 'Исчезающий маркер', icon: TOOL_ICONS.fadePen },
+  { id: 'flash', title: 'Подсветка объектов', icon: TOOL_ICONS.flash },
 ];
 
 const DEF_BY_ID = new Map(TOOL_DEFS.map(t => [t.id, t]));

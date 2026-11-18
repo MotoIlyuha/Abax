@@ -2,23 +2,23 @@
 // и загрузка своей картинки. Эмодзи (src/emoji-data.json, см. scripts/emoji.mjs) грузятся
 // отдельным куском при первом открытии окна.
 
-import { svg } from './toolbar';
+import { claimMenu, closeMenu, openMenu, releaseMenu, settleMenu } from './menu-motion';
+import { CATEGORY_ICONS, UPLOAD_ICON } from './icons';
 
 /** Категория → [эмодзи, «название и теги» в нижнем регистре]. */
 type EmojiData = Record<string, [string, string][]>;
 
 const CATEGORIES: { key: string; title: string; icon: string }[] = [
-  { key: 's', title: 'Смайлы и люди', icon: svg('<circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0"/><path d="M9 9.5h.01M15 9.5h.01"/>') },
-  { key: 'a', title: 'Животные и природа', icon: svg('<circle cx="12" cy="13.5" r="6.5"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="6.5" r="2.5"/><path d="M10 13h.01M14 13h.01M11 16.5h2"/>') },
-  { key: 'f', title: 'Еда и напитки', icon: svg('<path d="M5 10h12v3a6 6 0 0 1-12 0z"/><path d="M17 11h1.5a2.5 2.5 0 0 1 0 5H16"/><path d="M8 3.5c0 1.5 1 1.5 1 3M12 3.5c0 1.5 1 1.5 1 3"/>') },
-  { key: 'c', title: 'Занятия и спорт', icon: svg('<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6c3 3 3 9.8 0 12.8M18.4 5.6c-3 3-3 9.8 0 12.8"/>') },
-  { key: 't', title: 'Путешествия и места', icon: svg('<path d="M5 16V11l2-5h10l2 5v5z"/><path d="M5 11h14"/><path d="M7 16v2.5M17 16v2.5"/><path d="M8 13.5h.01M16 13.5h.01"/>') },
-  { key: 'o', title: 'Предметы', icon: svg('<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.5 10.9V16h7v-2.1A6 6 0 0 0 12 3z"/>') },
-  { key: 'y', title: 'Символы', icon: svg('<path d="M12 20s-7-4.4-7-9.5A3.8 3.8 0 0 1 12 8a3.8 3.8 0 0 1 7 2.5C19 15.6 12 20 12 20z"/>') },
-  { key: 'g', title: 'Флаги', icon: svg('<path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/>') },
+  { key: 's', title: 'Смайлы и люди', icon: CATEGORY_ICONS.s },
+  { key: 'a', title: 'Животные и природа', icon: CATEGORY_ICONS.a },
+  { key: 'f', title: 'Еда и напитки', icon: CATEGORY_ICONS.f },
+  { key: 'c', title: 'Занятия и спорт', icon: CATEGORY_ICONS.c },
+  { key: 't', title: 'Путешествия и места', icon: CATEGORY_ICONS.t },
+  { key: 'o', title: 'Предметы', icon: CATEGORY_ICONS.o },
+  { key: 'y', title: 'Символы', icon: CATEGORY_ICONS.y },
+  { key: 'g', title: 'Флаги', icon: CATEGORY_ICONS.g },
 ];
 
-const UPLOAD_ICON = svg('<path d="M12 15V4"/><path d="M8 8l4-4 4 4"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>');
 /** Сторона загруженной картинки: иконке больше не нужно, а проект не раздувается. */
 const UPLOAD_PX = 64;
 
@@ -39,11 +39,14 @@ export function iconPickerOpen(): boolean {
   return open !== null;
 }
 
-export function closeIconPicker(): void {
+/** Закрыть окно; instant — без анимации (окно сменяется другим или меняется размер окна). */
+export function closeIconPicker(instant = false): void {
   if (!open) return;
-  open.off();
-  open.el.remove();
+  const { el, off } = open;
   open = null;
+  off();
+  releaseMenu('icon');
+  closeMenu(el, instant);
 }
 
 /** Картинка → квадрат UPLOAD_PX (обрезка по центру) в PNG; null — не прочиталась. */
@@ -72,9 +75,12 @@ async function fileToIcon(file: File): Promise<string | null> {
  */
 export function openIconPicker(anchor: HTMLElement, current: string | null, onPick: (icon: string | null) => void): void {
   if (open?.anchor === anchor) { closeIconPicker(); return; }
-  closeIconPicker();
+  closeIconPicker(true);
+  // прошлое окно ещё втягивается в свою кнопку — убираем его, чтобы id не повторялся
+  for (const old of document.querySelectorAll<HTMLElement>('#icon-picker')) settleMenu(old);
   const el = document.createElement('div');
   el.id = 'icon-picker';
+  el.className = 'popup-menu';
   el.setAttribute('role', 'dialog');
   el.setAttribute('aria-label', 'Иконка проекта');
 
@@ -130,7 +136,8 @@ export function openIconPicker(anchor: HTMLElement, current: string | null, onPi
   foot.append(upload, file);
   el.append(head, tabs, body, foot);
   document.body.appendChild(el);
-  place(el, anchor);
+  claimMenu('icon', () => closeIconPicker());
+  openMenu(el, { from: anchor, place: () => place(el, anchor), remove: true, items: () => [head, tabs, body, foot] });
 
   const pick = (emoji: string) => { closeIconPicker(); onPick(emoji); };
   const emojiButton = ([emoji, words]: [string, string]): HTMLButtonElement => {
@@ -252,15 +259,16 @@ export function openIconPicker(anchor: HTMLElement, current: string | null, onPi
     if (!el.contains(t) && !anchor.contains(t)) closeIconPicker();
   };
   const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeIconPicker(); };
+  const onResize = () => closeIconPicker(true);
   document.addEventListener('pointerdown', onDown, true);
   document.addEventListener('keydown', onKey, true);
-  window.addEventListener('resize', closeIconPicker);
+  window.addEventListener('resize', onResize);
   open = {
     el, anchor,
     off: () => {
       document.removeEventListener('pointerdown', onDown, true);
       document.removeEventListener('keydown', onKey, true);
-      window.removeEventListener('resize', closeIconPicker);
+      window.removeEventListener('resize', onResize);
     },
   };
   search.focus();

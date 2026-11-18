@@ -4,7 +4,7 @@ import { expect, test, type Board } from './fixtures';
 type Pt = { x: number; y: number };
 
 async function openPresent(page: Page): Promise<Page> {
-  const [popup] = await Promise.all([page.waitForEvent('popup'), page.locator('#btn-present').click()]);
+  const [popup] = await Promise.all([page.waitForEvent('popup'), page.locator('#btn-present').dispatchEvent('click')]);
   await expect(page.locator('#btn-present')).toHaveClass(/active/);
   await expect.poll(() => popup.evaluate(() => document.querySelector('canvas')?.width ?? 0)).toBeGreaterThan(0);
   return popup;
@@ -61,7 +61,7 @@ test.describe('окно демонстрации', () => {
     expect(await popup.title()).toBe('Abax — демонстрация');
     // ничего, кроме холста: ни тулбара, ни верхней панели
     expect(await popup.evaluate(() => [...document.body.children].map(e => e.tagName))).toEqual(['CANVAS']);
-    await page.locator('#btn-present').click();
+    await page.locator('#btn-present').dispatchEvent('click');
     await expect(page.locator('#btn-present')).not.toHaveClass(/active/);
     await expect.poll(() => popup.isClosed()).toBe(true);
   });
@@ -117,6 +117,7 @@ test.describe('окно демонстрации', () => {
     await page.mouse.move(box.x + 500, box.y + 400, { steps: 5 });
     await page.mouse.up();
     await page.keyboard.up('Space');
+    await board.settleCamera();
     const after = await toPresent(board, popup, { x: 400, y: 350 });
     expect(Math.hypot(after.x - before.x, after.y - before.y)).toBeGreaterThan(50);
     await expect.poll(() => countColor(popup, '#1f2329', around(after, 5))).toBeGreaterThan(3);

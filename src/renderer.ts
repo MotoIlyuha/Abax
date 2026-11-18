@@ -13,7 +13,7 @@ import { styledSegments } from './text-runs';
 import { fitSolid, solidGeometry, type SolidPrim } from './solid';
 import { state } from './state';
 import { assetHashOf } from './asset-store';
-import { ERASER_PATHS, ERASER_TIP } from './toolbar';
+import { ERASER_PATHS, ERASER_TIP } from './icons';
 import { eraserRadius, eraserSettled } from './eraser-size';
 import { SpatialIndex } from './spatial-index';
 

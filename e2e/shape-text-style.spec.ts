@@ -45,6 +45,7 @@ test.describe('масштаб в шапке', () => {
     await input.press('Enter');
     await expect(input).toHaveCount(0);
     await expect(label).toHaveText('250%');
+    await board.settleCamera();
     expect((await board.state()).camera.zoom).toBe(2.5);
 
     // Esc — отмена; уход из поля с ошибкой — тоже без изменений
@@ -65,6 +66,7 @@ test.describe('масштаб в шапке', () => {
     await openInput();
     await input.fill('87,5');
     await input.press('Enter');
+    await board.settleCamera();
     const after = (await board.state()).camera;
     expect(after.zoom).toBe(0.875);
     expect(after.x + box.width / 2 / after.zoom).toBeCloseTo(cx, 5);

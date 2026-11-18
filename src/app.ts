@@ -1,16 +1,20 @@
+import { initTopbarFit, topbarFit } from './topbar-fit';
 import { startCrop } from './crop';
 import type {
   AnimationMode, BoardSettings, Camera, Element, GridMode, ImageEl, NoteEl, Page, PageTransition, Project, ProjectMeta, ShapeEl, TaskEl, TextAlign, TextEl, TextVAlign,
   ToolId, ToolbarPos, WheelMode,
 } from './types';
 import { resolveAnimationMode } from './motion';
+import { setZoomCounter } from './zoom-counter';
+import { initZoomChevron } from './zoom-chevron';
+import { claimMenu, closeMenu, drillMenu, menuShown, openMenu, releaseMenu } from './menu-motion';
 import {
   state, update, onChange, undo, redo, canUndo, canRedo, setTool, setGrid, setCoordLabels, setStyleColor,
   setStyleWidth, setStyleOpacity, pickTool, setNoteColor, selectPreset, presetKind, addElement, replaceElements, pushHistory, uid,
   applyStyleToSelection, colorElement, setSettings, setView, switchPage, addPage, deletePage, renamePage, setSelection,
   openProject, blankProject, blankPage, projectMeta, groupSelected, ungroupSelected, movePage,
   bringForward, sendBackward, moveSelectionLayer, selectionLayerOrder, pinSelectionLayer, deleteSelected, setSolidSides, removeImageFrames, selectInserted,
-  clampOpacity, opacityField, OPACITY_MIN, parseZoomPercent, zoomAtPoint,
+  clampOpacity, opacityField, OPACITY_MIN, parseZoomPercent,
   addDraft, deleteDraft, onDraft, realPageId,
   canCopyCurrentBoard, canCloneCurrentProject, canAddPageTo, PAGE_LIMIT_TEXT, projectPlan,
 } from './state';
@@ -34,14 +38,14 @@ import * as pdfjsLib from 'pdfjs-dist';
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker&inline';
 import { initChatButton } from './collab-chat';
 import { collabActive, isHost, myCollabCaps, myColor, noteSelection, readOnly, startHostConnection, stopCollab, type CollabGotoDetail, type CollabSummonDetail } from './collab';
-import { animateCameraTo } from './camera-anim';
+import { animateCameraTo, cameraAnimating, clampZoom } from './camera-anim';
 import { fillPageAvatars, initCollabPresence } from './collab-presence';
 import { closePresent, openPresent, presentOpen } from './present';
 import { renderProfileSettings } from './profile-settings';
 import { cursorSvg } from './cursors';
 import { authErrorText, type AuthOutcome } from './auth';
 import { myCursorId, onProfileChange, profileName } from './profile';
-import { type ToolbarGroup, onToolbarChange, restoreToolbar, svg, toolDef, toolTip, toolUsesColor, toolbarConfig } from './toolbar';
+import { type ToolbarGroup, onToolbarChange, restoreToolbar, toolDef, toolTip, toolUsesColor, toolbarConfig } from './toolbar';
 import { canDropTool, toolDropElement } from './tool-drop';
 import {
   addSettingsSection, lastSettingsSection, openSettingsDialog, removeSettingsSection, settingsDialogOpen, type SettingsSection,
@@ -73,56 +77,14 @@ import { initTaskOverlay, isTeacher } from './task-overlay';
 import { annotationButtons, initCommentsUi } from './comments-ui';
 import { openTaskDialog, taskDialogOpen, type TaskFormValues } from './task-dialog';
 import { TASK_H, TASK_W, createTaskElement } from './task-element';
+import { createToggleSwitch } from './toggle-switch';
+import { ALIGN_ICONS, BACKGROUND_ICON, BACK_ARROW_ICON, CLOSE_ICON_BOLD, COORD_ICON_ZERO, FONT_ICON, GRID_ICONS, GRIP_ICON, ICONS, OPACITY_ICON, PIN_ICON, PROFILE_ICON, SLIDER_TRACK_ICON, SMOOTH_PAN_ICON, SNAP_ICON, VALIGN_ICONS, WIDTH_ICON, svg } from './icons';
+import { setTopbarGroupHidden } from './topbar-hide';
 import {
   browserSetRights, browserShareStatus, startBrowserCloud, startBrowserHost, stopBrowserCloud, stopBrowserHost,
 } from './browser-host';
 
 pdfjsLib.GlobalWorkerOptions.workerPort = new PdfWorker();
-
-const ICONS = {
-  home: svg('<path d="M3 11l9-8 9 8"/><path d="M5 10v10h5v-6h4v6h5V10"/>'),
-  pages: svg('<rect x="8" y="3" width="12" height="15" rx="2"/><path d="M4.5 7v11.5A2.5 2.5 0 0 0 7 21h9"/>'),
-  plus: svg('<path d="M12 5v14M5 12h14"/>'),
-  draft: svg('<path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L8 19z"/><path d="M14.5 6.5l3 3"/>'),
-  chevronUp: svg('<path d="M6 15l6-6 6 6"/>'),
-  chevronDown: svg('<path d="M6 9l6 6 6-6"/>'),
-  keyboard: svg('<rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M18 14h.01M9 14h6"/>'),
-  image: svg('<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M21 15l-5-5L5 19"/>'),
-  undo: svg('<path d="M4 10h9a5 5 0 0 1 0 10h-3"/><path d="M8 6l-4 4 4 4"/>'),
-  redo: svg('<path d="M20 10h-9a5 5 0 0 0 0 10h3"/><path d="M16 6l4 4-4 4"/>'),
-  fit: svg('<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/>'),
-  export: svg('<path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M4 19h16"/>'),
-  present: svg('<rect x="2.5" y="4" width="19" height="13" rx="2"/><path d="M8 21h8M12 17v4"/><path d="M10.5 8.2l4 2.3-4 2.3z"/>'),
-  pdf: svg('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h4"/>'),
-  del: svg('<path d="M6 6l12 12M18 6L6 18"/>'),
-  settings: svg('<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.1-1.55 1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.7 1.7 0 0 0 .34-1.87 1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09a1.7 1.7 0 0 0 1.55-1.1 1.7 1.7 0 0 0-.34-1.88l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.7 1.7 0 0 0 1.87.34h.01a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.55h.01a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.7 1.7 0 0 0-.34 1.87v.01a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.55 1z"/>'),
-  up: svg('<path d="M12 19V5"/><path d="M5 12l7-7 7 7"/>'),
-  down: svg('<path d="M12 5v14"/><path d="M19 12l-7 7-7-7"/>'),
-  group: svg('<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/><path d="M11 11l2 2"/>'),
-  duplicate: svg('<rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/>'),
-  ungroup: svg('<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/><path d="M13 6h4M15 4v4M7 13v4M5 15h4"/>'),
-  trash: svg('<path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M6 7l1 13h10l1-13"/>'),
-  toolbar: svg('<rect x="3" y="3" width="7" height="18" rx="2"/><path d="M14 7h7M14 12h7M14 17h7"/>'),
-  chevron: svg('<path d="M9 6l6 6-6 6"/>'),
-  star: svg('<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/>'),
-  info: svg('<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.5v.01"/>'),
-  flask: svg('<path d="M9 3h6"/><path d="M10 3v6.2L4.6 18.4A1.7 1.7 0 0 0 6.1 21h11.8a1.7 1.7 0 0 0 1.5-2.6L14 9.2V3"/><path d="M7.3 15h9.4"/>'),
-  chevronLeft: svg('<path d="M15 6l-6 6 6 6"/>'),
-  grid: svg('<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>'),
-  list: svg('<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4.5 6h.01M4.5 12h.01M4.5 18h.01"/>'),
-  /** Иконки у проекта нет: смайлик с плюсом — «поставить». */
-  addIcon: svg('<path d="M20.5 12A8.5 8.5 0 1 1 12 3.5"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0"/><path d="M9 9.5h.01M15 9.5h.01"/><path d="M19 2.5v5M16.5 5h5"/>'),
-};
-
-const GRID_ICONS: Record<GridMode, string> = {
-  none: svg('<circle cx="12" cy="12" r="8"/><path d="M6.5 17.5l11-11"/>'),
-  dots: svg('<circle cx="6" cy="6" r="1.2"/><circle cx="12" cy="6" r="1.2"/><circle cx="18" cy="6" r="1.2"/><circle cx="6" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="18" cy="12" r="1.2"/><circle cx="6" cy="18" r="1.2"/><circle cx="12" cy="18" r="1.2"/><circle cx="18" cy="18" r="1.2"/>'),
-  square: svg('<rect x="4" y="4" width="7" height="7"/><rect x="13" y="4" width="7" height="7"/><rect x="4" y="13" width="7" height="7"/><rect x="13" y="13" width="7" height="7"/>'),
-  coord: svg('<path d="M5 19V5M5 19h14"/><path d="M5 5l-2 3M5 5l2 3M19 19l-3-2M19 19l-3 2"/><circle cx="12" cy="12" r="1"/>'),
-};
-
-/** Иконка координатной плоскости с нулём в начале координат — когда деления включены. */
-const COORD_ICON_ZERO = svg('<path d="M5 19V5M5 19h14"/><path d="M5 5l-2 3M5 5l2 3M19 19l-3-2M19 19l-3 2"/><circle cx="12" cy="12" r="1"/><ellipse class="coord-zero" cx="2.6" cy="20.8" rx="1.3" ry="1.9" stroke-width="1.3"/>');
 
 /** Иконка фона; у координатной плоскости ноль виден, пока деления не скрыты. */
 function gridIcon(g: GridMode, coordLabels = true): string {
@@ -223,6 +185,7 @@ function restoreSettings(): void {
         animationMode: resolveAnimationMode(v),
         hideUndoRedo: typeof v.hideUndoRedo === 'boolean' ? v.hideUndoRedo : false,
         keepImageAspect: typeof v.keepImageAspect === 'boolean' ? v.keepImageAspect : true,
+        smoothPan: typeof v.smoothPan === 'boolean' ? v.smoothPan : true,
         alignGuides: typeof v.alignGuides === 'boolean' ? v.alignGuides : true,
         closePagesOnPick: typeof v.closePagesOnPick === 'boolean' ? v.closePagesOnPick : false,
         thumbViewport: typeof v.thumbViewport === 'boolean' ? v.thumbViewport : true,
@@ -269,8 +232,11 @@ function applyAnimationMode(): void {
 }
 
 /** Кнопки отмены/повтора в шапке прячутся вместе с разделителями вокруг них (см. style.css). */
-function applyUndoRedoVisibility(): void {
-  document.body.classList.toggle('hide-undo-redo', state.settings.hideUndoRedo);
+/** animate — плавно (при «Улучшенных» анимациях), иначе сразу, как при запуске. */
+function applyUndoRedoVisibility(animate = false): void {
+  const setClass = (hidden: boolean) => document.body.classList.toggle('hide-undo-redo', hidden);
+  if (!animate) { setClass(state.settings.hideUndoRedo); return; }
+  setTopbarGroupHidden(document.querySelector<HTMLElement>('.undo-group')!, state.settings.hideUndoRedo, setClass);
 }
 
 let styleColorTab: 'border' | 'fill' = 'border';
@@ -736,10 +702,6 @@ const ctxPanels: CtxPanel[] = [];
 /** Счётчик z-index: панель, которую трогали последней, — поверх остальных. */
 let ctxZ = 0;
 
-const GRIP_ICON = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>';
-const PIN_ICON = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M15.2 2.6a1 1 0 0 1 1.4 0l4.8 4.8a1 1 0 0 1 0 1.4l-.9.9a2 2 0 0 1-2.2.4l-2.6 2.6.3 3.5a1 1 0 0 1-.3.8l-1 1a1 1 0 0 1-1.4 0l-3.2-3.2-4.6 4.6a1 1 0 0 1-1.4-1.4l4.6-4.6-3.2-3.2a1 1 0 0 1 0-1.4l1-1a1 1 0 0 1 .8-.3l3.5.3 2.6-2.6a2 2 0 0 1 .4-2.2z"/></svg>';
-const CLOSE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
-
 function ctxLayerEl(): HTMLElement {
   return document.getElementById('ctx-layer')!;
 }
@@ -826,7 +788,7 @@ function buildCtxBar(cp: CtxPanel): HTMLElement {
   const close = document.createElement('button');
   close.className = 'ctx-close';
   close.title = 'Закрыть';
-  close.innerHTML = CLOSE_ICON;
+  close.innerHTML = CLOSE_ICON_BOLD;
   close.addEventListener('click', () => closePanel(cp));
   const grip = document.createElement('div');
   grip.className = 'ctx-grip';
@@ -1120,14 +1082,10 @@ function syncFrameOff(): void {
   if (off) off.hidden = !hasFramedImage();
 }
 
-const WIDTH_ICON = svg('<path d="M4 6h16" stroke-width="1.2"/><path d="M4 12h16" stroke-width="2.4"/><path d="M4 18.5h16" stroke-width="4"/>');
-
 /** Толщина подписью: до десятых, с запятой. */
 function formatWidth(v: number): string {
   return String(Math.round(v * 10) / 10).replace('.', ',');
 }
-
-const OPACITY_ICON = svg('<circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 0 0 16z" fill="currentColor"/>');
 
 /** Единая панель в духе Miro: толщина, прозрачность и скругление сверху, ниже свои и все цвета. */
 function buildStylePanel(cp: CtxPanel): void {
@@ -1258,7 +1216,7 @@ function buildDropSlider(host: HTMLElement, initial: number, onChange: (v: numbe
   let first = true;
   const track = document.createElement('div');
   track.className = 'qs-track';
-  track.innerHTML = `<svg viewBox="0 0 120 24" preserveAspectRatio="none"><path d="M3 12a2.4 2.4 0 0 1 2.4-2.4C40 7.5 70 3.5 103 3.5a8.5 8.5 0 0 1 0 17C70 20.5 40 16.5 5.4 14.4A2.4 2.4 0 0 1 3 12Z"/></svg>`;
+  track.innerHTML = SLIDER_TRACK_ICON;
   const thumb = document.createElement('div');
   thumb.className = 'qs-thumb';
   host.append(track, thumb);
@@ -1432,18 +1390,6 @@ function rebuildPanel(cp: CtxPanel): void {
   positionCtxPanel(cp);
 }
 
-const FONT_ICON = svg('<path d="M3 19l5-14 5 14"/><path d="M5.2 13.5h5.6"/><path d="M14.5 19l3.5-9 3.5 9"/><path d="M15.8 16h4.4"/>');
-
-const ALIGN_ICONS: Record<TextAlign, string> = {
-  left: svg('<path d="M4 6h16M4 10h10M4 14h16M4 18h10"/>'),
-  center: svg('<path d="M4 6h16M7 10h10M4 14h16M7 18h10"/>'),
-  right: svg('<path d="M4 6h16M10 10h10M4 14h16M10 18h10"/>'),
-};
-const VALIGN_ICONS: Record<TextVAlign, string> = {
-  top: svg('<path d="M4 4h16"/><rect x="8" y="8" width="8" height="7" rx="1.5"/>'),
-  middle: svg('<path d="M4 12h3.5M16.5 12h3.5"/><rect x="8" y="8.5" width="8" height="7" rx="1.5"/>'),
-  bottom: svg('<path d="M4 20h16"/><rect x="8" y="9" width="8" height="7" rx="1.5"/>'),
-};
 const ALIGN_TITLES: Record<TextAlign, string> = { left: 'По левому краю', center: 'По центру', right: 'По правому краю' };
 const VALIGN_TITLES: Record<TextVAlign, string> = { top: 'Сверху', middle: 'Посередине', bottom: 'Снизу' };
 
@@ -1665,7 +1611,7 @@ function buildLayerControl(sel: Element[], moves: { up: boolean; down: boolean }
   button.className = 'qm-btn qm-layer-icon' + (layerPanelOpen ? ' active' : '');
   button.title = 'Слои: открыть ползунок для перемещения и закрепления';
   button.setAttribute('aria-label', button.title);
-  button.innerHTML = svg('<path d="m12 3 9 5-9 5-9-5 9-5ZM3 12l9 5 9-5M3 16l9 5 9-5"/>') + (pinned ? '<span class="qm-layer-pin">📌</span>' : '');
+  button.innerHTML = ICONS.layers + (pinned ? '<span class="qm-layer-pin">📌</span>' : '');
   button.addEventListener('click', () => { layerPanelOpen = !layerPanelOpen; updateQuickMenu(); });
   root.appendChild(button);
   const arrows = document.createElement('div');
@@ -1678,7 +1624,7 @@ function buildLayerControl(sel: Element[], moves: { up: boolean; down: boolean }
       ? 'Выше на слой; двойной клик — наверх; удержание — закрепить наверху'
       : 'Ниже на слой; двойной клик — вниз; удержание — закрепить внизу';
     b.setAttribute('aria-label', b.title);
-    b.innerHTML = svg(direction === 'top' ? '<path d="m5 15 7-7 7 7"/>' : '<path d="m5 9 7 7 7-7"/>');
+    b.innerHTML = (direction === 'top' ? ICONS.layerTop : ICONS.layerBottom);
     let hold = 0, held = false;
     b.addEventListener('pointerdown', e => {
       if (e.button !== 0) return;
@@ -1782,7 +1728,7 @@ function copyImageButton(): HTMLButtonElement {
   copyImage.className = 'qm-btn';
   copyImage.title = macKeys('Копировать как изображение (Ctrl+Shift+C)');
   copyImage.setAttribute('aria-label', copyImage.title);
-  copyImage.innerHTML = svg('<rect x="3" y="3" width="14" height="14" rx="2"/><path d="m5 14 4-4 3 3 2-2 3 3M14 7h.01M7 21h12a2 2 0 0 0 2-2V7"/>');
+  copyImage.innerHTML = ICONS.copyImage;
   copyImage.addEventListener('click', () => { void copySelectionAsImage(); });
   return copyImage;
 }
@@ -1828,7 +1774,7 @@ function updateQuickMenu(): void {
     editBtn.className = 'qm-btn qm-task-edit';
     editBtn.title = 'Редактировать задание';
     editBtn.setAttribute('aria-label', editBtn.title);
-    editBtn.innerHTML = svg('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>');
+    editBtn.innerHTML = ICONS.pen;
     editBtn.addEventListener('click', () => editTaskElement(task));
     qm.appendChild(editBtn);
   }
@@ -1838,7 +1784,7 @@ function updateQuickMenu(): void {
     crop.className = 'qm-btn qm-crop';
     crop.title = 'Кадрировать';
     crop.setAttribute('aria-label', 'Кадрировать');
-    crop.innerHTML = svg('<path d="M6 3v13a2 2 0 0 0 2 2h13M3 6h13a2 2 0 0 1 2 2v13"/>');
+    crop.innerHTML = ICONS.crop;
     crop.addEventListener('click', () => startCrop(image));
     qm.appendChild(crop);
   }
@@ -1927,7 +1873,7 @@ function updateQuickMenu(): void {
     linkBtn.className = 'qm-btn qm-link';
     linkBtn.title = 'Ссылка на выделенные объекты';
     linkBtn.setAttribute('aria-label', linkBtn.title);
-    linkBtn.innerHTML = svg('<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>');
+    linkBtn.innerHTML = ICONS.link;
     linkBtn.addEventListener('click', () => { void copyBoardLink('focus'); });
     qm.appendChild(linkBtn);
   }
@@ -1999,23 +1945,12 @@ const GRID_LABELS: Record<GridMode, string> = {
 /** Переключатель «Показать деления»: только для координатной плоскости, меняет фон страницы у всех участников. */
 function coordLabelsSwitch(): HTMLElement | null {
   if (state.board.grid !== 'coord') return null;
-  const label = document.createElement('label');
-  label.className = 'grid-switch';
-  const text = document.createElement('span');
-  text.textContent = 'Показать деления';
-  const input = document.createElement('input');
-  input.type = 'checkbox';
-  input.setAttribute('role', 'switch');
-  input.className = 'switch-input';
-  input.checked = state.board.coordLabels !== false;
-  input.addEventListener('change', () => {
-    setCoordLabels(input.checked);
-    void saveNow();
+  return createToggleSwitch({
+    className: 'grid-switch',
+    label: 'Показать деления',
+    checked: state.board.coordLabels !== false,
+    onChange: on => { setCoordLabels(on); void saveNow(); },
   });
-  const track = document.createElement('span');
-  track.className = 'switch-track';
-  label.append(text, input, track);
-  return label;
 }
 
 function gridButton(): HTMLElement {
@@ -2161,8 +2096,6 @@ function openSettings(): void {
   pop.style.top = `${br.bottom + 6}px`;
 }
 
-const PROFILE_ICON = svg('<circle cx="12" cy="8.5" r="3.5"/><path d="M5 20c.8-3.6 3.6-5.5 7-5.5s6.2 1.9 7 5.5"/>');
-
 /** Кнопка профиля в шапке домашнего экрана: мини-курсор и имя; открывает раздел «Профиль». */
 function profileButton(): HTMLButtonElement {
   const b = document.createElement('button');
@@ -2302,6 +2235,7 @@ function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
   span3.textContent = 'Привязка к сетке';
   lbl3.append(cb3, span3);
   pop.appendChild(lbl3);
+  pop.appendChild(smoothPanSwitch('grid-switch settings-switch', false));
   const lbl8 = document.createElement('label');
   lbl8.className = 'ctx-check';
   lbl8.title = macKeys('Изображения и страницы PDF не искажаются при изменении размера — Ctrl или Shift зажимать не нужно');
@@ -2394,7 +2328,7 @@ function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
   cb7.addEventListener('change', () => {
     setSettings({ hideUndoRedo: cb7.checked });
     persistSettings();
-    applyUndoRedoVisibility();
+    applyUndoRedoVisibility(true);
   });
   const span7 = document.createElement('span');
   span7.textContent = 'Скрыть кнопки отмены и повтора';
@@ -2421,6 +2355,18 @@ function settingCheck(key: BoolSetting, text: string, hint?: string, after?: () 
   span.textContent = text;
   lbl.append(cb, span);
   return lbl;
+}
+
+/** Переключатель «Плавное перемещение»: меняет и сразу сохраняет (в меню вида и в настройках доски). */
+function smoothPanSwitch(className: string, withIcon: boolean): HTMLElement {
+  return createToggleSwitch({
+    className,
+    label: 'Плавное движение',
+    icon: withIcon ? SMOOTH_PAN_ICON : undefined,
+    title: 'Небольшая инерция при перемещении по доске: после отпускания камера плавно останавливается',
+    checked: state.settings.smoothPan,
+    onChange: on => { setSettings({ smoothPan: on }); persistSettings(); },
+  });
 }
 
 function applyToolbarPos(): void {
@@ -2878,16 +2824,41 @@ function wireImageInput(): void {
 
 // ----- Камера -----
 
-export function fitContent(): void {
+/** Куда плавно едет камера сейчас (центр и масштаб): повторные «+»/«−» складываются, а не теряют шаги. */
+let viewGoal: { cx: number; cy: number; zoom: number } | null = null;
+
+/** Плавно перевести камеру: центр экрана — в мировую точку, масштаб — в zoom (без анимаций — сразу). */
+function glideView(cx: number, cy: number, zoom: number): void {
+  viewGoal = { cx, cy, zoom: clampZoom(zoom) };
+  animateCameraTo(cx, cy, viewGoal.zoom);
+}
+
+/** Плавный масштаб относительно центра холста: кнопки «+»/«−», пункты 50…800 %, «Другой масштаб». */
+function zoomCenterSmooth(zoom: number): void {
+  const r = canvas.getBoundingClientRect();
+  const goal = cameraAnimating() ? viewGoal : null;
+  const cam = state.camera;
+  glideView(goal?.cx ?? cam.x + r.width / 2 / cam.zoom, goal?.cy ?? cam.y + r.height / 2 / cam.zoom, zoom);
+}
+
+/** Масштаб, к которому идёт камера: текущий или конечный у идущего перелёта. */
+function zoomGoal(): number {
+  return cameraAnimating() && viewGoal ? viewGoal.zoom : state.camera.zoom;
+}
+
+/** «Показать всё»; smooth — плавный перелёт (по действию пользователя), иначе мгновенно (открытие страницы). */
+export function fitContent(smooth = false): void {
   const r = canvas.getBoundingClientRect();
   const els = state.board.elements;
   if (els.length === 0) {
+    if (smooth) { glideView(0, 0, 1); return; }
     state.camera = { x: -r.width / 2, y: -r.height / 2, zoom: 1 };
     update();
     return;
   }
   const bb = contentBBox(els);
   const zoom = Math.max(0.05, Math.min(1.5, Math.min(r.width / (bb.w + 160), r.height / (bb.h + 160))));
+  if (smooth) { glideView(bb.x0 + bb.w / 2, bb.y0 + bb.h / 2, zoom); return; }
   state.camera = {
     zoom,
     x: bb.x0 + bb.w / 2 - r.width / (2 * zoom),
@@ -3232,6 +3203,8 @@ function pagesKey(): string {
 
 /** Список страниц показан: кнопка приподнята над ним. */
 let pagesOpen = false;
+/** Последнее решение syncPagesLift: при закрытии списка сохраняется, чтобы угол опустился вместе с кнопкой. */
+let pagesLift = false;
 
 interface PageCard {
   el: HTMLElement;
@@ -3537,6 +3510,7 @@ function renderPages(): void {
     syncDraftMode();
     const tray = document.getElementById('pages-tray')!;
     document.getElementById('pages-dock')!.style.setProperty('--tray-h', `${tray.offsetHeight}px`);
+    syncPagesLift();
     if (pagesOpen && revealedPageId !== state.pageId) {
       revealedPageId = state.pageId;
       revealActivePage(true);
@@ -3580,12 +3554,37 @@ function revealActivePage(smooth: boolean): void {
   if (to !== scroll) list.scrollTo({ [vertical ? 'top' : 'left']: to, behavior: smooth ? 'smooth' : 'auto' });
 }
 
+/**
+ * Список страниц внизу не помещается в ширину рядом с правым нижним углом: «Масштаб и вид» и «Помощь»
+ * поднимаются вместе с кнопкой «Страницы» (класс pages-lift у body), и список занимает всю ширину.
+ * Решение не зависит от самого подъёма (ширина угла от него не меняется), поэтому не мигает.
+ */
+function syncPagesLift(): void {
+  if (pagesOpen) {
+    const dock = document.getElementById('pages-dock')!;
+    const list = document.getElementById('pages-list')!;
+    const last = list.lastElementChild as HTMLElement | null;
+    if (pagesAtTop() || !last) {
+      pagesLift = false;
+    } else {
+      // ширина содержимого списка (с полями 12px) минус его отрицательные поля; доступно — ширина холста без левого отступа и угла
+      const content = last.offsetLeft + last.offsetWidth + 12 - 24;
+      const wrapW = dock.parentElement!.clientWidth;
+      const bottombarW = document.getElementById('bottombar')!.offsetWidth;
+      pagesLift = content > wrapW - 36 - bottombarW;
+    }
+    document.documentElement.style.setProperty('--tray-h', `${document.getElementById('pages-tray')!.offsetHeight}px`);
+  }
+  document.body.classList.toggle('pages-lift', pagesOpen && pagesLift);
+}
+
 function setPagesOpen(open: boolean): void {
   if (pagesOpen === open) return;
   pagesOpen = open;
   renderPages();
   syncThumbViewport();
   document.getElementById('pages-dock')!.classList.toggle('open', open);
+  syncPagesLift();
   if (open) {
     revealedPageId = state.pageId;
     revealActivePage(false);
@@ -3609,6 +3608,8 @@ function wirePagesDock(): void {
     tray: document.getElementById('pages-tray')!,
     list: document.getElementById('pages-list')!,
     button: document.getElementById('btn-pages')!,
+    bottombar: document.getElementById('bottombar')!,
+    lifted: () => pagesLift,
     atTop: pagesAtTop,
     active: () => pageCards.get(state.pageId)?.el ?? null,
   });
@@ -4068,7 +4069,7 @@ function renderHome(): void {
   logo.type = 'button';
   logo.title = 'Вернуться к доске';
   logo.setAttribute('aria-label', 'Вернуться к доске');
-  logo.innerHTML = `<span class="home-logo-image"><img src="logo.svg" alt="" /></span><span class="home-logo-back" aria-hidden="true">${svg('<path d="M19 12H5M11 6l-6 6 6 6"/>')}</span>`;
+  logo.innerHTML = `<span class="home-logo-image"><img src="logo.svg" alt="" /></span><span class="home-logo-back" aria-hidden="true">${ICONS.homeBack}</span>`;
   logo.addEventListener('click', () => setView('board'));
   const h = document.createElement('h1');
   h.textContent = 'Проекты';
@@ -4704,7 +4705,7 @@ function makeVsep(): HTMLElement {
 
 function wireTopbar(): void {
   // подсказки шапки из index.html: на macOS — Cmd вместо Ctrl
-  for (const b of document.querySelectorAll<HTMLElement>('#topbar [title]')) b.title = macKeys(b.title);
+  for (const b of document.querySelectorAll<HTMLElement>('#topbar [title], #bottombar [title]')) b.title = macKeys(b.title);
   document.getElementById('btn-undo')!.innerHTML = ICONS.undo;
   document.getElementById('btn-redo')!.innerHTML = ICONS.redo;
   document.getElementById('btn-fit')!.innerHTML = ICONS.fit;
@@ -4713,7 +4714,8 @@ function wireTopbar(): void {
   document.getElementById('btn-import')!.innerHTML = ICONS.pdf;
   document.getElementById('btn-image')!.innerHTML = ICONS.image;
   document.getElementById('btn-settings')!.innerHTML = ICONS.settings;
-  document.getElementById('btn-share')!.innerHTML = svg('<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/>');
+  // иконка «Поделиться» — когда шапке не хватает места (см. topbar-fit.ts)
+  document.querySelector<HTMLElement>('#btn-share .share-icon')!.innerHTML = ICONS.share;
   document.getElementById('btn-share')!.addEventListener('click', () => { void openShareDialog(); });
   initChatButton();
   const iconBtn = document.getElementById('project-icon') as HTMLButtonElement;
@@ -4737,66 +4739,122 @@ function wireTopbar(): void {
   // окно демонстрации — второе окно браузера, в приложении для Android его не открыть
   if (isNativeApp()) document.getElementById('btn-present')!.style.display = 'none';
 
+  // меню экспорта создаётся ниже; до этого закрывать нечего
+  let closeExportMenu = (): void => {};
   const menuButton = document.getElementById('btn-home') as HTMLButtonElement;
   menuButton.title = 'Меню';
   menuButton.setAttribute('aria-label', 'Меню');
   menuButton.setAttribute('aria-expanded', 'false');
-  menuButton.innerHTML = `<span class="logo-mark"><img src="logo.svg" alt="Abax" /></span><span class="logo-menu-mark" aria-hidden="true">${svg('<path d="M4 7h16M4 12h16M4 17h16"/>')}</span>`;
+  menuButton.innerHTML = `<span class="logo-mark"><img src="logo.svg" alt="Abax" /></span><span class="logo-menu-mark" aria-hidden="true">${ICONS.menu}</span>`;
   const menu = document.createElement('div');
   menu.id = 'main-menu';
+  menu.className = 'popup-menu menu-list';
   menu.hidden = true;
   const menuIcon = (icon = '') => `<span class="main-menu-icon" aria-hidden="true">${icon}</span>`;
   const menuItem = (action: string, label: string, icon = '', extra = '') =>
     `<button data-action="${action}">${menuIcon(icon)}<span class="main-menu-text">${label}</span>${extra}</button>`;
   const section = (id: string, label: string, icon: string, content: string) =>
-    `<button class="main-menu-section" data-section="${id}" aria-expanded="false" aria-controls="menu-${id}">${menuIcon(icon)}<span class="main-menu-text">${label}</span><span class="main-menu-chevron" aria-hidden="true">›</span></button><div class="main-submenu" id="menu-${id}" hidden>${content}</div>`;
-  const checkItem = (action: string, label: string) =>
-    `<button data-action="${action}" role="menuitemcheckbox" aria-checked="false">${menuIcon()}<span class="main-menu-text">${label}</span><span class="main-menu-check" aria-hidden="true"></span></button>`;
+    `<button class="main-menu-section" data-section="${id}" aria-expanded="false" aria-controls="menu-${id}">${menuIcon(icon)}<span class="main-menu-text">${label}</span><span class="main-menu-chevron" aria-hidden="true">›</span></button><div class="main-submenu popup-menu menu-list" id="menu-${id}" hidden>${content}</div>`;
   menu.innerHTML = `${menuItem('home', 'Домой', ICONS.home)}<hr>
     ${section('import', 'Импорт', ICONS.pdf,
       menuItem('import', 'Импорт документа', ICONS.pdf) + menuItem('image', 'Вставить изображение', ICONS.image, `<kbd>${macKeys('Ctrl+V')}</kbd>`))}
     ${section('export', 'Экспорт', ICONS.export,
       menuItem('project', 'Скачать проект как файл', ICONS.export) + '<hr>' + menuItem('pdf', 'Экспорт в PDF', ICONS.pdf) + menuItem('png', 'Экспорт в PNG', ICONS.image)
-        + '<hr>' + menuItem('link-project', 'Ссылка на проект (просмотр)', svg('<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>')) + menuItem('link-page', 'Ссылка на текущую страницу', svg('<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>')))}<hr>
-    ${section('hide', 'Скрыть', svg('<path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M9.9 5.2A10 10 0 0 1 12 5c5 0 8.5 5 9 7a13 13 0 0 1-2.4 3.6M6.3 6.3A13 13 0 0 0 3 12c.5 2 4 7 9 7a10 10 0 0 0 4-.8"/>'),
-      checkItem('undo', 'Кнопки отмены и повтора') + checkItem('imports', 'Кнопки импорта'))}
-    ${menuItem('task', 'Добавить задание…', svg('<rect x="4" y="3.5" width="16" height="17" rx="2"/><path d="M8 8.5h8M8 12h8"/><path d="M8 16l1.8 1.8L13 14.5"/>'))}
+        + '<hr>' + menuItem('link-project', 'Ссылка на проект (просмотр)', ICONS.link) + menuItem('link-page', 'Ссылка на текущую страницу', ICONS.link))}<hr>
+    ${section('hide', 'Скрыть', ICONS.hideSection,
+      '')}
+    ${menuItem('task', 'Добавить задание…', ICONS.task)}
     ${menuItem('settings', 'Настройки', ICONS.settings)}<hr>
-    ${!doskaApi && !isNativeApp() ? menuItem('app', 'Открыть в приложении', svg('<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 17h6M12 6v7m-3-3 3 3 3-3"/>')) : ''}`;
+    ${!doskaApi && !isNativeApp() ? menuItem('app', 'Открыть в приложении', ICONS.openApp) : ''}`;
   document.body.append(menu);
+  // «Скрыть»: переключатели на пружинах (src/toggle-switch.ts), меню при щелчке не закрывается
+  const hideUndoSwitch = createToggleSwitch({
+    className: 'grid-switch main-switch',
+    label: 'Кнопки отмены и повтора',
+    icon: ICONS.undo,
+    checked: state.settings.hideUndoRedo,
+    onChange: on => { setSettings({ hideUndoRedo: on }); persistSettings(); applyUndoRedoVisibility(true); },
+  });
+  const hideImportsSwitch = createToggleSwitch({
+    className: 'grid-switch main-switch',
+    label: 'Кнопки импорта',
+    icon: ICONS.pdf,
+    checked: localStorage.getItem('abax.hideImports') === 'true',
+    onChange: on => {
+      localStorage.setItem('abax.hideImports', String(on));
+      setTopbarGroupHidden(document.querySelector<HTMLElement>('.import-group')!, on, hidden => document.body.classList.toggle('hide-import-buttons', hidden));
+    },
+  });
+  const hideExportSwitch = createToggleSwitch({
+    className: 'grid-switch main-switch',
+    label: 'Кнопка экспорта',
+    icon: ICONS.export,
+    checked: localStorage.getItem('abax.hideExport') === 'true',
+    onChange: on => {
+      localStorage.setItem('abax.hideExport', String(on));
+      if (on) closeExportMenu();
+      setTopbarGroupHidden(document.querySelector<HTMLElement>('.export-group')!, on, hidden => document.body.classList.toggle('hide-export-button', hidden));
+    },
+  });
+  const switchInput = (row: HTMLElement) => row.querySelector<HTMLInputElement>('input')!;
+  // data-action — на самом переключателе: по нему пункт находят тесты и проверяют доступность
+  switchInput(hideUndoSwitch).dataset.action = 'undo';
+  switchInput(hideImportsSwitch).dataset.action = 'imports';
+  switchInput(hideExportSwitch).dataset.action = 'hide-export';
+  menu.querySelector<HTMLElement>('#menu-hide')!.append(hideUndoSwitch, hideImportsSwitch, hideExportSwitch);
+  const submenus = () => [...menu.querySelectorAll<HTMLButtonElement>('[data-section]')]
+    .map(button => ({ button, panel: document.getElementById(button.getAttribute('aria-controls')!)! }));
+  /** Отметки «Скрыть» и недоступные пункты — по текущему состоянию шапки. */
+  const syncMenuChecks = () => {
+    // настройку могли поменять и в другом месте (окно настроек)
+    switchInput(hideUndoSwitch).checked = state.settings.hideUndoRedo;
+    switchInput(hideImportsSwitch).checked = localStorage.getItem('abax.hideImports') === 'true';
+    switchInput(hideExportSwitch).checked = localStorage.getItem('abax.hideExport') === 'true';
+    // элемент, которому в шапке не хватает места, показать нельзя: пункт недоступен
+    const { noRoom } = topbarFit();
+    for (const [row, step] of [[hideImportsSwitch, 'import'], [hideExportSwitch, 'export']] as const) {
+      const disabled = noRoom.has(step);
+      switchInput(row).disabled = disabled;
+      row.title = disabled ? 'Не хватает места в шапке' : '';
+    }
+  };
   const setMenuOpen = (open: boolean) => {
-    menu.hidden = !open;
-    if (!open) {
-      menu.querySelectorAll<HTMLButtonElement>('[data-section]').forEach(button => button.setAttribute('aria-expanded', 'false'));
-      menu.querySelectorAll<HTMLElement>('.main-submenu').forEach(submenu => { submenu.hidden = true; });
+    if (open) {
+      syncMenuChecks();
+      if (!menuShown(menu)) {
+        claimMenu('main', () => setMenuOpen(false));
+        openMenu(menu, { from: menuButton, items: () => [...menu.children].filter((c): c is HTMLElement => c instanceof HTMLElement && !c.classList.contains('main-submenu')) });
+      }
+    } else if (menuShown(menu)) {
+      // подменю прячутся сразу: меню втягивается в кнопку вместе с ними
+      for (const { button, panel } of submenus()) { button.setAttribute('aria-expanded', 'false'); closeMenu(panel, true); }
+      closeMenu(menu);
+      releaseMenu('main');
     }
     menuButton.setAttribute('aria-expanded', String(open));
     document.body.classList.toggle('main-menu-open', open);
-    menu.querySelector('[data-action="undo"]')!.setAttribute('aria-checked', String(state.settings.hideUndoRedo));
-    menu.querySelector('[data-action="imports"]')!.setAttribute('aria-checked', String(document.body.classList.contains('hide-import-buttons')));
   };
+  document.addEventListener('topbar-fit', () => { if (menuShown(menu)) syncMenuChecks(); });
   document.body.classList.toggle('hide-import-buttons', localStorage.getItem('abax.hideImports') === 'true');
-  menuButton.addEventListener('click', () => setMenuOpen(menu.hidden));
+  document.body.classList.toggle('hide-export-button', localStorage.getItem('abax.hideExport') === 'true');
+  menuButton.addEventListener('click', () => setMenuOpen(!menuShown(menu)));
   menu.addEventListener('click', e => {
     const target = e.target as HTMLElement;
     const sectionButton = target.closest<HTMLButtonElement>('button[data-section]');
     if (sectionButton) {
+      // подменю одно: открытое втягивается в свой пункт, новое выходит из нажатого
       const opening = sectionButton.getAttribute('aria-expanded') !== 'true';
-      menu.querySelectorAll<HTMLButtonElement>('[data-section]').forEach(button => {
+      for (const { button, panel } of submenus()) {
         const expanded = button === sectionButton && opening;
+        if (expanded === (button.getAttribute('aria-expanded') === 'true')) continue;
         button.setAttribute('aria-expanded', String(expanded));
-        const panel = document.getElementById(button.getAttribute('aria-controls')!);
-        if (panel) panel.hidden = !expanded;
-      });
+        if (expanded) openMenu(panel, { from: button });
+        else closeMenu(panel);
+      }
       return;
     }
     const action = target.closest<HTMLButtonElement>('button[data-action]')?.dataset.action;
     if (!action) return;
-    if (action === 'undo') { setSettings({ hideUndoRedo: !state.settings.hideUndoRedo }); persistSettings(); applyUndoRedoVisibility(); setMenuOpen(true); return; }
-    if (action === 'imports') {
-      const hidden = document.body.classList.toggle('hide-import-buttons');
-      localStorage.setItem('abax.hideImports', String(hidden)); setMenuOpen(true); return;
-    }
     setMenuOpen(false);
     if (action === 'home') void (async () => { await saveNow(); setView('home'); })();
     if (action === 'import') void importDocument();
@@ -4821,28 +4879,38 @@ function wireTopbar(): void {
       openDesktopApp();
     }
   });
-  document.addEventListener('pointerdown', e => { if (!menu.hidden && !menu.contains(e.target as Node) && !menuButton.contains(e.target as Node)) setMenuOpen(false); });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !menu.hidden) { setMenuOpen(false); menuButton.focus(); } });
+  document.addEventListener('pointerdown', e => { if (menuShown(menu) && !menu.contains(e.target as Node) && !menuButton.contains(e.target as Node)) setMenuOpen(false); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && menuShown(menu)) { setMenuOpen(false); menuButton.focus(); } });
   document.getElementById('btn-undo')!.addEventListener('click', () => undo());
   document.getElementById('btn-redo')!.addEventListener('click', () => redo());
-  document.getElementById('btn-fit')!.addEventListener('click', () => fitContent());
+  document.getElementById('btn-fit')!.addEventListener('click', () => fitContent(true));
   const exportButton = document.getElementById('btn-export')!;
   exportButton.title = 'Экспорт';
   exportButton.setAttribute('aria-expanded', 'false');
   const exportMenu = document.createElement('div');
   exportMenu.id = 'export-menu';
+  exportMenu.className = 'popup-menu menu-list';
   exportMenu.hidden = true;
   exportMenu.innerHTML = menu.querySelector<HTMLElement>('#menu-export')!.innerHTML;
   document.body.append(exportMenu);
-  const closeExportMenu = () => { exportMenu.hidden = true; exportButton.setAttribute('aria-expanded', 'false'); };
+  closeExportMenu = () => {
+    exportButton.setAttribute('aria-expanded', 'false');
+    if (!menuShown(exportMenu)) return;
+    closeMenu(exportMenu);
+    releaseMenu('export');
+  };
   exportButton.addEventListener('click', () => {
-    if (!exportMenu.hidden) { closeExportMenu(); return; }
-    setMenuOpen(false);
-    const group = exportButton.closest('.topbar-group')!;
-    const bounds = group.getBoundingClientRect();
-    exportMenu.hidden = false;
-    exportMenu.style.left = `${Math.max(8, bounds.right - exportMenu.offsetWidth)}px`;
-    exportMenu.style.top = `${bounds.bottom + 6}px`;
+    if (menuShown(exportMenu)) { closeExportMenu(); return; }
+    claimMenu('export', closeExportMenu);
+    openMenu(exportMenu, {
+      from: exportButton,
+      // под плашкой экспорта, по её левому краю
+      place: () => {
+        const bounds = exportButton.closest('.topbar-group')!.getBoundingClientRect();
+        exportMenu.style.left = `${Math.max(8, Math.min(bounds.left, window.innerWidth - exportMenu.offsetWidth - 8))}px`;
+        exportMenu.style.top = `${bounds.bottom + 6}px`;
+      },
+    });
     exportButton.setAttribute('aria-expanded', 'true');
   });
   exportMenu.addEventListener('click', e => {
@@ -4851,9 +4919,18 @@ function wireTopbar(): void {
     closeExportMenu();
     menu.querySelector<HTMLButtonElement>(`#menu-export [data-action="${action}"]`)?.click();
   });
-  document.addEventListener('pointerdown', e => { if (!exportMenu.hidden && !exportMenu.contains(e.target as Node) && !exportButton.contains(e.target as Node)) closeExportMenu(); });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !exportMenu.hidden) { closeExportMenu(); exportButton.focus(); } });
+  document.addEventListener('pointerdown', e => { if (menuShown(exportMenu) && !exportMenu.contains(e.target as Node) && !exportButton.contains(e.target as Node)) closeExportMenu(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && menuShown(exportMenu)) { closeExportMenu(); exportButton.focus(); } });
   document.getElementById('btn-present')!.addEventListener('click', togglePresent);
+  wireHelpMenu();
+  initTopbarFit();
+  // список страниц внизу не должен заходить под правый нижний угол
+  const bottombar = document.getElementById('bottombar')!;
+  new ResizeObserver(() => {
+    document.documentElement.style.setProperty('--bottombar-w', `${bottombar.offsetWidth}px`);
+    syncPagesLift();
+  }).observe(bottombar);
+  window.addEventListener('resize', syncPagesLift);
   document.getElementById('btn-import')!.addEventListener('click', () => { void importDocument(); });
   document.getElementById('btn-settings')!.addEventListener('click', () => {
     if (settingsPopover().hidden) openSettings();
@@ -4897,92 +4974,283 @@ function wireTopbar(): void {
   }, { capture: true });
 }
 
-// ----- Масштаб в шапке: клик — ввод точного значения -----
+// ----- «Помощь и советы»: кнопка в правом нижнем углу и F1 -----
 
+/** Меню помощи. Пока заготовка: пункты появятся позже, кнопка и F1 уже открывают и закрывают его. */
+function wireHelpMenu(): void {
+  const button = document.getElementById('btn-help') as HTMLButtonElement;
+  button.innerHTML = ICONS.help;
+  const menu = document.createElement('div');
+  menu.id = 'help-menu';
+  menu.className = 'popup-menu menu-list';
+  menu.setAttribute('role', 'menu');
+  menu.setAttribute('aria-label', 'Помощь и советы');
+  menu.hidden = true;
+  const title = document.createElement('div');
+  title.className = 'help-menu-title';
+  title.textContent = 'Помощь и советы';
+  const note = document.createElement('div');
+  note.className = 'help-menu-note';
+  note.textContent = 'Скоро здесь появятся справка и советы по работе с доской.';
+  menu.append(title, note);
+  document.body.append(menu);
+  const close = () => {
+    button.setAttribute('aria-expanded', 'false');
+    if (!menuShown(menu)) return;
+    closeMenu(menu);
+    releaseMenu('help');
+  };
+  const open = () => {
+    claimMenu('help', close);
+    openMenu(menu, {
+      from: button,
+      reverse: true,
+      // над плашкой помощи, по её правому краю
+      place: () => {
+        const r = button.closest('.topbar-group')!.getBoundingClientRect();
+        menu.style.left = `${Math.max(8, r.right - menu.offsetWidth)}px`;
+        menu.style.bottom = `${window.innerHeight - r.top + 6}px`;
+      },
+    });
+    button.setAttribute('aria-expanded', 'true');
+  };
+  const toggle = () => { if (menuShown(menu)) close(); else open(); };
+  button.addEventListener('click', toggle);
+  document.addEventListener('pointerdown', e => { if (menuShown(menu) && !menu.contains(e.target as Node) && !button.contains(e.target as Node)) close(); });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && menuShown(menu)) { close(); button.focus(); return; }
+    // F1 — и на доске, и в полях ввода; браузер свою справку не открывает
+    if (e.code === 'F1' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && state.view === 'board' && !settingsDialogOpen()) {
+      e.preventDefault();
+      if (!e.repeat) toggle();
+    }
+  });
+}
+
+// ----- «Масштаб и вид»: меню над группой в правом нижнем углу -----
+
+/** Цвета фона страницы в подменю «Фон страницы». */
+const PAGE_BACKGROUNDS: readonly [string, string][] = [
+  ['Белый', '#ffffff'], ['Светло-серый', '#f1f1f1'], ['Серый', '#aaaaaa'], ['Тёмно-серый', '#444444'], ['Чёрный', '#000000'],
+  ['Голубой', '#e7f7ff'], ['Сиреневый', '#eeeaff'], ['Розовый', '#fdebef'], ['Жёлтый', '#fff8db'], ['Зелёный', '#edf8e5'],
+];
+type ViewLevel = 'root' | 'grid' | 'background';
+
+/**
+ * Меню «Масштаб и вид»: всегда шириной с группу масштаба и выходит из всей группы (src/menu-motion.ts).
+ * «Тип сетки» и «Фон страницы» открываются внутри того же меню: заголовок со стрелкой «назад» и пункты подменю.
+ */
 function wireZoomInput(): void {
   const label = document.getElementById('zoom-label')!;
+  initZoomChevron(label, label.querySelector<HTMLElement>('.zoom-chevron')!);
+  const group = document.querySelector<HTMLElement>('.view-group')!;
+  const gridTrigger = document.getElementById('view-grid-icon')!;
   const menu = document.createElement('div');
-  menu.id = 'view-menu'; menu.hidden = true;
+  menu.id = 'view-menu';
+  menu.className = 'popup-menu menu-list';
+  menu.hidden = true;
   document.body.append(menu);
-  const close = () => { menu.hidden = true; label.setAttribute('aria-expanded', 'false'); };
-  const render = () => {
-    const zoomIcon = svg('<circle cx="10" cy="10" r="6"/><path d="M14.5 14.5L21 21M10 7v6M7 10h6"/>');
-    const row = (action: string, icon: string, label: string, arrow = '') => `<button ${action}><span class="view-icon">${icon}</span><span class="view-text">${label}</span>${arrow}</button>`;
-    // в режиме просмотра по ссылке тип сетки и фон страницы не меняются: пункты не показываем
+  let level: ViewLevel = 'root';
+  let page: HTMLElement | null = null;
+
+  const row = (attrs: string, icon: string, text: string, sub = false) =>
+    `<button ${attrs}><span class="view-icon">${icon}</span><span class="view-text">${text}</span>${sub ? '<span class="view-arrow" aria-hidden="true">›</span>' : ''}</button>`;
+  const makePage = (lvl: ViewLevel, html: string): HTMLElement => {
+    const p = document.createElement('div');
+    p.className = 'view-page';
+    p.dataset.level = lvl;
+    p.innerHTML = html;
+    return p;
+  };
+  const subTitle = (lvl: 'grid' | 'background') => (lvl === 'grid' ? 'Тип сетки' : 'Фон страницы');
+  const subIcon = (lvl: 'grid' | 'background') => (lvl === 'grid' ? GRID_ICONS.square : BACKGROUND_ICON);
+  const rootPage = (): HTMLElement => {
+    // в режиме просмотра по ссылке тип сетки и фон страницы не меняются: пунктов нет
     const viewOnly = state.linkMode !== null;
-    const gridRows = viewOnly ? '' : `${row('data-view="grid"', GRID_ICONS.square, 'Тип сетки', '›')}<div id="view-grid-options" hidden></div>
-      ${row('data-view="background"', svg('<path d="M12 3C9.5 6.4 5 10 5 14a7 7 0 0 0 14 0c0-4-4.5-7.6-7-11z"/><path d="M12 3v18a7 7 0 0 0 7-7c0-4-4.5-7.6-7-11z" fill="currentColor" stroke="none"/>'), 'Фон страницы', '›')}<div id="view-color-options" hidden></div>`;
-    menu.innerHTML = `${row('data-view="fullscreen"', svg('<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/>'), 'Полный экран')}<hr>
-      ${gridRows}
+    const subRows = viewOnly ? '' : row('data-view="grid"', subIcon('grid'), subTitle('grid'), true) + row('data-view="background"', subIcon('background'), subTitle('background'), true);
+    const p = makePage('root', `${row('data-view="fullscreen"', (document.fullscreenElement ? ICONS.fullscreenExit : ICONS.fullscreenEnter), 'Полный экран')}
       ${row('data-view="fit"', ICONS.fit, 'Показать всё')}<hr>
-      ${[50, 70, 100, 200, 400, 800].map(n => row(`data-zoom="${n}"`, zoomIcon, `${n}%`)).join('')}
-      ${row('data-view="custom"', zoomIcon, 'Другой масштаб…')}`;
-    const options = menu.querySelector<HTMLElement>('#view-grid-options');
-    if (options) {
+      ${subRows}${viewOnly ? '' : '<hr>'}
+      <div class="view-zoom-scroll"><div class="view-zoom-pills">${[50, 70, 100, 200, 400, 800].map(n => `<button data-zoom="${n}">${n}%</button>`).join('')}<button data-view="custom">Другой…</button></div><div class="view-zoom-thumb" hidden></div></div>`);
+    // колесо мыши прокручивает ряд по горизонтали
+    const pills = p.querySelector<HTMLElement>('.view-zoom-pills')!;
+    pills.addEventListener('wheel', e => {
+      if (e.deltaY === 0 || pills.scrollWidth <= pills.clientWidth) return;
+      e.preventDefault(); pills.scrollLeft += e.deltaY;
+    }, { passive: false });
+    // полоса прокрутки — собственная, поверх pills (без своего контейнера); плавно появляется при прокрутке и наведении
+    const box = pills.parentElement!;
+    const thumb = box.querySelector<HTMLElement>('.view-zoom-thumb')!;
+    let hideTimer = 0;
+    const syncThumb = () => {
+      const { scrollWidth, clientWidth, scrollLeft } = pills;
+      if (scrollWidth <= clientWidth + 1) { thumb.hidden = true; return; }
+      thumb.hidden = false;
+      const w = Math.max(24, clientWidth * clientWidth / scrollWidth);
+      thumb.style.width = `${w}px`;
+      thumb.style.transform = `translateX(${scrollLeft / (scrollWidth - clientWidth) * (clientWidth - w)}px)`;
+    };
+    const flash = () => {
+      syncThumb();
+      box.classList.add('scrolling');
+      window.clearTimeout(hideTimer);
+      hideTimer = window.setTimeout(() => box.classList.remove('scrolling'), 900);
+    };
+    pills.addEventListener('scroll', flash);
+    box.addEventListener('pointerenter', syncThumb);
+    new ResizeObserver(syncThumb).observe(pills);
+    thumb.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      thumb.setPointerCapture(e.pointerId);
+      box.classList.add('dragging');
+      const startX = e.clientX, startLeft = pills.scrollLeft;
+      const ratio = (pills.scrollWidth - pills.clientWidth) / Math.max(1, pills.clientWidth - thumb.offsetWidth);
+      const move = (ev: PointerEvent) => { pills.scrollLeft = startLeft + (ev.clientX - startX) * ratio; };
+      const up = () => { box.classList.remove('dragging'); thumb.removeEventListener('pointermove', move); thumb.removeEventListener('pointerup', up); thumb.removeEventListener('pointercancel', up); };
+      thumb.addEventListener('pointermove', move); thumb.addEventListener('pointerup', up); thumb.addEventListener('pointercancel', up);
+    });
+    // «Привязка к сетке» — та же настройка, что во всплывающем меню настроек (в просмотре по ссылке пункта нет)
+    const snapSwitch = createToggleSwitch({
+      className: 'grid-switch view-switch',
+      label: 'Привязка к сетке',
+      icon: SNAP_ICON,
+      title: 'Точки, фигуры и рамки при перемещении встают на узлы сетки',
+      checked: state.settings.snapToGrid,
+      onChange: on => { setSettings({ snapToGrid: on }); persistSettings(); },
+    });
+    p.querySelector('[data-view="background"]')?.after(snapSwitch, smoothPanSwitch('grid-switch view-switch', true));
+    return p;
+  };
+  const check = (on: boolean) => (on ? '<span class="view-check" aria-hidden="true">✓</span>' : '');
+  const subPage = (lvl: 'grid' | 'background'): HTMLElement => {
+    // заголовок — тот же пункт, что в меню (иконка, название, стрелка), поверх — стрелка «назад»
+    const p = makePage(lvl, `<button class="view-back" data-view="back" aria-label="Назад"><span class="view-icon"><span class="vb-arrow">${BACK_ARROW_ICON}</span><span class="vb-ghost">${subIcon(lvl)}</span></span><span class="view-text">${subTitle(lvl)}</span><span class="view-arrow vb-ghost" aria-hidden="true">›</span></button><hr>`);
+    if (lvl === 'grid') {
+      const labels = state.board.coordLabels !== false;
       for (const g of Object.keys(GRID_LABELS) as GridMode[]) {
-        const b = document.createElement('button'); b.innerHTML = `${gridIcon(g, state.board.coordLabels !== false)}<span>${GRID_LABELS[g]}</span>${g === state.board.grid ? '✓' : ''}`;
-        b.addEventListener('click', () => { setGrid(g); void saveNow(); close(); }); options.append(b);
+        const b = document.createElement('button');
+        b.dataset.grid = g;
+        b.innerHTML = `<span class="view-icon">${gridIcon(g, labels)}</span>`;
+        const text = document.createElement('span');
+        text.className = 'view-text';
+        text.textContent = GRID_LABELS[g];
+        b.append(text);
+        b.insertAdjacentHTML('beforeend', check(g === state.board.grid));
+        p.append(b);
       }
       const coordSwitch = coordLabelsSwitch();
-      if (coordSwitch) options.append(coordSwitch);
+      if (coordSwitch) p.append(coordSwitch);
+    } else {
+      const current = state.board.backgroundColor ?? '#ffffff';
+      for (const [name, color] of PAGE_BACKGROUNDS) {
+        const b = document.createElement('button');
+        b.dataset.bg = color;
+        const icon = document.createElement('span');
+        icon.className = 'view-icon';
+        const swatch = document.createElement('span');
+        swatch.className = 'view-swatch';
+        swatch.style.background = color;
+        icon.append(swatch);
+        const text = document.createElement('span');
+        text.className = 'view-text';
+        text.textContent = name;
+        b.append(icon, text);
+        b.insertAdjacentHTML('beforeend', check(color === current));
+        p.append(b);
+      }
     }
+    return p;
   };
-  const group = document.querySelector<HTMLElement>('.view-group')!;
+  const pageFor = (lvl: ViewLevel) => (lvl === 'root' ? rootPage() : subPage(lvl));
+
   const positionMenu = () => {
+    // группа в правом нижнем углу: меню раскрывается вверх и всегда шириной с группу
     const r = group.getBoundingClientRect();
+    menu.style.width = `${r.width}px`;
     menu.style.left = `${r.left}px`; menu.style.right = 'auto';
-    menu.style.width = `${r.width}px`; menu.style.top = `${r.bottom + 6}px`;
+    menu.style.top = 'auto'; menu.style.bottom = `${window.innerHeight - r.top + 6}px`;
   };
+  const close = () => {
+    label.setAttribute('aria-expanded', 'false');
+    if (!menuShown(menu)) return;
+    closeMenu(menu);
+    releaseMenu('view');
+  };
+  const open = (lvl: ViewLevel) => {
+    level = lvl;
+    page = pageFor(lvl);
+    menu.replaceChildren(page);
+    claimMenu('view', close);
+    openMenu(menu, {
+      from: group,
+      whole: true,
+      reverse: true,
+      place: positionMenu,
+      items: () => (page ? [...page.children].filter((c): c is HTMLElement => c instanceof HTMLElement) : []),
+      onSettled: () => { if (menuShown(menu)) positionMenu(); },
+    });
+    label.setAttribute('aria-expanded', 'true');
+  };
+  /** Переход внутри открытого меню: в подменю, назад или из одного подменю в другое. */
+  const go = (target: ViewLevel) => {
+    if (!page || target === level) return;
+    const from = page;
+    const to = pageFor(target);
+    const focused = menu.contains(document.activeElement);
+    if (level === 'root') {
+      drillMenu(menu, from, to, { dir: 'in', row: from.querySelector<HTMLElement>(`[data-view="${target}"]`) ?? undefined, head: to.querySelector<HTMLElement>('.view-back') ?? undefined, bottom: true });
+    } else if (target === 'root') {
+      drillMenu(menu, from, to, { dir: 'out', row: to.querySelector<HTMLElement>(`[data-view="${level}"]`) ?? undefined, head: from.querySelector<HTMLElement>('.view-back') ?? undefined, bottom: true });
+    } else {
+      drillMenu(menu, from, to, { dir: 'swap', bottom: true });
+    }
+    const back = level;
+    level = target;
+    page = to;
+    // с клавиатуры фокус переходит на заголовок подменю, а после «назад» — на пункт, из которого пришли
+    if (focused) (target === 'root' ? to.querySelector<HTMLElement>(`[data-view="${back}"]`) : to.querySelector<HTMLElement>('.view-back'))?.focus();
+  };
+
   for (const [id, factor, icon] of [
-    ['zoom-out', 1 / 1.25, '<path d="M5 12h14"/>'],
-    ['zoom-in', 1.25, '<path d="M5 12h14M12 5v14"/>'],
+    ['zoom-out', 1 / 1.25, ICONS.zoomOut],
+    ['zoom-in', 1.25, ICONS.zoomIn],
   ] as const) {
     const button = document.getElementById(id)!;
-    button.innerHTML = svg(icon);
+    button.innerHTML = icon;
     button.addEventListener('click', () => {
-      const r = canvas.getBoundingClientRect();
-      zoomAtPoint(state.camera.zoom * factor, r.width / 2, r.height / 2);
+      zoomCenterSmooth(zoomGoal() * factor);
     });
   }
-  const gridTrigger = document.getElementById('view-grid-icon')!;
   gridTrigger.addEventListener('click', () => {
     if (state.linkMode !== null) return; // в режиме просмотра по ссылке сетку не меняют
-    if (!menu.hidden && !menu.querySelector('#view-grid-options')) { close(); return; }
-    render(); menu.hidden = false; label.setAttribute('aria-expanded', 'true');
-    positionMenu();
-    const options = menu.querySelector<HTMLElement>('#view-grid-options')!;
-    options.hidden = false;
-    menu.replaceChildren(...Array.from(options.children));
+    if (!menuShown(menu)) open('grid');
+    else if (level === 'grid') close();
+    else go('grid');
   });
   label.addEventListener('click', () => {
-    if (!menu.hidden) { close(); return; }
-    render(); menu.hidden = false; label.setAttribute('aria-expanded', 'true');
-    positionMenu();
+    if (menuShown(menu)) close();
+    else open('root');
   });
   menu.addEventListener('click', e => {
-    const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button'); if (!b) return;
-    if (b.dataset.view === 'background') {
-      const options = menu.querySelector<HTMLElement>('#view-color-options')!;
-      const opening = options.hidden;
-      menu.querySelector<HTMLElement>('#view-grid-options')!.hidden = true;
-      options.hidden = !opening;
-      options.innerHTML = '';
-      for (const [name, color] of [['Белый','#ffffff'], ['Светло-серый','#f1f1f1'], ['Серый','#aaaaaa'], ['Тёмно-серый','#444444'], ['Чёрный','#000000'], ['Голубой','#e7f7ff'], ['Сиреневый','#eeeaff'], ['Розовый','#fdebef'], ['Жёлтый','#fff8db'], ['Зелёный','#edf8e5']]) {
-        const item = document.createElement('button'); const swatch = document.createElement('span'); swatch.className = 'view-swatch'; swatch.style.background = color;
-        item.append(swatch, document.createTextNode(name), document.createTextNode((state.board.backgroundColor ?? '#ffffff') === color ? ' ✓' : ''));
-        item.addEventListener('click', event => { event.stopPropagation(); state.board.backgroundColor = color; state.board.elements = [...state.board.elements]; update(true); void saveNow(); close(); }); options.append(item);
-      }
-      return;
+    const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button'); if (!b || !menuShown(menu)) return;
+    const view = b.dataset.view;
+    if (view === 'grid' || view === 'background') { go(view); return; }
+    if (view === 'back') { go('root'); return; }
+    if (b.dataset.grid) { setGrid(b.dataset.grid as GridMode); void saveNow(); close(); return; }
+    if (b.dataset.bg) {
+      state.board.backgroundColor = b.dataset.bg; state.board.elements = [...state.board.elements]; update(true); void saveNow(); close(); return;
     }
-    if (b.dataset.view === 'grid') { const options = menu.querySelector<HTMLElement>('#view-grid-options')!; const opening = options.hidden; menu.querySelector<HTMLElement>('#view-color-options')!.hidden = true; options.hidden = !opening; return; }
-    if (b.dataset.view === 'fullscreen') { if (document.fullscreenElement) void document.exitFullscreen(); else void document.documentElement.requestFullscreen(); }
-    if (b.dataset.view === 'fit') fitContent();
-    if (b.dataset.zoom) { const r = canvas.getBoundingClientRect(); zoomAtPoint(Number(b.dataset.zoom) / 100, r.width / 2, r.height / 2); }
-    if (b.dataset.view === 'custom') { close(); openZoomInput(label); return; }
+    if (view === 'fullscreen') { if (document.fullscreenElement) void document.exitFullscreen(); else void document.documentElement.requestFullscreen(); }
+    if (view === 'fit') fitContent(true);
+    if (b.dataset.zoom) zoomCenterSmooth(Number(b.dataset.zoom) / 100);
+    if (view === 'custom') { close(); openZoomInput(label); return; }
     close();
   });
-  document.addEventListener('pointerdown', e => { if (!menu.hidden && !menu.contains(e.target as Node) && !label.contains(e.target as Node) && !gridTrigger.contains(e.target as Node)) close(); });
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !menu.hidden) { close(); label.focus(); } });
+  // ширина группы меняется (число масштаба, узкое окно) — меню вместе с ней
+  new ResizeObserver(() => { if (menuShown(menu)) positionMenu(); }).observe(group);
+  window.addEventListener('resize', () => { if (menuShown(menu)) positionMenu(); });
+  document.addEventListener('pointerdown', e => { if (menuShown(menu) && !menu.contains(e.target as Node) && !label.contains(e.target as Node) && !gridTrigger.contains(e.target as Node)) close(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && menuShown(menu)) { close(); label.focus(); } });
 }
 
 /** Поле вместо подписи масштаба: Enter применяет (ошибку объясняет подсказка), Esc и уход из поля с ошибкой — отмена. */
@@ -5027,8 +5295,7 @@ function openZoomInput(label: HTMLElement): void {
     label.hidden = false;
     if (zoom === null) return;
     // относительно центра холста, как кнопки + и −
-    const r = canvas.getBoundingClientRect();
-    zoomAtPoint(zoom, r.width / 2, r.height / 2);
+    zoomCenterSmooth(zoom);
   };
   input.addEventListener('input', () => check(false));
   input.addEventListener('keydown', e => {
@@ -5170,7 +5437,7 @@ function refresh(): void {
   (document.getElementById('btn-redo') as HTMLButtonElement).disabled = !canRedo();
   // режим просмотра (ссылка или гость без права правки): группа отмены скрывается целиком, а не остаётся пустой плашкой
   document.querySelector<HTMLElement>('.undo-group')!.style.display = canEditBoard() ? '' : 'none';
-  document.getElementById('zoom-label')!.textContent = `${Math.round(state.camera.zoom * 100)}%`;
+  setZoomCounter(document.getElementById('zoom-value')!, Math.round(state.camera.zoom * 100));
   renderGridButton();
   const nameInput = document.getElementById('page-name') as HTMLInputElement;
   if (document.activeElement !== nameInput && nameInput.value !== state.board.name) {

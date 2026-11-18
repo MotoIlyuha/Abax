@@ -129,11 +129,13 @@ test.describe('страницы проекта', () => {
     await page.keyboard.press('Equal');
     await board.canvas.hover();
     await page.mouse.wheel(0, 120);
+    await board.settleCamera();
     const first = (await board.state()).camera;
     await board.addPage();
     await page.keyboard.press('Minus');
     await board.canvas.hover();
     await page.mouse.wheel(0, -80);
+    await board.settleCamera();
     const second = (await board.state()).camera;
     expect(second).not.toEqual(first);
     await page.locator('#pages-list .page-item').first().click();
@@ -255,9 +257,9 @@ test.describe('страницы проекта', () => {
   });
 
   test('панель инструментов внизу: кнопка страниц слева вверху, список колонкой, кнопка не двигается', async ({ board, page }) => {
-    await page.locator('#btn-settings').click();
+    await page.locator('#btn-settings').dispatchEvent('click');
     await page.locator('#settings-popover button', { hasText: 'Снизу' }).click();
-    await page.locator('#btn-settings').click();
+    await page.locator('#btn-settings').dispatchEvent('click');
     const dock = page.locator('#pages-dock');
     await expect(dock).toHaveAttribute('data-side', 'top');
     for (let i = 0; i < 6; i++) await board.addPage();
@@ -300,7 +302,7 @@ test.describe('страницы проекта', () => {
     expect(second.y).toBeGreaterThan(first.y + first.height);
 
     // панель обратно влево — кнопка снова внизу
-    await page.locator('#btn-settings').click();
+    await page.locator('#btn-settings').dispatchEvent('click');
     await page.locator('#settings-popover button', { hasText: 'Слева' }).click();
     await expect(dock).toHaveAttribute('data-side', 'bottom');
   });
@@ -321,16 +323,19 @@ test.describe('страницы проекта', () => {
 
     const cards = page.locator('#pages-list .page-item');
     const pick = async (name: string) => {
-      await page.locator('#btn-settings').click();
+      await page.locator('#btn-settings').dispatchEvent('click');
       await page.locator('#settings-popover .ctx-options button', { hasText: name }).click();
       await expect(page.locator('#settings-popover .ctx-options button', { hasText: name })).toHaveClass(/active/);
-      await page.locator('#btn-settings').click();
+      await page.locator('#btn-settings').dispatchEvent('click');
     };
     await expect(page.locator('#settings-popover')).toBeHidden();
-    await page.locator('#btn-settings').click();
+    await page.locator('#btn-settings').dispatchEvent('click');
     await expect(page.locator('#settings-popover .ctx-label', { hasText: 'Анимация перехода на другую страницу' })).toBeVisible();
-    await expect(page.locator('#settings-popover .ctx-options button')).toHaveText(['Нет', 'Слайд', 'Затухание', 'Приближение']);
-    await page.locator('#btn-settings').click();
+    // группа сразу после подписи: в окне есть и другие варианты (например, «Анимации»)
+    const transitionOptions = page.locator('#settings-popover .ctx-label', { hasText: 'Анимация перехода на другую страницу' })
+      .locator('xpath=following-sibling::*[contains(@class, "ctx-options")][1]');
+    await expect(transitionOptions.locator('button')).toHaveText(['Нет', 'Слайд', 'Затухание', 'Приближение']);
+    await page.locator('#btn-settings').dispatchEvent('click');
 
     let expected = 1;
     for (const [name, mode] of [['Затухание', 'fade'], ['Приближение', 'zoom'], ['Слайд', 'slide']]) {

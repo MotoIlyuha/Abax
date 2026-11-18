@@ -6,7 +6,8 @@ import type { BoardSettings, PageKeyMod } from './types';
 import type { SectionView } from './settings-dialog';
 import { state } from './state';
 import { isNativeApp } from './native';
-import { TOOL_DEFS, toolbarConfig, svg } from './toolbar';
+import { TOOL_DEFS, toolbarConfig } from './toolbar';
+import { MOUSE_ACTION_ICONS } from './icons';
 import {
   DEFAULT_NEW_PAGE_KEY, FIXED_SHORTCUTS, codeLabel, comboFromEvent, comboLabel, currentKeyEnv, macKeys, modLabel,
   newPageKeyProblem, newPageKeyWarning, pageKeyWarning,
@@ -64,17 +65,7 @@ function warning(text: string): HTMLElement {
 
 function mouseActionIcon(action: string): string | undefined {
   if (action.startsWith('tool:')) return TOOL_DEFS.find(def => def.id === action.slice(5))?.icon;
-  const paths: Record<string, string> = {
-    'key:Ctrl+KeyZ': '<path d="M4 10h9a5 5 0 0 1 0 10h-3"/><path d="M8 6l-4 4 4 4"/>',
-    'key:Ctrl+KeyY': '<path d="M20 10h-9a5 5 0 0 0 0 10h3"/><path d="M16 6l4 4-4 4"/>',
-    'page:previous': '<path d="M15 18l-6-6 6-6"/>',
-    'page:next': '<path d="M9 18l6-6-6-6"/>',
-    'key:Ctrl+KeyD': '<rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/>',
-    'key:Ctrl+Shift+KeyC': '<rect x="3" y="3" width="14" height="14" rx="2"/><path d="m5 14 4-4 3 3 2-2 3 3M14 7h.01M7 21h12a2 2 0 0 0 2-2V7"/>',
-    'key:Ctrl+KeyG': '<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/><path d="M11 11l2 2"/>',
-    'key:Delete': '<path d="M4 7h16M10 3h4M6 7l1 14h10l1-14M10 11v6M14 11v6"/>',
-  };
-  return paths[action] ? svg(paths[action]) : undefined;
+  return MOUSE_ACTION_ICONS[action];
 }
 
 export function renderHotkeysSettings(host: HTMLElement, opts: HotkeysOptions): SectionView {

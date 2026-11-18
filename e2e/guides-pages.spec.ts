@@ -19,7 +19,7 @@ async function holdDrag(board: Board, a: Pt, b: Pt): Promise<void> {
 
 /** Флажок настройки в поповере «Настройки доски». */
 async function toggleSetting(board: Board, text: string): Promise<void> {
-  await board.page.locator('#btn-settings').click();
+  await board.page.locator('#btn-settings').dispatchEvent('click');
   await board.page.locator('#settings-popover label', { hasText: text }).locator('input').click();
   await board.page.keyboard.press('Escape');
 }

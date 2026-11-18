@@ -68,6 +68,16 @@ export function setUserPlan(plan: PlanTier): void {
   try { localStorage.setItem(PLAN_KEY, plan); } catch { /* хранилище недоступно */ }
 }
 
+/**
+ * Тариф, на который переключает клавиша режима разработки: «−» (в том числе на цифровом блоке) — Free,
+ * «+» — Pro. Смотрим на KeyboardEvent.code и не учитываем Shift: «+» на обычной раскладке — это Shift+«=».
+ */
+export function devPlanForCode(code: string): PlanTier | null {
+  if (code === 'Minus' || code === 'NumpadSubtract') return 'free';
+  if (code === 'Equal' || code === 'NumpadAdd') return 'pro';
+  return null;
+}
+
 /** Лимиты тарифа действуют (иначе доска ведёт себя как раньше — без ограничений). */
 export function limitsEnforced(): boolean {
   try {

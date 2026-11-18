@@ -10,6 +10,7 @@ import { getParticipantInitials, pageAvatars } from './presence';
 import { showPill } from './activity-pills';
 import { PLAN_LIMITS } from './limits';
 import { limitsEnforced, userPlan } from './plan';
+import { FOLLOW_ICON, SUMMON_ICON } from './icons';
 
 // Присутствие участников (SPEC_NIGHT5 §8): краевые курсоры у границы экрана, аватары в шапке и у страниц,
 // кнопки автора «Позвать всех сюда» и «Автопереход участников за мной». Имена и цвета приходят от других
@@ -158,7 +159,7 @@ export function safeInsets(wrap: DOMRect, obstacles: readonly DOMRect[], pad = E
 
 function obstacleRects(): DOMRect[] {
   const out: DOMRect[] = [];
-  for (const sel of ['#topbar', '#toolbar', '#btn-pages', '#pages-dock.open #pages-tray', '#activity-pills']) {
+  for (const sel of ['#topbar', '#bottombar', '#toolbar', '#btn-pages', '#pages-dock.open #pages-tray', '#activity-pills']) {
     const n = document.querySelector<HTMLElement>(sel);
     if (n && !n.hidden) out.push(n.getBoundingClientRect());
   }
@@ -243,9 +244,6 @@ export function renderEdgePointers(): void {
 }
 
 // ----- Кнопки автора -----
-
-const SUMMON_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M16 11h6M19 8l3 3-3 3"/></svg>';
-const FOLLOW_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4l7 17 2.5-7.5L21 11z"/><path d="M15 15l5 5"/></svg>';
 
 /** Тумблер автоперехода заблокирован тарифом (Free при включённых лимитах). */
 export function followLocked(): boolean {

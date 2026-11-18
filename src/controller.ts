@@ -19,7 +19,7 @@ import { myCursorId, onProfileChange } from './profile';
 import { fxForget, fxMove } from './cursor-fx';
 import { settingsDialogOpen } from './settings-dialog';
 import { presenting, requestRender, renderScene } from './renderer';
-import { animateCameraTo, cancelCameraAnim } from './camera-anim';
+import { animateCameraTo, cancelCameraAnim, clampZoom, motionReduced } from './camera-anim';
 import { cancelActiveInteraction, onCancelInteraction } from './interaction';
 
 /** Плавный перелёт камеры к мировой точке (SPEC_NIGHT5 §8); прерывается жестом пользователя. */
@@ -32,7 +32,10 @@ import {
   saveNow, selectedTextShape, switchToPage, switchPageForDrag, toggleTextFlag, togglePages,
 } from './app';
 import { DRAFT_KEY, comboFromEvent, pageNumberFromEvent } from './hotkeys';
-import { ERASER_PATHS, ERASER_TIP, TOOL_DEFS, toolByKey } from './toolbar';
+import { devModeEnabled, devPlanForCode, limitsEnforced, setLimitsEnforced, setUserPlan } from './plan';
+import { showToast } from './about';
+import { ERASER_PATHS, ERASER_TIP } from './icons';
+import { TOOL_DEFS, toolByKey } from './toolbar';
 import {
   arrowDirection, arrowStep, isArrowKey, NUDGE_FAST, NUDGE_HOLD_MS, NUDGE_SPEED, NUDGE_STEP, NUDGE_STEP_FAST,
 } from './nudge';
@@ -294,8 +297,90 @@ export function initController(canvas: HTMLCanvasElement): void {
     state.liveEdit = orig.size === state.selection.size;
   }
 
+  /** Плавный масштаб: событие колеса сдвигает цель, кадры подтягивают к ней текущий масштаб вокруг курсора. */
+  const ZOOM_SMOOTH_TAU_MS = 90;
+  let zoomGlide: { target: number; sx: number; sy: number; last: number; raf: number; set: number } | null = null;
+
+  function stopZoomGlide(): void {
+    if (!zoomGlide) return;
+    cancelAnimationFrame(zoomGlide.raf);
+    zoomGlide = null;
+  }
+
+  function zoomGlideTick(t: number): void {
+    const g = zoomGlide;
+    if (!g) return;
+    // камеру изменили не мы (перетаскивание, перелёт, ввод масштаба) — цель устарела
+    if (Math.abs(state.camera.zoom - g.set) > 1e-9) { zoomGlide = null; return; }
+    const dt = Math.min(Math.max(t - g.last, 0), 50);
+    g.last = t;
+    const cur = state.camera.zoom;
+    const k = 1 - Math.exp(-dt / ZOOM_SMOOTH_TAU_MS);
+    // интерполяция по логарифму: одинаковая скорость приближения и удаления
+    let next = Math.exp(Math.log(cur) + (Math.log(g.target) - Math.log(cur)) * k);
+    const done = Math.abs(Math.log(g.target / next)) < 0.0005;
+    if (done) next = g.target;
+    zoomAtPoint(next, g.sx, g.sy);
+    g.set = state.camera.zoom;
+    if (done) { zoomGlide = null; return; }
+    g.raf = requestAnimationFrame(zoomGlideTick);
+  }
+
+  /** Инерция камеры после перетаскивания холста («Плавное перемещение»). */
+  const PAN_FRICTION_TAU_MS = 160;
+  const PAN_MIN_SPEED = 0.02; // экранных px/мс: медленнее — останавливаемся
+  let panSamples: { t: number; x: number; y: number }[] = [];
+  let panGlide: { vx: number; vy: number; last: number; raf: number } | null = null;
+
+  function stopPanGlide(): void {
+    if (!panGlide) return;
+    cancelAnimationFrame(panGlide.raf);
+    panGlide = null;
+  }
+
+  function panGlideTick(t: number): void {
+    const g = panGlide;
+    if (!g) return;
+    const dt = Math.min(Math.max(t - g.last, 0), 50);
+    g.last = t;
+    const z = state.camera.zoom;
+    state.camera = { ...state.camera, x: state.camera.x - g.vx * dt / z, y: state.camera.y - g.vy * dt / z };
+    const decay = Math.exp(-dt / PAN_FRICTION_TAU_MS);
+    g.vx *= decay; g.vy *= decay;
+    update();
+    if (Math.hypot(g.vx, g.vy) < PAN_MIN_SPEED) { panGlide = null; return; }
+    g.raf = requestAnimationFrame(panGlideTick);
+  }
+
+  function startPanGlide(): void {
+    const samples = panSamples;
+    panSamples = [];
+    if (!state.settings.smoothPan || motionReduced() || typeof requestAnimationFrame !== 'function') return;
+    const now = performance.now();
+    const recent = samples.filter(s => now - s.t <= 100);
+    if (recent.length < 2) return; // курсор стоял перед отпусканием — без инерции
+    const a = recent[0], b = recent[recent.length - 1];
+    const span = b.t - a.t;
+    if (span <= 0) return;
+    const vx = (b.x - a.x) / span, vy = (b.y - a.y) / span;
+    if (Math.hypot(vx, vy) < PAN_MIN_SPEED * 3) return;
+    panGlide = { vx, vy, last: now, raf: 0 };
+    panGlide.raf = requestAnimationFrame(panGlideTick);
+  }
+
   function zoomAtScreen(sx: number, sy: number, factor: number): void {
-    zoomAtPoint(state.camera.zoom * factor, sx, sy);
+    if (motionReduced() || typeof requestAnimationFrame !== 'function') {
+      zoomAtPoint(state.camera.zoom * factor, sx, sy);
+      return;
+    }
+    const base = zoomGlide && Math.abs(state.camera.zoom - zoomGlide.set) <= 1e-9 ? zoomGlide.target : state.camera.zoom;
+    const target = clampZoom(base * factor);
+    if (zoomGlide) {
+      zoomGlide.target = target; zoomGlide.sx = sx; zoomGlide.sy = sy;
+      return;
+    }
+    zoomGlide = { target, sx, sy, last: performance.now(), raf: 0, set: state.camera.zoom };
+    zoomGlide.raf = requestAnimationFrame(zoomGlideTick);
   }
 
   function zoomAtCenter(factor: number): void {
@@ -523,6 +608,7 @@ export function initController(canvas: HTMLCanvasElement): void {
         break;
       case 'pan':
         canvas.style.cursor = cursorFor(activeTool());
+        startPanGlide();
         update();
         break;
     }
@@ -580,6 +666,7 @@ export function initController(canvas: HTMLCanvasElement): void {
 
     if (e.button === 1 || activeTool() === 'pan') {
       e.preventDefault();
+      panSamples = [];
       action = { pid: e.pointerId, kind: 'pan', sx: lp.x, sy: lp.y, cam: { ...state.camera } };
       canvas.style.cursor = 'grabbing';
       return;
@@ -843,6 +930,8 @@ export function initController(canvas: HTMLCanvasElement): void {
     switch (a.kind) {
       case 'pan': {
         const zoom = a.cam.zoom;
+        panSamples.push({ t: performance.now(), x: lp.x, y: lp.y });
+        if (panSamples.length > 12) panSamples.shift();
         state.camera = {
           ...a.cam,
           x: a.cam.x - (lp.x - a.sx) / zoom,
@@ -1333,6 +1422,19 @@ export function initController(canvas: HTMLCanvasElement): void {
       }
       return;
     }
+    // режим разработки: «−» и «+» переключают тариф (Free / Pro) вместо масштаба
+    if (!e.altKey && devModeEnabled()) {
+      const plan = devPlanForCode(e.code);
+      if (plan) {
+        e.preventDefault();
+        setUserPlan(plan);
+        // Free без лимитов ничем не отличается от Pro — поэтому на Free лимиты включаются
+        if (plan === 'free') setLimitsEnforced(true);
+        showToast(`Тариф: ${plan === 'pro' ? 'Pro' : 'Free'} (режим разработки)`
+          + (limitsEnforced() ? ' · лимиты включены' : ' · лимиты выключены'));
+        return;
+      }
+    }
     switch (e.code) {
       case 'Space':
         e.preventDefault();
@@ -1351,7 +1453,7 @@ export function initController(canvas: HTMLCanvasElement): void {
       case 'Backspace': e.preventDefault(); if (canEditBoard()) deleteSelected(); break;
       case 'Equal': zoomAtCenter(1.25); break;
       case 'Minus': zoomAtCenter(1 / 1.25); break;
-      case 'Digit0': fitContent(); break;
+      case 'Digit0': fitContent(true); break;
       case 'KeyB': togglePages(); break;
       default: {
         // клавиши инструментов настраиваются в окне «Все настройки»
@@ -1440,8 +1542,8 @@ export function initController(canvas: HTMLCanvasElement): void {
   });
   addGestureProbe(() => (action !== null && action.kind !== 'pan' && action.kind !== 'marquee' && action.kind !== 'fade') || nudge !== null);
   // любой жест пользователя прерывает плавный перелёт камеры (SPEC_NIGHT5 §8)
-  canvas.addEventListener('pointerdown', () => cancelCameraAnim(), { capture: true });
-  canvas.addEventListener('wheel', () => cancelCameraAnim(), { capture: true, passive: true });
+  canvas.addEventListener('pointerdown', () => { cancelCameraAnim(); stopZoomGlide(); stopPanGlide(); }, { capture: true });
+  canvas.addEventListener('wheel', () => { cancelCameraAnim(); stopPanGlide(); }, { capture: true, passive: true });
   canvas.addEventListener('pointerdown', onPointerDown);
   canvas.addEventListener('pointermove', onPointerMove);
   canvas.addEventListener('pointerup', onPointerUp);

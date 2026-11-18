@@ -4,20 +4,13 @@
 
 import type { ToolId } from './types';
 import type { SectionView } from './settings-dialog';
+import { GRIP_ICON, ICONS } from './icons';
 import { macKeys } from './hotkeys';
 import {
   type EntryDrop, type EntryRef, type ToolbarConfig, type ToolbarGroup, type ToolbarList,
   GROUP_NAME_MAX, addGroup, combineTools, defaultToolbar, keyLabel, keyProblem, moveEntry, nextGroupName,
-  renameGroup, setEntryHidden, setToolKey, setToolbarConfig, svg, toolDef, toolTip, toolbarConfig, ungroup,
+  renameGroup, setEntryHidden, setToolKey, setToolbarConfig, toolDef, toolTip, toolbarConfig, ungroup,
 } from './toolbar';
-
-const ICONS = {
-  grip: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>',
-  eye: svg('<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>'),
-  eyeOff: svg('<path d="M10.6 5.1A10.4 10.4 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-2.6 3.5M6.6 6.6C3.7 8.4 2 12 2 12s3.5 7 10 7a9.8 9.8 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><path d="M3 3l18 18"/>'),
-  folder: svg('<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>'),
-  ungroup: svg('<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/><path d="M13 6h4M15 4v4M7 13v4M5 15h4"/>'),
-};
 
 const HINT = 'Перетащите инструмент на другой — получится группа. Клик по клавише — назначить новую.';
 /** Доля высоты строки сверху и снизу, где бросок вставляет рядом, а не объединяет в группу. */
@@ -187,7 +180,7 @@ export function renderToolbarEditor(host: HTMLElement): SectionView {
     const row = el('div', topLevel ? 'tbe-row tbe-entry' : 'tbe-row');
     row.dataset.tool = id;
     const grip = el('span', 'tbe-grip');
-    grip.innerHTML = ICONS.grip;
+    grip.innerHTML = GRIP_ICON;
     const icon = el('span', 'tbe-icon');
     icon.innerHTML = def.icon;
     const name = el('span', 'tbe-name', def.title);
@@ -213,7 +206,7 @@ export function renderToolbarEditor(host: HTMLElement): SectionView {
     card.dataset.group = g.id;
     const head = el('div', 'tbe-group-head');
     const grip = el('span', 'tbe-grip');
-    grip.innerHTML = ICONS.grip;
+    grip.innerHTML = GRIP_ICON;
     const icon = el('span', 'tbe-icon');
     icon.innerHTML = ICONS.folder;
     // название — текст, а не поле: за заголовок группу и перетаскивают; клик — переименовать
