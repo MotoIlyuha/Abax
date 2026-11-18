@@ -3747,3 +3747,11 @@ body.all-pages-hidden #goo-layer { display: none; }
   content: ''; position: absolute; top: 4px; right: 4px; width: 8px; height: 8px;
   border-radius: 50%; background: var(--danger); box-shadow: 0 0 0 2px var(--panel);
 }
+
+/* Масштаб в меню «Масштаб и вид»: ряд pills с горизонтальной прокруткой; полоса видна только при использовании */
+#view-menu .view-zoom-pills { display: flex; gap: 6px; padding: 6px 4px 8px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: thin; scrollbar-color: transparent transparent; }
+#view-menu .view-zoom-pills:hover, #view-menu .view-zoom-pills:focus-within { scrollbar-color: var(--border-control) transparent; }
+#view-menu .view-zoom-pills::-webkit-scrollbar { height: 6px; }
+#view-menu .view-zoom-pills::-webkit-scrollbar-thumb { background: transparent; border-radius: 3px; }
+#view-menu .view-zoom-pills:hover::-webkit-scrollbar-thumb, #view-menu .view-zoom-pills:focus-within::-webkit-scrollbar-thumb { background: var(--border-control); }
+#view-menu .view-zoom-pills button { width: auto; flex: none; min-height: 30px; padding: 4px 12px; border: 1px solid var(--border-control); border-radius: 999px; white-space: nowrap; justify-content: center; }
