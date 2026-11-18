@@ -53,6 +53,8 @@ export interface CollabUser {
   view?: { pageId: string; vx: number; vy: number; vz: number } | null;
   /** Участник на странице, скрытой от меня: где он, не сообщается (SPEC_NIGHT5 §3.1). */
   hiddenPage?: boolean;
+  /** Роль и откуда доступ — приходит только автору (SPEC_NIGHT6 §3.2). */
+  access?: { role: AccessRole | 'owner'; source: 'owner' | 'link' | 'alias' | 'email' | 'p2p'; inviteId?: string };
 }
 
 /** Событие на document: автор позвал всех на страницу (SPEC_NIGHT5 §8); камеру наводит приложение. */

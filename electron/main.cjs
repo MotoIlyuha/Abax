@@ -278,18 +278,15 @@ let share = null;
 const SHARE_PORT = Number(process.env.DOSKA_SHARE_PORT || 4826);
 const os = require('os');
 
-function lanIp() {
-  for (const ifaces of Object.values(os.networkInterfaces())) {
-    for (const i of ifaces || []) {
-      if (i.family === 'IPv4' && !i.internal) return i.address;
-    }
-  }
-  return '127.0.0.1';
-}
+const { shareUrls, newRoomCode } = require('./lan.cjs');
 
+/**
+ * Адреса комнаты для гостей (D4): все IPv4-интерфейсы, основной — обычная сеть; без сети — localOnly
+ * (127.0.0.1 работает только на этом компьютере и за адрес для гостей не выдаётся).
+ */
 function shareInfo() {
-  const ip = lanIp();
-  return { port: share.port, code: share.code, url: `http://${ip}:${share.port}/?room=${share.code}`, maxEditors: MAX_EDITORS, cloud: cloudInfo() };
+  const { url, urls, localOnly } = shareUrls(os.networkInterfaces(), share.port, share.code);
+  return { port: share.port, code: share.code, url, urls, localOnly, maxEditors: MAX_EDITORS, cloud: cloudInfo() };
 }
 
 // ----- Совместная работа через интернет (облачный ретранслятор relay/) -----
@@ -336,7 +333,8 @@ async function startCloud(relayInput) {
 // hostKey отдаём только в ответ share:start — это секрет автора для host-подключения
 ipcMain.handle('share:start', async () => {
   if (share) return { ok: true, ...shareInfo(), hostKey: share.hostKey, users: share.users() };
-  const code = Math.random().toString(36).slice(2, 8).toUpperCase();
+  // код комнаты — 8 символов из криптостойкого генератора (D5)
+  const code = newRoomCode();
   // пробуем базовый порт, затем следующие — не падаем от EADDRINUSE
   for (let p = SHARE_PORT; p < SHARE_PORT + 20; p++) {
     try {

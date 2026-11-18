@@ -209,9 +209,9 @@ test.describe('совместная работа', () => {
     }
     await expect(host.dialog.locator('.share-user')).toHaveCount(MAX_EDITORS, { timeout: 5000 });
 
-    const alert = new Promise<string>(resolve => host.page.once('dialog', d => { resolve(d.message()); void d.dismiss(); }));
+    // отказ виден в самом окне (Ночь №6: без системного alert)
     await host.setRight('Ученик', 0, 'edit');
-    expect(await alert).toBe(`Максимум ${MAX_EDITORS} одновременных редакторов`);
+    await expect(host.dialog.locator('.share-p2p-error')).toHaveText(`Максимум ${MAX_EDITORS} одновременных редакторов`);
     await expect(guest.page.locator('body')).toHaveClass(/readonly-mode/);
 
     // освободилось место — право выдаётся
@@ -263,7 +263,7 @@ test.describe('совместная работа', () => {
     await expect(host.dialog.locator('button', { hasText: 'Включить совместную работу' })).toBeVisible();
     expect(host.server).toBeNull();
     // правки автора больше никуда не уходят и не ломают работу
-    await host.dialog.locator('button', { hasText: 'Закрыть' }).click();
+    await host.dialog.locator('button', { hasText: 'Готово' }).click(); // Ночь №6: «Готово» в подвале окна
     await expect(host.dialog).toHaveCount(0);
     await host.board.rect(400, 300, 500, 400);
     await host.board.saved();
