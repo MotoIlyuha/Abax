@@ -96,7 +96,7 @@ const ICONS = {
   image: svg('<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M21 15l-5-5L5 19"/>'),
   undo: svg('<path d="M4 10h9a5 5 0 0 1 0 10h-3"/><path d="M8 6l-4 4 4 4"/>'),
   redo: svg('<path d="M20 10h-9a5 5 0 0 0 0 10h3"/><path d="M16 6l4 4-4 4"/>'),
-  fit: svg('<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/>'),
+  fit: svg('<path d="M4 4v16M20 4v16M12 5v14M9 8l3-3 3 3M9 16l3 3 3-3"/>'),
   export: svg('<path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M4 19h16"/>'),
   present: svg('<rect x="2.5" y="4" width="19" height="13" rx="2"/><path d="M8 21h8M12 17v4"/><path d="M10.5 8.2l4 2.3-4 2.3z"/>'),
   pdf: svg('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h4"/>'),
@@ -5102,7 +5102,6 @@ function wireZoomInput(): void {
   let level: ViewLevel = 'root';
   let page: HTMLElement | null = null;
 
-  const zoomIcon = svg('<circle cx="10" cy="10" r="6"/><path d="M14.5 14.5L21 21M10 7v6M7 10h6"/>');
   const row = (attrs: string, icon: string, text: string, sub = false) =>
     `<button ${attrs}><span class="view-icon">${icon}</span><span class="view-text">${text}</span>${sub ? '<span class="view-arrow" aria-hidden="true">›</span>' : ''}</button>`;
   const makePage = (lvl: ViewLevel, html: string): HTMLElement => {
@@ -5118,10 +5117,16 @@ function wireZoomInput(): void {
     // в режиме просмотра по ссылке тип сетки и фон страницы не меняются: пунктов нет
     const viewOnly = state.linkMode !== null;
     const subRows = viewOnly ? '' : row('data-view="grid"', subIcon('grid'), subTitle('grid'), true) + row('data-view="background"', subIcon('background'), subTitle('background'), true);
-    const p = makePage('root', `${row('data-view="fullscreen"', svg('<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/>'), 'Полный экран')}<hr>
-      ${subRows}${row('data-view="fit"', ICONS.fit, 'Показать всё')}<hr>
-      ${[50, 70, 100, 200, 400, 800].map(n => row(`data-zoom="${n}"`, zoomIcon, `${n}%`)).join('')}
-      ${row('data-view="custom"', zoomIcon, 'Другой масштаб…')}`);
+    const p = makePage('root', `${row('data-view="fullscreen"', svg(document.fullscreenElement ? '<path d="M4 20l6-6M6 14h4v4M20 4l-6 6M18 10h-4V6"/>' : '<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/>'), 'Полный экран')}
+      ${row('data-view="fit"', ICONS.fit, 'Показать всё')}<hr>
+      ${subRows}${viewOnly ? '' : '<hr>'}
+      <div class="view-zoom-pills">${[50, 70, 100, 200, 400, 800].map(n => `<button data-zoom="${n}">${n}%</button>`).join('')}<button data-view="custom">Другой…</button></div>`);
+    // колесо мыши прокручивает ряд по горизонтали
+    const pills = p.querySelector<HTMLElement>('.view-zoom-pills')!;
+    pills.addEventListener('wheel', e => {
+      if (e.deltaY === 0 || pills.scrollWidth <= pills.clientWidth) return;
+      e.preventDefault(); pills.scrollLeft += e.deltaY;
+    }, { passive: false });
     // «Привязка к сетке» — та же настройка, что во всплывающем меню настроек (в просмотре по ссылке пункта нет)
     const snapSwitch = createToggleSwitch({
       className: 'grid-switch view-switch',
