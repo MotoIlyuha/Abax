@@ -3819,3 +3819,53 @@ button.share-link { display: block; width: 100%; text-align: left; background: t
 .share-user-role { font: inherit; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); }
 .chat-readonly .chat-hint { color: var(--muted); }
 .cp-readonly { font-size: 12px; color: var(--muted); padding: 4px 0; }
+
+/* ----- Вёрстка шапки: экспорт справа, «Поделиться», нижний правый угол ----- */
+#btn-present[hidden], #btn-settings[hidden] { display: none; }
+/* группа совместной работы без видимых кнопок — без пустой плашки */
+.collab-group:not(:has(> :not([hidden]))) { display: none; }
+body.hide-export-button .export-group { display: none; }
+.share-btn {
+  flex: none;
+  height: 48px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--accent);
+  color: var(--fg-inverse);
+  font: inherit;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: background-color .15s ease;
+}
+.share-btn:hover { background: var(--accent-strong); }
+.share-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#bottombar {
+  position: fixed;
+  z-index: 10;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  pointer-events: none;
+}
+#bottombar .zoom-hint { top: auto; bottom: calc(100% + 6px); }
+#view-menu { max-height: calc(100vh - 90px); overflow-y: auto; }
+/* список страниц не заходит под нижний правый угол (ширина — в --bottombar-w, см. app.ts) */
+#pages-dock:not([data-side="top"]) { right: calc(24px + var(--bottombar-w, 0px)); }
+#help-menu {
+  position: fixed; z-index: 80; width: 260px; max-width: calc(100vw - 16px);
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px;
+  background: var(--panel); box-shadow: var(--shadow); color: var(--fg);
+}
+#help-menu[hidden] { display: none; }
+.help-menu-title { font-weight: 600; margin-bottom: 4px; }
+.help-menu-note { color: var(--muted); font-size: 13px; line-height: 1.4; }
+@media (max-width: 850px) {
+  #bottombar { gap: 6px; }
+  .share-btn { padding: 0 12px; }
+}

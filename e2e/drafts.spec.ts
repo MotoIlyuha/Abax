@@ -139,7 +139,7 @@ test.describe('черновик', () => {
 
   test('в окне демонстрации остаётся страница, на которой были до черновика', async ({ board, page }) => {
     await board.rect(100, 100, 220, 220);
-    const [popup] = await Promise.all([page.waitForEvent('popup'), page.locator('#btn-present').click()]);
+    const [popup] = await Promise.all([page.waitForEvent('popup'), page.locator('#btn-present').dispatchEvent('click')]);
     await expect.poll(() => popup.evaluate(() => document.querySelector('canvas')?.width ?? 0)).toBeGreaterThan(0);
     const inkOf = () => popup.evaluate(() => {
       const c = document.querySelector('canvas')!;

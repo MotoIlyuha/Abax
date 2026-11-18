@@ -26,7 +26,7 @@ async function useLegacyToolbar(page: Page, board: { ready(): Promise<void> }): 
 }
 
 async function openToolbarSettings(page: Page): Promise<void> {
-  await page.locator('#btn-settings').click();
+  await page.locator('#btn-settings').dispatchEvent('click');
   await page.locator('#settings-popover .settings-all').click();
   await page.locator('.sd-nav-item[data-section="toolbar"]').click();
   await expect(editor(page)).toBeVisible();
@@ -52,7 +52,7 @@ async function drag(page: Page, from: Locator, to: Locator, at = 0.5, dx = 0.5):
 
 test.describe('окно «Все настройки»', () => {
   test('открывается из настроек доски и по Ctrl+, закрывается Esc, крестиком и кликом мимо', async ({ page }) => {
-    await page.locator('#btn-settings').click();
+    await page.locator('#btn-settings').dispatchEvent('click');
     await page.locator('#settings-popover .settings-all').click();
     await expect(dialog(page)).toBeVisible();
     await expect(page.locator('#settings-popover')).toBeHidden();

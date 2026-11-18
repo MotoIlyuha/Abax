@@ -4704,7 +4704,7 @@ function makeVsep(): HTMLElement {
 
 function wireTopbar(): void {
   // подсказки шапки из index.html: на macOS — Cmd вместо Ctrl
-  for (const b of document.querySelectorAll<HTMLElement>('#topbar [title]')) b.title = macKeys(b.title);
+  for (const b of document.querySelectorAll<HTMLElement>('#topbar [title], #bottombar [title]')) b.title = macKeys(b.title);
   document.getElementById('btn-undo')!.innerHTML = ICONS.undo;
   document.getElementById('btn-redo')!.innerHTML = ICONS.redo;
   document.getElementById('btn-fit')!.innerHTML = ICONS.fit;
@@ -4713,7 +4713,6 @@ function wireTopbar(): void {
   document.getElementById('btn-import')!.innerHTML = ICONS.pdf;
   document.getElementById('btn-image')!.innerHTML = ICONS.image;
   document.getElementById('btn-settings')!.innerHTML = ICONS.settings;
-  document.getElementById('btn-share')!.innerHTML = svg('<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/>');
   document.getElementById('btn-share')!.addEventListener('click', () => { void openShareDialog(); });
   initChatButton();
   const iconBtn = document.getElementById('project-icon') as HTMLButtonElement;
@@ -4737,6 +4736,8 @@ function wireTopbar(): void {
   // окно демонстрации — второе окно браузера, в приложении для Android его не открыть
   if (isNativeApp()) document.getElementById('btn-present')!.style.display = 'none';
 
+  // меню экспорта создаётся ниже; до этого закрывать нечего
+  let closeExportMenu = (): void => {};
   const menuButton = document.getElementById('btn-home') as HTMLButtonElement;
   menuButton.title = 'Меню';
   menuButton.setAttribute('aria-label', 'Меню');
@@ -4759,7 +4760,7 @@ function wireTopbar(): void {
       menuItem('project', 'Скачать проект как файл', ICONS.export) + '<hr>' + menuItem('pdf', 'Экспорт в PDF', ICONS.pdf) + menuItem('png', 'Экспорт в PNG', ICONS.image)
         + '<hr>' + menuItem('link-project', 'Ссылка на проект (просмотр)', svg('<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>')) + menuItem('link-page', 'Ссылка на текущую страницу', svg('<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>')))}<hr>
     ${section('hide', 'Скрыть', svg('<path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M9.9 5.2A10 10 0 0 1 12 5c5 0 8.5 5 9 7a13 13 0 0 1-2.4 3.6M6.3 6.3A13 13 0 0 0 3 12c.5 2 4 7 9 7a10 10 0 0 0 4-.8"/>'),
-      checkItem('undo', 'Кнопки отмены и повтора') + checkItem('imports', 'Кнопки импорта'))}
+      checkItem('undo', 'Кнопки отмены и повтора') + checkItem('imports', 'Кнопки импорта') + checkItem('hide-export', 'Кнопка экспорта'))}
     ${menuItem('task', 'Добавить задание…', svg('<rect x="4" y="3.5" width="16" height="17" rx="2"/><path d="M8 8.5h8M8 12h8"/><path d="M8 16l1.8 1.8L13 14.5"/>'))}
     ${menuItem('settings', 'Настройки', ICONS.settings)}<hr>
     ${!doskaApi && !isNativeApp() ? menuItem('app', 'Открыть в приложении', svg('<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 17h6M12 6v7m-3-3 3 3 3-3"/>')) : ''}`;
@@ -4774,8 +4775,10 @@ function wireTopbar(): void {
     document.body.classList.toggle('main-menu-open', open);
     menu.querySelector('[data-action="undo"]')!.setAttribute('aria-checked', String(state.settings.hideUndoRedo));
     menu.querySelector('[data-action="imports"]')!.setAttribute('aria-checked', String(document.body.classList.contains('hide-import-buttons')));
+    menu.querySelector('[data-action="hide-export"]')!.setAttribute('aria-checked', String(document.body.classList.contains('hide-export-button')));
   };
   document.body.classList.toggle('hide-import-buttons', localStorage.getItem('abax.hideImports') === 'true');
+  document.body.classList.toggle('hide-export-button', localStorage.getItem('abax.hideExport') === 'true');
   menuButton.addEventListener('click', () => setMenuOpen(menu.hidden));
   menu.addEventListener('click', e => {
     const target = e.target as HTMLElement;
@@ -4796,6 +4799,11 @@ function wireTopbar(): void {
     if (action === 'imports') {
       const hidden = document.body.classList.toggle('hide-import-buttons');
       localStorage.setItem('abax.hideImports', String(hidden)); setMenuOpen(true); return;
+    }
+    if (action === 'hide-export') {
+      const hidden = document.body.classList.toggle('hide-export-button');
+      if (hidden) closeExportMenu();
+      localStorage.setItem('abax.hideExport', String(hidden)); setMenuOpen(true); return;
     }
     setMenuOpen(false);
     if (action === 'home') void (async () => { await saveNow(); setView('home'); })();
@@ -4834,14 +4842,14 @@ function wireTopbar(): void {
   exportMenu.hidden = true;
   exportMenu.innerHTML = menu.querySelector<HTMLElement>('#menu-export')!.innerHTML;
   document.body.append(exportMenu);
-  const closeExportMenu = () => { exportMenu.hidden = true; exportButton.setAttribute('aria-expanded', 'false'); };
+  closeExportMenu = () => { exportMenu.hidden = true; exportButton.setAttribute('aria-expanded', 'false'); };
   exportButton.addEventListener('click', () => {
     if (!exportMenu.hidden) { closeExportMenu(); return; }
     setMenuOpen(false);
     const group = exportButton.closest('.topbar-group')!;
     const bounds = group.getBoundingClientRect();
     exportMenu.hidden = false;
-    exportMenu.style.left = `${Math.max(8, bounds.right - exportMenu.offsetWidth)}px`;
+    exportMenu.style.left = `${Math.max(8, Math.min(bounds.left, window.innerWidth - exportMenu.offsetWidth - 8))}px`;
     exportMenu.style.top = `${bounds.bottom + 6}px`;
     exportButton.setAttribute('aria-expanded', 'true');
   });
@@ -4854,6 +4862,12 @@ function wireTopbar(): void {
   document.addEventListener('pointerdown', e => { if (!exportMenu.hidden && !exportMenu.contains(e.target as Node) && !exportButton.contains(e.target as Node)) closeExportMenu(); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !exportMenu.hidden) { closeExportMenu(); exportButton.focus(); } });
   document.getElementById('btn-present')!.addEventListener('click', togglePresent);
+  wireHelpMenu();
+  // список страниц внизу не должен заходить под правый нижний угол
+  const bottombar = document.getElementById('bottombar')!;
+  new ResizeObserver(() => {
+    document.documentElement.style.setProperty('--bottombar-w', `${bottombar.offsetWidth}px`);
+  }).observe(bottombar);
   document.getElementById('btn-import')!.addEventListener('click', () => { void importDocument(); });
   document.getElementById('btn-settings')!.addEventListener('click', () => {
     if (settingsPopover().hidden) openSettings();
@@ -4897,6 +4911,46 @@ function wireTopbar(): void {
   }, { capture: true });
 }
 
+// ----- «Помощь и советы»: кнопка в правом нижнем углу и F1 -----
+
+/** Меню помощи. Пока заготовка: пункты появятся позже, кнопка и F1 уже открывают и закрывают его. */
+function wireHelpMenu(): void {
+  const button = document.getElementById('btn-help') as HTMLButtonElement;
+  button.innerHTML = svg('<circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.6 2.6 0 0 1 5 .9c0 1.7-2.5 2.3-2.5 4"/><path d="M12 17.2h.01"/>');
+  const menu = document.createElement('div');
+  menu.id = 'help-menu';
+  menu.setAttribute('role', 'menu');
+  menu.setAttribute('aria-label', 'Помощь и советы');
+  menu.hidden = true;
+  const title = document.createElement('div');
+  title.className = 'help-menu-title';
+  title.textContent = 'Помощь и советы';
+  const note = document.createElement('div');
+  note.className = 'help-menu-note';
+  note.textContent = 'Скоро здесь появятся справка и советы по работе с доской.';
+  menu.append(title, note);
+  document.body.append(menu);
+  const close = () => { menu.hidden = true; button.setAttribute('aria-expanded', 'false'); };
+  const open = () => {
+    menu.hidden = false;
+    const r = button.closest('.topbar-group')!.getBoundingClientRect();
+    menu.style.left = `${Math.max(8, r.right - menu.offsetWidth)}px`;
+    menu.style.bottom = `${window.innerHeight - r.top + 6}px`;
+    button.setAttribute('aria-expanded', 'true');
+  };
+  const toggle = () => { if (menu.hidden) open(); else close(); };
+  button.addEventListener('click', toggle);
+  document.addEventListener('pointerdown', e => { if (!menu.hidden && !menu.contains(e.target as Node) && !button.contains(e.target as Node)) close(); });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !menu.hidden) { close(); button.focus(); return; }
+    // F1 — и на доске, и в полях ввода; браузер свою справку не открывает
+    if (e.code === 'F1' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && state.view === 'board' && !settingsDialogOpen()) {
+      e.preventDefault();
+      if (!e.repeat) toggle();
+    }
+  });
+}
+
 // ----- Масштаб в шапке: клик — ввод точного значения -----
 
 function wireZoomInput(): void {
@@ -4929,9 +4983,11 @@ function wireZoomInput(): void {
   };
   const group = document.querySelector<HTMLElement>('.view-group')!;
   const positionMenu = () => {
+    // группа в правом нижнем углу: меню раскрывается вверх, по правому краю группы
     const r = group.getBoundingClientRect();
-    menu.style.left = `${r.left}px`; menu.style.right = 'auto';
-    menu.style.width = `${r.width}px`; menu.style.top = `${r.bottom + 6}px`;
+    menu.style.width = `${Math.max(r.width, 240)}px`;
+    menu.style.left = `${Math.max(8, r.right - menu.offsetWidth)}px`; menu.style.right = 'auto';
+    menu.style.top = 'auto'; menu.style.bottom = `${window.innerHeight - r.top + 6}px`;
   };
   for (const [id, factor, icon] of [
     ['zoom-out', 1 / 1.25, '<path d="M5 12h14"/>'],

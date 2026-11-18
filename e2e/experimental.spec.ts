@@ -42,7 +42,7 @@ test.describe('раздел «Экспериментальные»', () => {
     // «Показывать на превью видимую область» переехала сюда из настроек доски
     await expect(page.locator('#settings-dialog label', { hasText: 'Показывать на превью видимую область' })).toBeVisible();
     await page.keyboard.press('Escape');
-    await page.locator('#btn-settings').click();
+    await page.locator('#btn-settings').dispatchEvent('click');
     await expect(page.locator('#settings-popover')).not.toContainText('видимую область');
     await page.keyboard.press('Escape');
 

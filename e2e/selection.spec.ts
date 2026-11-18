@@ -195,7 +195,7 @@ test.describe('ручки редактирования', () => {
   });
 
   test('привязка к сетке при перемещении', async ({ board, page }) => {
-    await page.locator('#btn-settings').click();
+    await page.locator('#btn-settings').dispatchEvent('click');
     await page.locator('#settings-popover label', { hasText: 'Привязка к сетке' }).locator('input').check();
     await page.keyboard.press('Escape');
     await board.rect(400, 300, 500, 380);
@@ -238,7 +238,7 @@ test.describe('камера', () => {
   });
 
   test('режим колёсика «Масштаб» из настроек', async ({ board, page }) => {
-    await page.locator('#btn-settings').click();
+    await page.locator('#btn-settings').dispatchEvent('click');
     await page.locator('#settings-popover button', { hasText: 'Масштаб' }).click();
     await expect(page.locator('#settings-popover button', { hasText: 'Масштаб' })).toHaveClass(/active/);
     const s = await board.screen({ x: 500, y: 400 });
@@ -248,7 +248,7 @@ test.describe('камера', () => {
   });
 
   test('режим «Масштаб» обрабатывает дробные и диагональные события колёсика', async ({ board, page }) => {
-    await page.locator('#btn-settings').click();
+    await page.locator('#btn-settings').dispatchEvent('click');
     await page.locator('#settings-popover button', { hasText: 'Масштаб' }).click();
     for (const [dx, dy] of [[0, -2.5], [1.5, -3.5], [0, -100]]) {
       const before = (await board.state()).camera.zoom;

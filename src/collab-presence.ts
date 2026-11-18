@@ -158,7 +158,7 @@ export function safeInsets(wrap: DOMRect, obstacles: readonly DOMRect[], pad = E
 
 function obstacleRects(): DOMRect[] {
   const out: DOMRect[] = [];
-  for (const sel of ['#topbar', '#toolbar', '#btn-pages', '#pages-dock.open #pages-tray', '#activity-pills']) {
+  for (const sel of ['#topbar', '#bottombar', '#toolbar', '#btn-pages', '#pages-dock.open #pages-tray', '#activity-pills']) {
     const n = document.querySelector<HTMLElement>(sel);
     if (n && !n.hidden) out.push(n.getBoundingClientRect());
   }

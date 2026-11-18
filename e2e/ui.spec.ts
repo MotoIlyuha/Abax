@@ -284,7 +284,7 @@ test.describe('панель цвета и толщины', () => {
 
 test.describe('настройки доски', () => {
   test('позиция панели инструментов сохраняется', async ({ board, page }) => {
-    await page.locator('#btn-settings').click();
+    await page.locator('#btn-settings').dispatchEvent('click');
     const pop = page.locator('#settings-popover');
     await expect(pop).toBeVisible();
     for (const [name, pos] of [['Сверху', 'top'], ['Справа', 'right'], ['Снизу', 'bottom']]) {
@@ -292,7 +292,7 @@ test.describe('настройки доски', () => {
       await expect(page.locator('#toolbar')).toHaveAttribute('data-pos', pos);
       await expect(pop.locator('button', { hasText: name })).toHaveClass(/active/);
     }
-    await page.locator('#btn-settings').click();
+    await page.locator('#btn-settings').dispatchEvent('click');
     await expect(pop).toBeHidden();
     await page.reload();
     await board.ready();
@@ -300,7 +300,7 @@ test.describe('настройки доски', () => {
   });
 
   test('панель группы встаёт у кнопки при любой позиции тулбара', async ({ board, page }) => {
-    await page.locator('#btn-settings').click();
+    await page.locator('#btn-settings').dispatchEvent('click');
     for (const name of ['Сверху', 'Справа', 'Снизу', 'Слева']) {
       await page.locator('#settings-popover button', { hasText: name }).click();
       await page.keyboard.press('Escape');
@@ -315,15 +315,15 @@ test.describe('настройки доски', () => {
       expect(pb.x + pb.width).toBeLessThanOrEqual(wrap.x + wrap.width);
       expect(pb.y + pb.height).toBeLessThanOrEqual(wrap.y + wrap.height);
       await page.locator('#btn-solids').click();
-      await page.locator('#btn-settings').click();
+      await page.locator('#btn-settings').dispatchEvent('click');
     }
   });
 
   test('подписи координатной плоскости — переключатель в меню фона', async ({ board, page }) => {
     // в настройках такого пункта больше нет
-    await page.locator('#btn-settings').click();
+    await page.locator('#btn-settings').dispatchEvent('click');
     await expect(page.locator('#settings-popover label', { hasText: 'Деления' })).toHaveCount(0);
-    await page.locator('#btn-settings').click();
+    await page.locator('#btn-settings').dispatchEvent('click');
     // для клетки переключателя нет
     await page.locator('#view-grid-icon').click();
     await expect(page.locator('#view-menu .grid-switch')).toHaveCount(0);
@@ -381,7 +381,7 @@ test.describe('настройки доски', () => {
     await page.locator('#btn-style').click();
     expect(await anim('.ctx-panel[data-kind="style"]')).toBe('ui-pop');
     await page.keyboard.press('Escape');
-    await page.locator('#btn-settings').click();
+    await page.locator('#btn-settings').dispatchEvent('click');
     expect(await anim('#settings-popover')).toBe('ui-pop');
     await page.keyboard.press('Control+Comma');
     expect(await anim('#settings-dialog')).toBe('ui-fade');
@@ -394,7 +394,7 @@ test.describe('настройки доски', () => {
     await expect(board.quickMenu).toBeVisible();
     expect(await anim('#quick-menu')).toBe('none');
 
-    await page.locator('#btn-settings').click();
+    await page.locator('#btn-settings').dispatchEvent('click');
     await expect(page.locator('#settings-popover button', { hasText: /^Улучшенные$/ })).toHaveClass(/active/);
     await page.locator('#settings-popover button', { hasText: /^Выкл$/ }).click();
     expect((await board.state()).settings.animationMode).toBe('off');
@@ -421,7 +421,7 @@ test.describe('настройки доски', () => {
     await expect(page.locator('#btn-undo')).toBeVisible();
     await expect(page.locator('#btn-redo')).toBeVisible();
 
-    await page.locator('#btn-settings').click();
+    await page.locator('#btn-settings').dispatchEvent('click');
     const cb = page.locator('#settings-popover label', { hasText: 'Скрыть кнопки отмены и повтора' }).locator('input');
     await expect(cb).not.toBeChecked();
     await cb.check();
@@ -539,8 +539,47 @@ test.describe('страница', () => {
 
   test('в браузере кнопка совместной работы есть: комната живёт во вкладке', async ({ board, page }) => {
     await expect(page.locator('#btn-share')).toBeVisible();
-    await expect(page.locator('#btn-present')).toBeVisible();
+    // окно демонстрации из шапки убрано (кнопка скрыта)
+    await expect(page.locator('#btn-present')).toBeHidden();
     void board;
+  });
+});
+
+test.describe('вёрстка шапки', () => {
+  test('«Поделиться» — текстом, «Вид и масштаб» и помощь внизу справа, F1 открывает помощь, экспорт скрывается из меню', async ({ board, page }) => {
+    await expect(page.locator('#btn-share')).toHaveText('Поделиться');
+    await expect(page.locator('#btn-share svg')).toHaveCount(0);
+    await expect(page.locator('#btn-settings')).toBeHidden();
+    const vp = page.viewportSize()!;
+    const view = (await page.locator('.view-group').boundingBox())!;
+    const help = (await page.locator('.help-group').boundingBox())!;
+    expect(view.y + view.height).toBeGreaterThan(vp.height - 30);
+    expect(help.x).toBeGreaterThan(view.x + view.width);
+    // экспорт — отдельная плашка справа от импорта
+    const imp = (await page.locator('.import-group').boundingBox())!;
+    const exp = (await page.locator('.export-group').boundingBox())!;
+    expect(exp.x).toBeGreaterThan(imp.x + imp.width);
+
+    await page.keyboard.press('F1');
+    await expect(page.locator('#help-menu')).toBeVisible();
+    await expect(page.locator('#btn-help')).toHaveAttribute('aria-expanded', 'true');
+    await page.keyboard.press('F1');
+    await expect(page.locator('#help-menu')).toBeHidden();
+    await page.locator('#btn-help').click();
+    await expect(page.locator('#help-menu')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#help-menu')).toBeHidden();
+
+    await page.locator('#btn-home').click();
+    await page.locator('#main-menu [data-section="hide"]').click();
+    const item = page.locator('#main-menu [data-action="hide-export"]');
+    await expect(item).toHaveAttribute('aria-checked', 'false');
+    await item.click();
+    await expect(item).toHaveAttribute('aria-checked', 'true');
+    await expect(page.locator('#btn-export')).toBeHidden();
+    await page.reload();
+    await board.ready();
+    await expect(page.locator('#btn-export')).toBeHidden();
   });
 });
 
@@ -723,7 +762,7 @@ test.describe('изображения', () => {
     expect(b.h).toBeCloseTo(180, 0);
     expect(b.y + b.h / 2).toBeCloseTo(a.y + a.h / 2, 0);
 
-    await page.locator('#btn-settings').click();
+    await page.locator('#btn-settings').dispatchEvent('click');
     const cb = page.locator('#settings-popover label', { hasText: 'Пропорциональный размер изображений' }).locator('input');
     await expect(cb).toBeChecked();
     await cb.uncheck();

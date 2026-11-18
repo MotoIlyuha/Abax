@@ -119,6 +119,7 @@ export const FIXED_SHORTCUTS: ShortcutGroup[] = [
       { keys: ['Ctrl+KeyS'], what: 'Сохранить' },
       { keys: ['Ctrl+KeyE'], what: 'Экспорт в PNG' },
       { keys: ['Ctrl+Comma'], what: 'Все настройки' },
+      { keys: ['F1'], what: 'Помощь и советы' },
       { keys: ['KeyB'], what: 'Показать или скрыть список страниц' },
       { keys: [DRAFT_KEY], what: 'Новый черновик: страница, которую видите только вы' },
       { keys: ['Digit0'], what: 'Показать всё содержимое' },
