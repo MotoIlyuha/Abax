@@ -244,6 +244,7 @@ test.describe('камера', () => {
     const s = await board.screen({ x: 500, y: 400 });
     await page.mouse.move(s.x, s.y);
     await page.mouse.wheel(0, -120);
+    await board.settleCamera();
     expect((await board.state()).camera.zoom).toBeGreaterThan(1);
   });
 
@@ -255,13 +256,20 @@ test.describe('камера', () => {
       await board.canvas.evaluate((canvas, [deltaX, deltaY]) => canvas.dispatchEvent(new WheelEvent('wheel', {
         deltaX, deltaY, bubbles: true, cancelable: true,
       })), [dx, dy]);
+      await board.settleCamera();
       expect((await board.state()).camera.zoom).toBeGreaterThan(before);
     }
   });
 
   test('панорама инструментом, пробелом и средней кнопкой', async ({ board, page }) => {
     await board.tool('h');
-    await board.drag([{ x: 500, y: 400 }, { x: 400, y: 350 }]);
+    // перед отпусканием курсор стоит: инерции («Плавное движение») нет, перенос точный
+    const h0 = await board.screen({ x: 500, y: 400 });
+    await page.mouse.move(h0.x, h0.y);
+    await page.mouse.down();
+    await page.mouse.move(h0.x - 100, h0.y - 50, { steps: 4 });
+    await page.waitForTimeout(150);
+    await page.mouse.up();
     expect((await board.state()).camera).toMatchObject({ x: 100, y: 50 });
 
     await board.tool('p');
@@ -270,6 +278,7 @@ test.describe('камера', () => {
     await page.mouse.move(a.x, a.y);
     await page.mouse.down();
     await page.mouse.move(a.x + 100, a.y + 50, { steps: 4 });
+    await page.waitForTimeout(150);
     await page.mouse.up();
     await page.keyboard.up('Space');
     expect((await board.state()).camera).toMatchObject({ x: 0, y: 0 });
@@ -278,6 +287,7 @@ test.describe('камера', () => {
     await page.mouse.move(a.x, a.y);
     await page.mouse.down({ button: 'middle' });
     await page.mouse.move(a.x - 30, a.y, { steps: 3 });
+    await page.waitForTimeout(150);
     await page.mouse.up({ button: 'middle' });
     expect((await board.state()).camera.x).toBe(30);
   });
@@ -286,10 +296,13 @@ test.describe('камера', () => {
     await board.rect(400, 300, 500, 400);
     // дальний элемент рисуем, отъехав камерой
     for (let i = 0; i < 6; i++) await page.keyboard.press('Minus');
+    await board.settleCamera();
     await board.rect(2500, 1700, 2600, 1800);
     for (let i = 0; i < 9; i++) await page.keyboard.press('Equal');
+    await board.settleCamera();
     expect((await board.state()).camera.zoom).toBeGreaterThan(1.5);
     await page.locator('#btn-fit').click();
+    await board.settleCamera();
     const cam = (await board.state()).camera;
     expect(cam.zoom).toBeLessThan(1);
     // оба элемента на экране
@@ -304,6 +317,7 @@ test.describe('камера', () => {
     await page.keyboard.press('Control+z');
     await page.keyboard.press('Control+z');
     await page.keyboard.press('Digit0'); // пустая страница — центр в нуле
+    await board.settleCamera();
     expect((await board.state()).camera.zoom).toBe(1);
   });
 });

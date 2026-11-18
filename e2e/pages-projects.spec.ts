@@ -129,11 +129,13 @@ test.describe('страницы проекта', () => {
     await page.keyboard.press('Equal');
     await board.canvas.hover();
     await page.mouse.wheel(0, 120);
+    await board.settleCamera();
     const first = (await board.state()).camera;
     await board.addPage();
     await page.keyboard.press('Minus');
     await board.canvas.hover();
     await page.mouse.wheel(0, -80);
+    await board.settleCamera();
     const second = (await board.state()).camera;
     expect(second).not.toEqual(first);
     await page.locator('#pages-list .page-item').first().click();

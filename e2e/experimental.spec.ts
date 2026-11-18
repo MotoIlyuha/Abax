@@ -230,6 +230,7 @@ test.describe('страницы на холсте', () => {
     await page.locator('#pages-list .page-item').nth(1).click();
     await expect.poll(async () => (await board.state()).pageId).toBe(second);
     await page.keyboard.press('Equal');
+    await board.settleCamera();
     const secondCamera = (await board.state()).camera;
     await page.locator('#pages-list .page-item').first().click();
     await expect.poll(async () => (await board.state()).pageId).toBe(first);

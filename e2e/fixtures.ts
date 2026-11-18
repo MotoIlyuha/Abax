@@ -73,6 +73,18 @@ export class Board {
     return type ? els.filter(e => e.type === type).length : els.length;
   }
 
+  /** Дождаться, пока камера перестанет двигаться (плавный масштаб, перелёт, инерция). */
+  async settleCamera(): Promise<void> {
+    let prev = '';
+    await expect.poll(async () => {
+      const cur = JSON.stringify((await this.state()).camera);
+      const still = cur === prev;
+      prev = cur;
+      await this.page.waitForTimeout(100);
+      return still;
+    }, { timeout: 5000 }).toBe(true);
+  }
+
   state(): Promise<Snapshot> {
     return this.page.evaluate(() => {
       const s = (window as any).__doska.state;
