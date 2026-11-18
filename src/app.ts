@@ -4734,8 +4734,6 @@ function wireTopbar(): void {
     `<button data-action="${action}">${menuIcon(icon)}<span class="main-menu-text">${label}</span>${extra}</button>`;
   const section = (id: string, label: string, icon: string, content: string) =>
     `<button class="main-menu-section" data-section="${id}" aria-expanded="false" aria-controls="menu-${id}">${menuIcon(icon)}<span class="main-menu-text">${label}</span><span class="main-menu-chevron" aria-hidden="true">›</span></button><div class="main-submenu" id="menu-${id}" hidden>${content}</div>`;
-  const checkItem = (action: string, label: string) =>
-    `<button data-action="${action}" role="menuitemcheckbox" aria-checked="false">${menuIcon()}<span class="main-menu-text">${label}</span><span class="main-menu-check" aria-hidden="true"></span></button>`;
   menu.innerHTML = `${menuItem('home', 'Домой', ICONS.home)}<hr>
     ${section('import', 'Импорт', ICONS.pdf,
       menuItem('import', 'Импорт документа', ICONS.pdf) + menuItem('image', 'Вставить изображение', ICONS.image, `<kbd>${macKeys('Ctrl+V')}</kbd>`))}
@@ -4743,11 +4741,30 @@ function wireTopbar(): void {
       menuItem('project', 'Скачать проект как файл', ICONS.export) + '<hr>' + menuItem('pdf', 'Экспорт в PDF', ICONS.pdf) + menuItem('png', 'Экспорт в PNG', ICONS.image)
         + '<hr>' + menuItem('link-project', 'Ссылка на проект (просмотр)', svg('<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>')) + menuItem('link-page', 'Ссылка на текущую страницу', svg('<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>')))}<hr>
     ${section('hide', 'Скрыть', svg('<path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M9.9 5.2A10 10 0 0 1 12 5c5 0 8.5 5 9 7a13 13 0 0 1-2.4 3.6M6.3 6.3A13 13 0 0 0 3 12c.5 2 4 7 9 7a10 10 0 0 0 4-.8"/>'),
-      checkItem('undo', 'Кнопки отмены и повтора') + checkItem('imports', 'Кнопки импорта'))}
+      '')}
     ${menuItem('task', 'Добавить задание…', svg('<rect x="4" y="3.5" width="16" height="17" rx="2"/><path d="M8 8.5h8M8 12h8"/><path d="M8 16l1.8 1.8L13 14.5"/>'))}
     ${menuItem('settings', 'Настройки', ICONS.settings)}<hr>
     ${!doskaApi && !isNativeApp() ? menuItem('app', 'Открыть в приложении', svg('<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 17h6M12 6v7m-3-3 3 3 3-3"/>')) : ''}`;
   document.body.append(menu);
+  // «Скрыть»: переключатели на пружинах (src/toggle-switch.ts), меню при щелчке не закрывается
+  const hideUndoSwitch = createToggleSwitch({
+    className: 'grid-switch main-switch',
+    label: 'Кнопки отмены и повтора',
+    icon: ICONS.undo,
+    checked: state.settings.hideUndoRedo,
+    onChange: on => { setSettings({ hideUndoRedo: on }); persistSettings(); applyUndoRedoVisibility(); },
+  });
+  hideUndoSwitch.dataset.action = 'undo';
+  const hideImportsSwitch = createToggleSwitch({
+    className: 'grid-switch main-switch',
+    label: 'Кнопки импорта',
+    icon: ICONS.pdf,
+    checked: localStorage.getItem('abax.hideImports') === 'true',
+    onChange: on => { document.body.classList.toggle('hide-import-buttons', on); localStorage.setItem('abax.hideImports', String(on)); },
+  });
+  hideImportsSwitch.dataset.action = 'imports';
+  menu.querySelector<HTMLElement>('#menu-hide')!.append(hideUndoSwitch, hideImportsSwitch);
+  const switchInput = (row: HTMLElement) => row.querySelector<HTMLInputElement>('input')!;
   const setMenuOpen = (open: boolean) => {
     menu.hidden = !open;
     if (!open) {
@@ -4756,8 +4773,9 @@ function wireTopbar(): void {
     }
     menuButton.setAttribute('aria-expanded', String(open));
     document.body.classList.toggle('main-menu-open', open);
-    menu.querySelector('[data-action="undo"]')!.setAttribute('aria-checked', String(state.settings.hideUndoRedo));
-    menu.querySelector('[data-action="imports"]')!.setAttribute('aria-checked', String(document.body.classList.contains('hide-import-buttons')));
+    // настройку могли поменять и в другом месте (окно настроек)
+    switchInput(hideUndoSwitch).checked = state.settings.hideUndoRedo;
+    switchInput(hideImportsSwitch).checked = document.body.classList.contains('hide-import-buttons');
   };
   document.body.classList.toggle('hide-import-buttons', localStorage.getItem('abax.hideImports') === 'true');
   menuButton.addEventListener('click', () => setMenuOpen(menu.hidden));
@@ -4776,11 +4794,6 @@ function wireTopbar(): void {
     }
     const action = target.closest<HTMLButtonElement>('button[data-action]')?.dataset.action;
     if (!action) return;
-    if (action === 'undo') { setSettings({ hideUndoRedo: !state.settings.hideUndoRedo }); persistSettings(); applyUndoRedoVisibility(); setMenuOpen(true); return; }
-    if (action === 'imports') {
-      const hidden = document.body.classList.toggle('hide-import-buttons');
-      localStorage.setItem('abax.hideImports', String(hidden)); setMenuOpen(true); return;
-    }
     setMenuOpen(false);
     if (action === 'home') void (async () => { await saveNow(); setView('home'); })();
     if (action === 'import') void importDocument();

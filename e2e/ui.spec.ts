@@ -336,6 +336,28 @@ test.describe('настройки доски', () => {
     await expect(page.locator('#settings-popover label', { hasText: 'Привязка к сетке' }).locator('input')).toBeChecked();
   });
 
+  test('меню «Скрыть» — переключатели, меню не закрывается', async ({ board, page }) => {
+    await page.locator('#btn-home').click();
+    await page.locator('#main-menu [data-section="hide"]').click();
+    const undo = page.locator('#menu-hide .main-switch', { hasText: 'Кнопки отмены и повтора' });
+    const imports = page.locator('#menu-hide .main-switch', { hasText: 'Кнопки импорта' });
+    await expect(undo.locator('input[role="switch"]')).not.toBeChecked();
+    await undo.click();
+    await expect(undo.locator('input')).toBeChecked();
+    expect((await board.state()).settings.hideUndoRedo).toBe(true);
+    await imports.click();
+    await expect(page.locator('.import-group')).toBeHidden();
+    await expect(page.locator('#main-menu')).toBeVisible();
+    await imports.click();
+    await expect(page.locator('.import-group')).toBeVisible();
+    // после закрытия и открытия меню состояние то же
+    await page.keyboard.press('Escape');
+    await page.locator('#btn-home').click();
+    await page.locator('#main-menu [data-section="hide"]').click();
+    await expect(undo.locator('input')).toBeChecked();
+    await expect(imports.locator('input')).not.toBeChecked();
+  });
+
   test('подписи координатной плоскости — переключатель в меню фона', async ({ board, page }) => {
     // в настройках такого пункта больше нет
     await page.locator('#btn-settings').click();
