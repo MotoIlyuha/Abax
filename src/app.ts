@@ -121,8 +121,8 @@ const GRID_ICONS: Record<GridMode, string> = {
   coord: svg('<path d="M5 19V5M5 19h14"/><path d="M5 5l-2 3M5 5l2 3M19 19l-3-2M19 19l-3 2"/><circle cx="12" cy="12" r="1"/>'),
 };
 
-/** «Привязка к сетке»: клетки сетки и магнит-подкова. */
-const SNAP_ICON = svg('<rect x="3" y="3" width="8" height="8" rx="1"/><path d="M7 3v8M3 7h8"/><path d="M12 21v-5.5a4 4 0 0 1 8 0V21"/><path d="M12 18.5h2.5M17.5 18.5H20"/>');
+/** «Привязка к сетке»: магнит-подкова. */
+const SNAP_ICON = svg('<path d="M6 4h4v9a2 2 0 0 0 4 0V4h4v9a6 6 0 0 1-12 0z"/><path d="M6 8h4M14 8h4"/>');
 
 /** Иконка координатной плоскости с нулём в начале координат — когда деления включены. */
 const COORD_ICON_ZERO = svg('<path d="M5 19V5M5 19h14"/><path d="M5 5l-2 3M5 5l2 3M19 19l-3-2M19 19l-3 2"/><circle cx="12" cy="12" r="1"/><ellipse class="coord-zero" cx="2.6" cy="20.8" rx="1.3" ry="1.9" stroke-width="1.3"/>');
@@ -4906,7 +4906,7 @@ function wireZoomInput(): void {
     const coordSwitch = coordLabelsSwitch();
     if (coordSwitch) options.append(coordSwitch);
     // «Привязка к сетке» — та же настройка, что во всплывающем меню настроек
-    options.after(createToggleSwitch({
+    menu.querySelector<HTMLElement>('#view-color-options')!.after(createToggleSwitch({
       className: 'grid-switch view-switch',
       label: 'Привязка к сетке',
       icon: SNAP_ICON,
