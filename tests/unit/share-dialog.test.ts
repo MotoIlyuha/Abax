@@ -308,20 +308,33 @@ describe('с облаком', () => {
     expect(q('.share-link-row').title).toContain('Ссылка выключена');
   });
 
-  it('«Сбросить ссылку…» — в настройках доступа, с подтверждением', async () => {
+  it('«Сбросить ссылку…» — кнопка рядом с общей ссылкой; подтверждение встаёт на место адреса, кнопки — в одну линию', async () => {
     const api = cloud({ link: { token: 'TOK', url: 'https://abax.example/?route=collab&token=TOK', prettyUrl: null, defaultRole: 'edit', role: 'editor', allowCopy: true, pageRights: {}, enabled: true, alias: null } });
     await openShareDialog(deps());
     await flush(6);
-    expect(q('.share-reset').closest('[inert]')).not.toBeNull(); // на неактивной вкладке
-    toSettings();
-    await flush(4);
-    q<HTMLButtonElement>('.share-reset').click();
-    expect(q('.share-confirm').textContent).toContain('Старая ссылка перестанет работать');
+    const reset = q<HTMLButtonElement>('.share-reset');
+    expect(reset.closest('.share-url-row')).not.toBeNull();
+    expect(reset.closest('#share-panel-share')).not.toBeNull();
+    expect(reset.getAttribute('aria-label')).toBe('Сбросить ссылку');
+    expect(q('#share-panel-settings').querySelector('.share-reset')).toBeNull();
+    reset.click();
+    const confirm = q('.share-reset-confirm');
+    expect(confirm.hidden).toBe(false);
+    expect(q('.share-url-row').hidden).toBe(true);
+    expect(confirm.textContent).toContain('Старая ссылка перестанет работать');
+    // «Сбросить» и «Отмена» — соседи в одной строке подтверждения
+    expect([...confirm.querySelectorAll('button')].map(b => b.textContent)).toEqual(['Сбросить', 'Отмена']);
     expect(document.activeElement).toBe(q('[data-key="reset-no"]'));
+    // Esc отменяет подтверждение, а не закрывает окно
+    dlg().dispatchEvent(key('Escape'));
+    expect(shareDialogOpen()).toBe(true);
+    expect(confirm.hidden).toBe(true);
+    reset.click();
     q<HTMLButtonElement>('[data-key="reset-yes"]').click();
     await flush(6);
     expect(api.calls.some(c => c[0] === 'POST' && c[1] === '/api/invites/TOK/reset')).toBe(true);
-    q<HTMLButtonElement>('#share-tab-share').click();
+    expect(confirm.hidden).toBe(true);
+    expect(q('.share-url-row').hidden).toBe(false);
     expect(q<HTMLInputElement>('.share-url').value).toContain('token=NEWTOKEN');
   });
 

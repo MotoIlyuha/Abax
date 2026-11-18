@@ -40,11 +40,9 @@ test.describe('ссылки', () => {
     const three = await guestAt(browser, base, link);
     await expect.poll(() => stateOf(three.g, s => s.board.elements.length), { timeout: 10000 }).toBe(1);
 
-    // сброс (на странице «Настройки доступа»): новый адрес, старый — «приглашение недействительно»
-    await shareTab(a, 'settings');
-    await a.locator('#share-dialog .share-reset').click();
-    await a.locator('#share-dialog .share-confirm button', { hasText: 'Сбросить' }).click();
-    await shareTab(a, 'share');
+    // сброс (кнопка рядом с общей ссылкой): новый адрес, старый — «приглашение недействительно»
+    await box.locator('.share-reset').click();
+    await box.locator('.share-reset-confirm button', { hasText: 'Сбросить' }).click();
     await expect.poll(() => box.locator('.share-url').inputValue(), { timeout: 10000 }).not.toBe(link);
     const fresh = await box.locator('.share-url').inputValue();
     const four = await guestAt(browser, base, link, 'none');

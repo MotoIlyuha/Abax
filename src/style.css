@@ -3850,7 +3850,16 @@ body.no-ui-anim .spoiler-chev { transition: none; }
 .share-inline-btn:hover { text-decoration: underline; }
 .share-revoked { font-size: 12px; color: var(--muted); line-height: 1.4; padding: 0 2px; }
 .share-revoked:empty { display: none; }
-.share-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; color: var(--fg-secondary); padding: 4px 4px 4px 10px; }
+.share-confirm { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; font-size: 12px; color: var(--fg-secondary); padding: 4px 4px 4px 10px; }
+/* подтверждение — одной линией: текст слева (при нехватке места — в две строки), кнопки рядом справа */
+.share-confirm-text, .share-confirm > span:first-child { flex: 1; min-width: 0; line-height: 1.35; }
+.share-confirm .share-btn-soft { height: 28px; padding: 0 10px; }
+.share-reset-confirm { padding: 2px 6px 6px 10px; }
+.share-icon-btn { flex: none; width: 30px; height: 30px; padding: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--icon-secondary); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.share-icon-btn:hover { border-color: var(--danger-line); color: var(--danger); background: var(--danger-soft); }
+.share-icon-btn:disabled { opacity: .5; cursor: default; }
+.share-icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.share-reset-icon svg { width: 15px; height: 15px; display: block; }
 :is(.share-close, .share-inline-btn, .share-link, .share-row-btn, .share-btn-soft, .share-btn-primary):focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* кнопки */
@@ -3956,7 +3965,6 @@ body.no-ui-anim .share-toggle :is(.switch-track, .switch-knob) { transition: non
 .share-former .share-person { min-height: 32px; justify-content: space-between; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; }
 .share-former .share-person-name { font-family: ui-monospace, Consolas, monospace; }
 .share-former .share-confirm { flex-basis: 100%; padding: 0 0 6px; }
-.share-reset-box:empty { display: none; }
 
 /* без облака */
 .share-p2p { display: flex; flex-direction: column; gap: 12px; }

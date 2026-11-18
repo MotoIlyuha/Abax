@@ -106,6 +106,7 @@ const PAGE_RIGHT_OPTIONS: readonly SelectOption[] = [
 ];
 
 const CHECK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+const RESET_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 12a8.5 8.5 0 0 1 14.6-5.9L20.5 8.5"/><path d="M20.5 3.5v5h-5"/><path d="M20.5 12a8.5 8.5 0 0 1-14.6 5.9L3.5 15.5"/><path d="M3.5 20.5v-5h5"/></svg>';
 const CLOSE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg>';
 
 // ----- Мелкие строители разметки -----
@@ -390,10 +391,27 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
   copyRoll.set('Копировать', { instant: true });
   const copyBtn = btn('share-copy share-btn-soft', '', () => { void copyLink(); }, 'Скопировать общую ссылку');
   copyBtn.append(copyRoll.el);
-  urlRow.append(urlInput, copyBtn);
+  // «Сбросить ссылку…» — рядом с самой ссылкой; подтверждение встаёт на место строки адреса, одной линией
+  const resetBtn = btn('share-reset share-icon-btn', '', () => {
+    confirmReset = true;
+    renderReset();
+    resetConfirm.querySelector<HTMLElement>('[data-key="reset-no"]')?.focus();
+  }, 'Сбросить ссылку');
+  resetBtn.append(icon('share-reset-icon', RESET_ICON));
+  resetBtn.title = 'Сбросить ссылку: выдать новую, прежняя перестанет работать';
+  resetBtn.dataset.key = 'reset';
+  urlRow.append(urlInput, resetBtn, copyBtn);
+  const resetConfirm = el('div', 'share-confirm share-reset-confirm');
+  resetConfirm.setAttribute('role', 'alert');
+  resetConfirm.hidden = true;
+  const resetYes = btn('share-btn-soft danger', 'Сбросить', () => { void doReset(); });
+  resetYes.dataset.key = 'reset-yes';
+  const resetNo = btn('share-btn-soft', 'Отмена', () => { confirmReset = false; renderReset(); resetBtn.focus(); });
+  resetNo.dataset.key = 'reset-no';
+  resetConfirm.append(el('span', 'share-confirm-text', 'Старая ссылка перестанет работать'), resetYes, resetNo);
   const linkMsg = el('div', 'share-cloud-error');
   linkMsg.setAttribute('role', 'alert');
-  linkBox.append(linkRow, urlRow);
+  linkBox.append(linkRow, urlRow, resetConfirm);
 
   // приглашение по почте: поле с ролью и «Пригласить»; форма создаётся один раз
   const emailBox = el('section', 'share-email');
@@ -675,7 +693,7 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
     tip(linkRow, !link ? 'Включите — по ссылке войдёт любой, у кого она есть'
       : on ? 'По ссылке войдёт любой, у кого она есть'
         : 'Ссылка выключена: по ней никто не войдёт. Включите снова — заработает тот же адрес');
-    urlRow.hidden = !on;
+    renderReset();
     if (link) {
       const url = linkUrlOf(link);
       if (urlInput.value !== url) urlInput.value = url;
@@ -1108,8 +1126,7 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
   const formerHead = el('div', 'share-cloud-title share-former-title', 'Бывшие адреса');
   tip(formerHead, 'Ведут на эту же доску');
   const formerList = el('ul', 'share-people share-former');
-  const resetBox = el('div', 'share-reset-box');
-  aliasCard.append(aliasLabelRow, aliasRow, aliasProblemEl, formerHead, formerList, resetBox);
+  aliasCard.append(aliasLabelRow, aliasRow, aliasProblemEl, formerHead, formerList);
   aliasSec.append(aliasCard);
 
   settings.inner.append(pagesSec, permSec, guestsSec, aliasSec);
@@ -1176,7 +1193,9 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
       li.appendChild(el('span', 'share-person-name', `/j/${f}`));
       if (aliasUi.confirmRelease === f) {
         const c = el('span', 'share-confirm');
-        c.appendChild(el('span', '', 'Адрес перестанет вести на доску и больше никому не достанется. '));
+        const text = el('span', 'share-confirm-text', 'Адрес больше никому не достанется');
+        text.title = 'Адрес перестанет вести на доску и больше никому не достанется';
+        c.appendChild(text);
         const yes = btn('share-btn-soft danger', 'Освободить', () => { void doRelease(f); });
         yes.dataset.key = `release-yes-${f}`;
         const no = btn('share-btn-soft', 'Отмена', () => { aliasUi.confirmRelease = ''; renderSettings(); });
@@ -1198,33 +1217,14 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
     formerList.hidden = aliasUi.former.length === 0;
   }
 
+  /** Строка адреса или подтверждение сброса на её месте. */
   function renderReset(): void {
-    const focusKey = resetBox.contains(document.activeElement) ? (document.activeElement as HTMLElement).dataset.key : undefined;
-    resetBox.textContent = '';
-    resetBox.hidden = !link;
-    if (!link) return;
-    if (confirmReset) {
-      const c = el('div', 'share-confirm');
-      c.setAttribute('role', 'alert');
-      c.appendChild(el('span', '', 'Старая ссылка перестанет работать. '));
-      const yes = btn('share-btn-soft danger', 'Сбросить', () => { void doReset(); });
-      yes.dataset.key = 'reset-yes';
-      const no = btn('share-btn-soft', 'Отмена', () => { confirmReset = false; renderReset(); resetBox.querySelector<HTMLElement>('[data-key="reset"]')?.focus(); });
-      no.dataset.key = 'reset-no';
-      c.append(yes, no);
-      resetBox.appendChild(c);
-    } else {
-      const reset = btn('share-reset share-row-btn danger', 'Сбросить ссылку…', () => {
-        confirmReset = true;
-        renderReset();
-        resetBox.querySelector<HTMLElement>('[data-key="reset-no"]')?.focus();
-      });
-      reset.title = 'Выдать новую общую ссылку; прежняя перестанет работать';
-      reset.dataset.key = 'reset';
-      reset.disabled = linkBusy;
-      resetBox.appendChild(reset);
-    }
-    if (focusKey) resetBox.querySelector<HTMLElement>(`[data-key="${focusKey}"]`)?.focus();
+    const on = !!link?.enabled;
+    const confirming = confirmReset && !!link;
+    urlRow.hidden = !on || confirming;
+    resetConfirm.hidden = !confirming;
+    resetBtn.disabled = linkBusy;
+    resetYes.disabled = linkBusy;
   }
 
   function renderSettings(): void {
@@ -1262,7 +1262,6 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
       showProblem();
       renderAliasMessage();
       renderFormer();
-      renderReset();
       if (aliasUi.loadedFor !== state.project.id) void loadAlias();
     }
   }
