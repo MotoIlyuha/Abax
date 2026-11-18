@@ -15,7 +15,7 @@ function tgPayload(now: number, over: Record<string, string | number> = {}) {
 describe('миграция V2', () => {
   it('колонки профиля и таблицы входа; повторное открытие не ломает базу', () => {
     const db = openDb(':memory:');
-    expect(db.pragma('user_version', { simple: true })).toBe(3); // V3 (Ночь №5) — поверх V2
+    expect(db.pragma('user_version', { simple: true })).toBe(4); // V4 (Ночь №6) — поверх V3
     const cols = (db.prepare('PRAGMA table_info(users)').all() as { name: string }[]).map(c => c.name);
     expect(cols).toEqual(expect.arrayContaining(['cursor_id', 'name_custom', 'email', 'google_sub']));
     const tables = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]).map(t => t.name);
@@ -33,7 +33,7 @@ describe('миграция V3 (Ночь №5)', () => {
     db.prepare("INSERT INTO users (id, display_name, plan, created_at, updated_at, email) VALUES ('u1', 'Анна', 'free', 1, 1, 'a@b.ru')").run();
     db.prepare("INSERT INTO projects (id, owner_id, title, rev, data_json, created_at, updated_at) VALUES ('p1', 'u1', 'Доска', 1, '{}', 1, 1)").run();
     db.prepare("INSERT INTO invites (token, project_id, created_by, created_at) VALUES ('t1', 'p1', 'u1', 1)").run();
-    migrate(db);
+    migrate(db, 3);
     expect(db.pragma('user_version', { simple: true })).toBe(3);
     expect(db.prepare('SELECT display_name, email, google_email FROM users').get()).toEqual({ display_name: 'Анна', email: 'a@b.ru', google_email: null });
     expect(db.prepare('SELECT token, kind FROM invites').get()).toEqual({ token: 't1', kind: 'link' });
@@ -45,8 +45,34 @@ describe('миграция V3 (Ночь №5)', () => {
     db.prepare("INSERT INTO project_email_invites (id, project_id, host_user_id, email, role, token, created_at, updated_at) VALUES ('e1', 'p1', 'u1', 's@x.ru', 'view', 't2', 2, 2)").run();
     expect(db.prepare('SELECT status FROM project_email_invites').get()).toEqual({ status: 'pending' });
     expect(() => db.prepare("INSERT INTO project_email_invites (id, project_id, host_user_id, email, role, token, created_at, updated_at) VALUES ('e2', 'p1', 'u1', 's@x.ru', 'view', 't1', 2, 2)").run()).toThrow();
-    migrate(db); // повторно — без изменений
+    migrate(db, 3); // повторно — без изменений
     expect(db.pragma('user_version', { simple: true })).toBe(3);
+    db.close();
+  });
+});
+
+describe('миграция V4 (Ночь №6)', () => {
+  it('поверх базы V3: приглашения целы и включены, новые колонки и таблица именных адресов', () => {
+    const db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    migrate(db, 3);
+    db.prepare("INSERT INTO users (id, display_name, plan, created_at, updated_at) VALUES ('u1', 'Анна', 'pro', 1, 1)").run();
+    db.prepare("INSERT INTO projects (id, owner_id, title, rev, data_json, created_at, updated_at) VALUES ('p1', 'u1', 'Доска', 1, '{}', 1, 1)").run();
+    db.prepare("INSERT INTO invites (token, project_id, created_by, created_at, default_role) VALUES ('t1', 'p1', 'u1', 1, 'view')").run();
+    migrate(db);
+    expect(db.pragma('user_version', { simple: true })).toBe(4);
+    expect(db.prepare('SELECT token, kind, default_role, disabled_at, last_used_at FROM invites').get())
+      .toEqual({ token: 't1', kind: 'link', default_role: 'view', disabled_at: null, last_used_at: null });
+    db.prepare("INSERT INTO public_aliases (alias, project_id, owner_id, created_at, updated_at) VALUES ('physics-9a', 'p1', 'u1', 2, 2)").run();
+    expect(db.prepare('SELECT state FROM public_aliases').get()).toEqual({ state: 'active' });
+    expect(() => db.prepare("INSERT INTO public_aliases (alias, project_id, owner_id, created_at, updated_at) VALUES ('physics-9a', 'p1', 'u1', 3, 3)").run()).toThrow();
+    // удаление аккаунта оставляет адрес надгробием (owner_id = NULL), а не освобождает его
+    db.prepare('DELETE FROM projects').run();
+    db.prepare('DELETE FROM invites').run();
+    db.prepare('DELETE FROM users').run();
+    expect(db.prepare('SELECT alias, project_id, owner_id FROM public_aliases').get()).toEqual({ alias: 'physics-9a', project_id: null, owner_id: null });
+    migrate(db);
+    expect(db.pragma('user_version', { simple: true })).toBe(4);
     db.close();
   });
 });

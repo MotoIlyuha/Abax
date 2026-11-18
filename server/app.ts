@@ -38,6 +38,8 @@ export interface AppOptions {
   publicWebUrl?: string;
   /** Каталог собранного клиента (dist): раздаётся тем же сервером. */
   staticDir?: string | null;
+  /** Чистые ссылки /j/… (SPEC_NIGHT6 §5.3); по умолчанию — если задан staticDir. */
+  prettyLinks?: boolean;
   trustProxy?: boolean;
   secureCookies?: boolean;
   anonRateMax?: number;
@@ -110,6 +112,7 @@ function resolveOptions(o: AppOptions): ResolvedOptions {
     allowedOrigins: (o.allowedOrigins ?? []).map(s => { try { return new URL(s).origin; } catch { return ''; } }).filter(Boolean),
     publicWebUrl: (o.publicWebUrl ?? '').replace(/\/+$/, ''),
     staticDir: o.staticDir ?? null,
+    prettyLinks: o.prettyLinks ?? !!o.staticDir,
     trustProxy: o.trustProxy === true,
     secureCookies: o.secureCookies === true,
     anonRateMax: o.anonRateMax ?? 30,

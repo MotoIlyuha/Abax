@@ -27,6 +27,8 @@ export interface ResolvedOptions {
   publicWebUrl: string;
   /** Каталог собранного клиента (dist) для раздачи; нет — только API. */
   staticDir: string | null;
+  /** Чистые ссылки /j/<токен или адрес> на publicWebUrl (клиента раздаёт этот сервер); по умолчанию — если задан staticDir. */
+  prettyLinks: boolean;
   /** Доверять X-Forwarded-For (за nginx/Caddy). */
   trustProxy: boolean;
   /** Помечать cookie сессии как Secure. */
@@ -44,6 +46,7 @@ export interface ResolvedOptions {
  * Изменение доступа к проекту: удалён, приглашение отозвано или изменено (роль, копирование) —
  * облачная комната отключает участников или пересчитывает их права.
  */
+/** token — настоящий токен строки invites (вошедшие по именному адресу закрываются вместе с ним). */
 export interface AccessEvent { projectId: string; kind: 'deleted' | 'invite-revoked' | 'invite-updated'; token?: string }
 
 /** Общее состояние сервера, которое получают все обработчики. */

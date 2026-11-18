@@ -78,6 +78,23 @@ export interface InviteRow {
   created_at: number;
   /** 'link' — ссылка проекта, 'email' — персональное приглашение по почте (миграция V3). */
   kind: string;
+  /** Пауза общей ссылки (миграция V4): не NULL — ссылка выключена, токен сохраняется. */
+  disabled_at: number | null;
+  /** Последний вход по приглашению (миграция V4). */
+  last_used_at: number | null;
+}
+
+/** Именной адрес доски /j/<адрес> (миграция V4, SPEC_NIGHT6 §5.3). */
+export interface AliasRow {
+  alias: string;
+  /** NULL — доска удалена из базы. */
+  project_id: string | null;
+  /** NULL — аккаунт удалён: адрес — надгробие навсегда. */
+  owner_id: string | null;
+  /** 'active' — адрес доски, 'former' — бывший (ведёт туда же), 'released' — освобождён (никуда не ведёт). */
+  state: string;
+  created_at: number;
+  updated_at: number;
 }
 
 /** Приглашение по почте (миграция V3); доступ — по токену своей строки invites. */
@@ -223,8 +240,25 @@ CREATE UNIQUE INDEX idx_email_invites_project_email ON project_email_invites(pro
 CREATE INDEX idx_email_invites_email ON project_email_invites(email, status);
 `;
 
+/** Ночь №6: пауза и последний вход приглашения, именные адреса досок. */
+const SCHEMA_V4 = `
+ALTER TABLE invites ADD COLUMN disabled_at INTEGER;
+ALTER TABLE invites ADD COLUMN last_used_at INTEGER;
+
+CREATE TABLE public_aliases (
+  alias TEXT PRIMARY KEY,
+  project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+  owner_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+  state TEXT NOT NULL DEFAULT 'active',
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE INDEX idx_aliases_project ON public_aliases(project_id, state);
+CREATE INDEX idx_aliases_owner ON public_aliases(owner_id);
+`;
+
 /** Миграции по порядку; номер версии хранится в PRAGMA user_version. */
-const MIGRATIONS: string[] = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3];
+const MIGRATIONS: string[] = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4];
 
 /** target — до какой версии (по умолчанию — до последней; меньше — только в тестах миграций). */
 export function migrate(db: Db, target = MIGRATIONS.length): void {

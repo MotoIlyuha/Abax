@@ -13,7 +13,9 @@ import { ingestElement, ingestProjectImages } from './assets';
 import { requireUser } from './auth';
 import type { AppContext } from './context';
 import { MAX_REVISIONS_PER_PROJECT, type ProjectRow } from './db';
-import { findActiveInvite, type InviteRights } from './invites';
+import { findActiveInvite, inviteCopyAllowed, type InviteRights } from './invites';
+import { legacyRoleOf, participantCaps } from '../src/access';
+
 import { HttpError, type Router } from './router';
 import { effectivePlan, getUser } from './users';
 
@@ -150,6 +152,11 @@ function liveSignature(project: Project): string {
 
 // ----- Просмотр -----
 
+/** Просмотр по ссылке на доску без приглашения (/p/…): выключается permissions.linkView = false. */
+export function linkViewAllowed(row: ProjectRow): boolean {
+  return projectOf(row).permissions?.linkView !== false;
+}
+
 type Access =
   | { role: 'host' }
   | { role: 'viewer'; pageId?: string }
@@ -174,17 +181,25 @@ export function viewFor(app: AppContext, row: ProjectRow, access: Access) {
   if (access.role === 'viewer') pages = stripStudentData(pages);
   const perms = sanitizePermissionsForPlan(plan, stored.permissions ?? {});
   const forbidClone = perms.forbidClone === true || access.pageId !== undefined;
-  const allowCopy = perms.allowCopy !== false && perms.forbidClone !== true && (access.role !== 'guest' || access.invite.allowCopy);
+  // копирование гостя — по его роли, правам доски и (старые ссылки) запрету ссылки (SPEC_NIGHT6 §2.3)
+  const caps = access.role === 'guest'
+    ? participantCaps({ owner: false, role: access.invite.role, legacy: access.invite.legacy, inviteAllowCopy: access.invite.allowCopy }, perms)
+    : null;
+  const allowCopy = caps ? caps.copy : perms.allowCopy !== false && perms.forbidClone !== true;
   const { pinned: _pin, ...rest } = stored;
   const project: Project = {
     ...rest, ownerPlan: plan, pages,
-    permissions: { forbidClone, allowCopy: perms.allowCopy !== false && (access.role !== 'guest' || access.invite.allowCopy) },
+    permissions: {
+      forbidClone, allowCopy: caps ? caps.copy : perms.allowCopy !== false,
+      ...(perms.protectElements ? { protectElements: true } : {}), ...(perms.summon ? { summon: perms.summon } : {}),
+    },
   };
   const out = { role: access.role, rev: row.rev, canClone: !forbidClone, allowCopy, ownerPlan: plan, project };
   if (access.role === 'guest') {
     const pageRights: Record<string, PageRight> = {};
     for (const p of pages) pageRights[p.id] = invitePageRight(stored, access.invite, p.id);
-    return { ...out, pageRights, defaultRole: access.invite.defaultRole };
+    // defaultRole — старый синоним для клиентов Ночей №3–5; accessRole и caps — Ночь №6
+    return { ...out, pageRights, defaultRole: legacyRoleOf(access.invite.role), accessRole: access.invite.role, caps };
   }
   return out;
 }
@@ -236,6 +251,8 @@ export function registerProjectRoutes(router: Router): void {
       if (!invite) throw new HttpError(404, 'invite-not-found');
       return { json: viewFor(app, row, { role: 'guest', invite, ...(pageId ? { pageId } : {}) }) };
     }
+    // просмотр по ссылке на доску выключен — доска неотличима от несуществующей (SPEC_NIGHT6 D2)
+    if (!linkViewAllowed(row)) throw new HttpError(404, 'project-not-found');
     return { json: viewFor(app, row, { role: 'viewer', ...(pageId ? { pageId } : {}) }) };
   });
 
@@ -331,11 +348,17 @@ export function registerProjectRoutes(router: Router): void {
     const row = getActiveProject(app, ctx.params.id);
     if (!row) throw new HttpError(404, 'project-not-found');
     const isOwner = row.owner_id === user.id;
-    if (!isOwner && row.forbid_clone) throw new HttpError(403, 'clone-forbidden');
-    const plan = effectivePlan(user, app.now());
-    if (app.opts.enforceLimits && !canCreateProject(plan, activeCount(app, user.id))) throw new HttpError(403, 'plan-limit-projects');
     const token = ctx.query.get('invite');
     const invite = token ? findActiveInvite(app, token, row.id) : null;
+    // без приглашения — только при включённом просмотре по ссылке (D2)
+    if (!isOwner && !invite && !linkViewAllowed(row)) throw new HttpError(404, 'project-not-found');
+    if (!isOwner && row.forbid_clone) throw new HttpError(403, 'clone-forbidden');
+    // по приглашению — если роль участника может копировать (D7)
+    if (!isOwner && invite && !inviteCopyAllowed(invite, sanitizePermissionsForPlan(ownerPlanOf(app, row.owner_id), projectOf(row).permissions ?? {}))) {
+      throw new HttpError(403, 'clone-forbidden');
+    }
+    const plan = effectivePlan(user, app.now());
+    if (app.opts.enforceLimits && !canCreateProject(plan, activeCount(app, user.id))) throw new HttpError(403, 'plan-limit-projects');
     const source = projectOf(row);
     const hidden = isOwner ? new Set<string>() : new Set([
       ...hiddenPageIds(source),

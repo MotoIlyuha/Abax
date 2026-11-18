@@ -9,7 +9,7 @@ import type { PlanTier, Project } from '../src/types';
 import { ingestElement, ingestProjectImages } from './assets';
 import { verifySession } from './auth';
 import type { AppContext } from './context';
-import { findActiveInvite, type InviteRights } from './invites';
+import { findActiveInvite, touchInvite, type InviteRights } from './invites';
 import { getActiveProject, getProjectRow, mergeStale, ownerPlanOf, projectOf, writeProject } from './projects';
 import { effectivePlan, getUser, isAnonymousUser } from './users';
 
@@ -60,7 +60,8 @@ class WsRoomSocket implements RoomSocket {
   }
 }
 
-interface Conn { sock: WsRoomSocket; isHost: boolean; inviteToken: string | null; uid: number; userId: string | null }
+/** linkToken — настоящий токен приглашения (вход по именному адресу закрывается вместе с общей ссылкой). */
+interface Conn { sock: WsRoomSocket; isHost: boolean; linkToken: string | null; uid: number; userId: string | null }
 
 interface CloudRoom {
   id: string;
@@ -198,7 +199,9 @@ export function createCloudRooms(app: AppContext, attach: { onUpgrade(fn: (req: 
   function guestAccess(invite: InviteRights, userId: string | null): AttachAccess {
     return {
       role: invite.defaultRole, personal: invite.pageRights, inviteAllowCopy: invite.allowCopy,
-      source: 'link', principal: userId ? `u:${userId}` : null,
+      source: invite.kind === 'email' ? 'email' : invite.via === 'alias' ? 'alias' : 'link',
+      ...(invite.emailInviteId ? { inviteId: invite.emailInviteId } : {}),
+      principal: userId ? `u:${userId}` : null,
     };
   }
 
@@ -233,7 +236,7 @@ export function createCloudRooms(app: AppContext, attach: { onUpgrade(fn: (req: 
     }
 
     const sock = new WsRoomSocket(ws, makePreprocess(app, user?.id ?? null));
-    const conn: Conn = { sock, isHost: isOwner, inviteToken: invite?.token ?? null, uid: -1, userId: user?.id ?? null };
+    const conn: Conn = { sock, isHost: isOwner, linkToken: invite?.linkToken ?? null, uid: -1, userId: user?.id ?? null };
     const name = normalizeName(hello.name) || (user && (!isAnonymousUser(user) || user.name_custom === 1) ? user.display_name : '');
     // Pro-курсор — только при эффективном тарифе pro/tutor того, чья это сессия (гость без сессии — классический)
     const allowProCursor = !!user && effectivePlan(user, app.now()) !== 'free';
@@ -242,6 +245,7 @@ export function createCloudRooms(app: AppContext, attach: { onUpgrade(fn: (req: 
       ...(invite ? { access: guestAccess(invite, user?.id ?? null) } : {}),
     });
     if (uid === null) { if (room.conns.size === 0) unload(room); return; } // хаб отказал и сам закрыл сокет
+    if (invite) touchInvite(app, invite.linkToken);
     conn.uid = uid;
     room.conns.add(conn);
     if (room.unloadTimer) { clearTimeout(room.unloadTimer); room.unloadTimer = null; }
@@ -288,14 +292,16 @@ export function createCloudRooms(app: AppContext, attach: { onUpgrade(fn: (req: 
     if (ev.kind === 'invite-updated') {
       // роль и копирование ссылки изменились: подключённые по ней гости получают новые права сразу (SPEC_NIGHT5 §3.2)
       const invite = ev.token ? findActiveInvite(app, ev.token, ev.projectId) : null;
+      // доступ по адресу пересчитывается так же: адрес — это текущая общая ссылка доски
       if (!invite) return;
       for (const c of [...room.conns]) {
-        if (c.isHost || c.inviteToken !== ev.token) continue;
-        room.hub.setAccess(c.uid, guestAccess(invite, c.userId));
+        if (c.isHost || c.linkToken !== ev.token) continue;
+        const via = (room.hub.room.access.get(c.uid)?.source === 'alias') ? { ...invite, via: 'alias' as const } : invite;
+        room.hub.setAccess(c.uid, guestAccess(via, c.userId));
       }
       return;
     }
-    for (const c of [...room.conns]) if (c.inviteToken === ev.token) c.sock.close(CLOSE_BAD_CODE, 'invite revoked');
+    for (const c of [...room.conns]) if (c.linkToken === ev.token) c.sock.close(CLOSE_BAD_CODE, 'invite revoked');
   });
 
   attach.onClose(() => close());
