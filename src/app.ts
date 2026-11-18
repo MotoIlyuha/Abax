@@ -4899,19 +4899,24 @@ function wireZoomInput(): void {
   const render = () => {
     const zoomIcon = svg('<circle cx="10" cy="10" r="6"/><path d="M14.5 14.5L21 21M10 7v6M7 10h6"/>');
     const row = (action: string, icon: string, label: string, arrow = '') => `<button ${action}><span class="view-icon">${icon}</span><span class="view-text">${label}</span>${arrow}</button>`;
+    // в режиме просмотра по ссылке тип сетки и фон страницы не меняются: пункты не показываем
+    const viewOnly = state.linkMode !== null;
+    const gridRows = viewOnly ? '' : `${row('data-view="grid"', GRID_ICONS.square, 'Тип сетки', '›')}<div id="view-grid-options" hidden></div>
+      ${row('data-view="background"', svg('<path d="M12 3C9.5 6.4 5 10 5 14a7 7 0 0 0 14 0c0-4-4.5-7.6-7-11z"/><path d="M12 3v18a7 7 0 0 0 7-7c0-4-4.5-7.6-7-11z" fill="currentColor" stroke="none"/>'), 'Фон страницы', '›')}<div id="view-color-options" hidden></div>`;
     menu.innerHTML = `${row('data-view="fullscreen"', svg('<path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/>'), 'Полный экран')}<hr>
-      ${row('data-view="grid"', GRID_ICONS.square, 'Тип сетки', '›')}<div id="view-grid-options" hidden></div>
-      ${row('data-view="background"', svg('<path d="M12 3C9.5 6.4 5 10 5 14a7 7 0 0 0 14 0c0-4-4.5-7.6-7-11z"/><path d="M12 3v18a7 7 0 0 0 7-7c0-4-4.5-7.6-7-11z" fill="currentColor" stroke="none"/>'), 'Фон страницы', '›')}<div id="view-color-options" hidden></div>
+      ${gridRows}
       ${row('data-view="fit"', ICONS.fit, 'Показать всё')}<hr>
       ${[50, 70, 100, 200, 400, 800].map(n => row(`data-zoom="${n}"`, zoomIcon, `${n}%`)).join('')}
       ${row('data-view="custom"', zoomIcon, 'Другой масштаб…')}`;
-    const options = menu.querySelector<HTMLElement>('#view-grid-options')!;
-    for (const g of Object.keys(GRID_LABELS) as GridMode[]) {
-      const b = document.createElement('button'); b.innerHTML = `${gridIcon(g, state.board.coordLabels !== false)}<span>${GRID_LABELS[g]}</span>${g === state.board.grid ? '✓' : ''}`;
-      b.addEventListener('click', () => { setGrid(g); void saveNow(); close(); }); options.append(b);
+    const options = menu.querySelector<HTMLElement>('#view-grid-options');
+    if (options) {
+      for (const g of Object.keys(GRID_LABELS) as GridMode[]) {
+        const b = document.createElement('button'); b.innerHTML = `${gridIcon(g, state.board.coordLabels !== false)}<span>${GRID_LABELS[g]}</span>${g === state.board.grid ? '✓' : ''}`;
+        b.addEventListener('click', () => { setGrid(g); void saveNow(); close(); }); options.append(b);
+      }
+      const coordSwitch = coordLabelsSwitch();
+      if (coordSwitch) options.append(coordSwitch);
     }
-    const coordSwitch = coordLabelsSwitch();
-    if (coordSwitch) options.append(coordSwitch);
   };
   const group = document.querySelector<HTMLElement>('.view-group')!;
   const positionMenu = () => {
@@ -4932,6 +4937,7 @@ function wireZoomInput(): void {
   }
   const gridTrigger = document.getElementById('view-grid-icon')!;
   gridTrigger.addEventListener('click', () => {
+    if (state.linkMode !== null) return; // в режиме просмотра по ссылке сетку не меняют
     if (!menu.hidden && !menu.querySelector('#view-grid-options')) { close(); return; }
     render(); menu.hidden = false; label.setAttribute('aria-expanded', 'true');
     positionMenu();

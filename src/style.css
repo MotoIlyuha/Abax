@@ -2643,10 +2643,12 @@ body.no-ui-anim #btn-settings svg { transition: none; }
   white-space: nowrap;
 }
 #link-banner .lb-clone:hover { filter: brightness(1.08); }
-/* только чтение: нет инструментов, импорта, отмены, общего доступа и перехода на домашнюю */
+/* только чтение: нет инструментов, импорта, отмены, общего доступа и перехода на домашнюю.
+   Группа импорта скрывается целиком: иначе в шапке остаётся пустой контейнер с отступами. */
 body.link-view #toolbar,
 body.link-view #btn-import,
 body.link-view #btn-image,
+body.link-view .import-group,
 body.link-view .undo-group,
 body.link-view #btn-share,
 body.link-view #btn-home,
