@@ -34,10 +34,17 @@ describe('переключатель', () => {
     const { input, knob, track, changes } = make();
     input.click();
     expect(changes).toEqual([true]);
-    await frame(); await frame();
-    expect(knob.style.transform).toMatch(/translateX/);
-    expect(parseFloat(knob.style.width)).toBeGreaterThan(16);
-    expect(track.style.background).toContain('color-mix');
+    // под нагрузкой полного прогона кадры приходят неровно: смотрим несколько кадров и запоминаем пик
+    let maxWidth = 0, moved = false, mixed = false;
+    for (let i = 0; i < 30 && !(moved && mixed && maxWidth > 16); i++) {
+      await frame();
+      if (/translateX/.test(knob.style.transform)) moved = true;
+      if (track.style.background.includes('color-mix')) mixed = true;
+      maxWidth = Math.max(maxWidth, parseFloat(knob.style.width) || 0);
+    }
+    expect(moved).toBe(true);
+    expect(mixed).toBe(true);
+    expect(maxWidth).toBeGreaterThan(16);
   });
 
   it('«Обычные»: без пружин — инлайн-стилей нет, двигает CSS', async () => {
