@@ -2432,7 +2432,7 @@ function settingCheck(key: BoolSetting, text: string, hint?: string, after?: () 
 function smoothPanSwitch(className: string, withIcon: boolean): HTMLElement {
   return createToggleSwitch({
     className,
-    label: 'Плавное перемещение',
+    label: 'Плавное движение',
     icon: withIcon ? SMOOTH_PAN_ICON : undefined,
     title: 'Небольшая инерция при перемещении по доске: после отпускания камера плавно останавливается',
     checked: state.settings.smoothPan,

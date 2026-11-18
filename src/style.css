@@ -2801,7 +2801,7 @@ body.link-view #project-icon { pointer-events: none; }
 /* «Привязка к сетке» в меню «Масштаб и вид»: строка как у пунктов меню, справа переключатель */
 #view-menu .view-switch { border-top: 0; margin-top: 0; gap: 10px; border-radius: 7px; justify-content: flex-start; }
 #view-menu .view-switch:hover, #view-menu .view-switch:has(.switch-input:focus-visible) { background: var(--accent-soft); }
-.grid-switch .switch-text { flex: 1; }
+.grid-switch .switch-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* «Улучшенные» анимации: ручку и дорожку двигают пружины (src/toggle-switch.ts), CSS-переходы мешали бы */
 body:not(.no-motion) .spring-switch :is(.switch-track, .switch-knob) { transition: none; }
 /* «Выкл»: без движения */
