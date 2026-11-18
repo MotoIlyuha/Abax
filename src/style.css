@@ -3930,4 +3930,4 @@ body.fit-share .share-text { display: none; }
 #view-menu .view-zoom-scroll:hover .view-zoom-thumb, #view-menu .view-zoom-scroll.scrolling .view-zoom-thumb, #view-menu .view-zoom-scroll.dragging .view-zoom-thumb { opacity: 0.9; }
 #view-menu .view-zoom-thumb:hover, #view-menu .view-zoom-scroll.dragging .view-zoom-thumb { height: 6px; bottom: 2px; }
 @media (prefers-reduced-motion: reduce) { #view-menu .view-zoom-thumb { transition: none; } }
-#view-menu .view-zoom-pills button { width: auto; flex: none; min-height: 30px; padding: 4px 12px; border: 1px solid var(--border-control); border-radius: 8px; white-space: nowrap; justify-content: center; }
+#view-menu .view-zoom-pills button { width: auto; flex: none; min-height: 30px; padding: 4px 12px; border: 1px solid var(--border); border-radius: 8px; white-space: nowrap; justify-content: center; }
