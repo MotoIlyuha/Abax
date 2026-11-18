@@ -1,5 +1,5 @@
 // Ночь №2: просмотр по ссылке, клонирование, патчи, задания, реакции и лимиты тарифов.
-import { expect, test } from './fixtures';
+import { expect, pickOption, test } from './fixtures';
 import type { Page } from '@playwright/test';
 import { createRequire } from 'node:module';
 
@@ -146,7 +146,7 @@ test.describe('браузерный хост и патчи', () => {
 
     // автор открывает гостю правку страницы
     await expect(page.locator('#share-dialog .share-user')).toHaveCount(1);
-    await page.locator('#share-dialog .share-user select').first().selectOption('edit');
+    await pickOption(page, page.locator('#share-dialog .share-user .share-user-right').first(), 'edit');
     await expect.poll(() => guest.evaluate(() => document.body.classList.contains('readonly-mode'))).toBe(false);
     const gb = new (board.constructor as any)(guest);
     await gb.rect(300, 500, 380, 560);

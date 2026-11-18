@@ -1,4 +1,5 @@
-// Окно «Поделиться» (SPEC_NIGHT6 §6): доступность, три раздельных списка, общая ссылка, почта, путь без облака.
+// Окно «Поделиться» (SPEC_NIGHT6 §6, редизайн): доступность, страницы окна, общая ссылка, почта и список доступа,
+// настройки доступа, путь без облака. Анимации выключены (body.no-ui-anim): переходы и списки — сразу.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ApiError, setApiForTests, type ApiClient } from '../../src/api-client';
 import { closeShareDialog, openShareDialog, shareDialogOpen, type ShareApi, type ShareStatus } from '../../src/share-dialog';
@@ -46,42 +47,67 @@ const deps = (api = shareApi()) => ({ api, saveNow: async () => {}, startHost: a
 const flush = async (n = 3) => { for (let i = 0; i < n; i++) await new Promise(r => setTimeout(r, 0)); };
 const dlg = () => document.getElementById('share-dialog')!;
 const q = <T extends Element = HTMLElement>(sel: string) => dlg().querySelector<T>(sel)!;
+const key = (type: string) => new KeyboardEvent('keydown', { key: type, bubbles: true, cancelable: true });
+/** Выпадающий список (spring-select): открыть и выбрать значение. */
+function pick(trigger: HTMLElement, value: string): void {
+  trigger.click();
+  const opt = dlg().querySelector<HTMLElement>(`[role="option"][data-value="${value}"]`);
+  if (!opt) throw new Error(`нет пункта ${value}`);
+  opt.click();
+}
+const optionsOf = (trigger: HTMLElement) => {
+  trigger.click();
+  const out = [...dlg().querySelectorAll<HTMLElement>('[role="option"]')].map(o => ({ value: o.dataset.value, text: o.textContent, danger: o.classList.contains('danger') }));
+  trigger.click();
+  return out;
+};
+const toSettings = () => q<HTMLButtonElement>('.share-nav-row[data-page="settings"]').click();
 
 beforeEach(() => {
   localStorage.clear();
   document.body.innerHTML = '<button id="btn-share">Поделиться</button>';
+  document.body.className = 'no-ui-anim no-motion';
   clearServerPlan();
   openProject(project());
   state.linkMode = null;
   state.collabRole = null;
 });
-afterEach(() => { closeShareDialog(); setApiForTests(undefined); });
+afterEach(() => { closeShareDialog(); setApiForTests(undefined); document.body.className = ''; });
 
-describe('доступность', () => {
-  it('диалог с заголовком, вкладки с aria-selected, стрелки и Home/End переключают вкладки', async () => {
+describe('доступность и страницы окна', () => {
+  it('диалог с заголовком; «Настройки доступа» — вложенная страница: заголовок, «назад», Esc возвращает фокус на пункт', async () => {
     document.getElementById('btn-share')!.focus();
     await openShareDialog(deps());
     expect(dlg().getAttribute('role')).toBe('dialog');
     expect(dlg().getAttribute('aria-modal')).toBe('true');
-    expect(document.getElementById(dlg().getAttribute('aria-labelledby')!)!.textContent).toBe('Поделиться: «Физика 9А»');
-    const tabs = [...dlg().querySelectorAll<HTMLButtonElement>('[role="tab"]')];
-    expect(tabs.map(t => t.textContent)).toEqual(['Поделиться', 'Настройки доступа']);
-    expect(tabs.map(t => t.getAttribute('aria-selected'))).toEqual(['true', 'false']);
-    expect(document.activeElement).toBe(tabs[0]);
-    tabs[0].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
-    expect(tabs[1].getAttribute('aria-selected')).toBe('true');
-    expect(q('#share-panel-share').hidden).toBe(true);
-    expect(q('#share-panel-settings').hidden).toBe(false);
-    expect(document.activeElement).toBe(tabs[1]);
-    tabs[1].dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
-    expect(tabs[0].getAttribute('aria-selected')).toBe('true');
+    expect(document.getElementById(dlg().getAttribute('aria-labelledby')!)!.textContent).toBe('Поделиться');
+    // вкладок и «Готово» больше нет; фокус — на первой кнопке страницы
+    expect(dlg().querySelector('[role="tab"]')).toBeNull();
+    expect(dlg().textContent).not.toContain('Готово');
+    expect(dlg().contains(document.activeElement)).toBe(true);
+    expect(q('.share-back').hidden).toBe(true);
+    const row = q<HTMLButtonElement>('.share-nav-row[data-page="settings"]');
+    row.focus();
+    row.click();
+    expect(document.getElementById(dlg().getAttribute('aria-labelledby')!)!.textContent).toBe('Настройки доступа');
+    expect(q('#share-page-settings')).not.toBeNull();
+    expect(dlg().querySelector('#share-page-main')).toBeNull();
+    expect(q('.share-back').hidden).toBe(false);
+    expect(document.activeElement).toBe(q('.share-back'));
+    // Esc на вложенной странице — «назад», а не закрытие окна
+    dlg().dispatchEvent(key('Escape'));
+    expect(shareDialogOpen()).toBe(true);
+    expect(q('#share-page-main')).not.toBeNull();
+    expect(dlg().querySelector('#share-page-settings')).toBeNull();
+    expect(document.activeElement).toBe(row);
+    expect(q('.share-back').hidden).toBe(true);
   });
 
   it('Esc закрывает окно и возвращает фокус на кнопку «Поделиться»; повторное открытие — переключатель', async () => {
     const opener = document.getElementById('btn-share')!;
     opener.focus();
     await openShareDialog(deps());
-    dlg().dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    dlg().dispatchEvent(key('Escape'));
     expect(shareDialogOpen()).toBe(false);
     expect(document.getElementById('share-dialog')).toBeNull();
     expect(document.activeElement).toBe(opener);
@@ -92,25 +118,25 @@ describe('доступность', () => {
 
   it('Tab не выпускает фокус из окна', async () => {
     await openShareDialog(deps());
-    const done = q<HTMLButtonElement>('.share-done');
-    done.focus();
-    const ev = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
-    done.dispatchEvent(ev);
+    const last = q<HTMLButtonElement>('.share-nav-row[data-page="settings"]');
+    last.focus();
+    const ev = key('Tab');
+    last.dispatchEvent(ev);
     expect(ev.defaultPrevented).toBe(true);
     expect(dlg().contains(document.activeElement)).toBe(true);
-    expect(document.activeElement).not.toBe(done);
+    expect(document.activeElement).not.toBe(last);
   });
 });
 
 describe('без облака', () => {
-  it('путь без сервера — первым и развёрнут: «Включить совместную работу» запускает комнату, ссылка — кнопка', async () => {
+  it('путь без сервера — на главной и первым: «Включить совместную работу» запускает комнату, ссылка — кнопка', async () => {
     const api = shareApi();
     await openShareDialog(deps(api));
     expect(q('.share-invite').hidden).toBe(true);
-    const panel = q('#share-panel-share');
-    expect(panel.firstElementChild!.classList.contains('share-p2p')).toBe(true);
-    expect(dlg().querySelector('.share-other')).toBeNull();
+    expect(q('#share-page-main .share-page-inner').firstElementChild!.classList.contains('share-p2p')).toBe(true);
+    expect(q('.share-nav-row[data-page="p2p"]').hidden).toBe(true);
     const start = [...dlg().querySelectorAll('button')].find(b => b.textContent === 'Включить совместную работу')!;
+    expect(document.activeElement).toBe(start);
     start.click();
     await flush(6);
     expect(api.started).toBe(1);
@@ -123,6 +149,19 @@ describe('без облака', () => {
     await openShareDialog(deps(shareApi({ active: true, url: 'http://127.0.0.1:4826/?room=X', urls: [], localOnly: true, users: [] })));
     expect(dlg().textContent).toContain('Только на этом компьютере');
     expect(dlg().textContent).toContain('работает только на этом компьютере');
+  });
+
+  it('права гостя по страницам и роль — в выпадающих списках строки участника', async () => {
+    const calls: unknown[] = [];
+    const api = shareApi({ active: true, url: 'http://192.168.1.5:4826/?room=X', urls: [], users: [{ userId: 7, name: 'Аня', color: '#f00', rights: { default: 'view' } }] });
+    api.shareSetRights = async (uid, patch) => { calls.push([uid, patch]); return { ok: true }; };
+    await openShareDialog(deps(api));
+    const rights = [...dlg().querySelectorAll<HTMLElement>('.share-user .share-user-right')];
+    expect(rights).toHaveLength(2);
+    pick(rights[1], 'edit');
+    pick(q('.share-user .share-user-role'), 'reader');
+    await flush(4);
+    expect(calls).toEqual([[7, { pages: { g2: 'edit' } }], [7, { role: 'reader' }]]);
   });
 });
 
@@ -138,6 +177,10 @@ describe('с облаком', () => {
         link = { token: 'TOKEN-AAAAAAAAAAAAAAAAAAA', url: 'https://abax.example/?route=collab&token=TOKEN', prettyUrl: null, defaultRole: 'edit', role: body.defaultRole ?? 'editor', allowCopy: true, pageRights: {}, enabled: body.enabled ?? true, alias: null, ...(link ?? {}), ...(body.enabled !== undefined ? { enabled: body.enabled } : {}), ...(body.defaultRole ? { role: body.defaultRole } : {}) };
         return link;
       }
+      if (m === 'POST' && p.startsWith('/api/invites/') && p.endsWith('/reset')) {
+        link = { ...link!, token: 'NEWTOKEN', url: 'https://abax.example/?route=collab&token=NEWTOKEN' };
+        return link;
+      }
       if (m === 'GET' && p === '/api/projects/p1/email-invites') return { invites: emails };
       if (m === 'POST' && p === '/api/projects/p1/email-invites') {
         const created = inv({ id: 'e2', email: body.email, role: body.role });
@@ -145,26 +188,37 @@ describe('с облаком', () => {
         return { invite: created, created: true, mailed: true };
       }
       if (m === 'DELETE' && p.startsWith('/api/projects/p1/email-invites/')) { emails = emails.filter(e => !p.endsWith(String(e.id))); return { ok: true }; }
+      if (m === 'GET' && p === '/api/projects/p1/alias') return { alias: null, former: [] };
       return new ApiError(404, 'not-found');
     });
     setApiForTests(api);
     return api;
   }
 
-  it('три раздельных списка: «Сейчас на доске», «У кого есть доступ» (владелец, ссылка, почта), статус приглашения', async () => {
+  it('«Есть доступ»: владелец и приглашения со статусом, роль — в выпадающем списке строки; «Сейчас на доске» в окне нет', async () => {
     cloud({ emails: [inv({ lastUsedAt: Date.now() }), inv({ id: 'e3', email: 'petr@mail.ru', role: 'reader' })] });
     await openShareDialog(deps());
     await flush(6);
-    expect(q('.share-present .share-cloud-title').textContent).toBe('Сейчас на доске · 0');
-    expect(q('.share-present .share-hint').hidden).toBe(false);
+    expect(dlg().querySelector('.share-present')).toBeNull();
+    expect(dlg().textContent).not.toContain('Сейчас на доске');
     const access = [...q('.share-access .share-people').children].map(c => (c as HTMLElement).dataset.key);
-    expect(access).toEqual(['owner', 'link', 'ee1', 'ee3']);
+    expect(access).toEqual(['owner', 'ee1', 'ee3']);
     const metas = [...dlg().querySelectorAll('.share-email-item .share-email-meta')].map(m => m.textContent);
-    expect(metas).toEqual(['Редактор · заходил(а) сегодня', 'Читатель · отправлено, ещё не заходил']);
-    expect(q('.share-link-row .share-person-meta').textContent).toBe('ссылка не создана');
-    // без облака путь «без сервера» не исчезает — свёрнут в «Другие способы подключения»
-    expect(q('.share-other summary').textContent).toBe('Другие способы подключения (без облака)');
-    expect(q<HTMLDetailsElement>('.share-other').open).toBe(false);
+    expect(metas).toEqual(['заходил(а) сегодня', 'отправлено, ещё не заходил']);
+    const roles = [...dlg().querySelectorAll<HTMLElement>('.share-email-row-role')].map(r => r.dataset.value);
+    expect(roles).toEqual(['editor', 'reader']);
+    // фокус — в поле приглашения
+    expect(document.activeElement).toBe(q('.share-email-input'));
+    // ссылки ещё нет: выключатель выключен, пояснение — в подсказке, а не текстом
+    expect(q('.share-switch').getAttribute('aria-checked')).toBe('false');
+    expect(q('.share-link-row').title).toContain('Включите');
+    expect(q('.share-url-row').hidden).toBe(true);
+    // путь без облака не исчезает — он на своей странице
+    const p2pRow = q<HTMLButtonElement>('.share-nav-row[data-page="p2p"]');
+    expect(p2pRow.hidden).toBe(false);
+    p2pRow.click();
+    expect(q('#share-page-p2p .share-p2p')).not.toBeNull();
+    expect(document.getElementById(dlg().getAttribute('aria-labelledby')!)!.textContent).toBe('Без облака');
   });
 
   it('черновик адреса и фокус переживают обновление списков', async () => {
@@ -181,49 +235,81 @@ describe('с облаком', () => {
     expect(document.activeElement).toBe(input);
   });
 
-  it('приглашение по почте с ролью; отзыв при включённой ссылке честно говорит про общую ссылку', async () => {
+  it('приглашение по почте с ролью; «Отозвать приглашение» — в списке роли, при включённой ссылке честно говорит про неё', async () => {
     const api = cloud({ link: { token: 'TOK', url: 'https://abax.example/?route=collab&token=TOK', prettyUrl: null, defaultRole: 'edit', role: 'editor', allowCopy: true, pageRights: {}, enabled: true, alias: null } });
     await openShareDialog(deps());
     await flush(6);
     q<HTMLInputElement>('.share-email-input').value = 'new@example.com';
-    const role = q<HTMLSelectElement>('.share-email-role');
-    expect([...role.options].map(o => o.value)).toEqual(['editor', 'commenter', 'reader']);
-    role.value = 'reader';
-    role.dispatchEvent(new Event('change'));
+    const role = q('.share-email-role');
+    expect(optionsOf(role).map(o => o.value)).toEqual(['editor', 'commenter', 'reader']);
+    expect(role.title).toContain('не выдавайте роль выше нужной'); // пояснение — в подсказке
+    pick(role, 'reader');
+    expect(role.dataset.value).toBe('reader');
     q<HTMLButtonElement>('.share-email-send').click();
     await flush(6);
     expect(api.calls.find(c => c[0] === 'POST' && c[1].endsWith('/email-invites'))![2]).toEqual({ email: 'new@example.com', role: 'reader' });
+    expect(q('.share-email-send').classList.contains('is-sent')).toBe(true);
+    expect(q<HTMLInputElement>('.share-email-input').value).toBe('');
     const row = q('.share-email-item');
     expect(row.querySelector('.share-email-addr')!.textContent).toBe('new@example.com');
-    const revoke = row.querySelector<HTMLButtonElement>('.share-email-revoke')!;
-    expect(revoke.getAttribute('aria-label')).toBe('Отозвать приглашение new@example.com');
-    revoke.click();
+    const rowRole = row.querySelector<HTMLElement>('.share-email-row-role')!;
+    expect(rowRole.getAttribute('aria-label')).toBe('Роль new@example.com');
+    const opts = optionsOf(rowRole);
+    expect(opts.at(-1)).toEqual({ value: '__revoke', text: 'Отозвать приглашение', danger: true });
+    pick(rowRole, '__revoke');
     await flush(6);
     expect(dlg().querySelectorAll('.share-email-item')).toHaveLength(0);
     expect(q('.share-revoked').textContent).toContain('Если у человека есть общая ссылка, он сможет войти по ней');
     expect(dlg().textContent).not.toContain('Отозвать доступ');
   });
 
-  it('общая ссылка: выключатель создаёт и ставит на паузу; на паузе — галочка «закрыть просмотр по ссылке»', async () => {
+  it('пустой адрес — поле качается и краснеет, запроса нет', async () => {
     const api = cloud();
     await openShareDialog(deps());
     await flush(6);
-    const sw = q<HTMLButtonElement>('.share-switch');
+    q<HTMLButtonElement>('.share-email-send').click();
+    await flush(2);
+    expect(q('.share-email-field').classList.contains('is-bad')).toBe(true);
+    expect(api.calls.some(c => c[0] === 'POST')).toBe(false);
+  });
+
+  it('общая ссылка: выключатель создаёт и ставит на паузу; адрес и «Копировать» — только у включённой', async () => {
+    const api = cloud();
+    await openShareDialog(deps());
+    await flush(6);
+    const sw = q<HTMLInputElement>('.share-switch');
     expect(sw.getAttribute('role')).toBe('switch');
     expect(sw.getAttribute('aria-checked')).toBe('false');
     sw.click();
     await flush(6);
     expect(api.calls.filter(c => c[1] === '/api/invites').at(-1)![2]).toMatchObject({ projectId: 'p1', enabled: true });
     expect(q<HTMLInputElement>('.share-url').value).toContain('token=TOKEN');
-    expect(q('.share-switch').getAttribute('aria-checked')).toBe('true');
-    q<HTMLButtonElement>('.share-switch').click();
+    expect(q('.share-url-row').hidden).toBe(false);
+    expect(sw.getAttribute('aria-checked')).toBe('true');
+    expect(sw.checked).toBe(true);
+    sw.click();
     await flush(6);
     expect(api.calls.filter(c => c[1] === '/api/invites').at(-1)![2]).toMatchObject({ enabled: false });
-    expect(q('.share-link-row .share-person-meta').textContent).toBe('ссылка выключена');
-    const cb = q<HTMLInputElement>('.share-link-box input[type="checkbox"]');
-    cb.checked = true;
-    cb.dispatchEvent(new Event('change'));
-    expect(state.project.permissions?.linkView).toBe(false);
+    expect(sw.getAttribute('aria-checked')).toBe('false');
+    expect(q('.share-url-row').hidden).toBe(true);
+    expect(q('.share-link-row').title).toContain('Ссылка выключена');
+  });
+
+  it('«Сбросить ссылку…» — в настройках доступа, с подтверждением', async () => {
+    const api = cloud({ link: { token: 'TOK', url: 'https://abax.example/?route=collab&token=TOK', prettyUrl: null, defaultRole: 'edit', role: 'editor', allowCopy: true, pageRights: {}, enabled: true, alias: null } });
+    await openShareDialog(deps());
+    await flush(6);
+    expect(dlg().querySelector('.share-reset')).toBeNull();
+    toSettings();
+    await flush(4);
+    q<HTMLButtonElement>('.share-reset').click();
+    expect(q('.share-confirm').textContent).toContain('Старая ссылка перестанет работать');
+    expect(document.activeElement).toBe(q('[data-key="reset-no"]'));
+    q<HTMLButtonElement>('[data-key="reset-yes"]').click();
+    await flush(6);
+    expect(api.calls.some(c => c[0] === 'POST' && c[1] === '/api/invites/TOK/reset')).toBe(true);
+    q<HTMLButtonElement>('.share-back').click();
+    expect(q<HTMLInputElement>('.share-url').value).toContain('token=NEWTOKEN');
   });
 
   it('адрес из ответа сервера — только текст', async () => {
@@ -242,14 +328,15 @@ describe('с облаком', () => {
   });
 });
 
-describe('вкладка «Настройки доступа»', () => {
-  const toSettings = () => q<HTMLButtonElement>('#share-tab-settings').click();
+describe('страница «Настройки доступа»', () => {
   const field = <T extends HTMLElement = HTMLInputElement>(name: string) => q<T>(`[data-field="${name}"]`);
 
-  it('защита, просмотр по ссылке, «Кто может позвать» и права страниц меняют права доски', async () => {
+  it('защита, просмотр по ссылке, «Позвать всех к себе» и права страниц меняют права доски', async () => {
     await openShareDialog(deps());
     toSettings();
     const protect = field('protectElements');
+    expect(protect.getAttribute('role')).toBe('switch');
+    expect(protect.closest('label')!.title).toContain('чужие элементы'); // пояснение — в подсказке
     protect.checked = true;
     protect.dispatchEvent(new Event('change'));
     expect(state.project.permissions?.protectElements).toBe(true);
@@ -258,29 +345,43 @@ describe('вкладка «Настройки доступа»', () => {
     lv.checked = false;
     lv.dispatchEvent(new Event('change'));
     expect(state.project.permissions?.linkView).toBe(false);
-    const editors = q<HTMLInputElement>('[data-key="summon-editors"]');
-    editors.checked = true;
-    editors.dispatchEvent(new Event('change'));
-    expect(state.project.permissions?.summon).toBe('editors');
     expect(q('[role="radiogroup"]').getAttribute('aria-label')).toBe('Кто может позвать всех к себе');
-    const page = q<HTMLSelectElement>('.share-page-right[data-page-id="g2"] select');
-    expect([...page.options].map(o => o.textContent)).toEqual(['По роли', 'Только просмотр', 'Скрыта']);
-    page.value = 'hidden';
-    page.dispatchEvent(new Event('change'));
+    const editors = q<HTMLButtonElement>('[data-key="summon-editors"]');
+    expect(editors.getAttribute('role')).toBe('radio');
+    editors.click();
+    expect(state.project.permissions?.summon).toBe('editors');
+    expect(editors.getAttribute('aria-checked')).toBe('true');
+    const page = q('.share-page-right[data-page-id="g2"] .ss-trigger');
+    expect(optionsOf(page).map(o => o.text)).toEqual(['По роли', 'Только просмотр', 'Скрыта']);
+    pick(page, 'hidden');
     expect(state.project.permissions?.pageRights).toEqual({ g2: 'hidden' });
+  });
+
+  it('максимум гостей — счётчик: стрелки и кнопки идут по списку, «∞» — без ограничений', async () => {
+    await openShareDialog(deps());
+    toSettings();
+    const stepper = field<HTMLElement>('maxGuests');
+    const num = stepper.querySelector<HTMLElement>('[role="spinbutton"]')!;
+    expect(num.getAttribute('aria-valuetext')).toBe('без ограничений');
+    num.dispatchEvent(key('Home'));
+    expect(state.project.permissions?.maxGuests).toBe(1);
+    stepper.querySelector<HTMLButtonElement>('.stp-plus')!.click();
+    expect(state.project.permissions?.maxGuests).toBe(2);
+    expect(stepper.dataset.value).toBe('2');
   });
 
   it('старое «редактирование для всех» видно как старая настройка с предупреждением; «Понятно» переводит на «По роли»', async () => {
     state.project.permissions = { pageRights: { g1: 'edit' } };
     await openShareDialog(deps());
     toSettings();
-    const sel = q<HTMLSelectElement>('.share-page-right[data-page-id="g1"] select');
-    expect(sel.value).toBe('edit');
-    expect(sel.selectedOptions[0].textContent).toBe('Редактирование для всех (старая настройка)');
+    const sel = q('.share-page-right[data-page-id="g1"] .ss-trigger');
+    expect(sel.dataset.value).toBe('edit');
+    expect(sel.textContent).toBe('Редактирование для всех (старая настройка)');
     expect(q('.share-warn').textContent).toContain('больше не повышает роль');
     q<HTMLButtonElement>('.share-warn button').click();
     expect(state.project.permissions?.pageRights).toEqual({});
     expect(dlg().querySelector('.share-warn')).toBeNull();
+    expect(sel.dataset.value).toBe('');
   });
 
   it('на Free защита копирования и клонирования и лимит гостей — с меткой Pro', async () => {
@@ -290,8 +391,9 @@ describe('вкладка «Настройки доступа»', () => {
     toSettings();
     expect(field('allowCopy').disabled).toBe(true);
     expect(field('allowClone').disabled).toBe(true);
-    expect(field<HTMLSelectElement>('maxGuests').disabled).toBe(true);
-    expect(dlg().querySelectorAll('.share-pro-tag').length).toBeGreaterThanOrEqual(3);
+    expect(field<HTMLElement>('maxGuests').classList.contains('disabled')).toBe(true);
+    expect(field<HTMLElement>('maxGuests').dataset.value).toBe('1');
+    expect([...dlg().querySelectorAll<HTMLElement>('.share-pro-tag')].filter(t => !t.hidden).length).toBeGreaterThanOrEqual(3);
     expect(field('protectElements').disabled).toBe(false); // защита элементов — на всех тарифах
   });
 
@@ -316,6 +418,7 @@ describe('вкладка «Настройки доступа»', () => {
     await openShareDialog(deps());
     toSettings();
     await flush(6);
+    expect(q('.share-alias .share-setting-label').title).toContain('Это не секрет'); // пояснение — в подсказке
     const input = () => q<HTMLInputElement>('.share-alias-input');
     input().value = 'Ab';
     input().dispatchEvent(new Event('input'));
@@ -330,6 +433,7 @@ describe('вкладка «Настройки доступа»', () => {
     input().dispatchEvent(new Event('input'));
     q<HTMLButtonElement>('.share-alias-save').click();
     await flush(6);
+    expect(q('.share-alias-save').textContent).toBe('Изменить');
     input().value = 'fizika-9a';
     input().dispatchEvent(new Event('input'));
     q<HTMLButtonElement>('.share-alias-save').click();
@@ -340,7 +444,8 @@ describe('вкладка «Настройки доступа»', () => {
     q<HTMLButtonElement>('[data-key="release-yes-physics-9a"]').click();
     await flush(6);
     expect(api.calls.some(c => c[0] === 'DELETE' && c[1] === '/api/projects/p1/alias/physics-9a')).toBe(true);
-    expect(dlg().querySelector('.share-alias .share-people')).toBeNull();
+    expect(dlg().querySelector('.share-alias .share-person')).toBeNull();
+    expect(q('.share-former').hidden).toBe(true);
   });
 });
 
@@ -357,12 +462,10 @@ describe('роль общей ссылки до её создания', () => {
     }));
     await openShareDialog(deps());
     await flush(6);
-    const sel = q<HTMLSelectElement>('select.share-link-role');
-    sel.value = 'reader';
-    sel.dispatchEvent(new Event('change'));
+    pick(q('.share-link-role'), 'reader');
     await flush(4);
     expect(calls.some(c => c[0] === 'POST')).toBe(false);
-    q<HTMLButtonElement>('.share-switch').click();
+    q<HTMLInputElement>('.share-switch').click();
     await flush(6);
     expect(calls.find(c => c[0] === 'POST')![2]).toMatchObject({ defaultRole: 'reader', enabled: true });
   });

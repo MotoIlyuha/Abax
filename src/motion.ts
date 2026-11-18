@@ -78,7 +78,9 @@ let running = false;
 let last = 0;
 
 function loop(now: number): void {
-  const dt = Math.min((now - last) / 1000, 1 / 30);
+  // первый кадр после пробуждения — номинальный: метка кадра и performance.now() могут идти от разных начал
+  // (jsdom) или кадр мог начаться раньше вызова wake(); шаг назад во времени раскачал бы пружины
+  const dt = last < 0 ? 1 / 60 : Math.max(0, Math.min((now - last) / 1000, 1 / 30));
   last = now;
   const sub = 4; // подшаги: жёсткие пружины устойчивы только при мелком шаге
   for (let k = 0; k < sub; k++) for (const c of comps) c.frame(dt / sub);
@@ -101,6 +103,6 @@ export function unregister(c: MotionComponent): void {
 export function wake(): void {
   if (running) return;
   running = true;
-  last = performance.now();
+  last = -1;
   requestAnimationFrame(loop);
 }
