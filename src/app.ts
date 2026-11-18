@@ -14,7 +14,7 @@ import {
   applyStyleToSelection, colorElement, setSettings, setView, switchPage, addPage, deletePage, renamePage, setSelection,
   openProject, blankProject, blankPage, projectMeta, groupSelected, ungroupSelected, movePage,
   bringForward, sendBackward, moveSelectionLayer, selectionLayerOrder, pinSelectionLayer, deleteSelected, setSolidSides, removeImageFrames, selectInserted,
-  clampOpacity, opacityField, OPACITY_MIN, parseZoomPercent, zoomAtPoint,
+  clampOpacity, opacityField, OPACITY_MIN, parseZoomPercent,
   addDraft, deleteDraft, onDraft, realPageId,
   canCopyCurrentBoard, canCloneCurrentProject, canAddPageTo, PAGE_LIMIT_TEXT, projectPlan,
 } from './state';
@@ -38,7 +38,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker&inline';
 import { initChatButton } from './collab-chat';
 import { collabActive, isHost, myCollabCaps, myColor, noteSelection, readOnly, startHostConnection, stopCollab, type CollabGotoDetail, type CollabSummonDetail } from './collab';
-import { animateCameraTo } from './camera-anim';
+import { animateCameraTo, cameraAnimating, clampZoom } from './camera-anim';
 import { fillPageAvatars, initCollabPresence } from './collab-presence';
 import { closePresent, openPresent, presentOpen } from './present';
 import { renderProfileSettings } from './profile-settings';
@@ -2824,16 +2824,41 @@ function wireImageInput(): void {
 
 // ----- Камера -----
 
-export function fitContent(): void {
+/** Куда плавно едет камера сейчас (центр и масштаб): повторные «+»/«−» складываются, а не теряют шаги. */
+let viewGoal: { cx: number; cy: number; zoom: number } | null = null;
+
+/** Плавно перевести камеру: центр экрана — в мировую точку, масштаб — в zoom (без анимаций — сразу). */
+function glideView(cx: number, cy: number, zoom: number): void {
+  viewGoal = { cx, cy, zoom: clampZoom(zoom) };
+  animateCameraTo(cx, cy, viewGoal.zoom);
+}
+
+/** Плавный масштаб относительно центра холста: кнопки «+»/«−», пункты 50…800 %, «Другой масштаб». */
+function zoomCenterSmooth(zoom: number): void {
+  const r = canvas.getBoundingClientRect();
+  const goal = cameraAnimating() ? viewGoal : null;
+  const cam = state.camera;
+  glideView(goal?.cx ?? cam.x + r.width / 2 / cam.zoom, goal?.cy ?? cam.y + r.height / 2 / cam.zoom, zoom);
+}
+
+/** Масштаб, к которому идёт камера: текущий или конечный у идущего перелёта. */
+function zoomGoal(): number {
+  return cameraAnimating() && viewGoal ? viewGoal.zoom : state.camera.zoom;
+}
+
+/** «Показать всё»; smooth — плавный перелёт (по действию пользователя), иначе мгновенно (открытие страницы). */
+export function fitContent(smooth = false): void {
   const r = canvas.getBoundingClientRect();
   const els = state.board.elements;
   if (els.length === 0) {
+    if (smooth) { glideView(0, 0, 1); return; }
     state.camera = { x: -r.width / 2, y: -r.height / 2, zoom: 1 };
     update();
     return;
   }
   const bb = contentBBox(els);
   const zoom = Math.max(0.05, Math.min(1.5, Math.min(r.width / (bb.w + 160), r.height / (bb.h + 160))));
+  if (smooth) { glideView(bb.x0 + bb.w / 2, bb.y0 + bb.h / 2, zoom); return; }
   state.camera = {
     zoom,
     x: bb.x0 + bb.w / 2 - r.width / (2 * zoom),
@@ -4858,7 +4883,7 @@ function wireTopbar(): void {
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && menuShown(menu)) { setMenuOpen(false); menuButton.focus(); } });
   document.getElementById('btn-undo')!.addEventListener('click', () => undo());
   document.getElementById('btn-redo')!.addEventListener('click', () => redo());
-  document.getElementById('btn-fit')!.addEventListener('click', () => fitContent());
+  document.getElementById('btn-fit')!.addEventListener('click', () => fitContent(true));
   const exportButton = document.getElementById('btn-export')!;
   exportButton.title = 'Экспорт';
   exportButton.setAttribute('aria-expanded', 'false');
@@ -5193,8 +5218,7 @@ function wireZoomInput(): void {
     const button = document.getElementById(id)!;
     button.innerHTML = icon;
     button.addEventListener('click', () => {
-      const r = canvas.getBoundingClientRect();
-      zoomAtPoint(state.camera.zoom * factor, r.width / 2, r.height / 2);
+      zoomCenterSmooth(zoomGoal() * factor);
     });
   }
   gridTrigger.addEventListener('click', () => {
@@ -5217,8 +5241,8 @@ function wireZoomInput(): void {
       state.board.backgroundColor = b.dataset.bg; state.board.elements = [...state.board.elements]; update(true); void saveNow(); close(); return;
     }
     if (view === 'fullscreen') { if (document.fullscreenElement) void document.exitFullscreen(); else void document.documentElement.requestFullscreen(); }
-    if (view === 'fit') fitContent();
-    if (b.dataset.zoom) { const r = canvas.getBoundingClientRect(); zoomAtPoint(Number(b.dataset.zoom) / 100, r.width / 2, r.height / 2); }
+    if (view === 'fit') fitContent(true);
+    if (b.dataset.zoom) zoomCenterSmooth(Number(b.dataset.zoom) / 100);
     if (view === 'custom') { close(); openZoomInput(label); return; }
     close();
   });
@@ -5271,8 +5295,7 @@ function openZoomInput(label: HTMLElement): void {
     label.hidden = false;
     if (zoom === null) return;
     // относительно центра холста, как кнопки + и −
-    const r = canvas.getBoundingClientRect();
-    zoomAtPoint(zoom, r.width / 2, r.height / 2);
+    zoomCenterSmooth(zoom);
   };
   input.addEventListener('input', () => check(false));
   input.addEventListener('keydown', e => {

@@ -1453,7 +1453,7 @@ export function initController(canvas: HTMLCanvasElement): void {
       case 'Backspace': e.preventDefault(); if (canEditBoard()) deleteSelected(); break;
       case 'Equal': zoomAtCenter(1.25); break;
       case 'Minus': zoomAtCenter(1 / 1.25); break;
-      case 'Digit0': fitContent(); break;
+      case 'Digit0': fitContent(true); break;
       case 'KeyB': togglePages(); break;
       default: {
         // клавиши инструментов настраиваются в окне «Все настройки»
