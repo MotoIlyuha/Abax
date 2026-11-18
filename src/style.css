@@ -164,14 +164,6 @@ body.hide-undo-redo .undo-group { display: none; }
   .topbar-side { gap: 12px; }
   #project-name { max-width: 90px; }
   #page-name { max-width: 100px; }
-  /* во вкладке браузера (не в приложении) на узком экране шапке не хватает места */
-  body.web-build #btn-share { display: none; }
-}
-@media (max-width: 600px) {
-  #topbar { flex-wrap: wrap; }
-  .topbar-right { margin-left: auto; }
-  .project-group { max-width: 180px; }
-  #toolbar[data-pos="left"], #toolbar[data-pos="right"], #toolbar[data-pos="top"] { top: 116px; }
 }
 #page-name {
   border: 1px solid transparent;
@@ -3888,3 +3880,23 @@ body.hide-export-button .export-group { display: none; }
   #bottombar { gap: 6px; }
   .share-btn { padding: 0 12px; }
 }
+
+/* ----- Адаптивная шапка (src/topbar-fit.ts): по очереди уходят экспорт, импорт, «Отменить / Повторить»
+   переезжают под панель инструментов, «Поделиться» сжимается до иконки ----- */
+body.fit-measure .project-group { flex-shrink: 0; }
+body.fit-export .export-group,
+body.fit-import .import-group { display: none; }
+body.fit-undo .undo-group {
+  position: fixed;
+  left: var(--undo-dock-x, 12px);
+  top: var(--undo-dock-y, 72px);
+  flex-direction: column;
+  height: auto;
+}
+.share-icon { display: none; }
+.share-icon svg { width: 20px; height: 20px; display: block; }
+body.fit-share .share-btn { width: 48px; padding: 0; display: inline-flex; align-items: center; justify-content: center; }
+body.fit-share .share-icon { display: block; }
+body.fit-share .share-text { display: none; }
+#main-menu button:disabled { opacity: .45; cursor: default; }
+#main-menu button:disabled:hover { background: transparent; }

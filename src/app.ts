@@ -1,3 +1,4 @@
+import { initTopbarFit, topbarFit } from './topbar-fit';
 import { startCrop } from './crop';
 import type {
   AnimationMode, BoardSettings, Camera, Element, GridMode, ImageEl, NoteEl, Page, PageTransition, Project, ProjectMeta, ShapeEl, TaskEl, TextAlign, TextEl, TextVAlign,
@@ -4715,6 +4716,8 @@ function wireTopbar(): void {
   document.getElementById('btn-import')!.innerHTML = ICONS.pdf;
   document.getElementById('btn-image')!.innerHTML = ICONS.image;
   document.getElementById('btn-settings')!.innerHTML = ICONS.settings;
+  // иконка «Поделиться» — когда шапке не хватает места (см. topbar-fit.ts)
+  document.querySelector<HTMLElement>('#btn-share .share-icon')!.innerHTML = svg('<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/>');
   document.getElementById('btn-share')!.addEventListener('click', () => { void openShareDialog(); });
   initChatButton();
   const iconBtn = document.getElementById('project-icon') as HTMLButtonElement;
@@ -4778,7 +4781,15 @@ function wireTopbar(): void {
     menu.querySelector('[data-action="undo"]')!.setAttribute('aria-checked', String(state.settings.hideUndoRedo));
     menu.querySelector('[data-action="imports"]')!.setAttribute('aria-checked', String(document.body.classList.contains('hide-import-buttons')));
     menu.querySelector('[data-action="hide-export"]')!.setAttribute('aria-checked', String(document.body.classList.contains('hide-export-button')));
+    // элемент, которому в шапке не хватает места, показать нельзя: пункт недоступен
+    const { noRoom } = topbarFit();
+    for (const [action, step] of [['imports', 'import'], ['hide-export', 'export']] as const) {
+      const item = menu.querySelector<HTMLButtonElement>(`[data-action="${action}"]`)!;
+      item.disabled = noRoom.has(step);
+      item.title = item.disabled ? 'Не хватает места в шапке' : '';
+    }
   };
+  document.addEventListener('topbar-fit', () => { if (!menu.hidden) setMenuOpen(true); });
   document.body.classList.toggle('hide-import-buttons', localStorage.getItem('abax.hideImports') === 'true');
   document.body.classList.toggle('hide-export-button', localStorage.getItem('abax.hideExport') === 'true');
   menuButton.addEventListener('click', () => setMenuOpen(menu.hidden));
@@ -4865,6 +4876,7 @@ function wireTopbar(): void {
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && !exportMenu.hidden) { closeExportMenu(); exportButton.focus(); } });
   document.getElementById('btn-present')!.addEventListener('click', togglePresent);
   wireHelpMenu();
+  initTopbarFit();
   // список страниц внизу не должен заходить под правый нижний угол
   const bottombar = document.getElementById('bottombar')!;
   new ResizeObserver(() => {

@@ -548,7 +548,7 @@ test.describe('страница', () => {
 test.describe('вёрстка шапки', () => {
   test('«Поделиться» — текстом, «Вид и масштаб» и помощь внизу справа, F1 открывает помощь, экспорт скрывается из меню', async ({ board, page }) => {
     await expect(page.locator('#btn-share')).toHaveText('Поделиться');
-    await expect(page.locator('#btn-share svg')).toHaveCount(0);
+    await expect(page.locator('#btn-share .share-icon')).toBeHidden();
     await expect(page.locator('#btn-settings')).toBeHidden();
     const vp = page.viewportSize()!;
     const view = (await page.locator('.view-group').boundingBox())!;
@@ -580,6 +580,42 @@ test.describe('вёрстка шапки', () => {
     await page.reload();
     await board.ready();
     await expect(page.locator('#btn-export')).toBeHidden();
+  });
+});
+
+test.describe('адаптивная шапка', () => {
+  test('при сужении уходят экспорт, импорт, отмена/повтор переезжают под панель, «Поделиться» — иконкой; пункты «Скрыть» без места недоступны', async ({ board, page }) => {
+    const fit = () => page.evaluate(() => [...document.body.classList].filter(c => c.startsWith('fit-')).sort().join(' '));
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await expect.poll(fit).toBe('');
+    await page.setViewportSize({ width: 560, height: 800 });
+    await expect.poll(fit).toBe('fit-export');
+    await expect(page.locator('#btn-export')).toBeHidden();
+    await expect(page.locator('#btn-import')).toBeVisible();
+
+    await page.locator('#btn-home').click();
+    await page.locator('#main-menu [data-section="hide"]').click();
+    await expect(page.locator('#main-menu [data-action="hide-export"]')).toBeDisabled();
+    await expect(page.locator('#main-menu [data-action="imports"]')).toBeEnabled();
+    await expect(page.locator('#main-menu [data-action="undo"]')).toBeEnabled();
+    await page.keyboard.press('Escape');
+
+    await page.setViewportSize({ width: 330, height: 800 });
+    await expect.poll(fit).toBe('fit-export fit-import fit-share fit-undo');
+    await expect(page.locator('#btn-share .share-icon')).toBeVisible();
+    await expect(page.locator('#btn-share .share-text')).toBeHidden();
+    // отмена и повтор — под панелью инструментов, одна над другой
+    const tb = (await page.locator('#toolbar').boundingBox())!;
+    const undo = (await page.locator('#btn-undo').boundingBox())!;
+    const redo = (await page.locator('#btn-redo').boundingBox())!;
+    expect(undo.y).toBeGreaterThan(tb.y + tb.height);
+    expect(redo.y).toBeGreaterThan(undo.y + undo.height - 1);
+    expect(Math.abs(undo.x - redo.x)).toBeLessThan(1);
+    expect(await page.locator('#topbar').evaluate(e => e.scrollWidth <= e.clientWidth)).toBe(true);
+
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await expect.poll(fit).toBe('');
+    void board;
   });
 });
 

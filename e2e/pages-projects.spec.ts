@@ -329,7 +329,10 @@ test.describe('страницы проекта', () => {
     await expect(page.locator('#settings-popover')).toBeHidden();
     await page.locator('#btn-settings').dispatchEvent('click');
     await expect(page.locator('#settings-popover .ctx-label', { hasText: 'Анимация перехода на другую страницу' })).toBeVisible();
-    await expect(page.locator('#settings-popover .ctx-options button')).toHaveText(['Нет', 'Слайд', 'Затухание', 'Приближение']);
+    // группа сразу после подписи: в окне есть и другие варианты (например, «Анимации»)
+    const transitionOptions = page.locator('#settings-popover .ctx-label', { hasText: 'Анимация перехода на другую страницу' })
+      .locator('xpath=following-sibling::*[contains(@class, "ctx-options")][1]');
+    await expect(transitionOptions.locator('button')).toHaveText(['Нет', 'Слайд', 'Затухание', 'Приближение']);
     await page.locator('#btn-settings').dispatchEvent('click');
 
     let expected = 1;
