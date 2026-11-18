@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { S, atRest, clamp, snap, spring, step, tune } from '../../src/motion';
+import { S, atRest, clamp, resolveAnimationMode, snap, spring, step, tune } from '../../src/motion';
 
 describe('движок пружин', () => {
   it('пружина приходит к цели и успокаивается', () => {
@@ -45,5 +45,30 @@ describe('движок пружин', () => {
 
   it('clamp', () => {
     expect([clamp(5, 0, 3), clamp(-1, 0, 3), clamp(2, 0, 3)]).toEqual([3, 0, 2]);
+  });
+});
+
+describe('режим анимаций', () => {
+  it('сохранённый режим побеждает старые флажки', () => {
+    expect(resolveAnimationMode({ animationMode: 'off', motionAnimations: true, uiAnimations: true })).toBe('off');
+    expect(resolveAnimationMode({ animationMode: 'normal', motionAnimations: true })).toBe('normal');
+  });
+
+  it('без сохранённых настроек — «улучшенные» (по умолчанию)', () => {
+    expect(resolveAnimationMode(null)).toBe('enhanced');
+    expect(resolveAnimationMode(undefined)).toBe('enhanced');
+    expect(resolveAnimationMode({})).toBe('enhanced');
+  });
+
+  it('старые флажки переводятся в режим', () => {
+    expect(resolveAnimationMode({ motionAnimations: true, uiAnimations: true })).toBe('enhanced');
+    expect(resolveAnimationMode({ motionAnimations: false })).toBe('normal');
+    expect(resolveAnimationMode({ motionAnimations: false, uiAnimations: true })).toBe('normal');
+    expect(resolveAnimationMode({ motionAnimations: false, uiAnimations: false })).toBe('off');
+  });
+
+  it('неизвестное значение режима не ломает загрузку', () => {
+    expect(resolveAnimationMode({ animationMode: 'bogus' })).toBe('enhanced');
+    expect(resolveAnimationMode({ animationMode: 'bogus', motionAnimations: false })).toBe('normal');
   });
 });

@@ -3,6 +3,8 @@
 // Один цикл requestAnimationFrame на всех; когда все компоненты успокоились, цикл засыпает
 // и просыпается по wake() — доска не тратит кадры, пока ничего не движется.
 
+import type { AnimationMode } from './types';
+
 export interface Spring { x: number; v: number; t: number; k: number; c: number }
 
 /** Подставка для jsdom и случаев, когда matchMedia недоступен. */
@@ -10,11 +12,22 @@ export function reduceMotion(): boolean {
   try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
 }
 
-/** «Motion анимации» включены в настройках (выключенные — класс no-motion на body). */
+/** Пружины включены: режим анимаций «улучшенные» (в остальных режимах класс no-motion на body). */
 export const motionEnabled = (): boolean => !document.body.classList.contains('no-motion');
 
-/** «Анимация меню и панелей» выключена: пружины встают на цель сразу. */
+/** Режим «выкл»: пружины встают на цель сразу, панели и меню без появления (класс no-ui-anim). */
 export const uiAnimOff = (): boolean => document.body.classList.contains('no-ui-anim');
+
+/**
+ * Режим из сохранённых настроек. Если режима ещё нет, он выводится из двух старых флажков
+ * (motionAnimations и uiAnimations). Потерянное при этом: сочетание «панели выкл, пружины вкл»
+ * больше не существует, такой случай становится «улучшенные».
+ */
+export function resolveAnimationMode(saved: { animationMode?: unknown; motionAnimations?: unknown; uiAnimations?: unknown } | null | undefined): AnimationMode {
+  if (saved && (saved.animationMode === 'off' || saved.animationMode === 'normal' || saved.animationMode === 'enhanced')) return saved.animationMode;
+  if (saved && saved.motionAnimations === false) return saved.uiAnimations === false ? 'off' : 'normal';
+  return 'enhanced';
+}
 
 export const S = (x: number, k = 400, c = 30): Spring => ({ x, v: 0, t: x, k, c });
 

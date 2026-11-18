@@ -395,10 +395,9 @@ test.describe('настройки доски', () => {
     expect(await anim('#quick-menu')).toBe('none');
 
     await page.locator('#btn-settings').click();
-    const cb = page.locator('#settings-popover label', { hasText: 'Анимация меню и панелей' }).locator('input');
-    await expect(cb).toBeChecked();
-    await cb.uncheck();
-    expect((await board.state()).settings.uiAnimations).toBe(false);
+    await expect(page.locator('#settings-popover button', { hasText: /^Улучшенные$/ })).toHaveClass(/active/);
+    await page.locator('#settings-popover button', { hasText: /^Выкл$/ }).click();
+    expect((await board.state()).settings.animationMode).toBe('off');
     expect(await anim('#settings-popover')).toBe('none');
     await page.keyboard.press('Escape');
     await board.tool('p'); // у выделения выбора цвета на панели нет
@@ -407,12 +406,12 @@ test.describe('настройки доски', () => {
     await page.keyboard.press('Escape');
     await page.keyboard.press('Control+Comma');
     expect(await anim('.sd-window')).toBe('none');
-    await expect(page.locator('.sd-general label', { hasText: 'Анимация меню и панелей' }).locator('input')).not.toBeChecked();
+    await expect(page.locator('.sd-general button', { hasText: /^Выкл$/ })).toHaveClass(/active/);
     await page.keyboard.press('Escape');
 
     await page.reload();
     await board.ready();
-    expect((await board.state()).settings.uiAnimations).toBe(false);
+    expect((await board.state()).settings.animationMode).toBe('off');
     await page.locator('#btn-shapes').click();
     expect(await anim('.ctx-panel[data-kind="shapes"]')).toBe('none');
   });
@@ -574,13 +573,12 @@ test.describe('подсказки', () => {
     expect((await page.locator('#morph-tip .mt-tip').boundingBox())!.y).toBeGreaterThan(before.y);
   });
 
-  test('переключатель «Motion анимации»: по умолчанию включён, выключенный возвращает обычный пузырь', async ({ board, page }) => {
-    expect((await board.state()).settings.motionAnimations).toBe(true);
+  test('режим «Анимации»: по умолчанию «Улучшенные», «Обычные» возвращают обычный пузырь', async ({ board, page }) => {
+    expect((await board.state()).settings.animationMode).toBe('enhanced');
     await page.keyboard.press('Control+Comma');
-    const cb = page.locator('.sd-general label', { hasText: 'Motion анимации' }).locator('input');
-    await expect(cb).toBeChecked();
-    await cb.uncheck();
-    expect((await board.state()).settings.motionAnimations).toBe(false);
+    await expect(page.locator('.sd-general button', { hasText: /^Улучшенные$/ })).toHaveClass(/active/);
+    await page.locator('.sd-general button', { hasText: /^Обычные$/ }).click();
+    expect((await board.state()).settings.animationMode).toBe('normal');
     await page.keyboard.press('Escape');
     await page.locator('.tool[data-tool="text"]').hover();
     await expect(page.locator('#tooltip')).toBeVisible();
@@ -588,9 +586,9 @@ test.describe('подсказки', () => {
 
     await page.reload();
     await board.ready();
-    expect((await board.state()).settings.motionAnimations).toBe(false);
+    expect((await board.state()).settings.animationMode).toBe('normal');
     await page.keyboard.press('Control+Comma');
-    await page.locator('.sd-general label', { hasText: 'Motion анимации' }).locator('input').check();
+    await page.locator('.sd-general button', { hasText: /^Улучшенные$/ }).click();
     await page.keyboard.press('Escape');
     await page.mouse.move(900, 500);
     await page.locator('.tool[data-tool="text"]').hover();

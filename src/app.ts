@@ -1,8 +1,9 @@
 import { startCrop } from './crop';
 import type {
-  BoardSettings, Camera, Element, GridMode, ImageEl, NoteEl, Page, PageTransition, Project, ProjectMeta, ShapeEl, TaskEl, TextAlign, TextEl, TextVAlign,
+  AnimationMode, BoardSettings, Camera, Element, GridMode, ImageEl, NoteEl, Page, PageTransition, Project, ProjectMeta, ShapeEl, TaskEl, TextAlign, TextEl, TextVAlign,
   ToolId, ToolbarPos, WheelMode,
 } from './types';
+import { resolveAnimationMode } from './motion';
 import {
   state, update, onChange, undo, redo, canUndo, canRedo, setTool, setGrid, setCoordLabels, setStyleColor,
   setStyleWidth, setStyleOpacity, pickTool, setNoteColor, selectPreset, presetKind, addElement, replaceElements, pushHistory, uid,
@@ -219,8 +220,7 @@ function restoreSettings(): void {
         mouseMode: v.mouseMode === 'history' || v.mouseMode === 'custom' ? v.mouseMode : 'pages',
         mouseBindings: Object.fromEntries(['1', '3', '4'].map(key => { const b = v.mouseBindings?.[key]; return [key, b && typeof b.action === 'string' && typeof b.label === 'string' ? { action: b.action, label: b.label } : null]; })) as BoardSettings['mouseBindings'],
         newPageKey: DEFAULT_NEW_PAGE_KEY,
-        uiAnimations: typeof v.uiAnimations === 'boolean' ? v.uiAnimations : true,
-        motionAnimations: typeof v.motionAnimations === 'boolean' ? v.motionAnimations : true,
+        animationMode: resolveAnimationMode(v),
         hideUndoRedo: typeof v.hideUndoRedo === 'boolean' ? v.hideUndoRedo : false,
         keepImageAspect: typeof v.keepImageAspect === 'boolean' ? v.keepImageAspect : true,
         alignGuides: typeof v.alignGuides === 'boolean' ? v.alignGuides : true,
@@ -249,16 +249,22 @@ function persistSettings(): void {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings));
 }
 
-/** Анимации появления панелей живут в CSS; выключенные — класс на body их гасит. */
-function applyUiAnimations(): void {
-  document.body.classList.toggle('no-ui-anim', !state.settings.uiAnimations);
-}
+/** Варианты режима анимаций (настройка доски «Анимации»). */
+const ANIMATION_MODES: { mode: AnimationMode; name: string; hint: string }[] = [
+  { mode: 'off', name: 'Выкл', hint: 'Без движения: меню и панели появляются сразу, пружин нет' },
+  { mode: 'normal', name: 'Обычные', hint: 'Меню и панели плавно выплывают, подсказка и пружины выключены' },
+  { mode: 'enhanced', name: 'Улучшенные', hint: 'Меню и панели выплывают, подсказка панели перетекает от кнопки к кнопке, иконки пружинят' },
+];
 
-/** Motion-анимации (пружины): выключенные — класс на body, подсказка панели снова обычная, без подсветки и «нажатия» иконок. */
-function applyMotionAnimations(): void {
-  const on = state.settings.motionAnimations;
-  document.body.classList.toggle('no-motion', !on);
-  if (!on) morphLeave(true);
+/**
+ * Режим анимаций на классах body: «выкл» гасит появление панелей (no-ui-anim) и пружины (no-motion);
+ * «обычные» — только пружины; «улучшенные» — ничего не гасит.
+ */
+function applyAnimationMode(): void {
+  const mode = state.settings.animationMode;
+  document.body.classList.toggle('no-ui-anim', mode === 'off');
+  document.body.classList.toggle('no-motion', mode !== 'enhanced');
+  if (mode !== 'enhanced') morphLeave(true);
   morphPagesReset(pagesOpen);
 }
 
@@ -2359,23 +2365,26 @@ function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
   lblPages.textContent = 'Список страниц';
   pop.appendChild(lblPages);
   pop.appendChild(settingCheck('closePagesOnPick', 'Закрывать после выбора страницы'));
-  const lbl6 = document.createElement('label');
-  lbl6.className = 'ctx-check';
-  lbl6.title = 'Меню и панели плавно выплывают при открытии';
-  const cb6 = document.createElement('input');
-  cb6.type = 'checkbox';
-  cb6.checked = state.settings.uiAnimations;
-  cb6.addEventListener('change', () => {
-    setSettings({ uiAnimations: cb6.checked });
-    persistSettings();
-    applyUiAnimations();
-  });
-  const span6 = document.createElement('span');
-  span6.textContent = 'Анимация меню и панелей';
-  lbl6.append(cb6, span6);
-  pop.appendChild(lbl6);
-  pop.appendChild(settingCheck('motionAnimations', 'Motion анимации',
-    'Подсказка панели инструментов плавно перетекает от кнопки к кнопке, иконки пружинят при нажатии', applyMotionAnimations));
+  const lblAnim = document.createElement('div');
+  lblAnim.className = 'ctx-label';
+  lblAnim.textContent = 'Анимации';
+  pop.appendChild(lblAnim);
+  const animRow = document.createElement('div');
+  animRow.className = 'ctx-toolbar-pos ctx-options';
+  for (const { mode, name, hint } of ANIMATION_MODES) {
+    const b = document.createElement('button');
+    b.textContent = name;
+    b.title = hint;
+    b.className = state.settings.animationMode === mode ? 'active' : '';
+    b.addEventListener('click', () => {
+      setSettings({ animationMode: mode });
+      persistSettings();
+      applyAnimationMode();
+      rerender();
+    });
+    animRow.appendChild(b);
+  }
+  pop.appendChild(animRow);
   const lbl7 = document.createElement('label');
   lbl7.className = 'ctx-check';
   lbl7.title = macKeys('Отмена и повтор по-прежнему работают на Ctrl+Z и Ctrl+Y');
@@ -2393,7 +2402,7 @@ function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
   pop.appendChild(lbl7);
 }
 
-type BoolSetting = 'motionAnimations' | 'alignGuides' | 'closePagesOnPick' | 'thumbViewport' | 'pageLinks' | 'recursionEnabled';
+type BoolSetting = 'alignGuides' | 'closePagesOnPick' | 'thumbViewport' | 'pageLinks' | 'recursionEnabled';
 
 /** Флажок настройки доски: меняет и сразу сохраняет. */
 function settingCheck(key: BoolSetting, text: string, hint?: string, after?: () => void): HTMLElement {
@@ -5261,8 +5270,7 @@ export function initApp(c: HTMLCanvasElement): void {
   restoreCamera();
   restoreStyle();
   restoreSettings();
-  applyUiAnimations();
-  applyMotionAnimations();
+  applyAnimationMode();
   applyUndoRedoVisibility();
   restoreToolbar();
   buildToolbar();
