@@ -1136,3 +1136,71 @@ describe('живые права страниц у гостя (Ночь №5, TAS
     expect(closed).toEqual([collab.lastCollabClose()]);
   });
 });
+
+describe('защита чужих элементов у гостя (Ночь №6, TASK-05)', () => {
+  const lesson = (protect: boolean): Project => ({
+    ...demo(),
+    permissions: protect ? { protectElements: true } : {},
+    pages: [{ id: 'pg1', name: 'Задачи', grid: 'square', elements: [rect('teacher') as never] }, demo().pages[1]],
+  });
+  async function asEditor(protect: boolean) {
+    server.room.project = lesson(protect);
+    await collab.startCollab(base, false, 'Аня');
+    await until(() => st.state.project.id === 'proj' && collab.myCollabId() > 0);
+    server.setRights(collab.myCollabId(), { role: 'editor' });
+    await until(() => collab.myCollabRole() === 'editor' && !collab.readOnly('pg1'));
+    const host = await peer(`${base}&host=1&key=${encodeURIComponent(server.hostKey)}`);
+    peers.push(host);
+    host.ws.send(JSON.stringify({ t: 'caps', patches: true }));
+    await hostCaps();
+    return host;
+  }
+  const teacher = () => st.state.board.elements.find(e => e.id === 'teacher')!;
+  const mine = () => st.state.board.elements.find(e => e.id === 'mine');
+
+  it('свой элемент — свой (автор от хаба), чужой не выделяется и подписан; ластик и Undo не трогают чужое', async () => {
+    const host = await asEditor(true);
+    expect(collab.protectionActive()).toBe(true);
+    expect(collab.myPrincipal()).toMatch(/^c:/);
+    expect(collab.canTouchElement(teacher())).toBe(false);
+    expect(collab.foreignElementHint(teacher())).toBe('Элемент преподавателя');
+    // рисую свой элемент: он мой сразу и после того, как хаб поставил автора
+    st.pushHistory(st.state.board.elements);
+    st.replaceElements([...st.state.board.elements, rect('mine') as never]);
+    expect(collab.canTouchElement(mine()!)).toBe(true);
+    await until(() => server.room.project!.pages[0].elements.find(e => e.id === 'mine')?.by === collab.myPrincipal());
+    await until(() => mine()?.by === collab.myPrincipal());
+    expect(collab.canTouchElement(mine()!)).toBe(true);
+    // выделение: только своё
+    st.setSelection(['teacher', 'mine']);
+    expect([...st.state.selection]).toEqual(['mine']);
+    // учитель двигает свой элемент; мой Undo откатывает только моё и не возвращает учителя назад
+    host.ws.send(JSON.stringify({ t: 'patch', pageId: 'pg1', rev: 1, ops: [{ op: 'put', el: { ...rect('teacher'), x: 50 } }] }));
+    await until(() => (teacher() as never as { x: number }).x === 50);
+    st.undo();
+    expect(mine()).toBeUndefined();
+    expect((teacher() as never as { x: number }).x).toBe(50);
+    await new Promise(r => setTimeout(r, 250));
+    expect(server.room.project!.pages[0].elements.map(e => e.id)).toEqual(['teacher']);
+    expect((server.room.project!.pages[0].elements[0] as never as { x: number }).x).toBe(50);
+  });
+
+  it('удалённый учителем элемент не воскресает при Undo гостя', async () => {
+    const host = await asEditor(true);
+    st.pushHistory(st.state.board.elements);
+    st.replaceElements([...st.state.board.elements, rect('mine') as never]);
+    await until(() => server.room.project!.pages[0].elements.some(e => e.id === 'mine'));
+    host.ws.send(JSON.stringify({ t: 'patch', pageId: 'pg1', rev: 2, ops: [{ op: 'del', id: 'teacher' }] }));
+    await until(() => !st.state.board.elements.some(e => e.id === 'teacher'));
+    st.undo();
+    expect(st.state.board.elements).toEqual([]);
+  });
+
+  it('без защиты — как раньше: чужой элемент выделяется и Undo работает по снимку', async () => {
+    await asEditor(false);
+    expect(collab.protectionActive()).toBe(false);
+    expect(collab.canTouchElement(teacher())).toBe(true);
+    st.setSelection(['teacher']);
+    expect([...st.state.selection]).toEqual(['teacher']);
+  });
+});

@@ -305,7 +305,7 @@ export function undo(): void {
   if (!prev) return;
   redoStack.push(state.board.elements);
   const before = state.board.elements;
-  state.board.elements = preserveLiveFields(prev, before);
+  state.board.elements = preserveLiveFields(guardedSnapshot(prev, before), before);
   followComments(before);
   state.selection = new Set();
   update(true);
@@ -316,7 +316,7 @@ export function redo(): void {
   if (!next) return;
   undoStack.push(state.board.elements);
   const before = state.board.elements;
-  state.board.elements = preserveLiveFields(next, before);
+  state.board.elements = preserveLiveFields(guardedSnapshot(next, before), before);
   followComments(before);
   state.selection = new Set();
   update(true);
@@ -419,7 +419,64 @@ export function selectAll(): void {
   setSelection(state.board.elements.map(e => e.id));
 }
 
+/**
+ * Можно ли менять элемент (защита чужих элементов, SPEC_NIGHT6 §4.6): правило регистрирует collab.ts, по умолчанию —
+ * да. Это лишь удобство интерфейса: решает хаб.
+ */
+let touchGuard: ((el: Element) => boolean) | null = null;
+/** Мой ли элемент, которого уже нет на доске (для Undo): только по автору, без догадок «новый — значит мой». */
+let ownsGuard: ((el: Element) => boolean) | null = null;
+export function setTouchGuard(fn: ((el: Element) => boolean) | null, owns: ((el: Element) => boolean) | null = fn): void {
+  touchGuard = fn;
+  ownsGuard = owns;
+}
+export function canTouchElement(el: Element): boolean { return !touchGuard || touchGuard(el); }
+
+/**
+ * Откат снимка без чужих правок (D6): чужие элементы берутся из текущей доски (before) — не откатываются и не
+ * воскресают, их взаимный порядок — как в before; свои — из снимка (prev). canTouch решается по текущей версии элемента.
+ */
+export function preserveForeign(prev: readonly Element[], before: readonly Element[], canTouch: (el: Element) => boolean): Element[] {
+  const beforeById = new Map(before.map(e => [e.id, e]));
+  const own = (el: Element) => canTouch(beforeById.get(el.id) ?? el);
+  const out: Element[] = [];
+  for (const el of prev) {
+    if (own(el)) out.push(el);
+    else { const b = beforeById.get(el.id); if (b) out.push(b); }
+  }
+  // чужие, которых не было в снимке, остаются — сразу за своим соседом снизу в before
+  const present = new Set(out.map(e => e.id));
+  for (let i = 0; i < before.length; i++) {
+    const b = before[i];
+    if (present.has(b.id) || canTouch(b)) continue;
+    let at = 0;
+    for (let j = i - 1; j >= 0; j--) {
+      const p = out.findIndex(e => e.id === before[j].id);
+      if (p >= 0) { at = p + 1; break; }
+    }
+    out.splice(at, 0, b);
+    present.add(b.id);
+  }
+  // взаимный порядок чужих — как в before
+  const want = before.filter(e => !canTouch(e));
+  const slots = out.map((e, i) => (beforeById.has(e.id) && !canTouch(beforeById.get(e.id)!) ? i : -1)).filter(i => i >= 0);
+  if (slots.length === want.length) slots.forEach((slot, k) => { out[slot] = want[k]; });
+  return out;
+}
+
+/** Снимок Undo/Redo с учётом защиты чужих элементов. */
+const guardedSnapshot = (snap: Element[], before: Element[]): Element[] => {
+  if (!touchGuard) return snap;
+  const now = new Set(before.map(e => e.id));
+  return preserveForeign(snap, before, el => (now.has(el.id) ? canTouchElement(el) : !ownsGuard || ownsGuard(el)));
+};
+
 export function setSelection(ids: string[]): void {
+  // чужие элементы при защите не выделяются: их нельзя сдвинуть, изменить или удалить (SPEC_NIGHT6 §4.6)
+  if (touchGuard) {
+    const blocked = new Set(state.board.elements.filter(el => !touchGuard!(el)).map(el => el.id));
+    if (blocked.size > 0) ids = ids.filter(id => !blocked.has(id));
+  }
   state.selection = new Set(ids);
   syncStyleFromSelection();
   update();

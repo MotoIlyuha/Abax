@@ -1,6 +1,6 @@
 import type { Element, FadeStroke, GridMode, Page, Project, ProjectMeta, Pt } from './types';
 import type { AccessRole, ParticipantCaps } from './access';
-import { state, openProject, setSelection, isDraftId, onDraft, onChange, touchProject, update } from './state';
+import { state, openProject, setSelection, setTouchGuard, isDraftId, onDraft, onChange, touchProject, update } from './state';
 import { MAX_PATCH_OPS, applyBoardPatch, diffElements, isBoardPatch, type BoardPatch } from './delta';
 import { gestureActive } from './gesture';
 import { sanitizeComments } from './file';
@@ -138,6 +138,53 @@ export function myCollabRole(): AccessRole | 'owner' | null { return myAccessRol
 export function myCollabCaps(): ParticipantCaps | null { return myCaps; }
 /** Автор моих элементов (поле by), выданный хабом; null — не в комнате или хаб старой версии. */
 export function myPrincipal(): string | null { return myPrincipalId; }
+/** Элементы, которые я создал и отправил хабу: мои, пока хаб не прислал их автора (by). */
+const createdByMe = new Set<string>();
+function noteCreated(base: readonly Element[], ops: readonly { op: string; el?: Element }[]): void {
+  if (!protectionActive()) return;
+  const known = new Set(base.map(e => e.id));
+  for (const op of ops) if (op.op === 'put' && op.el && !known.has(op.el.id)) createdByMe.add(op.el.id);
+}
+
+/** Набор id отправленных хабу элементов страницы (кэш по ссылке на массив базы). */
+const baselineIds = new WeakMap<readonly Element[], Set<string>>();
+function sentIds(pageId: string): Set<string> | null {
+  const base = baselines.get(pageId);
+  if (!base) return null;
+  let ids = baselineIds.get(base.elements);
+  if (!ids) { ids = new Set(base.elements.map(e => e.id)); baselineIds.set(base.elements, ids); }
+  return ids;
+}
+
+/** Включена ли для меня защита чужих элементов (гость в комнате нового хаба). */
+export function protectionActive(): boolean {
+  return connected && role === 'guest' && myPrincipalId !== null && state.project.permissions?.protectElements === true;
+}
+
+/**
+ * Можно ли мне менять элемент (SPEC_NIGHT6 §4.6): защита выключена, я автор доски, элемент мой (by) или новый —
+ * ещё не отправлен хабу (его автора хаб поставит мой). На странице только для просмотра выделять можно всё —
+ * для реакций и копирования; править там хаб и так не даст.
+ */
+export function canTouchElement(el: Element): boolean {
+  if (!protectionActive() || readOnly()) return true;
+  if (el.by === myPrincipalId || (el.by === undefined && createdByMe.has(el.id))) return true;
+  const ids = sentIds(state.pageId);
+  return ids === null || !ids.has(el.id);
+}
+
+/** Подсказка над чужим элементом при защите; null — элемент можно менять. */
+export function foreignElementHint(el: Element): string | null {
+  if (canTouchElement(el)) return null;
+  return el.by ? 'Элемент другого участника' : 'Элемент преподавателя';
+}
+/** Мой ли элемент по автору (для элементов, которых уже нет на доске): Undo не воскрешает чужое. */
+function ownsElement(el: Element): boolean {
+  if (!protectionActive() || readOnly()) return true;
+  return el.by === myPrincipalId || (el.by === undefined && createdByMe.has(el.id));
+}
+setTouchGuard(el => canTouchElement(el), el => ownsElement(el));
+
 /** Участники комнаты (как их видит этот клиент: с маскировкой скрытых страниц). */
 export function collabUsers(): readonly CollabUser[] { return users; }
 /** Мой номер участника в комнате (-1 — не подключён). */
@@ -511,6 +558,7 @@ function flushPatches(p: Project): boolean {
     if (pg.elements === base.elements && pg.grid === base.grid && pg.backgroundColor === base.backgroundColor && (pg.coordLabels !== false) === base.coordLabels) continue;
     const ops = diffElements(base.elements, pg.elements);
     if (ops.length > MAX_PATCH_OPS) { whole = false; continue; }
+    noteCreated(base.elements, ops);
     const patch: BoardPatch = { t: 'patch', pageId: pg.id, rev: ++patchRev, ops };
     if (pg.grid !== base.grid) patch.grid = pg.grid;
     if (pg.backgroundColor !== base.backgroundColor) patch.backgroundColor = pg.backgroundColor ?? null;
@@ -1182,6 +1230,7 @@ export function stopCollab(): void {
   myCaps = null;
   myPrincipalId = null;
   pendingResume = null;
+  createdByMe.clear();
   clearTimeout(viewTimer);
   viewTimer = 0;
   viewSent = null;
