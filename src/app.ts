@@ -223,6 +223,7 @@ function restoreSettings(): void {
         motionAnimations: typeof v.motionAnimations === 'boolean' ? v.motionAnimations : true,
         hideUndoRedo: typeof v.hideUndoRedo === 'boolean' ? v.hideUndoRedo : false,
         keepImageAspect: typeof v.keepImageAspect === 'boolean' ? v.keepImageAspect : true,
+        smoothPan: typeof v.smoothPan === 'boolean' ? v.smoothPan : true,
         alignGuides: typeof v.alignGuides === 'boolean' ? v.alignGuides : true,
         closePagesOnPick: typeof v.closePagesOnPick === 'boolean' ? v.closePagesOnPick : false,
         thumbViewport: typeof v.thumbViewport === 'boolean' ? v.thumbViewport : true,
@@ -2296,6 +2297,8 @@ function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
   span3.textContent = 'Привязка к сетке';
   lbl3.append(cb3, span3);
   pop.appendChild(lbl3);
+  pop.appendChild(settingSwitch('smoothPan', 'Плавное перемещение',
+    'Небольшая инерция при перемещении по доске: после отпускания камера плавно останавливается'));
   const lbl8 = document.createElement('label');
   lbl8.className = 'ctx-check';
   lbl8.title = macKeys('Изображения и страницы PDF не искажаются при изменении размера — Ctrl или Shift зажимать не нужно');
@@ -2412,6 +2415,28 @@ function settingCheck(key: BoolSetting, text: string, hint?: string, after?: () 
   span.textContent = text;
   lbl.append(cb, span);
   return lbl;
+}
+
+/** Переключатель (toggle switch) настройки доски: меняет и сразу сохраняет. */
+function settingSwitch(key: 'smoothPan', text: string, hint?: string): HTMLElement {
+  const label = document.createElement('label');
+  label.className = 'grid-switch settings-switch';
+  if (hint) label.title = hint;
+  const span = document.createElement('span');
+  span.textContent = text;
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  input.setAttribute('role', 'switch');
+  input.className = 'switch-input';
+  input.checked = state.settings[key];
+  input.addEventListener('change', () => {
+    setSettings({ [key]: input.checked });
+    persistSettings();
+  });
+  const track = document.createElement('span');
+  track.className = 'switch-track';
+  label.append(span, input, track);
+  return label;
 }
 
 function applyToolbarPos(): void {

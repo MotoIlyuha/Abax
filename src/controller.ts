@@ -301,6 +301,48 @@ export function initController(canvas: HTMLCanvasElement): void {
     g.raf = requestAnimationFrame(zoomGlideTick);
   }
 
+  /** Инерция камеры после перетаскивания холста («Плавное перемещение»). */
+  const PAN_FRICTION_TAU_MS = 160;
+  const PAN_MIN_SPEED = 0.02; // экранных px/мс: медленнее — останавливаемся
+  let panSamples: { t: number; x: number; y: number }[] = [];
+  let panGlide: { vx: number; vy: number; last: number; raf: number } | null = null;
+
+  function stopPanGlide(): void {
+    if (!panGlide) return;
+    cancelAnimationFrame(panGlide.raf);
+    panGlide = null;
+  }
+
+  function panGlideTick(t: number): void {
+    const g = panGlide;
+    if (!g) return;
+    const dt = Math.min(Math.max(t - g.last, 0), 50);
+    g.last = t;
+    const z = state.camera.zoom;
+    state.camera = { ...state.camera, x: state.camera.x - g.vx * dt / z, y: state.camera.y - g.vy * dt / z };
+    const decay = Math.exp(-dt / PAN_FRICTION_TAU_MS);
+    g.vx *= decay; g.vy *= decay;
+    update();
+    if (Math.hypot(g.vx, g.vy) < PAN_MIN_SPEED) { panGlide = null; return; }
+    g.raf = requestAnimationFrame(panGlideTick);
+  }
+
+  function startPanGlide(): void {
+    const samples = panSamples;
+    panSamples = [];
+    if (!state.settings.smoothPan || motionReduced() || typeof requestAnimationFrame !== 'function') return;
+    const now = performance.now();
+    const recent = samples.filter(s => now - s.t <= 100);
+    if (recent.length < 2) return; // курсор стоял перед отпусканием — без инерции
+    const a = recent[0], b = recent[recent.length - 1];
+    const span = b.t - a.t;
+    if (span <= 0) return;
+    const vx = (b.x - a.x) / span, vy = (b.y - a.y) / span;
+    if (Math.hypot(vx, vy) < PAN_MIN_SPEED * 3) return;
+    panGlide = { vx, vy, last: now, raf: 0 };
+    panGlide.raf = requestAnimationFrame(panGlideTick);
+  }
+
   function zoomAtScreen(sx: number, sy: number, factor: number): void {
     if (motionReduced() || typeof requestAnimationFrame !== 'function') {
       zoomAtPoint(state.camera.zoom * factor, sx, sy);
@@ -541,6 +583,7 @@ export function initController(canvas: HTMLCanvasElement): void {
         break;
       case 'pan':
         canvas.style.cursor = cursorFor(activeTool());
+        startPanGlide();
         update();
         break;
     }
@@ -598,6 +641,7 @@ export function initController(canvas: HTMLCanvasElement): void {
 
     if (e.button === 1 || activeTool() === 'pan') {
       e.preventDefault();
+      panSamples = [];
       action = { pid: e.pointerId, kind: 'pan', sx: lp.x, sy: lp.y, cam: { ...state.camera } };
       canvas.style.cursor = 'grabbing';
       return;
@@ -860,6 +904,8 @@ export function initController(canvas: HTMLCanvasElement): void {
     switch (a.kind) {
       case 'pan': {
         const zoom = a.cam.zoom;
+        panSamples.push({ t: performance.now(), x: lp.x, y: lp.y });
+        if (panSamples.length > 12) panSamples.shift();
         state.camera = {
           ...a.cam,
           x: a.cam.x - (lp.x - a.sx) / zoom,
@@ -1455,8 +1501,8 @@ export function initController(canvas: HTMLCanvasElement): void {
   });
   addGestureProbe(() => (action !== null && action.kind !== 'pan' && action.kind !== 'marquee' && action.kind !== 'fade') || nudge !== null);
   // любой жест пользователя прерывает плавный перелёт камеры (SPEC_NIGHT5 §8)
-  canvas.addEventListener('pointerdown', () => { cancelCameraAnim(); stopZoomGlide(); }, { capture: true });
-  canvas.addEventListener('wheel', () => cancelCameraAnim(), { capture: true, passive: true });
+  canvas.addEventListener('pointerdown', () => { cancelCameraAnim(); stopZoomGlide(); stopPanGlide(); }, { capture: true });
+  canvas.addEventListener('wheel', () => { cancelCameraAnim(); stopPanGlide(); }, { capture: true, passive: true });
   canvas.addEventListener('pointerdown', onPointerDown);
   canvas.addEventListener('pointermove', onPointerMove);
   canvas.addEventListener('pointerup', onPointerUp);
