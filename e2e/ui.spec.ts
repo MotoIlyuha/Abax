@@ -358,6 +358,34 @@ test.describe('настройки доски', () => {
     await expect(imports.locator('input')).not.toBeChecked();
   });
 
+  test('«Скрыть»: при улучшенных анимациях группа уезжает влево и растворяется, без анимаций — сразу', async ({ board, page }) => {
+    const undoGroup = page.locator('.undo-group');
+    const importGroup = page.locator('.import-group');
+    const importX = async () => (await importGroup.boundingBox())!.x;
+    const startX = await importX();
+    await page.locator('#btn-home').click();
+    await page.locator('#main-menu [data-section="hide"]').click();
+    await page.locator('#menu-hide .main-switch', { hasText: 'Кнопки отмены и повтора' }).click();
+    // в пути: сдвиг влево, прозрачность и место под соседом
+    const mid = await undoGroup.evaluate(e => ({ ml: parseFloat(e.style.marginLeft), op: parseFloat(e.style.opacity), z: getComputedStyle(e).zIndex }));
+    expect(mid.ml).toBeLessThan(0);
+    expect(mid.op).toBeLessThan(1);
+    expect(mid.z).toBe('-1');
+    await expect(undoGroup).toBeHidden();
+    // импорт съехал на место отмены
+    expect(await importX()).toBeLessThan(startX - 40);
+    await expect(undoGroup).toHaveAttribute('style', '');
+    // обратно — выезжает
+    await page.locator('#menu-hide .main-switch', { hasText: 'Кнопки отмены и повтора' }).click();
+    await expect(undoGroup).toBeVisible();
+    await expect.poll(importX).toBeCloseTo(startX, 0);
+    // без анимаций — пропадает сразу
+    await page.evaluate(() => document.body.classList.add('no-motion', 'no-ui-anim'));
+    await page.locator('#menu-hide .main-switch', { hasText: 'Кнопки импорта' }).click();
+    expect(await importGroup.isHidden()).toBe(true);
+    void board;
+  });
+
   test('подписи координатной плоскости — переключатель в меню фона', async ({ board, page }) => {
     // в настройках такого пункта больше нет
     await page.locator('#btn-settings').click();

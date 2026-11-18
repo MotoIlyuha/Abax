@@ -155,6 +155,8 @@ body {
 .topbar-logo img { display: block; width: 40px; height: 40px; }
 .topbar-logo:hover { box-shadow: var(--shadow-brand); }
 body.hide-undo-redo .undo-group { display: none; }
+/* группа уезжает под плашки слева (src/topbar-hide.ts): только пока движется */
+.topbar-sliding { position: relative; z-index: -1; }
 #grid-mode[hidden] { display: none; }
 .window-controls-overlay #topbar {
   right: calc(100% - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100%) + 12px);

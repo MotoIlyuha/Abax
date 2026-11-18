@@ -73,6 +73,7 @@ import { annotationButtons, initCommentsUi } from './comments-ui';
 import { openTaskDialog, taskDialogOpen, type TaskFormValues } from './task-dialog';
 import { TASK_H, TASK_W, createTaskElement } from './task-element';
 import { createToggleSwitch } from './toggle-switch';
+import { setTopbarGroupHidden } from './topbar-hide';
 import {
   browserSetRights, browserShareStatus, startBrowserCloud, startBrowserHost, stopBrowserCloud, stopBrowserHost,
 } from './browser-host';
@@ -267,8 +268,11 @@ function applyMotionAnimations(): void {
 }
 
 /** Кнопки отмены/повтора в шапке прячутся вместе с разделителями вокруг них (см. style.css). */
-function applyUndoRedoVisibility(): void {
-  document.body.classList.toggle('hide-undo-redo', state.settings.hideUndoRedo);
+/** animate — плавно (при «Улучшенных» анимациях), иначе сразу, как при запуске. */
+function applyUndoRedoVisibility(animate = false): void {
+  const setClass = (hidden: boolean) => document.body.classList.toggle('hide-undo-redo', hidden);
+  if (!animate) { setClass(state.settings.hideUndoRedo); return; }
+  setTopbarGroupHidden(document.querySelector<HTMLElement>('.undo-group')!, state.settings.hideUndoRedo, setClass);
 }
 
 let styleColorTab: 'border' | 'fill' = 'border';
@@ -2378,7 +2382,7 @@ function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
   cb7.addEventListener('change', () => {
     setSettings({ hideUndoRedo: cb7.checked });
     persistSettings();
-    applyUndoRedoVisibility();
+    applyUndoRedoVisibility(true);
   });
   const span7 = document.createElement('span');
   span7.textContent = 'Скрыть кнопки отмены и повтора';
@@ -4752,7 +4756,7 @@ function wireTopbar(): void {
     label: 'Кнопки отмены и повтора',
     icon: ICONS.undo,
     checked: state.settings.hideUndoRedo,
-    onChange: on => { setSettings({ hideUndoRedo: on }); persistSettings(); applyUndoRedoVisibility(); },
+    onChange: on => { setSettings({ hideUndoRedo: on }); persistSettings(); applyUndoRedoVisibility(true); },
   });
   hideUndoSwitch.dataset.action = 'undo';
   const hideImportsSwitch = createToggleSwitch({
@@ -4760,7 +4764,10 @@ function wireTopbar(): void {
     label: 'Кнопки импорта',
     icon: ICONS.pdf,
     checked: localStorage.getItem('abax.hideImports') === 'true',
-    onChange: on => { document.body.classList.toggle('hide-import-buttons', on); localStorage.setItem('abax.hideImports', String(on)); },
+    onChange: on => {
+      localStorage.setItem('abax.hideImports', String(on));
+      setTopbarGroupHidden(document.querySelector<HTMLElement>('.import-group')!, on, hidden => document.body.classList.toggle('hide-import-buttons', hidden));
+    },
   });
   hideImportsSwitch.dataset.action = 'imports';
   menu.querySelector<HTMLElement>('#menu-hide')!.append(hideUndoSwitch, hideImportsSwitch);
@@ -4775,7 +4782,7 @@ function wireTopbar(): void {
     document.body.classList.toggle('main-menu-open', open);
     // настройку могли поменять и в другом месте (окно настроек)
     switchInput(hideUndoSwitch).checked = state.settings.hideUndoRedo;
-    switchInput(hideImportsSwitch).checked = document.body.classList.contains('hide-import-buttons');
+    switchInput(hideImportsSwitch).checked = localStorage.getItem('abax.hideImports') === 'true';
   };
   document.body.classList.toggle('hide-import-buttons', localStorage.getItem('abax.hideImports') === 'true');
   menuButton.addEventListener('click', () => setMenuOpen(menu.hidden));
