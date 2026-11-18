@@ -6,6 +6,7 @@ import { cursorPreset } from './cursors';
 import { profileName } from './profile';
 import { state } from './state';
 import { isPageRight } from './limits';
+import { claimMenu, closeMenu, openMenu, releaseMenu, settleMenu } from './menu-motion';
 import { ALIAS_MAX, aliasProblem, roleLabel, type AccessRole, type StoredRole } from './access';
 import {
   MAX_GUESTS_OPTIONS, ROLE_OPTIONS, TEXT_OFFLINE, TEXT_UNSYNCED, aliasErrorText, cloudShareAvailable, cloudSynced, emailInviteErrorText,
@@ -162,9 +163,12 @@ export function closeShareDialog(): void { current?.close(); }
 /** Открыть окно «Поделиться»; повторный вызов закрывает его (кнопка в шапке — переключатель). */
 export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
   if (current) { current.close(); return; }
+  // прошлое окно ещё втягивается в кнопку — убираем его, чтобы id не повторялся
+  for (const old of document.querySelectorAll<HTMLElement>('#share-dialog')) settleMenu(old);
   const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
   const dlg = el('div');
   dlg.id = 'share-dialog';
+  dlg.className = 'popup-menu';
   dlg.setAttribute('role', 'dialog');
   dlg.setAttribute('aria-modal', 'true');
   dlg.setAttribute('aria-labelledby', 'share-dialog-title');
@@ -1104,7 +1108,8 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
     clearInterval(timer);
     clearTimeout(emailsTimer);
     document.removeEventListener(PRESENCE_EVENT, onPresence);
-    dlg.remove();
+    releaseMenu('share');
+    closeMenu(dlg);
     const back = opener && opener.isConnected ? opener : document.getElementById('btn-share');
     back?.focus();
   }
@@ -1114,6 +1119,22 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
   selectTab('share');
   layout();
   renderCloud();
+  // до первого await кадр не рисуется: окно сразу появляется с анимацией, а не на своём месте
+  claimMenu('share', () => close());
+  const shareButton = document.getElementById('btn-share');
+  const visible = shareButton && shareButton.offsetParent !== null ? shareButton : null;
+  openMenu(dlg, {
+    from: visible ?? dlg,
+    remove: true,
+    // под кнопкой «Поделиться», по её правому краю
+    place: () => {
+      // на узком экране окно во весь экран (style.css)
+      if (!visible || window.matchMedia?.('(max-width: 520px)').matches) return;
+      const r = visible.getBoundingClientRect();
+      dlg.style.top = `${r.bottom + 6}px`;
+      dlg.style.right = `${Math.max(8, window.innerWidth - r.right)}px`;
+    },
+  });
   await refreshStatus(true);
   tabShare.focus();
   void loadCloud();

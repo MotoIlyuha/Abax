@@ -545,7 +545,9 @@ test.describe('страница', () => {
     const trigger = page.locator('#view-grid-icon');
     const menu = page.locator('#view-menu');
     await trigger.click();
-    const options = menu.locator('button');
+    // кнопка с иконкой сетки открывает меню сразу на подменю «Тип сетки» (со стрелкой «назад»)
+    await expect(menu.locator('.view-back')).toHaveText('Тип сетки›');
+    const options = menu.locator('[data-grid]');
     await expect(options).toHaveText(['Без фона', 'Точки', 'Клетка✓', 'Координатная плоскость']);
     for (const o of await options.all()) await expect(o.locator('svg')).toHaveCount(1);
     await options.filter({ hasText: 'Координатная плоскость' }).click();
@@ -647,6 +649,50 @@ test.describe('вёрстка шапки', () => {
     await page.reload();
     await board.ready();
     await expect(page.locator('#btn-export')).toBeHidden();
+  });
+});
+
+test.describe('всплывающие меню', () => {
+  test('открыто одно меню: новое закрывает прежнее, и с клавиатуры тоже', async ({ board, page }) => {
+    const shown = () => page.evaluate(() => ['main-menu', 'export-menu', 'help-menu', 'view-menu', 'icon-picker', 'share-dialog']
+      .filter(id => { const e = document.getElementById(id); return !!e && !e.hidden; }).join(','));
+    await page.locator('#btn-home').click();
+    await expect.poll(shown).toBe('main-menu');
+    await page.keyboard.press('F1');
+    await expect.poll(shown).toBe('help-menu');
+    await page.locator('#btn-export').focus();
+    await page.keyboard.press('Enter');
+    await expect.poll(shown).toBe('export-menu');
+    await page.locator('#btn-share').click();
+    await expect.poll(shown).toBe('share-dialog');
+    await page.locator('#zoom-label').focus();
+    await page.keyboard.press('Enter');
+    await expect.poll(shown).toBe('view-menu');
+    await page.locator('#project-icon').click();
+    await expect.poll(shown).toBe('icon-picker');
+    await page.keyboard.press('Escape');
+    await expect.poll(shown).toBe('');
+    void board;
+  });
+
+  test('«Масштаб и вид»: шириной с группу; «Фон страницы» открывается внутри меню, «назад» возвращает', async ({ board, page }) => {
+    const menu = page.locator('#view-menu');
+    await page.locator('#zoom-label').click();
+    await expect(menu).toBeVisible();
+    const width = async () => [(await page.locator('.view-group').boundingBox())!.width, (await menu.boundingBox())!.width];
+    await expect.poll(async () => { const [g, m] = await width(); return Math.abs(g - m); }).toBeLessThan(1);
+    await menu.locator('[data-view="background"]').click();
+    await expect(menu.locator('.view-back')).toHaveText('Фон страницы›');
+    await expect(menu.locator('[data-bg]')).toHaveCount(10);
+    await expect(menu.locator('[data-zoom]')).toHaveCount(0);
+    await menu.locator('.view-back').click();
+    await expect(menu.locator('[data-zoom]')).toHaveCount(6);
+    await expect(menu.locator('.view-back')).toHaveCount(0);
+    await menu.locator('[data-view="background"]').click();
+    await menu.locator('[data-bg="#fff8db"]').click();
+    await expect(menu).toBeHidden();
+    expect(await page.evaluate(() => (window as any).__doska.state.board.backgroundColor)).toBe('#fff8db');
+    void board;
   });
 });
 
