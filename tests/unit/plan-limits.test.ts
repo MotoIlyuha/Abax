@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   DEV_MODE_KEY, ENFORCE_LIMITS_KEY, PLAN_KEY, SERVER_PLAN_KEY, applyServerPlan, clearServerPlan, devModeEnabled,
-  limitsEnforced, setLimitsEnforced, setUserPlan, userPlan,
+  devPlanForCode, limitsEnforced, setLimitsEnforced, setUserPlan, userPlan,
 } from '../../src/plan';
 import { addDraft, addPage, blankProject, canAddPageTo, openProject, projectPlan, state } from '../../src/state';
 
@@ -40,6 +40,31 @@ describe('тариф и включение лимитов', () => {
     expect(projectPlan({ ownerPlan: 'free' })).toBe('free');
     expect(projectPlan({ ownerPlan: 'pro' })).toBe('pro');
     expect(projectPlan({ ownerPlan: 'мусор' })).toBe('free');
+  });
+});
+
+describe('клавиши переключения тарифа в режиме разработки', () => {
+  it('«−» (и цифровой блок) — Free, «+» (Shift+«=» и цифровой блок) — Pro; остальные клавиши — не тариф', () => {
+    expect(devPlanForCode('Minus')).toBe('free');
+    expect(devPlanForCode('NumpadSubtract')).toBe('free');
+    expect(devPlanForCode('Equal')).toBe('pro');
+    expect(devPlanForCode('NumpadAdd')).toBe('pro');
+    expect(devPlanForCode('KeyA')).toBeNull();
+    expect(devPlanForCode('Digit0')).toBeNull();
+  });
+
+  it('Free в режиме разработки включает лимиты, и страницы ограничены тремя', () => {
+    setLimitsEnforced(false);
+    // то же, что делает обработчик клавиши «−»
+    setUserPlan('free');
+    setLimitsEnforced(true);
+    expect(userPlan()).toBe('free');
+    expect(limitsEnforced()).toBe(true);
+    addPage();
+    addPage();
+    expect(state.project.pages.length).toBe(3);
+    expect(addPage()).toBeNull();
+    expect(state.project.pages.length).toBe(3);
   });
 });
 

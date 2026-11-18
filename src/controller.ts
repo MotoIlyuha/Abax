@@ -32,6 +32,8 @@ import {
   saveNow, selectedTextShape, switchToPage, switchPageForDrag, toggleTextFlag, togglePages,
 } from './app';
 import { DRAFT_KEY, comboFromEvent, pageNumberFromEvent } from './hotkeys';
+import { devModeEnabled, devPlanForCode, limitsEnforced, setLimitsEnforced, setUserPlan } from './plan';
+import { showToast } from './about';
 import { ERASER_PATHS, ERASER_TIP, TOOL_DEFS, toolByKey } from './toolbar';
 import {
   arrowDirection, arrowStep, isArrowKey, NUDGE_FAST, NUDGE_HOLD_MS, NUDGE_SPEED, NUDGE_STEP, NUDGE_STEP_FAST,
@@ -1332,6 +1334,19 @@ export function initController(canvas: HTMLCanvasElement): void {
         case 'Comma': e.preventDefault(); openAllSettings(); return;
       }
       return;
+    }
+    // режим разработки: «−» и «+» переключают тариф (Free / Pro) вместо масштаба
+    if (!e.altKey && devModeEnabled()) {
+      const plan = devPlanForCode(e.code);
+      if (plan) {
+        e.preventDefault();
+        setUserPlan(plan);
+        // Free без лимитов ничем не отличается от Pro — поэтому на Free лимиты включаются
+        if (plan === 'free') setLimitsEnforced(true);
+        showToast(`Тариф: ${plan === 'pro' ? 'Pro' : 'Free'} (режим разработки)`
+          + (limitsEnforced() ? ' · лимиты включены' : ' · лимиты выключены'));
+        return;
+      }
     }
     switch (e.code) {
       case 'Space':
