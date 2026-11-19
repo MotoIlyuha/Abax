@@ -40,6 +40,17 @@ test.describe('направляющие выравнивания', () => {
     expect(await guides(board)).toEqual([]);
     await page.keyboard.press('Control+z');
 
+    // зажатый Ctrl временно отключает направляющие
+    await board.tool('v');
+    await board.click({ x: 650, y: 505 });
+    await page.keyboard.down('Control');
+    await holdDrag(board, { x: 650, y: 505 }, { x: 254, y: 505 });
+    expect(await guides(board)).toEqual([]);
+    await page.mouse.up();
+    await page.keyboard.up('Control');
+    expect((await board.elements())[1]).toMatchObject({ x: 204 });
+    await page.keyboard.press('Control+z');
+
     expect((await board.state()).settings.alignGuides).toBe(true);
     await board.toggleInteraction('Направляющие');
     expect((await board.state()).settings.alignGuides).toBe(false);
