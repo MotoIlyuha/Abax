@@ -148,10 +148,12 @@ interface Morph {
   observer: MutationObserver | null;
   // закрытие
   Q: Spring; from0: Rect; to: Rect; a0: number;
+  /** Контейнер уже ушёл под кнопку, и она спружинила. */
+  absorbed: boolean;
 }
 
 /** Инлайн-свойства, которые анимация пишет сама и потом возвращает. */
-const GEOMETRY = ['left', 'top', 'right', 'bottom', 'width', 'height', 'opacity'];
+const GEOMETRY = ['left', 'top', 'right', 'bottom', 'width', 'height', 'opacity', 'z-index'];
 
 const morphs = new Map<HTMLElement, Morph>();
 const cssClosing = new Map<HTMLElement, number>();
@@ -242,6 +244,20 @@ export function settleMenu(el: HTMLElement): void {
   else m.opts.onSettled?.();
 }
 
+/**
+ * Слой, на котором закрывающееся меню уходит ПОД свою кнопку: у подменю (absolute внутри меню) — под пункты
+ * родителя, у меню в document.body — сразу под плашкой кнопки (шапка или правый нижний угол).
+ */
+function underZ(el: HTMLElement, from: HTMLElement): string {
+  if (getComputedStyle(el).position !== 'fixed') return '-1';
+  let z = NaN;
+  for (let a: HTMLElement | null = from; a && a !== document.body; a = a.parentElement) {
+    const cs = getComputedStyle(a);
+    if (cs.position !== 'static' && cs.zIndex !== 'auto') z = Number(cs.zIndex);
+  }
+  return Number.isFinite(z) ? String(z - 1) : '0';
+}
+
 /** Кнопка пружинит: сжимается и с перелётом возвращается к своему размеру. */
 function popButton(b: HTMLElement | null): void {
   if (!b) return;
@@ -253,6 +269,20 @@ function popButton(b: HTMLElement | null): void {
   if (!s) { s = S(1); pops.set(b, s); }
   tune(s, ...POP);
   s.x = 1 - dip;
+  s.v = 0;
+  s.t = 1;
+}
+
+/** Меню ушло в кнопку: она чуть раздувается, будто в неё что-то вошло, и с перелётом успокаивается. */
+function absorbButton(b: HTMLElement | null): void {
+  if (!b || !b.isConnected) return;
+  const r = b.getBoundingClientRect();
+  if (!r.width || !r.height) return;
+  const bump = clamp(7 / Math.max(r.width, r.height), 0.025, 0.1);
+  let s = pops.get(b);
+  if (!s) { s = S(1); pops.set(b, s); }
+  tune(s, ...POP);
+  s.x = 1 + bump;
   s.v = 0;
   s.t = 1;
 }
@@ -301,7 +331,7 @@ export function openMenu(el: HTMLElement, opts: MenuOpts): void {
     start, seed, final, cur: start,
     E: S(resume ? 1 : 0), GX: S(0), GY: S(0), A: S(resume ? resume.a : 0),
     items: [], shift: shiftOf(side), observer: null,
-    Q: S(0), from0: start, to: start, a0: 1,
+    Q: S(0), from0: start, to: start, a0: 1, absorbed: false,
   };
   m.E.t = 1; m.A.t = 1;
   tune(m.E, ...EMERGE); tune(m.A, ...CLOSE);
@@ -394,7 +424,7 @@ export function closeMenu(el: HTMLElement, instant = false): void {
       E: S(1), GX: S(1), GY: S(1), A: S(1),
       items: (opts.items ?? (() => defaultItems(el)))().map(item => ({ el: item, p: S(1), wait: 0, o0: 1 })),
       shift: { x: 0, y: 0 }, observer: null,
-      Q: S(0), from0: rect, to: rect, a0: 1,
+      Q: S(0), from0: rect, to: rect, a0: 1, absorbed: false,
     };
     el.classList.add('mm-morph');
     el.style.right = 'auto';
@@ -402,7 +432,10 @@ export function closeMenu(el: HTMLElement, instant = false): void {
     morphs.set(el, fresh);
   }
   el.classList.add('mm-closing');
+  // уходит под кнопку: слой ниже её плашки
+  if (opts.from.isConnected) el.style.zIndex = underZ(el, opts.from);
   const c = morphs.get(el)!;
+  c.absorbed = false;
   c.from0 = rect;
   c.to = target;
   c.Q = S(0);
@@ -438,9 +471,14 @@ function renderMorph(m: Morph): void {
   }
   const q = clamp(m.Q.x, 0, 1);
   writeRect(m, lerpRect(m.from0, m.to, q));
-  // пункты гаснут сразу, контейнер — к концу, уже почти втянувшись
-  m.el.style.opacity = (m.a0 * (1 - q * q)).toFixed(3);
+  // пункты гаснут сразу; контейнер не гаснет — его прячет кнопка, под которую он уходит
+  m.el.style.opacity = (m.a0 * (q < 0.85 ? 1 : 1 - (q - 0.85) / 0.15)).toFixed(3);
   for (const it of m.items) it.el.style.opacity = (it.o0 * Math.max(0, 1 - q * 3)).toFixed(3);
+  // контейнер почти целиком под кнопкой — она пружинит, принимая его
+  if (!m.absorbed && q > 0.7) {
+    m.absorbed = true;
+    absorbButton(m.opts.pop === undefined ? m.opts.from : m.opts.pop);
+  }
 }
 
 function openDone(m: Morph): boolean {
