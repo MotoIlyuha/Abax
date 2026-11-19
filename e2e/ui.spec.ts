@@ -277,7 +277,8 @@ test.describe('панель цвета и толщины', () => {
     await page.mouse.down();
     await page.mouse.move(g2.x + 300, g2.y + 100, { steps: 5 });
     await page.mouse.up();
-    await p2.locator('.ctx-close').click();
+    await p2.locator('.ctx-pin').click();
+    await page.locator('#btn-shapes').click();
     await expect(page.locator('#ctx-layer .ctx-panel')).toHaveCount(0);
   });
 });
