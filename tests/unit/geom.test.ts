@@ -428,6 +428,17 @@ describe('applyHandle', () => {
     expect(zero.rot).toBeUndefined();
   });
 
+  it('поворот с Shift — шагами по 15°, у фигуры и у картинки', () => {
+    const deg = (d: number) => (d * Math.PI) / 180;
+    const step = { rotateStep: true };
+    expect((applyHandle(rect(), { kind: 'rotate' }, pt(0, 0), step, deg(22)) as ShapeEl).rot).toBeCloseTo(deg(15));
+    expect((applyHandle(rect(), { kind: 'rotate' }, pt(0, 0), step, deg(23)) as ShapeEl).rot).toBeCloseTo(deg(30));
+    expect((applyHandle(rect(), { kind: 'rotate' }, pt(0, 0), step, deg(-50)) as ShapeEl).rot).toBeCloseTo(deg(-45));
+    expect((applyHandle(rect(), { kind: 'rotate' }, pt(0, 0), step, deg(370)) as ShapeEl).rot).toBeCloseTo(deg(15));
+    expect((applyHandle(rect(), { kind: 'rotate' }, pt(0, 0), step, deg(5)) as ShapeEl).rot).toBeUndefined();
+    expect((applyHandle(image(), { kind: 'rotate' }, pt(0, 0), step, deg(52)) as ImageEl).rot).toBeCloseTo(deg(45));
+  });
+
   it('поворот по позиции курсора нормализуется в (-π, π]', () => {
     // курсор справа от центра => atan2 = 0, минус направление на левый верхний угол
     const r = applyHandle(rect(), { kind: 'rotate' }, pt(200, 25)) as ShapeEl;

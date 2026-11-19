@@ -1054,7 +1054,7 @@ export function initController(canvas: HTMLCanvasElement): void {
         }
         // картинки по настройке всегда пропорциональны: Shift и Ctrl не нужны
         const proportional = e.shiftKey || e.ctrlKey || e.metaKey || (a.el.type === 'image' && state.settings.keepImageAspect);
-        const next = applyHandle(a.el, a.h, snapped, { proportional, fromCenter: e.altKey }, rotateAngle);
+        const next = applyHandle(a.el, a.h, snapped, { proportional, fromCenter: e.altKey, rotateStep: e.shiftKey }, rotateAngle);
         if (guided) {
           const pt = { x0: snapped.x, y0: snapped.y, x1: snapped.x, y1: snapped.y };
           const box = h.kind === 'resize' ? elementAABB(next) : pt;
@@ -1117,7 +1117,9 @@ export function initController(canvas: HTMLCanvasElement): void {
           a.link = null;
         }
         a.moved = true;
-        const step = snapStepNow();
+        // зажатый Ctrl (Cmd) временно отключает привязку к сетке и направляющие — как в Figma и Miro
+        const free = e.ctrlKey || e.metaKey;
+        const step = free ? 0 : snapStepNow();
         if (step > 0 && a.orig.size > 0) {
           // дельта привязки считается по опорному элементу, взаимное расположение сохраняется
           const ref = a.orig.values().next().value as Element;
@@ -1126,7 +1128,8 @@ export function initController(canvas: HTMLCanvasElement): void {
           dx = snapValue(rx + dx, step) - rx;
           dy = snapValue(ry + dy, step) - ry;
         }
-        if (a.box && a.others) {
+        if (free) state.guides = [];
+        else if (a.box && a.others) {
           // край или центр рядом с краем или центром соседа — примагничиваем (важнее сетки) и показываем линию
           const tol = GUIDE_SNAP_PX / state.camera.zoom;
           const shifted = (b: AABB) => ({ x0: b.x0 + dx, y0: b.y0 + dy, x1: b.x1 + dx, y1: b.y1 + dy });

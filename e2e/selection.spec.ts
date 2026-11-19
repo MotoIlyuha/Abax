@@ -194,16 +194,18 @@ test.describe('ручки редактирования', () => {
     expect(pts).toHaveLength(3);
   });
 
-  test('привязка к сетке при перемещении', async ({ board, page }) => {
-    await page.locator('#btn-settings').dispatchEvent('click');
-    await page.locator('#settings-popover label', { hasText: 'Привязка к сетке' }).locator('input').check();
-    await page.keyboard.press('Escape');
+  test('привязка к сетке при перемещении; зажатый Ctrl её временно отключает', async ({ board, page }) => {
+    await board.toggleInteraction('Привязка к сетке');
     await board.rect(400, 300, 500, 380);
     await board.tool('v');
     await board.drag([{ x: 450, y: 340 }, { x: 467, y: 353 }]);
     const r = (await board.elements())[0];
     expect(r.x % 40).toBe(0);
     expect(r.y % 40).toBe(0);
+    await page.keyboard.down('Control');
+    await board.drag([{ x: r.x + 50, y: r.y + 40 }, { x: r.x + 63, y: r.y + 47 }]);
+    await page.keyboard.up('Control');
+    expect((await board.elements())[0]).toMatchObject({ x: r.x + 13, y: r.y + 7 });
   });
 });
 

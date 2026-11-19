@@ -134,11 +134,16 @@ function remeasure(): void {
   }
 }
 
-/** Где живёт подсказка: панель инструментов или раскрытая панель её группы (кнопки внутри тоже морфятся). */
-export const MORPH_SCOPE = '#toolbar, .ctx-panel[data-kind="shapes"]';
+/** Подменю «Взаимодействия» в МВВ: переключатели подсвечиваются и подсказываются так же, как кнопки панели. */
+export const MORPH_MENU = '#view-menu .view-page[data-level="interactions"]';
+/** Где живёт подсказка: панель инструментов, раскрытая панель её группы (кнопки внутри тоже морфятся) и подменю «Взаимодействия». */
+export const MORPH_SCOPE = `#toolbar, .ctx-panel[data-kind="shapes"], ${MORPH_MENU}`;
 const barOf = (btn: HTMLElement): HTMLElement | null => btn.closest<HTMLElement>(MORPH_SCOPE);
 
 function preferredSide(bar: HTMLElement): Side {
+  // сторона задана явно (подменю МВВ: справа края окна, сверху и снизу — другие элементы)
+  const explicit = bar.dataset.tipSide;
+  if (explicit === 'top' || explicit === 'bottom' || explicit === 'left' || explicit === 'right') return explicit;
   // у панели группы сторона та же, что у самой панели инструментов: пузырь снаружи, не закрывая кнопки
   const pos = (bar.id === 'toolbar' ? bar : document.getElementById('toolbar'))?.dataset.pos;
   switch (pos) {
@@ -155,7 +160,8 @@ interface Geo { side: Side; axis: Axis; l: number; r: number; t: number; b: numb
 function geometry(btn: HTMLElement, lab: Lab): Geo | null {
   const bar = barOf(btn);
   if (!bar) return null;
-  const br = bar.getBoundingClientRect();
+  // у страницы меню пузырь отсчитывается от края самого меню, а не от страницы внутри него
+  const br = (bar.closest<HTMLElement>('.popup-menu') ?? bar).getBoundingClientRect();
   const r = btn.getBoundingClientRect();
   const w = lab.w, h = lab.h;
   const vw = window.innerWidth, vh = window.innerHeight;
@@ -245,7 +251,7 @@ function hideTip(): void {
 function pointHl(btn: HTMLElement): void {
   const bar = barOf(btn);
   if (!bar) return;
-  // подсветка живёт в самой панели; у группы — в сетке кнопок (она position: relative)
+  // подсветка живёт в самой панели; у группы — в сетке кнопок, у меню — в странице (они position: relative)
   const holder = bar.id === 'toolbar' ? bar : bar.querySelector<HTMLElement>('.ctx-shapes') ?? bar;
   const moved = hlEl.parentElement !== holder; // перешли в другую панель: подсветка возникает на месте
   if (moved) holder.prepend(hlEl);
