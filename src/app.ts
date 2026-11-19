@@ -5271,7 +5271,17 @@ function openZoomInput(label: HTMLElement, onDone?: () => void): void {
       close(null);
     }
   });
-  input.addEventListener('blur', () => close(check(true)));
+  input.addEventListener('blur', e => {
+    // фокус ушёл на пункт меню «Масштаб и вид»: поле просто закрывается, меню остаётся — пункт сам решит, что делать
+    if ((e.relatedTarget as HTMLElement | null)?.closest('#view-menu')) {
+      if (done) return;
+      done = true;
+      box.remove();
+      label.hidden = false;
+      return;
+    }
+    close(check(true));
+  });
 }
 
 /** Окно демонстрации: открыть или закрыть. */
