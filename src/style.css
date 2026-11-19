@@ -479,12 +479,10 @@ select {
   margin: -14px -12px -12px;
   padding: 14px 12px 12px;
   overscroll-behavior-x: contain;
-  scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar) transparent;
 }
-#pages-list::-webkit-scrollbar { height: 5px; }
-#pages-list::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 99px; }
-#pages-list::-webkit-scrollbar-track { background: transparent; }
+/* полоса прокрутки — своя, тонкая (overlay-scroll.ts): у нижнего края списка, в его поле под карточками */
+#pages-tray .oscroll-thumb-x { bottom: 3px; }
+#pages-tray .oscroll-thumb-y { right: 2px; }
 
 .page-item {
   position: relative;
@@ -718,7 +716,6 @@ body.tool-dragging, body.tool-dragging * { cursor: grabbing !important; }
   overflow-y: auto;
   overscroll-behavior: contain;
 }
-#pages-dock[data-side="top"] #pages-list::-webkit-scrollbar { width: 5px; }
 #pages-dock[data-side="top"] .page-add { min-height: 96px; }
 /* «Анимация меню и панелей» выключена в настройках */
 body.no-ui-anim :is(#btn-pages, .pages-chev, #pages-tray, #pages-dock.open #pages-tray, .page-item, .page-add) { transition: none; }
@@ -2237,54 +2234,8 @@ body.tbe-grabbing, body.tbe-grabbing * { cursor: grabbing !important; }
 }
 @keyframes caret-blink { 50% { opacity: 0; } }
 
-/* ----- Совместная работа ----- */
-#share-dialog {
-  position: fixed;
-  top: calc(60px + var(--menu-gap));
-  right: 12px;
-  width: 340px;
-  max-height: 80vh;
-  overflow-y: auto;
-  padding: 14px;
-  z-index: 70;
-}
-.share-link {
-  font-family: ui-monospace, Consolas, monospace;
-  font-size: 12px;
-  padding: 8px;
-  border: 1px dashed var(--border);
-  border-radius: 7px;
-  cursor: pointer;
-  word-break: break-all;
-  margin-bottom: 8px;
-}
-.share-link:hover { border-color: var(--accent); color: var(--accent); }
-.share-cloud { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); }
-.share-cloud-title { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
-.share-cloud-status { font-size: 12px; color: var(--muted); line-height: 1.4; }
-.share-cloud-status.warn { color: var(--warn); }
-.share-cloud-error { font-size: 12px; color: var(--danger); line-height: 1.4; margin-bottom: 6px; }
-.share-invite { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; }
-.share-invite[hidden] { display: none; }
-.share-invite-role { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
-.share-invite-select { font: inherit; font-size: 12px; padding: 3px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); color: inherit; }
-.share-relay-input {
-  box-sizing: border-box;
-  width: 100%;
-  padding: 6px 8px;
-  font: inherit;
-  font-size: 12px;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-}
-.share-relay-input:focus { outline: none; border-color: var(--accent); }
 .ctx-custom-btn:disabled { opacity: 0.6; cursor: default; }
 .ctx-custom-btn.danger { color: var(--danger); border-color: var(--danger-line); }
-.share-table { display: flex; flex-direction: column; gap: 10px; }
-.share-user { display: flex; flex-direction: column; gap: 5px; }
-.share-user-head { display: flex; align-items: center; gap: 7px; font-weight: 600; }
-.share-user-head i { width: 10px; height: 10px; border-radius: 50%; flex: none; }
-.share-user select { font: inherit; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); }
 
 #cursor-fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9; }
 #remote-cursors { position: absolute; inset: 0; pointer-events: none; z-index: 9; }
@@ -3701,33 +3652,7 @@ body.no-ui-anim .collab-edge-pointer, body.no-ui-anim .collab-edge-pointer .ep-l
 }
 #follow-hidden-badge[hidden] { display: none; }
 
-/* ----- Ночь №5, TASK-07: права до ссылки, почта, «Комната заполнена», все страницы скрыты, входящие приглашения ----- */
-.share-rights { display: flex; flex-direction: column; gap: 6px; }
-.share-invite-check { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
-.share-pro-tag {
-  font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 99px;
-  background: var(--accent-soft); color: var(--accent); margin-left: 4px;
-}
-.share-page-rights { display: flex; flex-direction: column; gap: 4px; }
-.share-page-right { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; }
-.share-page-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.share-email { margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; }
-.share-email-form { display: flex; gap: 6px; align-items: center; }
-.share-email-input {
-  flex: 1; min-width: 0; box-sizing: border-box; padding: 5px 8px; font: inherit; font-size: 12px;
-  border: 1px solid var(--border); border-radius: 7px; background: var(--panel); color: inherit;
-}
-.share-email-send { width: auto; margin: 0; white-space: nowrap; }
-.share-email-list { display: flex; flex-direction: column; gap: 4px; }
-.share-email-item { display: flex; align-items: center; gap: 6px; font-size: 12px; }
-.share-email-addr { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.share-email-meta { color: var(--muted); white-space: nowrap; }
-.share-email-revoke {
-  font: inherit; font-size: 11px; padding: 2px 8px; border: 1px solid var(--border); border-radius: 6px;
-  background: var(--panel); color: var(--danger); cursor: pointer;
-}
-.share-email-revoke:hover { border-color: var(--danger); }
-
+/* ----- Ночь №5, TASK-07: «Комната заполнена», все страницы скрыты, входящие приглашения ----- */
 /* все страницы скрыты автором: холст закрыт баннером, панели нет */
 #all-pages-hidden-banner {
   position: absolute; inset: 0; z-index: 30;
@@ -3781,73 +3706,7 @@ body.all-pages-hidden #goo-layer { display: none; }
   border-radius: 50%; background: var(--danger); box-shadow: 0 0 0 2px var(--panel);
 }
 
-/* ----- Ночь №6, TASK-06: окно «Поделиться» ----- */
-#share-dialog { width: 400px; padding: 0; display: flex; flex-direction: column; max-height: min(80vh, 720px); overflow: hidden; }
-#share-dialog .share-head { display: flex; align-items: center; gap: 8px; padding: var(--menu-pad) var(--menu-pad) 2px 16px; }
-#share-dialog .share-title { flex: 1; min-width: 0; margin: 0; font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#share-dialog .share-close { border: none; background: transparent; font-size: 20px; line-height: 1; width: 28px; height: 28px; border-radius: 6px; cursor: pointer; color: var(--muted); }
-#share-dialog .share-close:hover { background: var(--hover, rgba(0,0,0,.06)); color: inherit; }
-.share-tabs { display: flex; gap: 4px; padding: 0 var(--menu-pad); border-bottom: 1px solid var(--border); }
-.share-tab { border: none; background: transparent; padding: 8px 10px; font: inherit; font-size: 13px; cursor: pointer; color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px; }
-.share-tab[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
-.share-tab:focus-visible, .share-switch:focus-visible, .share-inline-btn:focus-visible, .share-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.share-panel { overflow-y: auto; padding: 10px 16px; display: flex; flex-direction: column; gap: 12px; }
-.share-panel[hidden] { display: none; }
-.share-foot { padding: var(--menu-pad); border-top: 1px solid var(--border); display: flex; justify-content: flex-end; }
-.share-foot .share-done { width: auto; margin: 0; }
-.share-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-#share-dialog section { display: flex; flex-direction: column; gap: 6px; }
-#share-dialog section[hidden] { display: none; }
-#share-dialog h3.share-cloud-title { margin: 0; font-weight: 600; }
-.share-hint { font-size: 12px; color: var(--muted); line-height: 1.4; }
-.share-hint[hidden], .share-cloud-error[hidden] { display: none; }
-.share-people { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.share-person { display: flex; align-items: center; gap: 8px; font-size: 13px; min-width: 0; }
-.share-avatar { flex: none; width: 26px; height: 26px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; background: var(--border); }
-.share-avatar-link, .share-avatar-mail { background: transparent; font-size: 15px; }
-.share-person-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-.share-person-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.share-person-meta { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.share-person-ctl { flex: none; display: flex; align-items: center; gap: 4px; }
-.share-switch { font: inherit; font-size: 12px; min-width: 52px; padding: 3px 8px; border-radius: 999px; border: 1px solid var(--border); background: var(--panel); cursor: pointer; }
-.share-switch.on { background: var(--accent); border-color: var(--accent); color: #fff; }
-.share-url-row { display: flex; gap: 6px; }
-.share-url { flex: 1; min-width: 0; font-family: ui-monospace, Consolas, monospace; font-size: 12px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 7px; background: var(--panel); color: inherit; }
-.share-copy { width: auto; margin: 0; white-space: nowrap; }
-.share-inline-btn { align-self: flex-start; border: none; background: transparent; padding: 0; font: inherit; font-size: 12px; color: var(--accent); cursor: pointer; text-decoration: underline; }
-.share-alias-line { display: flex; gap: 6px; align-items: baseline; font-size: 12px; }
-.share-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; }
-.share-confirm .ctx-custom-btn { width: auto; margin: 0; }
-.share-revoked { font-size: 12px; color: var(--muted); line-height: 1.4; }
-.share-revoked:empty { display: none; }
-.share-other > summary { cursor: pointer; font-size: 12px; color: var(--muted); padding: 4px 0; }
-.share-other[open] > summary { margin-bottom: 6px; }
-.share-p2p { display: flex; flex-direction: column; gap: 6px; }
-.share-p2p .ctx-custom-btn { margin: 0; }
-button.share-link { display: block; width: 100%; text-align: left; background: transparent; color: inherit; font-family: ui-monospace, Consolas, monospace; }
-.share-email-item .share-email-revoke { margin: 0; }
-@media (max-width: 520px) {
-  #share-dialog { inset: 0; top: 0; right: 0; width: auto; max-height: none; height: 100%; border-radius: 0; }
-  .share-email-form { flex-wrap: wrap; }
-  .share-email-input { flex: 1 1 100%; }
-  .share-person { flex-wrap: wrap; }
-  .share-person-ctl { width: 100%; justify-content: flex-end; }
-  .share-url-row { flex-direction: column; }
-  .share-copy { width: 100%; }
-}
-
-/* ----- Ночь №6, TASK-07: «Настройки доступа», именной адрес, интерфейс читателя ----- */
-.share-warn { font-size: 12px; color: var(--warn); line-height: 1.4; }
-.share-alias-row { display: flex; align-items: center; gap: 6px; }
-.share-alias-prefix { font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: var(--muted); }
-.share-alias-input { flex: 1; min-width: 0; font-family: ui-monospace, Consolas, monospace; font-size: 12px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 7px; background: var(--panel); color: inherit; }
-.share-alias-input:focus { outline: none; border-color: var(--accent); }
-.share-alias-save { width: auto; margin: 0; white-space: nowrap; }
-.share-alias-problem:empty { display: none; }
-.share-radio-group { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 12px; }
-.share-radio-title { color: var(--muted); }
-.share-radio { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
-.share-user-role { font: inherit; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel); }
+/* ----- Ночь №6, TASK-07: интерфейс читателя ----- */
 .chat-readonly .chat-hint { color: var(--muted); }
 .cp-readonly { font-size: 12px; color: var(--muted); padding: 4px 0; }
 
@@ -3923,11 +3782,312 @@ body.fit-share .share-text { display: none; }
 #main-menu button:disabled:hover { background: transparent; }
 /* Масштаб в меню «Масштаб и вид»: ряд pills с горизонтальной прокруткой; полоса видна только при использовании */
 #view-menu .view-zoom-scroll { position: relative; }
-#view-menu .view-zoom-pills { display: flex; gap: 6px; padding: 6px 4px 6px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
-#view-menu .view-zoom-pills::-webkit-scrollbar { display: none; }
-#view-menu .view-zoom-thumb { position: absolute; left: 4px; bottom: 3px; height: 4px; pointer-events: auto; border-radius: 2px; background: var(--border-control); opacity: 0; transition: opacity 0.25s ease, height 0.15s ease; cursor: grab; }
-#view-menu .view-zoom-thumb[hidden] { display: none; }
-#view-menu .view-zoom-scroll:hover .view-zoom-thumb, #view-menu .view-zoom-scroll.scrolling .view-zoom-thumb, #view-menu .view-zoom-scroll.dragging .view-zoom-thumb { opacity: 0.9; }
-#view-menu .view-zoom-thumb:hover, #view-menu .view-zoom-scroll.dragging .view-zoom-thumb { height: 6px; bottom: 2px; }
-@media (prefers-reduced-motion: reduce) { #view-menu .view-zoom-thumb { transition: none; } }
+#view-menu .view-zoom-pills { display: flex; gap: 6px; padding: 6px 4px 6px; overflow-x: auto; overscroll-behavior-x: contain; }
+#view-menu .view-zoom-scroll .oscroll-thumb-x { left: 4px; }
 #view-menu .view-zoom-pills button { width: auto; flex: none; min-height: 30px; padding: 4px 12px; border: 1px solid var(--border); border-radius: 8px; white-space: nowrap; justify-content: center; }
+
+/* ----- Окно «Поделиться» (src/share-dialog.ts): главная страница и вложенные «Настройки доступа», «Без облака» ----- */
+#share-dialog {
+  position: fixed; top: calc(60px + var(--menu-gap)); right: 12px; z-index: 70;
+  width: 400px; max-height: min(80vh, 720px); padding: 0;
+  display: flex; flex-direction: column; overflow: hidden; font-size: 13px;
+}
+/* подписи, кнопки и заголовки окна не выделяются мышью; выделяются только данные — поля, адреса почты, бывшие адреса */
+#share-dialog, #share-dialog .ss-menu { -webkit-user-select: none; user-select: none; }
+#share-dialog :is(input, textarea, .share-email-addr, .share-former .share-person-name, .share-cloud-error) { -webkit-user-select: text; user-select: text; }
+#share-dialog section { display: flex; flex-direction: column; gap: 6px; }
+#share-dialog [hidden] { display: none !important; }
+.share-head { flex: none; display: flex; align-items: center; gap: 8px; padding: 10px 10px 8px 14px; }
+.share-tabs { flex: 0 1 auto; min-width: 0; }
+.share-tabs .seg-opt, .share-tabs .seg-ghost { font-size: 13px; padding: 5px 12px; }
+.share-close {
+  flex: none; margin-left: auto; width: 28px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: transparent;
+  color: var(--icon-secondary); cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+}
+.share-close:hover { background: var(--hover); color: var(--fg); }
+.share-close-icon svg { width: 18px; height: 18px; display: block; }
+.share-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; margin: 0; }
+
+/* вкладки (Smooth tab): лента из двух панелей едет от той же пружины, что и «пилюля»; высота окна — между панелями */
+/* clip, а не hidden: фокус внутри едущей ленты не должен прокручивать контейнер */
+.share-view { position: relative; flex: none; overflow: hidden; overflow: clip; }
+.share-track { display: flex; align-items: flex-start; width: 200%; will-change: transform; }
+.share-panel-box { position: relative; width: 50%; flex: none; }
+.share-panel { max-height: calc(min(80vh, 720px) - 50px); overflow-y: auto; overscroll-behavior: contain; }
+.share-view.tabs-css { transition: height 0.2s cubic-bezier(0.22, 0.8, 0.24, 1); }
+.share-view.tabs-css .share-track { transition: transform 0.2s cubic-bezier(0.22, 0.8, 0.24, 1); }
+.share-view.tabs-css .share-panel-box { transition: opacity 0.2s; }
+.share-view.tabs-follow { transition: height 0.22s cubic-bezier(0.22, 0.8, 0.24, 1); }
+body.no-ui-anim .share-view, body.no-ui-anim .share-view :is(.share-track, .share-panel-box) { transition: none; }
+.share-page-inner { display: flex; flex-direction: column; gap: 14px; padding: 2px 16px 16px; }
+
+/* спойлер (spoiler.ts): «Без облака» */
+.spoiler > summary { list-style: none; display: flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 2px; border-radius: 7px; cursor: pointer; color: var(--fg-secondary); font-size: 12px; font-weight: 600; user-select: none; }
+.spoiler > summary::-webkit-details-marker { display: none; }
+.spoiler > summary:hover { color: var(--fg); }
+.spoiler > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.spoiler-chev { display: inline-flex; color: var(--muted); transition: transform 0.2s cubic-bezier(0.22, 0.8, 0.24, 1); }
+.spoiler-chev svg { width: 14px; height: 14px; }
+.spoiler[open]:not(.spoiler-closing) > summary .spoiler-chev { transform: rotate(90deg); }
+body.no-ui-anim .spoiler-chev { transition: none; }
+.spoiler-body { padding-top: 6px; }
+
+/* карточки и строки */
+.share-invite { display: flex; flex-direction: column; gap: 14px; }
+.share-card { display: flex; flex-direction: column; padding: 4px; border-radius: 10px; background: var(--surface-sunken); }
+.share-cloud-title { margin: 0 0 0 2px; font-size: 12px; font-weight: 600; color: var(--muted); }
+#share-dialog h3.share-cloud-title { margin: 0 0 0 2px; }
+.share-setting { display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 2px 4px 2px 10px; border-radius: 7px; }
+.share-setting-label, .share-toggle .switch-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.share-hint { font-size: 12px; color: var(--muted); line-height: 1.4; padding: 0 10px; }
+.share-hint:empty { display: none; }
+.share-cloud-error { font-size: 12px; color: var(--danger); line-height: 1.4; padding: 0 2px; }
+.share-cloud-status { font-size: 12px; color: var(--muted); line-height: 1.4; }
+.share-cloud-status.warn { color: var(--warn); }
+.share-warn { font-size: 12px; color: var(--warn-ink); background: var(--warn-soft); line-height: 1.4; padding: 6px 10px; border-radius: 7px; }
+.share-pro-tag { flex: none; font-size: 10px; font-weight: 600; padding: 1px 6px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); }
+.share-inline-btn { border: 0; background: transparent; padding: 0; font: inherit; font-size: 12px; color: var(--accent); cursor: pointer; }
+.share-inline-btn:hover { text-decoration: underline; }
+.share-revoked { font-size: 12px; color: var(--muted); line-height: 1.4; padding: 0 2px; }
+.share-revoked:empty { display: none; }
+.share-confirm { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; font-size: 12px; color: var(--fg-secondary); padding: 4px 4px 4px 10px; }
+/* подтверждение — одной линией: текст слева (при нехватке места — в две строки), кнопки рядом справа */
+.share-confirm-text, .share-confirm > span:first-child { flex: 1; min-width: 0; line-height: 1.35; }
+.share-confirm .share-btn-soft { height: 28px; padding: 0 10px; }
+.share-reset-confirm { padding: 2px 6px 6px 10px; }
+.share-icon-btn { flex: none; width: 30px; height: 30px; padding: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); color: var(--icon-secondary); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; }
+.share-icon-btn:hover { border-color: var(--danger-line); color: var(--danger); background: var(--danger-soft); }
+.share-icon-btn:disabled { opacity: .5; cursor: default; }
+.share-icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.share-reset-icon svg { width: 15px; height: 15px; display: block; }
+:is(.share-close, .share-inline-btn, .share-link, .share-row-btn, .share-btn-soft, .share-btn-primary):focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* кнопки */
+.share-btn-primary, .share-btn-soft {
+  flex: none; height: 32px; padding: 0 14px; border-radius: 8px; font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+}
+.share-btn-primary { border: 0; background: var(--accent); color: var(--fg-inverse); font-weight: 600; transition: background-color .3s; }
+.share-btn-primary:hover { background: var(--accent-strong); }
+.share-btn-primary:disabled { cursor: default; }
+.share-btn-primary.is-sent { background: var(--success); }
+.share-btn-soft { border: 1px solid var(--border); background: var(--panel); color: var(--fg); height: 30px; padding: 0 12px; }
+.share-btn-soft:hover { border-color: var(--border-strong); }
+.share-btn-soft:disabled { opacity: .5; cursor: default; }
+.share-btn-soft.danger { color: var(--danger); }
+.share-btn-soft.danger:hover { border-color: var(--danger-line); background: var(--danger-soft); }
+.share-row-btn { width: 100%; min-height: 34px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; font: inherit; text-align: left; cursor: pointer; color: var(--fg); }
+.share-row-btn:hover { background: var(--hover); }
+.share-row-btn.danger { color: var(--danger); }
+.share-row-btn.danger:hover { background: var(--danger-soft); }
+
+/* выключатели (toggle-switch.ts): поле ввода лежит только поверх дорожки, щелчок по подписи тоже переключает */
+.share-toggle { position: relative; display: flex; align-items: center; gap: 10px; min-height: 36px; padding: 2px 10px; border-radius: 7px; cursor: pointer; }
+.share-toggle .view-icon { flex: none; width: 18px; height: 18px; color: var(--icon-menu); display: inline-flex; }
+.share-toggle .view-icon svg { width: 18px; height: 18px; }
+.share-toggle .switch-input { position: absolute; right: 10px; top: 50%; width: 34px; height: 20px; margin: -10px 0 0; opacity: 0; cursor: pointer; z-index: 1; }
+.share-toggle .switch-track { position: relative; flex: none; width: 34px; height: 20px; border-radius: 10px; background: var(--border-control); transition: background .15s; }
+.share-toggle .switch-knob { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 8px; background: #fff; box-shadow: 0 1px 2px rgba(16, 24, 40, .2); transition: transform .15s; }
+.share-toggle .switch-input:checked + .switch-track { background: var(--accent); }
+.share-toggle .switch-input:checked + .switch-track .switch-knob { transform: translateX(14px); }
+.share-toggle .switch-input:focus-visible + .switch-track { outline: 2px solid var(--accent); outline-offset: 2px; }
+.share-toggle .switch-input:disabled { cursor: default; }
+.share-toggle.locked, .share-toggle.busy { cursor: default; }
+.share-toggle.locked .switch-track { opacity: .5; }
+.share-setting.share-toggle:hover:not(.locked) { background: var(--hover); }
+body:not(.no-motion) .share-toggle.spring-switch :is(.switch-track, .switch-knob) { transition: none; }
+body.no-ui-anim .share-toggle :is(.switch-track, .switch-knob) { transition: none; }
+
+/* общая ссылка */
+.share-link-row .switch-text { font-weight: 500; }
+.share-url-row { display: flex; gap: 6px; padding: 2px 6px 6px; }
+.share-url {
+  flex: 1; min-width: 0; height: 30px; box-sizing: border-box; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--panel); color: var(--fg-secondary); font: 12px ui-monospace, Consolas, monospace;
+}
+.share-url:focus { outline: none; border-color: var(--accent); color: var(--fg); }
+.share-copy { min-width: 116px; }
+.share-copy.is-done { color: var(--success); }
+
+/* приглашение по почте */
+.share-email-form { display: flex; gap: 8px; align-items: center; }
+.share-email-field {
+  flex: 1; min-width: 0; height: 32px; box-sizing: border-box; display: flex; align-items: center; gap: 2px; padding: 0 2px 0 10px;
+  border: 1px solid var(--border-input); border-radius: 8px; background: var(--panel); transition: border-color .15s, box-shadow .15s;
+}
+.share-email-field:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+.share-email-field.is-bad { border-color: var(--danger); box-shadow: 0 0 0 3px var(--danger-ring); }
+.share-email-field.is-bad .share-email-input { color: var(--danger); }
+.share-email-input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: 0; background: transparent; color: var(--fg); font: inherit; transition: color .25s; }
+.share-email-input::placeholder { color: var(--fg-placeholder); }
+.share-email-send { width: 104px; padding: 0 8px; }
+.share-email-field .ss-trigger { padding-left: 6px; }
+.share-email-send .roll { width: 100%; justify-content: center; }
+.share-email-send .roll-leaving { right: 0; justify-content: center; }
+.is-shaking { animation: share-shake .35s ease-out; }
+@keyframes share-shake { 20% { translate: -5px 0; } 45% { translate: 4px 0; } 70% { translate: -2px 0; } }
+
+/* список «Есть доступ» */
+.share-people { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.share-person { display: flex; align-items: center; gap: 10px; min-height: 40px; min-width: 0; padding: 0 0 0 2px; }
+.share-avatar { flex: none; width: 28px; height: 28px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; background: var(--surface-muted); }
+.share-person-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.share-person-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.share-person-meta { font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.share-person-role { flex: none; padding-right: 8px; color: var(--muted); font-size: 12px; }
+.share-email-item :is(.share-person-text, .ss-trigger) { transition: opacity .25s; }
+.share-email-item.inv-pending .share-avatar { opacity: 0; }
+.share-email-item.inv-pending :is(.share-person-text, .ss-trigger) { opacity: 0; }
+.share-email-item.inv-appear { --pop-y: -6px; animation: ui-pop .2s cubic-bezier(0.22, 0.8, 0.24, 1); }
+.inv-fly { position: fixed; left: 0; top: 0; z-index: 95; border-radius: 999px; background: var(--hover-strong); pointer-events: none; line-height: 28px; will-change: transform, width; }
+.inv-fly-text { position: absolute; left: 12px; top: 0; white-space: nowrap; font-size: 13px; color: var(--fg); will-change: opacity, filter; }
+.inv-fly-av { position: absolute; inset: 0; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 700; background: var(--accent-soft); color: var(--accent); will-change: transform; }
+
+/* «Настройки доступа» */
+.share-page-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* список страниц: больше шести строк — прокрутка внутри карточки */
+.share-pages-card { padding: 0; overflow: hidden; }
+.share-pages-list { display: flex; flex-direction: column; max-height: 224px; padding: 4px; overflow-y: auto; overscroll-behavior: contain; }
+.share-alias-head { min-height: 30px; }
+.share-alias-row { display: flex; gap: 6px; padding: 0 6px 6px; }
+.share-alias-field {
+  flex: 1; min-width: 0; height: 30px; box-sizing: border-box; display: flex; align-items: center; padding: 0 10px;
+  border: 1px solid var(--border-input); border-radius: 8px; background: var(--panel); font: 12px ui-monospace, Consolas, monospace;
+}
+.share-alias-field:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+.share-alias-field.is-bad { border-color: var(--danger); box-shadow: 0 0 0 3px var(--danger-ring); }
+.share-alias-prefix { color: var(--muted); }
+.share-alias-input { flex: 1; min-width: 0; padding: 0; border: 0; outline: 0; background: transparent; color: var(--fg); font: inherit; }
+.share-alias-problem { padding-bottom: 4px; }
+.share-alias-problem.is-error { color: var(--danger); }
+.share-alias .share-cloud-error { padding: 0 10px 4px; }
+.share-former-title { padding: 4px 10px 0; }
+.share-former { padding: 0 4px 0 10px; }
+.share-former .share-person { min-height: 32px; justify-content: space-between; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; }
+.share-former .share-person-name { font-family: ui-monospace, Consolas, monospace; }
+.share-former .share-confirm { flex-basis: 100%; padding: 0 0 6px; }
+
+/* без облака */
+.share-p2p { display: flex; flex-direction: column; gap: 12px; }
+.share-p2p-start { width: 100%; }
+.share-lan-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; }
+button.share-link {
+  display: block; width: 100%; box-sizing: border-box; padding: 8px 10px; border: 1px dashed var(--border-dashed); border-radius: 8px;
+  background: transparent; color: var(--fg-secondary); font: 12px ui-monospace, Consolas, monospace; text-align: left; word-break: break-all; cursor: pointer;
+}
+button.share-link:hover { border-color: var(--accent); color: var(--accent); }
+.share-cloud { display: flex; flex-direction: column; gap: 6px; }
+.share-cloud > .share-btn-soft { align-self: flex-start; }
+.share-relay-input { box-sizing: border-box; width: 100%; height: 30px; padding: 0 10px; font: inherit; font-size: 12px; border: 1px solid var(--border-input); border-radius: 8px; }
+.share-relay-input:focus { outline: none; border-color: var(--accent); }
+.share-p2p-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.share-table { display: flex; flex-direction: column; gap: 8px; }
+.share-user { display: flex; flex-direction: column; gap: 0; padding: 4px; border-radius: 10px; background: var(--surface-sunken); }
+.share-user-head { display: flex; align-items: center; gap: 8px; min-height: 32px; padding-left: 8px; font-weight: 600; }
+.share-user-head i { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.share-user-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.share-user-page { display: flex; align-items: center; gap: 8px; min-height: 30px; padding-left: 26px; color: var(--fg-secondary); font-size: 12px; }
+.share-user-page-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* выпадающий список ролей и прав (spring-select.ts) */
+.ss-trigger {
+  flex: none; display: inline-flex; align-items: center; gap: 2px; height: 28px; padding: 0 4px 0 8px; border: 0; border-radius: 7px;
+  background: transparent; color: var(--fg-secondary); font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap; position: relative; z-index: 2;
+}
+.ss-trigger:hover, .ss-trigger[aria-expanded="true"] { background: var(--hover-strong); color: var(--fg); }
+.ss-trigger:disabled { opacity: .5; cursor: default; background: transparent; }
+.ss-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ss-chev { flex: none; width: 14px; height: 14px; color: var(--muted); transition: transform .15s; }
+body:not(.no-motion) .ss-chev, body.no-ui-anim .ss-chev { transition: none; }
+.ss-menu {
+  position: fixed; z-index: 90; box-sizing: border-box; padding: 4px; overflow: hidden; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--panel); box-shadow: var(--shadow-tip); color: var(--fg); font-size: 13px;
+}
+.ss-menu[data-side="below"] { --pop-y: -4px; }
+.ss-menu[data-side="above"] { --pop-y: 4px; }
+.ss-menu.ss-in { animation: ui-pop 0.16s cubic-bezier(0.22, 0.8, 0.24, 1); }
+.ss-menu.ss-out { animation: ui-out 0.12s ease-in forwards; }
+.ss-opt { position: relative; z-index: 1; display: flex; align-items: center; gap: 12px; height: 32px; padding: 0 8px 0 10px; border-radius: 7px; cursor: pointer; white-space: nowrap; }
+.ss-opt-text { flex: 1; }
+.ss-opt.danger { margin-top: 4px; color: var(--danger); }
+.ss-tick { flex: none; width: 16px; height: 16px; color: var(--accent); }
+.ss-tick path { stroke-dasharray: 22; stroke-dashoffset: 22; }
+.ss-opt[aria-selected="true"] .ss-tick path { stroke-dashoffset: 0; }
+.ss-hl { position: absolute; left: 4px; right: 4px; top: 0; border-radius: 7px; background: var(--accent-soft); opacity: 0; pointer-events: none; transition: transform .12s, height .12s; }
+.ss-opt.danger.hover ~ .ss-hl, .ss-menu:has(.ss-opt.danger.hover) .ss-hl { background: var(--danger-soft); }
+body:not(.no-motion) .ss-hl, body.no-ui-anim .ss-hl { transition: none; }
+@media (prefers-reduced-motion: reduce) { .ss-menu.ss-in, .ss-menu.ss-out, .share-email-item.inv-appear, .is-shaking { animation: none; } }
+
+/* перекатывающаяся надпись (roll-text.ts) */
+.roll { position: relative; display: inline-flex; height: 18px; line-height: 18px; overflow: hidden; vertical-align: middle; }
+.roll-line { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.roll-line.roll-leaving { position: absolute; left: 0; top: 0; }
+.roll-icon { display: inline-flex; }
+.roll-icon svg { width: 13px; height: 13px; display: block; }
+.roll-line.roll-fade { animation: ui-fade .16s ease-out; }
+
+/* счётчик (number-stepper.ts) */
+.stepper { flex: none; display: inline-flex; align-items: center; gap: 4px; }
+.stepper.disabled { opacity: .5; }
+.stp-b { width: 26px; height: 26px; padding: 0; border: 0; border-radius: 50%; background: var(--hover-strong); color: var(--fg); cursor: pointer; display: grid; place-items: center; transition: opacity .2s; }
+.stp-b:hover:not(:disabled) { background: var(--pressed); }
+.stp-b:disabled { cursor: default; }
+.stp-b.off { opacity: .4; }
+.stp-b svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
+.stp-num { position: relative; width: 34px; height: 22px; overflow: hidden; border-radius: 6px; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--fg); }
+.stp-num:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.stp-num > span { position: absolute; inset: 0; display: grid; place-items: center; }
+.stp-num > span.stp-fade { animation: ui-fade .16s ease-out; }
+
+/* сегменты (segmented.ts) */
+.seg { position: relative; flex: none; display: inline-flex; padding: 2px; border-radius: 9px; background: var(--segment-track); }
+.seg-opt, .seg-ghost { position: relative; z-index: 1; padding: 4px 10px; border: 0; background: transparent; font: inherit; font-size: 12px; font-weight: 500; white-space: nowrap; line-height: 18px; }
+.seg-opt { color: var(--fg-secondary); cursor: pointer; border-radius: 7px; }
+.seg-opt:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.seg-pill { position: absolute; left: 0; top: 2px; bottom: 2px; width: 0; border-radius: 7px; background: var(--panel); box-shadow: var(--shadow-segment); pointer-events: none; }
+/* слой активных подписей — того же цвета, что пилюля; обрезается по ней (segmented.ts) */
+.seg-overlay { position: absolute; inset: 0; z-index: 2; display: flex; padding: 2px; background: var(--panel); color: var(--fg); pointer-events: none; clip-path: inset(0 100% 0 0); border-radius: 9px; }
+.seg-css .seg-pill { transition: transform .2s cubic-bezier(0.22, 0.8, 0.24, 1), width .2s cubic-bezier(0.22, 0.8, 0.24, 1); }
+.seg-css .seg-overlay { transition: clip-path .2s cubic-bezier(0.22, 0.8, 0.24, 1); }
+
+@media (max-width: 520px) {
+  #share-dialog { inset: 0; top: 0; right: 0; width: auto; max-height: none; height: 100%; border-radius: 0; }
+  .share-view { flex: 1 1 auto; min-height: 0; }
+  .share-track, .share-panel-box { height: 100%; }
+  .share-panel { max-height: none; height: 100%; }
+  .share-email-form { flex-wrap: wrap; }
+  .share-email-field { flex: 1 1 100%; }
+  .share-email-send { flex: 1; }
+  .share-url-row { flex-direction: column; }
+  .share-url { flex: none; }
+  .share-copy { width: 100%; }
+}
+
+/* ----- Своя тонкая полоса прокрутки поверх содержимого (src/overlay-scroll.ts): pills масштаба, страницы окна «Поделиться» ----- */
+.oscroll { scrollbar-width: none; }
+.oscroll::-webkit-scrollbar { display: none; }
+.oscroll-host { position: relative; }
+.oscroll-thumb { position: absolute; z-index: 3; border-radius: 3px; background: var(--border-control); opacity: 0; pointer-events: auto; cursor: grab; transition: opacity 0.25s ease, height 0.15s ease, width 0.15s ease; }
+.oscroll-thumb[hidden] { display: none; }
+.oscroll-thumb-x { left: 0; bottom: 3px; height: 4px; }
+.oscroll-thumb-y { top: 0; right: 3px; width: 4px; transition-property: opacity, width; }
+.oscroll-host:hover > .oscroll-thumb, .oscroll-host.scrolling > .oscroll-thumb, .oscroll-host.dragging > .oscroll-thumb { opacity: 0.9; }
+.oscroll-thumb-x:hover, .oscroll-host.dragging > .oscroll-thumb-x { height: 6px; bottom: 2px; }
+.oscroll-thumb-y:hover, .oscroll-host.dragging > .oscroll-thumb-y { width: 6px; right: 2px; }
+/* «есть ещё»: тень у края, за которым есть содержимое (карточки) */
+.oscroll-shade { position: absolute; z-index: 2; pointer-events: none; opacity: 0; transition: opacity 0.2s ease; }
+.oscroll-shade-y { height: 12px; }
+.oscroll-shade-x { width: 16px; }
+.oscroll-shade-y.oscroll-shade-start { background: linear-gradient(to bottom, rgba(16, 24, 40, 0.1), rgba(16, 24, 40, 0)); }
+.oscroll-shade-y.oscroll-shade-end { background: linear-gradient(to top, rgba(16, 24, 40, 0.1), rgba(16, 24, 40, 0)); }
+.oscroll-shade-x.oscroll-shade-start { background: linear-gradient(to right, rgba(16, 24, 40, 0.1), rgba(16, 24, 40, 0)); }
+.oscroll-shade-x.oscroll-shade-end { background: linear-gradient(to left, rgba(16, 24, 40, 0.1), rgba(16, 24, 40, 0)); }
+.oscroll-host.oscroll-more-start > .oscroll-shade-start, .oscroll-host.oscroll-more-end > .oscroll-shade-end { opacity: 1; }
+/* «есть ещё»: содержимое растворяется у края (ленты поверх холста) */
+@property --oscroll-fs { syntax: '<number>'; inherits: false; initial-value: 0; }
+@property --oscroll-fe { syntax: '<number>'; inherits: false; initial-value: 0; }
+.oscroll-fade-x, .oscroll-fade-y { --oscroll-fade: 36px; transition: --oscroll-fs 0.2s ease, --oscroll-fe 0.2s ease; }
+.oscroll-fade-x { mask-image: linear-gradient(to right, rgb(0 0 0 / calc(1 - var(--oscroll-fs))) 0, #000 var(--oscroll-fade), #000 calc(100% - var(--oscroll-fade)), rgb(0 0 0 / calc(1 - var(--oscroll-fe))) 100%); }
+.oscroll-fade-y { mask-image: linear-gradient(to bottom, rgb(0 0 0 / calc(1 - var(--oscroll-fs))) 0, #000 var(--oscroll-fade), #000 calc(100% - var(--oscroll-fade)), rgb(0 0 0 / calc(1 - var(--oscroll-fe))) 100%); }
+body.no-ui-anim :is(.oscroll-thumb, .oscroll-shade, .oscroll-fade-x, .oscroll-fade-y) { transition: none; }
+@media (prefers-reduced-motion: reduce) { :is(.oscroll-thumb, .oscroll-shade, .oscroll-fade-x, .oscroll-fade-y) { transition: none; } }

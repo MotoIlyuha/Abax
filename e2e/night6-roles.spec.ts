@@ -1,7 +1,7 @@
 // Ночь №6, роли (SPEC_NIGHT6 §2, §7.2, §8): урок — преподаватель (владелец), ученица по общей ссылке (Редактор),
 // родитель по приглашению на почту (Читатель). Смена роли на лету; старая ссылка view работает как комментатор.
 import { expect, test } from '@playwright/test';
-import { Board } from './fixtures';
+import { Board, pickOption } from './fixtures';
 import { createInvite, device, login, openAt, shareTab, stateOf, useNight5Server } from './night5-helpers';
 
 const env = useNight5Server();
@@ -21,12 +21,12 @@ test.describe('роли', () => {
     const link = await createInvite(a, 'editor');
     // третья страница — «Решения» — скрыта от всех
     await shareTab(a, 'settings');
-    await a.locator(`#share-dialog .share-page-right[data-page-id="${pages[2]}"] select`).selectOption('hidden');
+    await pickOption(a, a.locator(`#share-dialog .share-page-right[data-page-id="${pages[2]}"] .ss-trigger`), 'hidden');
     // родитель — читатель по почте
     await shareTab(a, 'share');
     const box = a.locator('#share-dialog .share-invite');
     await box.locator('.share-email-input').fill('parent@abax.example');
-    await box.locator('.share-email-role').selectOption('reader');
+    await pickOption(a, box.locator('.share-email-role'), 'reader');
     await box.locator('.share-email-send').click();
     await expect(box.locator('.share-email-item')).toHaveCount(1, { timeout: 10000 });
     const mail = outbox.find(m => m.to === 'parent@abax.example')!;
@@ -59,15 +59,11 @@ test.describe('роли', () => {
     await expect(p.locator('.qm-react')).toHaveCount(0);
     await expect(p.locator('.qm-comment')).toHaveCount(0);
 
-    // автор видит, кто на доске и откуда у него доступ
-    const present = box.locator('.share-present');
-    await expect(present.locator('.share-person', { hasText: 'Аня' })).toContainText('Редактор · по общей ссылке', { timeout: 10000 });
-    await expect(present.locator('.share-person', { hasText: 'Пётр' })).toContainText('Читатель · по приглашению parent@abax.example');
-    // последний вход по письму виден в «У кого есть доступ»
+    // последний вход по письму виден в «Есть доступ» (кто сейчас на доске — отдельный виджет, не окно «Поделиться»)
     await expect(box.locator('.share-email-item .share-email-meta')).toContainText('заходил(а) сегодня', { timeout: 10000 });
 
     // смена роли общей ссылки на лету: ученица становится читателем
-    await box.locator('select.share-link-role').selectOption('reader');
+    await pickOption(a, box.locator('.share-link-role'), 'reader');
     await expect(s.locator('#activity-pills .activity-pill', { hasText: 'Автор изменил вашу роль: Читатель' })).toBeVisible({ timeout: 10000 });
     await expect(s.locator('body')).toHaveClass(/readonly-mode/);
     for (const ctx of [A, S, P]) await ctx.close();

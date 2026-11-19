@@ -25,6 +25,8 @@ interface Item { input: HTMLInputElement; track: HTMLElement; knob: HTMLElement;
 
 /** Только переключатели, которые сейчас движутся: в покое и после удаления из DOM их тут нет. */
 const items = new Set<Item>();
+/** Все переключатели — по их полю ввода (чтобы менять состояние извне). */
+const byInput = new WeakMap<HTMLInputElement, Item>();
 let registered = false;
 
 function ensureLoop(): void {
@@ -118,9 +120,27 @@ export function createToggleSwitch(o: ToggleSwitchOptions): HTMLLabelElement {
   row.append(text, input, track);
   const start = o.checked ? 1 : 0;
   const it: Item = { input, track, knob, p: S(start, ...POS_FALLBACK), w: S(0, ...STRETCH_FALLBACK) };
+  byInput.set(input, it);
   input.addEventListener('change', () => {
     animate(it);
     o.onChange(input.checked);
   });
   return row;
+}
+
+/**
+ * Состояние переключателя извне (например, сервер не принял изменение или значение пришло с другого устройства).
+ * smooth — проехать ручкой, как при щелчке; иначе встать сразу. Событие change не посылается.
+ */
+export function setToggleChecked(input: HTMLInputElement, checked: boolean, smooth = true): void {
+  if (input.checked === checked) return;
+  input.checked = checked;
+  const it = byInput.get(input);
+  if (!it) return;
+  if (smooth) { animate(it); return; }
+  it.p.t = checked ? 1 : 0;
+  snap(it.p);
+  it.w.t = 0;
+  snap(it.w);
+  clear(it);
 }

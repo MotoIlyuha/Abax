@@ -6,7 +6,7 @@ import path from 'node:path';
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
 import { createAppServer, type AppServer } from '../server/app';
 import { memoryMailer, type MailMessage } from '../server/mailer';
-import { skipOnboarding } from './fixtures';
+import { pickOption, skipOnboarding } from './fixtures';
 
 export interface Night5Server {
   srv: AppServer;
@@ -90,11 +90,12 @@ export async function openShare(page: Page): Promise<void> {
   await expect(page.locator('#share-dialog')).toBeVisible();
 }
 
-/** Вкладка окна «Поделиться» (Ночь №6): «Поделиться» или «Настройки доступа». */
+/** Вкладка окна «Поделиться» (в шапке окна): «Поделиться» или «Настройки доступа». */
 export async function shareTab(page: Page, tab: 'share' | 'settings'): Promise<void> {
   await openShare(page);
   await page.locator(`#share-tab-${tab}`).click();
-  await expect(page.locator(`#share-panel-${tab}`)).toBeVisible();
+  await expect(page.locator(`#share-tab-${tab}`)).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator(`#share-panel-${tab}`)).not.toHaveAttribute('inert', '');
 }
 
 /**
@@ -105,7 +106,7 @@ export async function createInvite(page: Page, role?: 'editor' | 'commenter' | '
   await shareTab(page, 'share');
   const box = page.locator('#share-dialog .share-invite');
   await expect(box).toBeVisible();
-  if (role) await box.locator('select.share-link-role').selectOption(role);
+  if (role) await pickOption(page, box.locator('.share-link-role'), role);
   // проект должен уйти в облако, прежде чем ссылка создастся: повторяем, пока выключатель не включится
   const sw = box.locator('.share-switch');
   await expect(async () => {

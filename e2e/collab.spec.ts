@@ -9,7 +9,8 @@ test.describe('совместная работа', () => {
   test('гость по ссылке видит доску автора, но без прав не может её менять', async ({ host, join }) => {
     await host.board.rect(400, 300, 500, 400);
     const url = await host.share();
-    await expect(host.dialog.locator('.ctx-label')).toHaveText('Откройте ссылку на другом устройстве или в тестовом окне');
+    // подсказка — у самой ссылки, а не текстом в окне
+    await expect(host.dialog.locator('.share-link')).toHaveAttribute('title', /Откройте ссылку на другом устройстве или в тестовом окне/);
 
     const guest = await join(url, 'Ученик');
     await expect.poll(() => guestProjectName(guest)).toBe('Проект 1');
@@ -41,8 +42,9 @@ test.describe('совместная работа', () => {
 
     // автор видит участника в диалоге (список обновляется сам)
     await expect(host.userRow('Ученик')).toBeVisible({ timeout: 5000 });
-    await expect(host.dialog.locator('.ctx-label').first()).toHaveText('Участники (1) — права по страницам:');
-    await expect(host.userRow('Ученик').locator('select').first()).toHaveValue('view'); // Ночь №6: в строке ещё и выбор роли
+    await expect(host.dialog.locator('.share-p2p-people .share-cloud-title')).toHaveText('Участники');
+    // права по страницам — выпадающие списки строки участника (плюс выбор роли в её шапке)
+    await expect(host.userRow('Ученик').locator('.share-user-right').first()).toHaveAttribute('data-value', 'view');
   });
 
   test('автор выдаёт право правки — гость рисует, автор видит', async ({ host, join }) => {
@@ -253,7 +255,7 @@ test.describe('совместная работа', () => {
     expect(await host.page.evaluate(() => navigator.clipboard.readText())).toBe(url);
     await expect(host.dialog.locator('.share-link')).toHaveText(url);
 
-    await host.dialog.locator('button', { hasText: '+ Тестовое окно гостя' }).click();
+    await host.dialog.locator('button', { hasText: 'Тестовое окно гостя' }).click();
     await expect.poll(() => host.testWindows).toBe(1);
 
     const guest = await join(url, 'Ученик');
@@ -263,7 +265,7 @@ test.describe('совместная работа', () => {
     await expect(host.dialog.locator('button', { hasText: 'Включить совместную работу' })).toBeVisible();
     expect(host.server).toBeNull();
     // правки автора больше никуда не уходят и не ломают работу
-    await host.dialog.locator('button', { hasText: 'Готово' }).click(); // Ночь №6: «Готово» в подвале окна
+    await host.dialog.locator('.share-close').click(); // окно закрывает крестик в шапке
     await expect(host.dialog).toHaveCount(0);
     await host.board.rect(400, 300, 500, 400);
     await host.board.saved();
