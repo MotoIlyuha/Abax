@@ -30,7 +30,7 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className: string, te
 }
 
 /** Сочетание клавишами: [Ctrl] [Shift] [N] (на macOS — [Cmd] [Shift] [N]). */
-function keycaps(combo: string): HTMLElement {
+export function keycaps(combo: string): HTMLElement {
   const box = el('span', 'hk-keys');
   const parts = combo.split('+');
   const code = parts.pop()!;
@@ -39,7 +39,7 @@ function keycaps(combo: string): HTMLElement {
 }
 
 /** Несколько сочетаний одного действия: [Ctrl] [Y] или [Ctrl] [Shift] [Z]. */
-function keycapsAny(combos: string[]): HTMLElement {
+export function keycapsAny(combos: string[]): HTMLElement {
   if (combos.length === 4 && combos.every(c => c.startsWith('Arrow'))) {
     const arrows = el('span', 'hk-arrows');
     arrows.setAttribute('aria-label', 'Стрелки вверх, влево, вниз и вправо');

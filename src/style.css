@@ -4601,3 +4601,164 @@ body.no-ui-anim :is(.oscroll-thumb, .oscroll-shade, .oscroll-fade-x, .oscroll-fa
 .ac-actions .ob-btn { flex: 1; min-height: 40px; font-size: 14px; }
 body.no-ui-anim :is(.avatar-crop, .ac-window) { animation: none; }
 @media (prefers-reduced-motion: reduce) { :is(.avatar-crop, .ac-window) { animation: none; } }
+
+/* ----- Боковая панель: режимы История / Справка / Импорт / Экспорт (SPEC_CHAT §8) ----- */
+/* Общее: вид на всю высоту панели, прокрутка внутри (своя тонкая полоса — src/overlay-scroll.ts) */
+.pv { display: flex; flex-direction: column; height: 100%; min-height: 0; color: var(--fg); outline: none; }
+.pv [hidden] { display: none !important; }
+.pv-scroll-box { position: relative; flex: 1 1 auto; min-height: 0; }
+.pv-scroll { height: 100%; overflow-y: auto; overscroll-behavior: contain; }
+.pv-inner { display: flex; flex-direction: column; gap: 18px; padding: 4px 12px 16px; }
+.pv-section { display: flex; flex-direction: column; gap: 4px; }
+.pv-title { margin: 0 4px 2px; font-size: 13px; font-weight: 600; color: var(--fg-label); }
+.pv-rows { display: flex; flex-direction: column; gap: 2px; }
+/* строка-кнопка: иконка в скруглённом квадрате, заголовок и пояснение */
+.pv-row {
+  display: flex; align-items: center; gap: 12px; width: 100%; min-height: 52px; padding: 8px 10px 8px 8px;
+  border: 0; border-radius: 10px; background: transparent; color: var(--fg); font: inherit; text-align: left; cursor: pointer;
+  transition: background-color .15s;
+}
+.pv-row:hover { background: var(--hover); }
+.pv-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.pv-row-icon {
+  flex: none; width: 32px; height: 32px; border-radius: 9px; background: var(--surface-sunken); color: var(--icon-secondary);
+  display: inline-flex; align-items: center; justify-content: center; transition: background-color .15s, color .15s;
+}
+.pv-row-icon svg { width: 18px; height: 18px; display: block; }
+.pv-row:hover .pv-row-icon { background: var(--panel); color: var(--fg); }
+.pv-row-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.pv-row-title { font-weight: 600; line-height: 1.3; }
+.pv-row-hint { font-size: 12px; line-height: 1.35; color: var(--muted); }
+.pv-row.is-disabled { cursor: default; }
+.pv-row.is-disabled:hover { background: transparent; }
+.pv-row.is-disabled:hover .pv-row-icon { background: var(--surface-sunken); color: var(--icon-secondary); }
+.pv-row.is-disabled :is(.pv-row-icon, .pv-row-text, .pv-keys) { opacity: .45; }
+.pv-badge { flex: none; padding: 2px 8px; border-radius: 99px; background: var(--surface-muted); color: var(--fg-secondary); font-size: 11px; font-weight: 600; }
+.pv-keys { flex: none; display: inline-flex; align-items: center; gap: 3px; }
+.pv kbd {
+  min-width: 22px; height: 22px; padding: 0 6px; border: 1px solid var(--border); border-bottom-width: 2px; border-radius: 6px;
+  background: var(--panel); color: var(--fg-secondary); font: inherit; font-size: 11.5px; font-weight: 600; line-height: 19px; text-align: center;
+}
+
+/* История изменений: кнопки сверху и лента «сделано — сейчас — отменено» */
+.hist-head { flex: none; display: flex; flex-direction: column; gap: 10px; padding: 4px 12px 8px; }
+.hist-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.hist-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; padding: 0 10px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--panel); color: var(--fg); font: inherit; font-weight: 600; cursor: pointer;
+  transition: background-color .15s, border-color .15s, color .15s;
+}
+.hist-btn:hover:not(:disabled) { border-color: var(--border-strong); background: var(--hover); }
+.hist-btn:disabled { color: var(--fg-disabled); cursor: default; }
+.hist-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.hist-btn-icon { display: inline-flex; }
+.hist-btn-icon svg { width: 18px; height: 18px; display: block; }
+.hist-caption { padding: 0 2px; font-size: 12px; color: var(--muted); }
+.hist-list { list-style: none; margin: 0; padding: 0 8px 16px; }
+.hist-item { position: relative; }
+/* линия ленты проходит через точки: от первой до последней */
+.hist-item::before { content: ''; position: absolute; left: 14px; top: 0; bottom: 0; width: 2px; background: var(--border); }
+.hist-item:first-child::before { top: 50%; }
+.hist-item:last-child::before { bottom: 50%; }
+.hist-item:only-child::before { display: none; }
+.hist-entry {
+  position: relative; display: flex; align-items: center; gap: 10px; width: 100%; min-height: 40px; padding: 8px 10px 8px 6px;
+  border: 0; border-radius: 10px; background: var(--row-bg); color: var(--fg); font: inherit; text-align: left; cursor: pointer;
+  transition: background-color .15s, color .15s;
+  /* фон строки: им же — кольцо вокруг точки, чтобы линия ленты не подходила к точке вплотную */
+  --row-bg: transparent;
+  --dot-ring: var(--panel);
+}
+.hist-entry:hover { --row-bg: var(--hover); --dot-ring: var(--hover); }
+.hist-entry:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.hist-entry[aria-disabled="true"] { cursor: default; }
+.hist-entry[aria-disabled="true"]:hover { --row-bg: transparent; --dot-ring: var(--panel); }
+.hist-dot {
+  position: relative; z-index: 1; flex: none; width: 10px; height: 10px; margin-left: 4px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 0 3px var(--dot-ring); transition: background-color .15s, box-shadow .15s, transform .15s;
+}
+.hist-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hist-time { flex: none; margin-left: auto; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* текущее состояние: подсветка и крупная точка с кольцом */
+.hist-entry[data-state="current"], .hist-entry[data-state="current"]:hover { --row-bg: var(--accent-soft); --dot-ring: var(--accent-soft); cursor: default; }
+.hist-entry[data-state="current"] .hist-label { font-weight: 600; }
+.hist-entry[data-state="current"] .hist-dot { transform: scale(1.2); box-shadow: 0 0 0 3px var(--dot-ring), 0 0 0 5px var(--accent-ring); }
+/* отменённое — бледнее, точка полая */
+.hist-entry[data-state="undone"] { color: var(--fg-placeholder); }
+.hist-entry[data-state="undone"] .hist-time { color: var(--fg-disabled); }
+.hist-entry[data-state="undone"] .hist-dot { background: var(--panel); box-shadow: inset 0 0 0 2px var(--border-control), 0 0 0 3px var(--dot-ring); }
+.hist-entry[data-state="undone"]:hover { color: var(--fg-secondary); }
+.hist-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; margin: 28px 24px; text-align: center; }
+.hist-empty-icon { display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px; border-radius: 14px; background: var(--surface-sunken); color: var(--fg-placeholder); }
+.hist-empty-icon svg { width: 24px; height: 24px; display: block; }
+.hist-empty-text { margin: 0; color: var(--muted); line-height: 1.5; }
+
+/* Справка: поиск, «Быстрый старт», «Горячие клавиши», версия */
+.hlp-search { flex: none; padding: 4px 12px 8px; }
+.hlp-search-field {
+  display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface-sunken); cursor: text; transition: border-color .15s, box-shadow .15s, background-color .15s;
+}
+.hlp-search-field:hover { border-color: var(--border-strong); }
+.hlp-search-field:focus-within { border-color: var(--accent); background: var(--panel); box-shadow: 0 0 0 3px var(--accent-ring); }
+.hlp-search-icon { display: inline-flex; color: var(--muted); }
+.hlp-search-icon svg { width: 16px; height: 16px; display: block; }
+.hlp-search-input { flex: 1; min-width: 0; border: 0; outline: none; background: transparent; color: var(--fg); font: inherit; }
+.hlp-search-input::placeholder { color: var(--fg-placeholder); }
+.hlp-section { display: flex; flex-direction: column; gap: 4px; padding: 4px 12px 14px; }
+.hlp-tips { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.hlp-tip { display: flex; align-items: flex-start; gap: 12px; padding: 8px; border-radius: 10px; }
+.hlp-tip-icon {
+  flex: none; width: 32px; height: 32px; border-radius: 9px; background: var(--surface-sunken); color: var(--icon-secondary);
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.hlp-tip-icon svg { width: 18px; height: 18px; display: block; }
+.hlp-tip-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.hlp-tip-title { font-weight: 600; line-height: 1.3; }
+.hlp-tip-text { font-size: 12.5px; line-height: 1.45; color: var(--fg-secondary); }
+.hlp-key-groups { display: flex; flex-direction: column; }
+.hlp-group { padding: 6px 4px 10px; }
+/* черта между видимыми группами (скрытые поиском не в счёт) */
+.hlp-group:not([hidden]) ~ .hlp-group { border-top: 1px solid var(--divider); padding-top: 10px; }
+.hlp-group-title { margin: 0 0 4px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.hlp-keys { display: flex; flex-direction: column; }
+.hlp-key-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 32px; padding: 3px 0; }
+.hlp-key-what { flex: 1; min-width: 0; line-height: 1.35; }
+.hlp-key-row :is(.hk-keys, .hk-any, .hk-arrows) { flex: none; }
+.hlp-key-row .hk-any { flex-wrap: wrap; justify-content: flex-end; max-width: 60%; row-gap: 4px; }
+.hlp-note { margin: 6px 0 0; font-size: 12px; line-height: 1.4; color: var(--muted); }
+.hlp-mark { padding: 0 1px; border-radius: 3px; background: var(--accent-soft); color: var(--accent-strong); }
+.hlp-empty { margin: 28px 16px; text-align: center; color: var(--muted); }
+.hlp-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 2px 16px 16px; padding-top: 12px;
+  border-top: 1px solid var(--divider); font-size: 12px; color: var(--muted);
+}
+.hlp-report { color: var(--accent); text-decoration: none; border-radius: 4px; }
+.hlp-report:hover { text-decoration: underline; }
+.hlp-report:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Импорт: зона перетаскивания (подсвечивается акцентом, пока над ней файл) */
+.xfer-drop {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; width: 100%; min-height: 156px; padding: 20px 18px;
+  border: 1.5px dashed var(--border-dashed); border-radius: 14px; background: var(--surface-sunken); color: var(--fg);
+  font: inherit; text-align: center; cursor: pointer; transition: border-color .15s, background-color .15s, color .15s;
+}
+.xfer-drop:hover { border-color: var(--border-strong); background: var(--hover); }
+.xfer-drop:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.xfer-drop-icon {
+  display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; margin-bottom: 4px; border-radius: 12px;
+  background: var(--panel); color: var(--accent); box-shadow: var(--shadow-segment); transition: transform .2s cubic-bezier(.22, .8, .24, 1);
+}
+.xfer-drop-icon svg { width: 22px; height: 22px; display: block; }
+.xfer-drop-title { max-width: 250px; font-weight: 600; line-height: 1.35; }
+.xfer-drop-hint { font-size: 12px; color: var(--muted); }
+.xfer-drop.is-over { border-color: var(--accent); border-style: solid; background: var(--accent-soft); color: var(--accent-strong); }
+.xfer-drop.is-over .xfer-drop-icon { transform: translateY(-3px) scale(1.06); }
+.xfer-drop.is-disabled { cursor: default; opacity: .55; }
+.xfer-drop.is-disabled:hover { border-color: var(--border-dashed); background: var(--surface-sunken); }
+
+/* «Выкл» — без переходов; «Обычные» и «Улучшенные» — короткие CSS-переходы выше */
+body.no-ui-anim :is(.pv-row, .pv-row-icon, .hist-btn, .hist-entry, .hist-dot, .hlp-search-field, .xfer-drop, .xfer-drop-icon) { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  :is(.pv-row, .pv-row-icon, .hist-btn, .hist-entry, .hist-dot, .hlp-search-field, .xfer-drop, .xfer-drop-icon) { transition: none; }
+}

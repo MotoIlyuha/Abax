@@ -11,6 +11,7 @@ import { attachNewElement, freezeAttachments, rebindAttachment } from './attachm
 import { canCreatePage, effectivePermissions, planOf } from './limits';
 import { limitsEnforced } from './plan';
 import { preserveLiveFields, syncCommentsWithMovedElements } from './comments';
+import { describeChange } from './history-diff';
 
 export interface LiveStroke {
   tool: 'pen' | 'highlighter';
@@ -281,14 +282,34 @@ export function parseZoomPercent(text: string): { zoom: number } | { error: stri
 
 let undoStack: Element[][] = [];
 let redoStack: Element[][] = [];
+/** Время каждой записи (когда сделана правка) — параллельно стекам: undoTimes[i] — правка после undoStack[i]. */
+let undoTimes: number[] = [];
+let redoTimes: number[] = [];
+/** Начальное состояние истории: с чего она началась и когда. */
+let historyBase: { label: string; ts: number } = { label: 'Начало сеанса', ts: Date.now() };
 const HISTORY_LIMIT = 200;
+
+/** Сброс истории: открыт проект («Начало сеанса») или другая страница («Открыта страница»). */
+function resetHistory(label: string): void {
+  undoStack = [];
+  redoStack = [];
+  undoTimes = [];
+  redoTimes = [];
+  historyBase = { label, ts: Date.now() };
+}
 
 export function pushHistory(prev: Element[]): void {
   // первая правка в автоматически созданной стартовой доске — это уже проект пользователя (SPEC_NIGHT5 §2.1)
   if (undoStack.length === 0 && starterId() === state.project.id) clearStarter(state.project.id);
   undoStack.push(prev);
-  if (undoStack.length > HISTORY_LIMIT) undoStack.shift();
+  undoTimes.push(Date.now());
+  if (undoStack.length > HISTORY_LIMIT) {
+    undoStack.shift();
+    // самая старая правка вытеснена: начало истории — состояние после неё
+    historyBase = { label: 'Самое раннее сохранённое состояние', ts: undoTimes.shift()! };
+  }
   redoStack = [];
+  redoTimes = [];
 }
 
 export function canUndo(): boolean { return undoStack.length > 0; }
@@ -304,6 +325,7 @@ export function undo(): void {
   const prev = undoStack.pop();
   if (!prev) return;
   redoStack.push(state.board.elements);
+  redoTimes.push(undoTimes.pop() ?? Date.now());
   const before = state.board.elements;
   state.board.elements = preserveLiveFields(guardedSnapshot(prev, before), before);
   followComments(before);
@@ -315,11 +337,53 @@ export function redo(): void {
   const next = redoStack.pop();
   if (!next) return;
   undoStack.push(state.board.elements);
+  undoTimes.push(redoTimes.pop() ?? Date.now());
   const before = state.board.elements;
   state.board.elements = preserveLiveFields(guardedSnapshot(next, before), before);
   followComments(before);
   state.selection = new Set();
   update(true);
+}
+
+/** Запись ленты «История изменений»: подпись, время и положение относительно текущего состояния. */
+export interface HistoryRecord {
+  label: string;
+  ts: number;
+  state: 'done' | 'current' | 'undone';
+}
+
+/** Подписи соседних снимков: снимки иммутабельны, подпись пары считается один раз. */
+const changeLabels = new WeakMap<readonly Element[], { prev: readonly Element[]; label: string }>();
+
+function changeLabel(prev: readonly Element[], next: readonly Element[]): string {
+  const hit = changeLabels.get(next);
+  if (hit && hit.prev === prev) return hit.label;
+  const label = describeChange(prev, next);
+  changeLabels.set(next, { prev, label });
+  return label;
+}
+
+/**
+ * Лента истории страницы по порядку: начальное состояние, сделанное, текущее и отменённое.
+ * Индекс записи — аргумент jumpToHistory.
+ */
+export function historyTimeline(): HistoryRecord[] {
+  const snaps: readonly Element[][] = [...undoStack, state.board.elements, ...redoStack.slice().reverse()];
+  const times = [...undoTimes, ...redoTimes.slice().reverse()];
+  const current = undoStack.length;
+  return snaps.map((snap, i) => ({
+    label: i === 0 ? historyBase.label : changeLabel(snaps[i - 1], snap),
+    ts: i === 0 ? historyBase.ts : times[i - 1],
+    state: i < current ? 'done' : i === current ? 'current' : 'undone',
+  }));
+}
+
+/** Переход к записи ленты: повторные undo()/redo() — тот же путь, что у кнопок (синхронизация с комнатой — как обычно). */
+export function jumpToHistory(index: number): void {
+  if (!Number.isInteger(index)) return;
+  const target = Math.max(0, Math.min(index, undoStack.length + redoStack.length));
+  while (undoStack.length > target) undo();
+  while (undoStack.length < target && redoStack.length > 0) redo();
 }
 
 // ----- Мутации сцены (элементы заменяются, никогда не правятся на месте) -----
@@ -801,8 +865,7 @@ export function openProject(project: Project, pageId?: string, view: 'home' | 'b
   state.liveEdit = false;
   state.marquee = null;
   state.spread = null;
-  undoStack = [];
-  redoStack = [];
+  resetHistory('Начало сеанса');
   state.dirty = false;
   state.view = view;
   update();
@@ -834,8 +897,7 @@ export function switchPage(pageId: string): void {
   state.liveEdit = false;
   state.marquee = null;
   state.spread = null;
-  undoStack = [];
-  redoStack = [];
+  resetHistory('Открыта страница');
   update();
 }
 
@@ -859,8 +921,7 @@ export function addPage(): Page | null {
   state.pageId = page.id;
   state.board = page;
   state.selection = new Set();
-  undoStack = [];
-  redoStack = [];
+  resetHistory('Создана страница');
   update(true);
   return page;
 }
@@ -876,8 +937,7 @@ export function addDraft(): Page {
   state.selection = new Set();
   state.liveEdit = false;
   state.spread = null;
-  undoStack = [];
-  redoStack = [];
+  resetHistory('Создан черновик');
   update();
   return page;
 }
@@ -896,8 +956,7 @@ export function deleteDraft(pageId: string): void {
     state.selection = new Set();
     state.liveEdit = false;
     state.spread = null;
-    undoStack = [];
-    redoStack = [];
+    resetHistory('Открыта страница');
   }
   update();
 }
@@ -910,8 +969,7 @@ export function deletePage(pageId: string): void {
   if (state.pageId === pageId) {
     state.pageId = pages[0].id;
     state.board = pages[0];
-    undoStack = [];
-    redoStack = [];
+    resetHistory('Открыта страница');
   }
   update(true);
 }

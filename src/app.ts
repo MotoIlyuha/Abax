@@ -72,6 +72,8 @@ import { canCreateProject, isOverPageLimit, isOverProjectLimit, PLAN_LIMITS } fr
 import { limitsEnforced, userPlan } from './plan';
 import { CONFLICT_TEXT, cloudStorage, openFresh, type ConflictResolution } from './cloud-sync';
 import { clearStarter, isPristineStarterProject, starterId } from './sync-state';
+import { parseProject } from './file';
+import { setPanelActions } from './panel-actions';
 import { initSyncIndicator } from './sync-indicator';
 import { openShareDialog as openShareDialogUi, type ShareApi } from './share-dialog';
 import { onCancelInteraction } from './interaction';
@@ -2434,13 +2436,19 @@ export async function copySelectionAsImage(): Promise<void> {
   }
 }
 
-export async function exportPng(): Promise<void> {
+/**
+ * PNG страницы. scope: 'auto' (как раньше: есть выделение — только оно, иначе вся страница), 'page' — вся страница,
+ * 'selection' — только выделенное (режим «Экспорт» боковой панели).
+ */
+export async function exportPng(scope: 'auto' | 'page' | 'selection' = 'auto'): Promise<void> {
   if (!canCopyCurrentBoard()) { showToast('Автор запретил копирование'); return; }
-  const els = state.selection.size
+  const onlySelected = scope === 'selection' || (scope === 'auto' && state.selection.size > 0);
+  const els = onlySelected
     ? state.board.elements.filter(e => state.selection.has(e.id))
     : state.board.elements;
   if (els.length === 0) {
-    alert('Страница пуста — нечего экспортировать');
+    if (scope === 'selection') showToast('Сначала выделите объекты на доске');
+    else alert('Страница пуста — нечего экспортировать');
     return;
   }
   const bb = contentBBox(els);
@@ -2553,6 +2561,24 @@ async function documentText(file: File): Promise<string> {
   throw new Error('Формат не поддерживается');
 }
 
+/** Документ с диска: PDF — страницами-картинками, Word/Excel/OpenDocument/текст — текстом на доске. */
+async function importDocumentFile(file: File): Promise<void> {
+  try {
+    if (/\.pdf$/i.test(file.name) || file.type === 'application/pdf') {
+      const dataUrl = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(reader.error); reader.readAsDataURL(file); });
+      await importPdfFromDataUrl(dataUrl);
+    } else {
+      const text = (await documentText(file)).trim();
+      if (!text) throw new Error('Документ не содержит текста');
+      const el: TextEl = { id: uid(), type: 'text', text, x: state.camera.x + 40, y: state.camera.y + 40, size: 20, color: '#222222' };
+      pushHistory(state.board.elements);
+      replaceElements([...state.board.elements, el]);
+      selectInserted(el.id);
+      fitContent();
+    }
+  } catch (err) { alert('Не удалось открыть документ: ' + (err instanceof Error ? err.message : String(err))); }
+}
+
 export async function importDocument(): Promise<void> {
   if (!canEditBoard()) return;
   const input = document.createElement('input');
@@ -2561,20 +2587,7 @@ export async function importDocument(): Promise<void> {
   input.onchange = async () => {
     const file = input.files?.[0];
     if (!file) return;
-    try {
-      if (/\.pdf$/i.test(file.name)) {
-        const dataUrl = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(reader.error); reader.readAsDataURL(file); });
-        await importPdfFromDataUrl(dataUrl);
-      } else {
-        const text = (await documentText(file)).trim();
-        if (!text) throw new Error('Документ не содержит текста');
-        const el: TextEl = { id: uid(), type: 'text', text, x: state.camera.x + 40, y: state.camera.y + 40, size: 20, color: '#222222' };
-        pushHistory(state.board.elements);
-        replaceElements([...state.board.elements, el]);
-        selectInserted(el.id);
-        fitContent();
-      }
-    } catch (err) { alert('Не удалось открыть документ: ' + (err instanceof Error ? err.message : String(err))); }
+    await importDocumentFile(file);
   };
   input.click();
 }
@@ -2679,13 +2692,93 @@ export async function insertImage(): Promise<void> {
   if (dataUrl) insertImageFromDataUrl(dataUrl);
 }
 
-function fileToDataUrl(f: File): Promise<string | null> {
+function fileToDataUrl(f: Blob): Promise<string | null> {
   const { promise, resolve } = Promise.withResolvers<string | null>();
   const fr = new FileReader();
   fr.onload = () => resolve(String(fr.result));
   fr.onerror = () => resolve(null);
   fr.readAsDataURL(f);
   return promise;
+}
+
+/** Картинка-файл (вставка Ctrl+V, перетаскивание, «Из буфера обмена») — на доску в центр экрана. */
+function insertImageFile(f: Blob): void {
+  void fileToDataUrl(f).then(d => { if (d) insertImageFromDataUrl(d); });
+}
+
+const DOCUMENT_FILE = /\.(pdf|docx|xlsx|odt|ods|txt|csv|tsv|md)$/i;
+const PROJECT_FILE = /\.json$/i;
+
+/**
+ * Перетащенный файл — на холст или в зону режима «Импорт» боковой панели: изображение, PDF или документ
+ * встаёт на доску (нужно право правки), проект .json открывается отдельным проектом.
+ */
+export function importDroppedFile(f: File): void {
+  if (PROJECT_FILE.test(f.name) || f.type === 'application/json') { void importProjectFile(f); return; }
+  if (!canEditBoard()) return;
+  if (f.type.startsWith('image/')) insertImageFile(f);
+  else if (f.type === 'application/pdf' || DOCUMENT_FILE.test(f.name)) void importDocumentFile(f);
+  else showToast('Этот формат не поддерживается: подойдут PDF, изображение, документ или файл проекта');
+}
+
+/** «Из буфера обмена»: картинка из системного буфера — тем же путём, что вставка Ctrl+V. */
+export async function pasteImageFromClipboard(): Promise<void> {
+  if (!canEditBoard()) return;
+  let items: ClipboardItems;
+  try {
+    items = await navigator.clipboard.read();
+  } catch {
+    showToast(macKeys('Нет доступа к буферу обмена — нажмите Ctrl+V на доске'));
+    return;
+  }
+  for (const it of items) {
+    const type = it.types.find(t => t.startsWith('image/'));
+    if (type) { insertImageFile(await it.getType(type)); return; }
+  }
+  showToast('В буфере обмена нет изображения');
+}
+
+/** Можно открыть проект из файла: не просмотр по ссылке и не гость чужой доски. */
+export function canOpenProjectFile(): boolean {
+  return state.linkMode === null && state.collabRole !== 'guest';
+}
+
+/**
+ * Проект из файла .json (скачанный «Скачать проект как файл»): проверка parseProject и открытие копией —
+ * с новым id, чтобы не перезаписать свой проект с тем же id; права доступа и закрепление не переносятся.
+ */
+export async function importProjectFile(f: File): Promise<void> {
+  if (!canOpenProjectFile()) return;
+  let parsed: Project | null = null;
+  try { parsed = parseProject(JSON.parse(await f.text())); } catch { parsed = null; }
+  if (!parsed) { showToast('Это не файл проекта Abax'); return; }
+  if (limitsEnforced() && !canCreateProject(userPlan(), state.projects.length)) { showToast(LIMIT_PROJECTS_TEXT); return; }
+  await saveNow();
+  saveCamera();
+  rememberOpenProject();
+  const now = Date.now();
+  const { permissions: _p, pinned: _pin, ...rest } = parsed;
+  const p: Project = { ...rest, id: uid(), createdAt: now, updatedAt: now, ownerPlan: userPlan() };
+  await storage.save(p);
+  state.projects = [projectMeta(p), ...state.projects];
+  openProject(p);
+  if (!state.linkMode) localStorage.setItem('doska.last', JSON.stringify({ pid: p.id, pageId: realPageId() }));
+  refresh();
+  fitContent();
+  showToast(`Проект «${p.name}» открыт`);
+}
+
+/** Выбор файла проекта (.json) — строка «Файл проекта» режима «Импорт». */
+export function openProjectFile(): void {
+  if (!canOpenProjectFile()) return;
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json,application/json';
+  input.onchange = () => {
+    const f = input.files?.[0];
+    if (f) void importProjectFile(f);
+  };
+  input.click();
 }
 
 /** Событие буфера обмена относится к доске, а не к полю ввода или окну настроек. */
@@ -2814,7 +2907,7 @@ function wireImageInput(): void {
         const f = it.getAsFile();
         if (f) {
           e.preventDefault();
-          void fileToDataUrl(f).then(d => { if (d) insertImageFromDataUrl(d); });
+          insertImageFile(f);
           return;
         }
       }
@@ -2830,9 +2923,7 @@ function wireImageInput(): void {
   wrap.addEventListener('drop', e => {
     e.preventDefault();
     const f = e.dataTransfer?.files?.[0];
-    if (f && f.type.startsWith('image/') && canEditBoard()) {
-      void fileToDataUrl(f).then(d => { if (d) insertImageFromDataUrl(d); });
-    }
+    if (f) importDroppedFile(f);
   });
 }
 
@@ -4876,20 +4967,9 @@ function wireTopbar(): void {
     if (action === 'link-project') void copyBoardLink('project');
     if (action === 'link-page') void copyBoardLink('page');
     if (action === 'settings') openAllSettings();
-    if (action === 'project') void (async () => {
-      if (!canCloneCurrentProject()) { showToast('Автор запретил сохранение проекта'); return; }
-      await saveNow();
-      const url = URL.createObjectURL(new Blob([JSON.stringify(state.project, null, 2)], { type: 'application/json' }));
-      const a = document.createElement('a'); a.href = url; a.download = `${state.project.name || 'Abax'}.json`; a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    })();
+    if (action === 'project') void downloadProjectFile();
     if (action === 'pdf') showToast('Экспорт в PDF пока недоступен');
-    if (action === 'app') {
-      // установленная Abax зарегистрировала схему abax:// — запускаем её. Ссылка на скачивание
-      // остаётся в тосте: так пункт меню работает и там, где приложение ещё не установлено.
-      showToast('Открываем Abax…', { label: 'Скачать, если не открылось', href: RELEASES_URL });
-      openDesktopApp();
-    }
+    if (action === 'app') openInDesktopApp();
   });
   document.addEventListener('pointerdown', e => { if (menuShown(menu) && !menu.contains(e.target as Node) && !menuButton.contains(e.target as Node)) setMenuOpen(false); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && menuShown(menu)) { setMenuOpen(false); menuButton.focus(); } });
@@ -4934,6 +5014,7 @@ function wireTopbar(): void {
   document.addEventListener('pointerdown', e => { if (menuShown(exportMenu) && !exportMenu.contains(e.target as Node) && !exportButton.contains(e.target as Node)) closeExportMenu(); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && menuShown(exportMenu)) { closeExportMenu(); exportButton.focus(); } });
   document.getElementById('btn-present')!.addEventListener('click', togglePresent);
+  registerPanelActions();
   wireHelpMenu();
   initTopbarFit();
   // список страниц внизу не должен заходить под правый нижний угол
@@ -4984,6 +5065,40 @@ function wireTopbar(): void {
       if (dockedPanel() && !fontEdit) { e.stopPropagation(); closeCtxPanel(); return; }
     }
   }, { capture: true });
+}
+
+/** «Скачать проект как файл»: весь проект — файлом .json (пункт меню экспорта и режим «Экспорт» панели). */
+async function downloadProjectFile(): Promise<void> {
+  if (!canCloneCurrentProject()) { showToast('Автор запретил сохранение проекта'); return; }
+  await saveNow();
+  const url = URL.createObjectURL(new Blob([JSON.stringify(state.project, null, 2)], { type: 'application/json' }));
+  const a = document.createElement('a'); a.href = url; a.download = `${state.project.name || 'Abax'}.json`; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** «Открыть в приложении» (только в браузере). */
+function openInDesktopApp(): void {
+  // установленная Abax зарегистрировала схему abax:// — запускаем её. Ссылка на скачивание
+  // остаётся в тосте: так пункт меню работает и там, где приложение ещё не установлено.
+  showToast('Открываем Abax…', { label: 'Скачать, если не открылось', href: RELEASES_URL });
+  openDesktopApp();
+}
+
+/** Действия доски для режимов боковой панели «История», «Импорт», «Экспорт» (src/panel-actions.ts). */
+function registerPanelActions(): void {
+  setPanelActions({
+    canEdit: canEditBoard,
+    importDocument: () => { void importDocument(); },
+    insertImage: () => { void insertImage(); },
+    importFile: importDroppedFile,
+    canOpenProject: canOpenProjectFile,
+    openProjectFile,
+    pasteFromClipboard: () => { void pasteImageFromClipboard(); },
+    exportPng: scope => { void exportPng(scope); },
+    copyImage: () => { void copySelectionAsImage(); },
+    downloadProject: () => { void downloadProjectFile(); },
+    openInApp: !doskaApi && !isNativeApp() ? openInDesktopApp : null,
+  });
 }
 
 // ----- «Помощь и советы»: кнопка в правом нижнем углу и F1 -----

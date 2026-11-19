@@ -248,3 +248,15 @@ export const SYNC_ICONS: Record<'synced' | 'syncing' | 'offline' | 'limit', { d:
   offline: [{ d: SYNC_CLOUD }, { d: 'M5 5l14 14' }],
   limit: [{ d: SYNC_CLOUD }, { d: 'M12 10.5v3M12 15.8v.1' }],
 };
+
+/** Режимы боковой панели «История», «Справка», «Импорт», «Экспорт» и их строки (SPEC_CHAT §8). */
+export const PANEL_ICONS = {
+  /** Часы со стрелкой назад — «История изменений». */
+  history: svg('<path d="M3.5 12A8.5 8.5 0 1 0 6 6L3.5 8.5"/><path d="M3.5 4v4.5H8"/><path d="M12 7.5V12l3 2"/>'),
+  search: svg('<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.3-4.3"/>'),
+  clipboard: svg('<path d="M8.5 4.5H7a2 2 0 0 0-2 2V19a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6.5a2 2 0 0 0-2-2h-1.5"/><rect x="8.5" y="3" width="7" height="3.5" rx="1"/><path d="M8.5 16.5l2.5-2.5 2 2 1.5-1.5 1.5 1.5"/>'),
+  /** Файл с угловыми скобками — проект .json. */
+  projectFile: svg('<path d="M14 2.5H6.5a2 2 0 0 0-2 2v15a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V8z"/><path d="M14 2.5V8h5.5"/><path d="M10 12.5L8 14.5l2 2M14 12.5l2 2-2 2"/>'),
+  /** Пунктирная рамка выделения вокруг объекта — «PNG — выделенное». */
+  selection: svg('<path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16M11 4h2M11 20h2M4 11v2M20 11v2"/><rect x="8" y="8" width="8" height="8" rx="1.5"/>'),
+};
