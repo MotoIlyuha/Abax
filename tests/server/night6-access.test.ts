@@ -2,6 +2,7 @@
 // клонирование по приглашению (D7), роли и последний вход приглашений по почте.
 import { afterEach, describe, expect, it } from 'vitest';
 import { WebSocket } from 'ws';
+import { listAliasesForModeration, setAliasBlocked } from '../../server/invites';
 import { memoryMailer } from '../../server/mailer';
 import { addInvite, anon, call, closeApps, makeApp, proj, putProject, rectEl, setPlan, type TestApp } from './helpers';
 
@@ -144,7 +145,7 @@ describe('/j/:x', () => {
 describe('именной адрес', () => {
   it('формат, резерв и тариф: bad-alias, Free — plan-limit-alias', async () => {
     const { app, owner } = await setup('free');
-    for (const bad of ['ab', 'Physics', '9a-x', 'a--b', 'api', 'x'.repeat(24)]) expect((await setAlias(app, owner.token, bad)).body.error).toBe('bad-alias');
+    for (const bad of ['ab', 'geo', 'fizik', 'Physics', '9a-x', 'a--b', 'api', 'x'.repeat(24)]) expect((await setAlias(app, owner.token, bad)).body.error).toBe('bad-alias');
     expect(await setAlias(app, owner.token, 'physics-9a')).toMatchObject({ status: 403, body: { error: 'plan-limit-alias' } });
   });
 
@@ -197,6 +198,67 @@ describe('именной адрес', () => {
     setPlan(app, owner.id, 'pro');
     await call(app, 'DELETE', '/api/projects/a', undefined, { token: owner.token });
     expect((await open(app, 'physics-9a')).body.error).toBe('board-deleted');
+  });
+
+  it('новый адрес — не короче 6 символов; свой старый короткий адрес работает и возвращается', async () => {
+    const { app, owner } = await setup();
+    await link(app, owner.token);
+    for (const short of ['geo', 'fizik']) expect(await setAlias(app, owner.token, short)).toMatchObject({ status: 400, body: { error: 'bad-alias' } });
+    // адрес, занятый до введения минимума
+    const now = app.clock.t;
+    app.db.prepare("INSERT INTO public_aliases (alias, project_id, owner_id, state, created_at, updated_at) VALUES ('geo', 'a', ?, 'active', ?, ?)").run(owner.id, now, now);
+    expect((await open(app, 'geo')).body).toMatchObject({ projectId: 'a', via: 'alias' });
+    expect((await setAlias(app, owner.token, 'geo-9a')).body).toMatchObject({ alias: 'geo-9a', former: ['geo'] });
+    expect((await setAlias(app, owner.token, 'geo')).body).toMatchObject({ alias: 'geo', former: ['geo-9a'] });
+  });
+
+  it('занятый адрес: свободные похожие — ни разу никем не занятые', async () => {
+    const { app, owner } = await setup();
+    await setAlias(app, owner.token, 'fizika');
+    await setAlias(app, owner.token, 'fizika2026'); // ближайшая подсказка уже занята (бывший адрес владельца)
+    const other = await anon(app);
+    setPlan(app, other.id, 'pro');
+    await putProject(app, other.token, proj('b'));
+    const r = await setAlias(app, other.token, 'fizika', 'b');
+    expect(r).toMatchObject({ status: 409, body: { error: 'alias-taken' } });
+    const sug: string[] = r.body.suggestions;
+    expect(sug).toHaveLength(3);
+    expect(sug).not.toContain('fizika2026');
+    expect(new Set(sug).size).toBe(3);
+    for (const s of sug) {
+      expect(s).toMatch(/^fizika-?\d+$/);
+      expect((await open(app, s)).body.error).toBe('invite-not-found');
+    }
+    // подсказка действительно свободна
+    expect((await setAlias(app, other.token, sug[0], 'b')).status).toBe(200);
+  });
+
+  it('модерация: кто и когда занял адрес; блокировка закрывает вход и не даёт занять адрес даже владельцу; снятие — как было', async () => {
+    const { app, owner } = await setup();
+    await link(app, owner.token);
+    await setAlias(app, owner.token, 'physics-9a');
+    const createdAt = app.clock.t;
+    app.clock.t += 60_000;
+    await setAlias(app, owner.token, 'fizika-9a');
+    const rows = listAliasesForModeration(app.app);
+    expect(rows.map(r => r.alias)).toEqual(['fizika-9a', 'physics-9a']); // свежие сначала
+    expect(rows[1]).toMatchObject({ alias: 'physics-9a', state: 'former', ownerId: owner.id, projectId: 'a', projectTitle: expect.any(String), createdAt, blockedAt: null });
+    expect(listAliasesForModeration(app.app, { since: createdAt + 1 }).map(r => r.alias)).toEqual(['fizika-9a']);
+    expect(listAliasesForModeration(app.app, { ownerId: 'nobody' })).toEqual([]);
+
+    expect(setAliasBlocked(app.app, 'fizika-9a', true, 'оскорбительный адрес')).toBe(true);
+    expect(setAliasBlocked(app.app, 'no-such-alias', true)).toBe(false);
+    expect(listAliasesForModeration(app.app)[0]).toMatchObject({ alias: 'fizika-9a', state: 'active', blockedAt: app.clock.t, blockedReason: 'оскорбительный адрес' });
+    expect(await open(app, 'fizika-9a')).toMatchObject({ status: 404, body: { error: 'alias-blocked' } });
+    // владелец не видит заблокированный адрес, не может его вернуть или освободить
+    expect((await call(app, 'GET', '/api/projects/a/alias', undefined, { token: owner.token })).body).toMatchObject({ alias: null, former: ['physics-9a'] });
+    expect((await link(app, owner.token)).body.alias).toBeNull();
+    expect(await setAlias(app, owner.token, 'fizika-9a')).toMatchObject({ status: 409, body: { error: 'alias-blocked' } });
+    expect((await call(app, 'DELETE', '/api/projects/a/alias/fizika-9a', undefined, { token: owner.token })).status).toBe(404);
+
+    expect(setAliasBlocked(app.app, 'fizika-9a', false)).toBe(true);
+    expect((await open(app, 'fizika-9a')).body.projectId).toBe('a');
+    expect(listAliasesForModeration(app.app)[0]).toMatchObject({ alias: 'fizika-9a', state: 'active', blockedAt: null, blockedReason: null });
   });
 
   it('не больше 20 адресов на аккаунт', async () => {

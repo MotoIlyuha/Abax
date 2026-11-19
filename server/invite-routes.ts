@@ -1,12 +1,12 @@
 import { randomBytes } from 'node:crypto';
 import { buildBoardUrl } from '../src/board-url';
 import { MAX_ALIASES_PER_OWNER, PLAN_LIMITS, sanitizePermissionsForPlan } from '../src/limits';
-import { isAliasShaped, isStoredRole, legacyRoleOf, normalizeRole, type StoredRole } from '../src/access';
+import { isAliasShaped, isNewAliasOk, isStoredRole, legacyRoleOf, normalizeRole, type StoredRole } from '../src/access';
 import type { PageRight } from '../src/types';
 import { requireUser } from './auth';
 import type { AppContext } from './context';
 import type { AliasRow, InviteRow } from './db';
-import { activeAliasOf, isInviteKeyShaped, linkInviteOf, resolveInviteKey, rightsOfInvite, touchInvite, type InviteRights } from './invites';
+import { activeAliasOf, isInviteKeyShaped, linkInviteOf, resolveInviteKey, rightsOfInvite, suggestFreeAliases, touchInvite, type InviteRights } from './invites';
 import { getActiveProject, ownerPlanOf, viewFor } from './projects';
 import { HttpError, type Ctx, type Router } from './router';
 import { effectivePlan } from './users';
@@ -176,7 +176,7 @@ export function registerInviteRoutes(router: Router): void {
     const user = requireUser(ctx);
     const row = getActiveProject(ctx.app, ctx.params.id);
     if (!row || row.owner_id !== user.id) throw new HttpError(404, 'project-not-found');
-    const rows = ctx.app.db.prepare("SELECT alias, state FROM public_aliases WHERE project_id = ? AND state IN ('active', 'former') ORDER BY updated_at DESC")
+    const rows = ctx.app.db.prepare("SELECT alias, state FROM public_aliases WHERE project_id = ? AND state IN ('active', 'former') AND blocked_at IS NULL ORDER BY updated_at DESC")
       .all(row.id) as { alias: string; state: string }[];
     return {
       json: {
@@ -195,10 +195,13 @@ export function registerInviteRoutes(router: Router): void {
     const body = await ctx.body() as { alias?: unknown } | undefined;
     const alias = typeof body?.alias === 'string' ? body.alias.trim() : '';
     if (!isAliasShaped(alias)) throw new HttpError(400, 'bad-alias');
-    if (app.opts.enforceLimits && !PLAN_LIMITS[effectivePlan(user, app.now())].canSetAlias) throw new HttpError(403, 'plan-limit-alias');
     const taken = app.db.prepare('SELECT * FROM public_aliases WHERE alias = ?').get(alias) as AliasRow | undefined;
-    // адрес, когда-либо принадлежавший другому аккаунту (в т.ч. надгробие), не достаётся никому
-    if (taken && taken.owner_id !== user.id) throw new HttpError(409, 'alias-taken');
+    // новый адрес — не короче ALIAS_MIN; адреса, занятые раньше (3–5 символов), узнаются, а свои можно вернуть
+    if (!taken && !isNewAliasOk(alias)) throw new HttpError(400, 'bad-alias');
+    if (app.opts.enforceLimits && !PLAN_LIMITS[effectivePlan(user, app.now())].canSetAlias) throw new HttpError(403, 'plan-limit-alias');
+    // адрес, когда-либо принадлежавший другому аккаунту (в т.ч. надгробие), не достаётся никому: предлагаем похожие свободные
+    if (taken && taken.owner_id !== user.id) throw new HttpError(409, 'alias-taken', { suggestions: suggestFreeAliases(app, alias) });
+    if (taken && taken.blocked_at !== null) throw new HttpError(409, 'alias-blocked', { suggestions: suggestFreeAliases(app, alias) });
     if (taken && taken.state === 'active' && taken.project_id === row.id) return { json: { alias, former: [], prettyUrl: prettyInviteUrl(app, alias) } };
     if (!taken && aliasesOfOwner(app, user.id).length >= MAX_ALIASES_PER_OWNER) throw new HttpError(429, 'alias-limit');
     const now = app.now();
@@ -208,7 +211,7 @@ export function registerInviteRoutes(router: Router): void {
       if (taken) app.db.prepare("UPDATE public_aliases SET project_id = ?, state = 'active', updated_at = ? WHERE alias = ?").run(row.id, now, alias);
       else app.db.prepare("INSERT INTO public_aliases (alias, project_id, owner_id, state, created_at, updated_at) VALUES (?, ?, ?, 'active', ?, ?)").run(alias, row.id, user.id, now, now);
     })();
-    const former = (app.db.prepare("SELECT alias FROM public_aliases WHERE project_id = ? AND state = 'former' ORDER BY updated_at DESC").all(row.id) as { alias: string }[]).map(r => r.alias);
+    const former = (app.db.prepare("SELECT alias FROM public_aliases WHERE project_id = ? AND state = 'former' AND blocked_at IS NULL ORDER BY updated_at DESC").all(row.id) as { alias: string }[]).map(r => r.alias);
     return { json: { alias, former, prettyUrl: prettyInviteUrl(app, alias) } };
   });
 
@@ -217,7 +220,7 @@ export function registerInviteRoutes(router: Router): void {
     const app = ctx.app;
     const row = getActiveProject(app, ctx.params.id);
     if (!row || row.owner_id !== user.id) throw new HttpError(404, 'project-not-found');
-    const res = app.db.prepare("UPDATE public_aliases SET state = 'released', updated_at = ? WHERE alias = ? AND project_id = ? AND owner_id = ? AND state IN ('active', 'former')")
+    const res = app.db.prepare("UPDATE public_aliases SET state = 'released', updated_at = ? WHERE alias = ? AND project_id = ? AND owner_id = ? AND state IN ('active', 'former') AND blocked_at IS NULL")
       .run(app.now(), ctx.params.alias, row.id, user.id);
     if (res.changes === 0) throw new HttpError(404, 'alias-not-found');
     // вошедшие по адресу остаются до отключения общей ссылки: адрес — лишь вход, права у ссылки

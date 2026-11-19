@@ -7,7 +7,7 @@ import { isPageRight } from './limits';
 import { claimMenu, closeMenu, menuMotion, openMenu, releaseMenu, settleMenu } from './menu-motion';
 import { ALIAS_MAX, aliasProblem, roleLabel, type AccessRole, type StoredRole } from './access';
 import {
-  MAX_GUESTS_OPTIONS, ROLE_OPTIONS, TEXT_OFFLINE, TEXT_UNSYNCED, aliasErrorText, cloudShareAvailable, cloudSynced, emailInviteErrorText,
+  MAX_GUESTS_OPTIONS, ROLE_OPTIONS, TEXT_OFFLINE, TEXT_UNSYNCED, aliasErrorText, aliasSuggestionsOf, cloudShareAvailable, cloudSynced, emailInviteErrorText,
   emailInviteStatusText, fetchAlias, fetchEmailInvites, fetchLink, linkUrlOf, planLocks, releaseAlias, resetLink, revokeEmailInvite, saveAlias, saveLink,
   sendEmailInvite, setMaxGuestsInProject, setPageRightInProject, setPermissionField, storedRoleLabel,
   type EmailInvite, type LinkInfo,
@@ -970,7 +970,13 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
   // ----- Страница «Настройки доступа»: узлы создаются один раз, renderSettings() только сверяет значения -----
 
   /** Состояние редактора именного адреса между перерисовками. */
-  const aliasUi = { loadedFor: '', alias: null as string | null, former: [] as string[], draft: '', message: '', busy: false, confirmRelease: '' };
+  const aliasUi = {
+    loadedFor: '', alias: null as string | null, former: [] as string[], draft: '', message: '', busy: false, confirmRelease: '',
+    /** Свободные похожие адреса, если введённый занят. */
+    suggestions: [] as string[],
+  };
+  /** Свой адрес (текущий или бывший) можно вернуть, даже если он короче нынешнего минимума. */
+  const ownAlias = (v: string) => v === aliasUi.alias || aliasUi.former.includes(v);
 
   async function loadAlias(): Promise<void> {
     if (!cloudShareAvailable() || !cloudSynced()) return;
@@ -988,7 +994,7 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
 
   async function submitAlias(): Promise<void> {
     const draft = aliasUi.draft.trim();
-    const problem = aliasProblem(draft);
+    const problem = ownAlias(draft) ? null : aliasProblem(draft);
     if (problem) {
       // та же подсказка уже видна под полем (проверка на лету) — второй строкой её не повторяем; пустое поле — подсказываем
       aliasUi.message = aliasProblemEl.textContent ? '' : problem;
@@ -999,6 +1005,7 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
     }
     aliasUi.busy = true;
     aliasUi.message = '';
+    aliasUi.suggestions = [];
     renderSettings();
     try {
       const r = await saveAlias(state.project.id, draft);
@@ -1006,7 +1013,11 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
       aliasUi.former = r.former;
       if (link) link = { ...link, alias: r.alias, prettyUrl: r.prettyUrl ?? link.prettyUrl };
       say(`Именной адрес: ${r.alias}`);
-    } catch (e) { aliasUi.message = aliasErrorText(e); shakeField(aliasField); } finally { aliasUi.busy = false; renderSettings(); renderLink(); }
+    } catch (e) {
+      aliasUi.message = aliasErrorText(e);
+      aliasUi.suggestions = aliasSuggestionsOf(e);
+      shakeField(aliasField);
+    } finally { aliasUi.busy = false; renderSettings(); renderLink(); }
   }
 
   async function doRelease(alias: string): Promise<void> {
@@ -1119,12 +1130,28 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
   aliasErr.setAttribute('role', 'alert');
   const showProblem = () => {
     const v = aliasInput.value.trim();
-    aliasProblemEl.textContent = v ? aliasProblem(v) ?? '' : '';
+    aliasProblemEl.textContent = v && !ownAlias(v) ? aliasProblem(v) ?? '' : '';
   };
+  // свободные похожие адреса под ошибкой «занят»: нажатие подставляет адрес в поле, сохраняет — «Сохранить»
+  const aliasSuggest = el('div', 'share-alias-suggest');
+  const aliasSuggestList = el('div', 'share-alias-suggest-list');
+  aliasSuggest.append(el('span', 'share-alias-suggest-label', 'Свободны:'), aliasSuggestList);
+  function pickSuggestion(v: string): void {
+    aliasUi.draft = v;
+    aliasInput.value = v;
+    aliasUi.message = '';
+    aliasUi.suggestions = [];
+    aliasField.classList.remove('is-bad');
+    aliasProblemEl.classList.remove('is-error');
+    showProblem();
+    renderAliasMessage();
+    aliasInput.focus();
+  }
   aliasInput.addEventListener('input', () => {
     aliasUi.draft = aliasInput.value.toLowerCase();
     if (aliasInput.value !== aliasUi.draft) aliasInput.value = aliasUi.draft;
     aliasUi.message = '';
+    aliasUi.suggestions = [];
     aliasField.classList.remove('is-bad');
     aliasProblemEl.classList.remove('is-error');
     showProblem();
@@ -1145,6 +1172,14 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
     aliasErr.textContent = aliasUi.message;
     if (aliasUi.message && !aliasErr.isConnected) aliasProblemEl.after(aliasErr);
     else if (!aliasUi.message) aliasErr.remove();
+    reconcile(aliasSuggestList, aliasUi.suggestions, v => v, (v, prev) => {
+      if (prev) return prev;
+      const b = btn('share-alias-chip', v, () => pickSuggestion(v));
+      tip(b, `Подставить /j/${v}`);
+      return b;
+    });
+    if (aliasUi.suggestions.length && !aliasSuggest.isConnected) (aliasErr.isConnected ? aliasErr : aliasProblemEl).after(aliasSuggest);
+    else if (!aliasUi.suggestions.length) aliasSuggest.remove();
   }
 
   function renderPages(): void {

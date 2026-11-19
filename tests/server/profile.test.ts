@@ -15,7 +15,7 @@ function tgPayload(now: number, over: Record<string, string | number> = {}) {
 describe('миграция V2', () => {
   it('колонки профиля и таблицы входа; повторное открытие не ломает базу', () => {
     const db = openDb(':memory:');
-    expect(db.pragma('user_version', { simple: true })).toBe(4); // V4 (Ночь №6) — поверх V3
+    expect(db.pragma('user_version', { simple: true })).toBe(5); // V5 — модерация именных адресов
     const cols = (db.prepare('PRAGMA table_info(users)').all() as { name: string }[]).map(c => c.name);
     expect(cols).toEqual(expect.arrayContaining(['cursor_id', 'name_custom', 'email', 'google_sub']));
     const tables = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]).map(t => t.name);
@@ -59,7 +59,7 @@ describe('миграция V4 (Ночь №6)', () => {
     db.prepare("INSERT INTO users (id, display_name, plan, created_at, updated_at) VALUES ('u1', 'Анна', 'pro', 1, 1)").run();
     db.prepare("INSERT INTO projects (id, owner_id, title, rev, data_json, created_at, updated_at) VALUES ('p1', 'u1', 'Доска', 1, '{}', 1, 1)").run();
     db.prepare("INSERT INTO invites (token, project_id, created_by, created_at, default_role) VALUES ('t1', 'p1', 'u1', 1, 'view')").run();
-    migrate(db);
+    migrate(db, 4);
     expect(db.pragma('user_version', { simple: true })).toBe(4);
     expect(db.prepare('SELECT token, kind, default_role, disabled_at, last_used_at FROM invites').get())
       .toEqual({ token: 't1', kind: 'link', default_role: 'view', disabled_at: null, last_used_at: null });
@@ -71,8 +71,26 @@ describe('миграция V4 (Ночь №6)', () => {
     db.prepare('DELETE FROM invites').run();
     db.prepare('DELETE FROM users').run();
     expect(db.prepare('SELECT alias, project_id, owner_id FROM public_aliases').get()).toEqual({ alias: 'physics-9a', project_id: null, owner_id: null });
-    migrate(db);
+    migrate(db, 4);
     expect(db.pragma('user_version', { simple: true })).toBe(4);
+    db.close();
+  });
+});
+
+describe('миграция V5 (модерация именных адресов)', () => {
+  it('поверх базы V4: адреса целы и не заблокированы, есть колонки блокировки и индекс по дате создания', () => {
+    const db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    migrate(db, 4);
+    db.prepare("INSERT INTO users (id, display_name, plan, created_at, updated_at) VALUES ('u1', 'Анна', 'pro', 1, 1)").run();
+    db.prepare("INSERT INTO projects (id, owner_id, title, rev, data_json, created_at, updated_at) VALUES ('p1', 'u1', 'Доска', 1, '{}', 1, 1)").run();
+    db.prepare("INSERT INTO public_aliases (alias, project_id, owner_id, created_at, updated_at) VALUES ('geo', 'p1', 'u1', 2, 2)").run();
+    migrate(db);
+    expect(db.pragma('user_version', { simple: true })).toBe(5);
+    expect(db.prepare('SELECT alias, owner_id, state, created_at, blocked_at, blocked_reason FROM public_aliases').get())
+      .toEqual({ alias: 'geo', owner_id: 'u1', state: 'active', created_at: 2, blocked_at: null, blocked_reason: null });
+    const idx = (db.prepare('PRAGMA index_list(public_aliases)').all() as { name: string }[]).map(i => i.name);
+    expect(idx).toContain('idx_aliases_created');
     db.close();
   });
 });

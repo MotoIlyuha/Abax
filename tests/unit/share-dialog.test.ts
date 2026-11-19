@@ -433,7 +433,7 @@ describe('страница «Настройки доступа»', () => {
       if (m === 'GET' && p.endsWith('/email-invites')) return { invites: [] };
       if (m === 'GET' && p === '/api/projects/p1/alias') return { alias, former };
       if (m === 'PUT' && p === '/api/projects/p1/alias') {
-        if (body.alias === 'taken-one') return new ApiError(409, 'alias-taken');
+        if (body.alias === 'taken-one') return new ApiError(409, 'alias-taken', { error: 'alias-taken', suggestions: ['taken-one2026', 'taken-one47', '<i>'] });
         if (alias) former = [alias, ...former];
         alias = body.alias;
         return { alias, former, prettyUrl: `https://abax.example/j/${alias}` };
@@ -450,7 +450,7 @@ describe('страница «Настройки доступа»', () => {
     input().value = 'Ab';
     input().dispatchEvent(new Event('input'));
     expect(input().value).toBe('ab');
-    expect(q('.share-alias-problem').textContent).toBe('Не короче 3 символов');
+    expect(q('.share-alias-problem').textContent).toBe('Не короче 6 символов');
     // сохранить с той же ошибкой: подсказка краснеет, второй строкой не повторяется
     q<HTMLButtonElement>('.share-alias-save').click();
     expect(q('.share-alias-problem').classList.contains('is-error')).toBe(true);
@@ -461,6 +461,16 @@ describe('страница «Настройки доступа»', () => {
     q<HTMLButtonElement>('.share-alias-save').click();
     await flush(6);
     expect(q('.share-alias .share-cloud-error').textContent).toBe('Этот адрес уже занят');
+    // свободные похожие адреса: кнопки (только правильной формы), нажатие подставляет адрес в поле, но не сохраняет
+    const chips = () => [...dlg().querySelectorAll<HTMLButtonElement>('.share-alias-suggest .share-alias-chip')];
+    expect(chips().map(c => c.textContent)).toEqual(['taken-one2026', 'taken-one47']);
+    const puts = api.calls.filter(c => c[0] === 'PUT').length;
+    chips()[1].click();
+    expect(input().value).toBe('taken-one47');
+    expect(document.activeElement).toBe(input());
+    expect(dlg().querySelector('.share-alias-suggest')).toBeNull();
+    expect(dlg().querySelector('.share-alias .share-cloud-error')).toBeNull();
+    expect(api.calls.filter(c => c[0] === 'PUT').length).toBe(puts);
     input().value = 'physics-9a';
     input().dispatchEvent(new Event('input'));
     q<HTMLButtonElement>('.share-alias-save').click();

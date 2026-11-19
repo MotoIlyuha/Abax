@@ -109,9 +109,17 @@ export function participantCaps(
 
 /** Токен приглашения: ровно 24 символа base64url (randomBytes(18), 144 бита). */
 export const TOKEN_RE = /^[A-Za-z0-9_-]{24}$/;
-/** Именной адрес: 3–23 символа a–z, 0–9 и «-», с буквы, без «--» и «-» на конце. */
+/**
+ * Форма именного адреса: 3–23 символа a–z, 0–9 и «-», с буквы, без «--» и «-» на конце.
+ * По этой форме адрес узнаётся при входе (/j/:x): адреса 3–5 символов, занятые до введения ALIAS_MIN, продолжают работать.
+ */
 export const ALIAS_RE = /^[a-z](?:[a-z0-9]|-(?=[a-z0-9])){2,22}$/;
-export const ALIAS_MIN = 3;
+/**
+ * Минимальная длина нового адреса. 6 — как у адресов Gmail: коротких осмысленных слов мало, их разбирают первыми
+ * (отсюда большинство «адрес занят»), а адрес — это вход на доску, и короткие проще перебрать.
+ * 6 символов хватает на «fizika», «math-7b», «geo-9a».
+ */
+export const ALIAS_MIN = 6;
 export const ALIAS_MAX = 23;
 
 /** Адреса, которые нельзя занять. */
@@ -128,14 +136,45 @@ export function isAliasShaped(s: unknown): s is string {
   return typeof s === 'string' && ALIAS_RE.test(s) && !RESERVED_ALIASES.has(s);
 }
 
+/** Адрес, который можно занять заново: форма и не короче ALIAS_MIN. */
+export function isNewAliasOk(s: unknown): s is string {
+  return isAliasShaped(s) && s.length >= ALIAS_MIN;
+}
+
+/**
+ * Похожие адреса для занятого base (как подсказки Gmail): base с годом, с двумя–четырьмя цифрами.
+ * Свободны ли они — решает сервер; здесь только кандидаты нужной формы, без повторов и без самого base.
+ * rnd — случайное целое в [0, n) (на сервере — криптостойкое, в тестах — подставное).
+ */
+export function aliasCandidates(base: string, year: number, rnd: (n: number) => number): string[] {
+  const out: string[] = [];
+  const add = (suffix: string, sep: string) => {
+    // цифры сразу после цифры сливаются («9a» + «2026» → «9a2026»): тогда — через дефис
+    const s = /\d$/.test(base) || sep === '-' ? '-' : '';
+    const room = ALIAS_MAX - s.length - suffix.length;
+    const head = base.slice(0, room).replace(/-+$/, '');
+    const c = head + s + suffix;
+    if (head && c !== base && isNewAliasOk(c) && !out.includes(c)) out.push(c);
+  };
+  add(String(year), '');
+  add(String(10 + rnd(90)), '');
+  add(String(100 + rnd(900)), '-');
+  add(String(year), '-');
+  add(String(100 + rnd(900)), '');
+  add(String(1000 + rnd(9000)), '');
+  add(String(10 + rnd(90)), '-');
+  return out;
+}
+
 /** Почему адрес не подходит (для подсказки в поле); null — подходит. */
 export function aliasProblem(s: string): string | null {
-  if (s.length < ALIAS_MIN) return `Не короче ${ALIAS_MIN} символов`;
-  if (s.length > ALIAS_MAX) return `Не длиннее ${ALIAS_MAX} символов`;
-  if (!/^[a-z0-9-]+$/.test(s)) return 'Только строчные латинские буквы, цифры и дефис';
-  if (!/^[a-z]/.test(s)) return 'Начните с буквы';
+  // сначала — что не исправить дописыванием (недопустимые символы видны с первой буквы), затем длина
+  if (!/^[a-z0-9-]*$/.test(s)) return 'Только строчные латинские буквы, цифры и дефис';
+  if (s && !/^[a-z]/.test(s)) return 'Начните с буквы';
   if (/--/.test(s) || s.endsWith('-')) return 'Дефис — только между буквами и цифрами';
   if (RESERVED_ALIASES.has(s)) return 'Этот адрес занят системой';
+  if (s.length < ALIAS_MIN) return `Не короче ${ALIAS_MIN} символов`;
+  if (s.length > ALIAS_MAX) return `Не длиннее ${ALIAS_MAX} символов`;
   return null;
 }
 

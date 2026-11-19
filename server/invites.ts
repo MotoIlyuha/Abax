@@ -1,6 +1,7 @@
+import { randomInt } from 'node:crypto';
 import type { PageRight } from '../src/types';
 import { isPageRight, PLAN_LIMITS } from '../src/limits';
-import { isAliasShaped, isTokenShaped, normalizeRole, participantCaps, type AccessRole, type StoredRole } from '../src/access';
+import { aliasCandidates, isAliasShaped, isTokenShaped, normalizeRole, participantCaps, type AccessRole, type StoredRole } from '../src/access';
 import type { AppContext } from './context';
 import type { AliasRow, InviteRow } from './db';
 import { effectivePlan, getUser } from './users';
@@ -31,7 +32,7 @@ export interface InviteRights {
 }
 
 /** Почему ссылка не открылась (все — 404 для прежних клиентов, код — для понятного текста). */
-export type InviteFailure = 'invite-not-found' | 'link-paused' | 'alias-released' | 'alias-inactive' | 'board-deleted';
+export type InviteFailure = 'invite-not-found' | 'link-paused' | 'alias-released' | 'alias-blocked' | 'alias-inactive' | 'board-deleted';
 
 export function parsePageRights(json: string): Record<string, PageRight> {
   try {
@@ -66,9 +67,9 @@ export function linkInviteOf(app: AppContext, projectId: string): InviteRow | nu
   return rows.find(r => live(app, r)) ?? null;
 }
 
-/** Активный именной адрес доски; null — нет. */
+/** Активный именной адрес доски; null — нет (заблокированный модератором — тоже нет). */
 export function activeAliasOf(app: AppContext, projectId: string): string | null {
-  const row = app.db.prepare("SELECT alias FROM public_aliases WHERE project_id = ? AND state = 'active'").get(projectId) as { alias: string } | undefined;
+  const row = app.db.prepare("SELECT alias FROM public_aliases WHERE project_id = ? AND state = 'active' AND blocked_at IS NULL").get(projectId) as { alias: string } | undefined;
   return row?.alias ?? null;
 }
 
@@ -95,6 +96,7 @@ export function resolveInviteKey(app: AppContext, key: unknown, projectId?: stri
     // именной адрес: ведёт на текущую общую ссылку доски
     const alias = app.db.prepare('SELECT * FROM public_aliases WHERE alias = ?').get(key) as AliasRow | undefined;
     if (!alias) return { error: 'invite-not-found' };
+    if (alias.blocked_at !== null) return { error: 'alias-blocked' };
     if (alias.state === 'released' || alias.owner_id === null) return { error: 'alias-released' };
     const project = projectState(app, alias.project_id);
     if (!project || project.is_deleted !== 0) return { error: 'board-deleted' };
@@ -130,4 +132,75 @@ export function isInviteKeyShaped(key: string): boolean {
 /** Может ли гость по этому приглашению копировать (клонирование, просмотр): роль, права доски, запрет ссылки. */
 export function inviteCopyAllowed(invite: InviteRights, perms: { allowCopy?: boolean; forbidClone?: boolean }): boolean {
   return participantCaps({ owner: false, role: invite.role, legacy: invite.legacy, inviteAllowCopy: invite.allowCopy }, perms).copy;
+}
+
+// ----- Подсказки и модерация именных адресов -----
+
+/** Сколько свободных похожих адресов предлагать вместо занятого. */
+export const ALIAS_SUGGESTIONS = 3;
+
+/**
+ * Свободные похожие адреса для занятого base: ни разу не занятые никем (любая строка public_aliases,
+ * в т.ч. освобождённая, бывшая или заблокированная, — уже не свободна). Пусто — подсказать нечего.
+ */
+export function suggestFreeAliases(app: AppContext, base: string, rnd: (n: number) => number = randomInt): string[] {
+  const year = new Date(app.now()).getUTCFullYear();
+  const free: string[] = [];
+  // кандидаты со случайными цифрами: если все заняты (редко), пробуем ещё раз
+  for (let round = 0; round < 3 && free.length < ALIAS_SUGGESTIONS; round++) {
+    const cands = aliasCandidates(base, year, rnd).filter(c => !free.includes(c));
+    if (cands.length === 0) break;
+    const busy = new Set((app.db.prepare(`SELECT alias FROM public_aliases WHERE alias IN (${cands.map(() => '?').join(',')})`)
+      .all(...cands) as { alias: string }[]).map(r => r.alias));
+    for (const c of cands) if (!busy.has(c) && free.length < ALIAS_SUGGESTIONS) free.push(c);
+  }
+  return free;
+}
+
+/** Строка для модератора: адрес, кто и когда занял, на какую доску ведёт, блокировка. */
+export interface AliasModerationRow {
+  alias: string;
+  state: string;
+  ownerId: string | null;
+  ownerName: string | null;
+  ownerEmail: string | null;
+  projectId: string | null;
+  projectTitle: string | null;
+  createdAt: number;
+  updatedAt: number;
+  blockedAt: number | null;
+  blockedReason: string | null;
+}
+
+/**
+ * Именные адреса для модерации (будущая админ-панель или скрипт): свежие сначала.
+ * since — только занятые с этого момента (мс); owner — только этого аккаунта.
+ */
+export function listAliasesForModeration(app: AppContext, opts: { since?: number; ownerId?: string; limit?: number } = {}): AliasModerationRow[] {
+  const where: string[] = [];
+  const args: (string | number)[] = [];
+  if (opts.since !== undefined) { where.push('a.created_at >= ?'); args.push(opts.since); }
+  if (opts.ownerId !== undefined) { where.push('a.owner_id = ?'); args.push(opts.ownerId); }
+  args.push(Math.max(1, Math.min(opts.limit ?? 100, 1000)));
+  return app.db.prepare(`
+    SELECT a.alias, a.state, a.owner_id AS ownerId, u.display_name AS ownerName, COALESCE(u.email, u.google_email) AS ownerEmail,
+           a.project_id AS projectId, p.title AS projectTitle, a.created_at AS createdAt, a.updated_at AS updatedAt,
+           a.blocked_at AS blockedAt, a.blocked_reason AS blockedReason
+    FROM public_aliases a
+    LEFT JOIN users u ON u.id = a.owner_id
+    LEFT JOIN projects p ON p.id = a.project_id
+    ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+    ORDER BY a.created_at DESC, a.alias
+    LIMIT ?`).all(...args) as AliasModerationRow[];
+}
+
+/**
+ * Блокировка адреса модератором: адрес перестаёт вести на доску (гостям — alias-blocked) и не достаётся никому,
+ * включая владельца. Состояние и владелец сохраняются — снятие блокировки возвращает всё как было. false — адреса нет.
+ */
+export function setAliasBlocked(app: AppContext, alias: string, blocked: boolean, reason: string | null = null): boolean {
+  const res = blocked
+    ? app.db.prepare('UPDATE public_aliases SET blocked_at = ?, blocked_reason = ? WHERE alias = ?').run(app.now(), reason, alias)
+    : app.db.prepare('UPDATE public_aliases SET blocked_at = NULL, blocked_reason = NULL WHERE alias = ?').run(alias);
+  return res.changes > 0;
 }
