@@ -215,6 +215,13 @@ export async function fetchAlias(projectId: string): Promise<AliasInfo> {
 export async function saveAlias(projectId: string, alias: string): Promise<AliasInfo> {
   return api().request<AliasInfo>('PUT', `/api/projects/${encodeURIComponent(projectId)}/alias`, { alias });
 }
+/** Проверка адреса на лету: free — свободен, own — свой, taken — чужой, blocked — заблокирован, short — короче минимума. */
+export interface AliasCheck { alias: string; status: 'free' | 'own' | 'taken' | 'blocked' | 'short' | 'bad'; suggestions: string[] }
+export async function checkAlias(projectId: string, alias: string): Promise<AliasCheck> {
+  const r = await api().request<AliasCheck>('GET', `/api/projects/${encodeURIComponent(projectId)}/alias/check?alias=${encodeURIComponent(alias)}`);
+  // ответ сети не доверенный: только адреса правильной формы
+  return { ...r, suggestions: Array.isArray(r?.suggestions) ? r.suggestions.filter(isNewAliasOk).slice(0, 3) : [] };
+}
 export async function releaseAlias(projectId: string, alias: string): Promise<void> {
   await api().request('DELETE', `/api/projects/${encodeURIComponent(projectId)}/alias/${encodeURIComponent(alias)}`);
 }

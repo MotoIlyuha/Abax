@@ -98,28 +98,34 @@ describe('токены и именные адреса', () => {
     }
     expect(RESERVED_ALIASES.has('j')).toBe(true);
   });
-  it('новый адрес — не короче 6 символов; старые 3–5-символьные по-прежнему узнаются при входе', () => {
-    expect(ALIAS_MIN).toBe(6);
+  it('новый адрес — не короче 12 символов; старые 3–11-символьные по-прежнему узнаются при входе', () => {
+    expect(ALIAS_MIN).toBe(12);
     expect(isAliasShaped('geo')).toBe(true);
     expect(isNewAliasOk('geo')).toBe(false);
-    expect(isNewAliasOk('geo-9a')).toBe(true);
-    expect(isNewAliasOk('Fizika')).toBe(false);
+    expect(isNewAliasOk('fizika-2026')).toBe(false);
+    expect(isNewAliasOk('fizika-uroki')).toBe(true);
+    expect(isNewAliasOk('Fizika-uroki')).toBe(false);
   });
-  it('похожие адреса: год и цифры, нужной формы, без повторов и без самого адреса', () => {
-    let i = 0;
-    const seq = [37, 218, 402, 5821, 4];
-    const rnd = (n: number) => seq[i++ % seq.length] % n;
-    expect(aliasCandidates('fizika', 2026, rnd)).toEqual(['fizika2026', 'fizika47', 'fizika-318', 'fizika-2026', 'fizika502', 'fizika6821', 'fizika-14']);
-    i = 0;
-    // адрес оканчивается цифрой — цифры через дефис, чтобы не сливались
-    expect(aliasCandidates('physics-9a', 2026, rnd).slice(0, 2)).toEqual(['physics-9a2026', 'physics-9a47']);
-    expect(aliasCandidates('geo-9', 2026, () => 0)[0]).toBe('geo-9-2026');
+  it('похожие адреса: год, слово-уточнение и цифры; нужной формы и длины, без повторов и без самого адреса', () => {
+    const zero = () => 0;
+    // короткий: год не дотягивает до минимума, число дополняет до него целиком
+    expect(aliasCandidates('fizika', 2026, zero)).toEqual([
+      'fizika-uroki', 'fizika-10000', 'fizika-doska', 'fizika-uroki-2026', 'fizika-klass',
+    ]);
+    // достаточно длинный: сначала с годом
+    expect(aliasCandidates('fizika-shkola', 2026, zero).slice(0, 3)).toEqual(['fizika-shkola-2026', 'fizika-shkola-uroki', 'fizika-shkola-10']);
+    // очень короткий: слово и год
+    expect(aliasCandidates('geo', 2026, zero)[0]).toBe('geo-uroki-2026');
     // длинный адрес укорачивается до ALIAS_MAX, дефис на стыке не остаётся
-    const long = aliasCandidates('abcdefghijklmnopq-stuvw', 2026, () => 0);
-    for (const c of long) { expect(c.length).toBeLessThanOrEqual(ALIAS_MAX); expect(isNewAliasOk(c)).toBe(true); }
-    expect(long[0]).toBe('abcdefghijklmnopq-s2026');
-    // короткий занятый адрес даёт подсказки уже нужной длины
-    for (const c of aliasCandidates('geo', 2026, () => 0)) expect(isNewAliasOk(c)).toBe(true);
+    const long = aliasCandidates('abcdefghijklmnopq-stuvw', 2026, zero);
+    expect(long[0]).toBe('abcdefghijklmnopq-2026');
+    for (const base of ['geo', 'fizika', 'physics-9a', 'abcdefghijklmnopq-stuvw', 'a'.repeat(23)]) {
+      const rnd = (n: number) => Math.floor(Math.random() * n);
+      const cs = aliasCandidates(base, 2026, rnd);
+      expect(cs.length).toBeGreaterThanOrEqual(3);
+      expect(new Set(cs).size).toBe(cs.length);
+      for (const c of cs) { expect(c).not.toBe(base); expect(c.length).toBeLessThanOrEqual(ALIAS_MAX); expect(isNewAliasOk(c)).toBe(true); }
+    }
   });
   it('адрес и токен не пересекаются: строка 24 символов из строчных букв — только токен', () => {
     const s = 'abcdefghijklmnopqrstuvwx';
@@ -128,13 +134,13 @@ describe('токены и именные адреса', () => {
   });
   it('подсказки к адресу', () => {
     expect(aliasProblem('ab')).toMatch(/короче/);
-    expect(aliasProblem('fizik')).toBe('Не короче 6 символов');
-    expect(aliasProblem('fizika')).toBeNull();
+    expect(aliasProblem('fizika')).toBe('Не короче 12 символов');
+    expect(aliasProblem('fizika-uroki')).toBeNull();
     expect(aliasProblem('Ab-c')).toMatch(/строчные/);
     expect(aliasProblem('1abc')).toMatch(/буквы/);
     expect(aliasProblem('ab--c')).toMatch(/Дефис/);
     expect(aliasProblem('admin')).toMatch(/системой/);
-    expect(aliasProblem('physics-9a')).toBeNull();
+    expect(aliasProblem('physics-9a-2026')).toBeNull();
   });
   it('тариф: именной адрес — Pro/Tutor; лимит записей на аккаунт', () => {
     expect(PLAN_LIMITS.free.canSetAlias).toBe(false);

@@ -187,6 +187,21 @@ export function registerInviteRoutes(router: Router): void {
     };
   });
 
+  // проверка адреса на лету, пока владелец печатает: свободен ли и что предложить взамен (без записи в базу)
+  router.get('/api/projects/:id/alias/check', ctx => {
+    const user = requireUser(ctx);
+    const app = ctx.app;
+    const row = getActiveProject(app, ctx.params.id);
+    if (!row || row.owner_id !== user.id) throw new HttpError(404, 'project-not-found');
+    const alias = (ctx.query.get('alias') ?? '').trim();
+    // неправильную форму показывает сам клиент; подсказать нечего
+    if (!isAliasShaped(alias)) return { json: { alias, status: 'bad', suggestions: [] } };
+    const taken = app.db.prepare('SELECT owner_id, blocked_at FROM public_aliases WHERE alias = ?').get(alias) as Pick<AliasRow, 'owner_id' | 'blocked_at'> | undefined;
+    const status = !taken ? (isNewAliasOk(alias) ? 'free' : 'short')
+      : taken.owner_id !== user.id ? 'taken' : taken.blocked_at !== null ? 'blocked' : 'own';
+    return { json: { alias, status, suggestions: status === 'free' || status === 'own' ? [] : suggestFreeAliases(app, alias) } };
+  });
+
   router.put('/api/projects/:id/alias', async ctx => {
     const user = requireUser(ctx);
     const app = ctx.app;

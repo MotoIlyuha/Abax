@@ -115,11 +115,11 @@ export const TOKEN_RE = /^[A-Za-z0-9_-]{24}$/;
  */
 export const ALIAS_RE = /^[a-z](?:[a-z0-9]|-(?=[a-z0-9])){2,22}$/;
 /**
- * Минимальная длина нового адреса. 6 — как у адресов Gmail: коротких осмысленных слов мало, их разбирают первыми
- * (отсюда большинство «адрес занят»), а адрес — это вход на доску, и короткие проще перебрать.
- * 6 символов хватает на «fizika», «math-7b», «geo-9a».
+ * Минимальная длина нового адреса — 12: одно слово («fizika», «algebra») уже не помещается, адрес собирается
+ * из предмета и уточнения («fizika-9a-2026», «algebra-uroki») и потому почти всегда свободен; короткие слова
+ * разбирают первыми, а адрес — это вход на доску, и короткие проще перебрать. Решение пользователя.
  */
-export const ALIAS_MIN = 6;
+export const ALIAS_MIN = 12;
 export const ALIAS_MAX = 23;
 
 /** Адреса, которые нельзя занять. */
@@ -141,28 +141,36 @@ export function isNewAliasOk(s: unknown): s is string {
   return isAliasShaped(s) && s.length >= ALIAS_MIN;
 }
 
+/** Слова-уточнения для похожих адресов (транслит: адреса — латиницей). */
+const ALIAS_WORDS = ['uroki', 'doska', 'klass', 'kurs', 'shkola'] as const;
+
 /**
- * Похожие адреса для занятого base (как подсказки Gmail): base с годом, с двумя–четырьмя цифрами.
- * Свободны ли они — решает сервер; здесь только кандидаты нужной формы, без повторов и без самого base.
- * rnd — случайное целое в [0, n) (на сервере — криптостойкое, в тестах — подставное).
+ * Похожие адреса для base (занятого или слишком короткого), как подсказки Gmail: base с годом, словом-уточнением
+ * или цифрами; короткий base дополняется до ALIAS_MIN. Свободны ли они — решает сервер; здесь только кандидаты
+ * нужной формы, без повторов и без самого base. rnd — случайное целое в [0, n) (на сервере — криптостойкое).
  */
 export function aliasCandidates(base: string, year: number, rnd: (n: number) => number): string[] {
   const out: string[] = [];
-  const add = (suffix: string, sep: string) => {
-    // цифры сразу после цифры сливаются («9a» + «2026» → «9a2026»): тогда — через дефис
-    const s = /\d$/.test(base) || sep === '-' ? '-' : '';
-    const room = ALIAS_MAX - s.length - suffix.length;
-    const head = base.slice(0, room).replace(/-+$/, '');
-    const c = head + s + suffix;
-    if (head && c !== base && isNewAliasOk(c) && !out.includes(c)) out.push(c);
+  const digits = (n: number) => String(10 ** (n - 1) + rnd(9 * 10 ** (n - 1)));
+  // длинный base укорачивается так, чтобы суффикс поместился; дефис на стыке не остаётся
+  const fit = (tail: string) => {
+    const head = base.slice(0, ALIAS_MAX - tail.length).replace(/-+$/, '');
+    return head ? head + tail : '';
   };
-  add(String(year), '');
-  add(String(10 + rnd(90)), '');
-  add(String(100 + rnd(900)), '-');
-  add(String(year), '-');
-  add(String(100 + rnd(900)), '');
-  add(String(1000 + rnd(9000)), '');
-  add(String(10 + rnd(90)), '-');
+  // число дополняет короткий base до минимума целиком: «fizika-31847», а не «fizika-47-318»
+  const num = (n: number) => fit(`-${digits(Math.min(8, Math.max(n, ALIAS_MIN - base.length - 1)))}`);
+  const wordy = (w: string) => {
+    const c = fit(`-${w}`);
+    return c.length >= ALIAS_MIN ? c : fit(`-${w}-${year}`);
+  };
+  const words = [...ALIAS_WORDS];
+  const word = () => words.splice(rnd(words.length), 1)[0];
+  const w1 = word();
+  const w2 = word();
+  const w3 = word();
+  for (const c of [fit(`-${year}`), wordy(w1), num(2), wordy(w2), num(3), fit(`-${w1}-${year}`), num(4), wordy(w3)]) {
+    if (c && c !== base && isNewAliasOk(c) && !out.includes(c)) out.push(c);
+  }
   return out;
 }
 

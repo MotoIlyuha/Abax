@@ -64,29 +64,29 @@ test.describe('ссылки', () => {
     const input = a.locator('#share-dialog .share-alias-input');
     await input.fill('Physics--');
     await expect(a.locator('#share-dialog .share-alias-problem')).toHaveText('Дефис — только между буквами и цифрами');
-    await input.fill('physics-9a');
+    await input.fill('physics-9a-2026');
     await a.locator('#share-dialog .share-alias-save').click();
     await expect(a.locator('#share-dialog .share-alias-save')).toHaveText('Изменить', { timeout: 10000 });
     await shareTab(a, 'share');
-    await expect(a.locator('#share-dialog .share-url')).toHaveValue(`${base}/j/physics-9a`);
+    await expect(a.locator('#share-dialog .share-url')).toHaveValue(`${base}/j/physics-9a-2026`);
 
-    const one = await guestAt(browser, base, `${base}/j/physics-9a`);
+    const one = await guestAt(browser, base, `${base}/j/physics-9a-2026`);
     await expect.poll(() => stateOf(one.g, s => s.board.elements.length), { timeout: 10000 }).toBe(1);
     await expect(one.g.locator('body')).toHaveClass(/readonly-mode/); // роль общей ссылки — читатель
 
     // переименование: прежний адрес — бывший и ведёт туда же
     await shareTab(a, 'settings');
-    await input.fill('fizika-9a');
+    await input.fill('fizika-9a-2026');
     await a.locator('#share-dialog .share-alias-save').click();
-    await expect(a.locator('#share-dialog .share-alias .share-person-name')).toHaveText('/j/physics-9a', { timeout: 10000 });
-    const two = await guestAt(browser, base, `${base}/j/physics-9a`);
+    await expect(a.locator('#share-dialog .share-alias .share-person-name')).toHaveText('/j/physics-9a-2026', { timeout: 10000 });
+    const two = await guestAt(browser, base, `${base}/j/physics-9a-2026`);
     await expect.poll(() => stateOf(two.g, s => s.board.elements.length), { timeout: 10000 }).toBe(1);
 
     // освобождение с подтверждением
-    await a.locator('#share-dialog [data-key="release-physics-9a"]').click();
+    await a.locator('#share-dialog [data-key="release-physics-9a-2026"]').click();
     await a.locator('#share-dialog .share-alias .share-confirm button', { hasText: 'Освободить' }).click();
     await expect(a.locator('#share-dialog .share-alias .share-person-name')).toHaveCount(0, { timeout: 10000 });
-    const three = await guestAt(browser, base, `${base}/j/physics-9a`, 'none');
+    const three = await guestAt(browser, base, `${base}/j/physics-9a-2026`, 'none');
     await expect(three.g.locator('#collab-notice')).toContainText('Адрес больше не используется', { timeout: 10000 });
     for (const c of [A, one.G, two.G, three.G]) await c.close();
   });

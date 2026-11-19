@@ -140,7 +140,7 @@ export function inviteCopyAllowed(invite: InviteRights, perms: { allowCopy?: boo
 export const ALIAS_SUGGESTIONS = 3;
 
 /**
- * Свободные похожие адреса для занятого base: ни разу не занятые никем (любая строка public_aliases,
+ * Свободные похожие адреса для base (занятого или короче минимума): ни разу не занятые никем (любая строка public_aliases,
  * в т.ч. освобождённая, бывшая или заблокированная, — уже не свободна). Пусто — подсказать нечего.
  */
 export function suggestFreeAliases(app: AppContext, base: string, rnd: (n: number) => number = randomInt): string[] {

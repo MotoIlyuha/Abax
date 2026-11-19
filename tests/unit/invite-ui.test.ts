@@ -75,13 +75,13 @@ describe('тексты', () => {
     expect(emailInviteErrorText(new Error('x'))).toBe('Не удалось отправить приглашение');
     expect(aliasErrorText(new ApiError(409, 'alias-taken'))).toBe('Этот адрес уже занят');
     expect(aliasErrorText(new ApiError(403, 'plan-limit-alias'))).toContain('Pro');
-    expect(aliasErrorText(new ApiError(400, 'bad-alias'))).toContain('6–23');
+    expect(aliasErrorText(new ApiError(400, 'bad-alias'))).toContain('12–23');
     expect(aliasErrorText(new ApiError(409, 'alias-blocked'))).toBe('Этот адрес заблокирован');
   });
 
   it('свободные похожие адреса из ответа «занят»: только правильной формы, не больше трёх', () => {
-    const e = new ApiError(409, 'alias-taken', { error: 'alias-taken', suggestions: ['fizika2026', 'geo', '<b>x</b>', 42, 'fizika47', 'fizika-318', 'fizika-2026'] });
-    expect(aliasSuggestionsOf(e)).toEqual(['fizika2026', 'fizika47', 'fizika-318']);
+    const e = new ApiError(409, 'alias-taken', { error: 'alias-taken', suggestions: ['fizika-uroki', 'fizika', '<b>x</b>', 42, 'fizika-31847', 'fizika-doska', 'fizika-klass'] });
+    expect(aliasSuggestionsOf(e)).toEqual(['fizika-uroki', 'fizika-31847', 'fizika-doska']);
     expect(aliasSuggestionsOf(new ApiError(409, 'alias-taken'))).toEqual([]);
     expect(aliasSuggestionsOf(new Error('x'))).toEqual([]);
   });
