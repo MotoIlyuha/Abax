@@ -1950,7 +1950,17 @@ function coordLabelsSwitch(): HTMLElement | null {
     className: 'grid-switch',
     label: 'Показать деления',
     checked: state.board.coordLabels !== false,
-    onChange: on => { setCoordLabels(on); void saveNow(); },
+    onChange: on => {
+      setCoordLabels(on);
+      // иконка «Координатная плоскость» в открытых списках меняется сразу (нолик при делениях)
+      const icon = gridIcon('coord', on);
+      document.querySelectorAll<HTMLElement>('.grid-option[data-grid="coord"]').forEach(b => {
+        b.querySelector('svg')?.remove();
+        b.insertAdjacentHTML('afterbegin', icon);
+      });
+      document.querySelectorAll<HTMLElement>('button[data-grid="coord"] > .view-icon').forEach(i => { i.innerHTML = icon; });
+      void saveNow();
+    },
   });
 }
 
