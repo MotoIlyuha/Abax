@@ -3529,6 +3529,8 @@ body.no-motion .activity-pill, body.no-ui-anim .activity-pill { animation: none;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
+/* в группе размер задаёт сама группа (--ua-size на .avatar-group, src/avatar-group.ts) */
+.avatar-group .user-avatar { --ua-size: inherit; }
 .user-avatar:focus-visible { outline: none; }
 .user-avatar:focus-visible .ua-circle { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--accent); }
 .ua-circle {
@@ -3537,34 +3539,34 @@ body.no-motion .activity-pill, body.no-ui-anim .activity-pill { animation: none;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 2px solid var(--panel);
+  border: max(2px, calc(var(--ua-size) * 0.06)) solid var(--panel);
   border-radius: 50%;
-  font-size: 10px;
+  font-size: calc(var(--ua-size) * 0.37);
   font-weight: 700;
   line-height: 1;
   letter-spacing: -0.02em;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
   transition: transform 0.16s cubic-bezier(0.22, 0.8, 0.24, 1), filter 0.16s;
 }
-/* курсор у правого нижнего края: остриё смотрит на круг; не выходит за промежуток до соседа (CURSOR_OUT в avatar-group.ts) */
+/* курсор у правого нижнего края: остриё смотрит на круг; выступает на 15% диаметра (CURSOR_OUT в avatar-group.ts) */
 .ua-cursor {
   position: absolute;
-  right: -4px;
-  bottom: -4px;
-  width: 14px;
-  height: 14px;
+  right: calc(var(--ua-size) * -0.15);
+  bottom: calc(var(--ua-size) * -0.15);
+  width: calc(var(--ua-size) * 0.54);
+  height: calc(var(--ua-size) * 0.54);
   pointer-events: none;
   filter: drop-shadow(0 0.5px 0.5px rgba(0, 0, 0, 0.25));
   transition: opacity 0.16s;
 }
-.ua-cursor svg { display: block; width: 14px; height: 14px; }
+.ua-cursor svg { display: block; width: 100%; height: 100%; }
 .user-avatar.cursor-off .ua-cursor { opacity: 0.35; }
 .user-avatar.cursor-off .ua-cursor::after {
   content: '';
   position: absolute;
-  left: -1px;
-  top: 6px;
-  width: 15px;
+  left: -7%;
+  top: 43%;
+  width: 107%;
   height: 2px;
   border-radius: 1px;
   background: var(--muted);
@@ -3572,10 +3574,10 @@ body.no-motion .activity-pill, body.no-ui-anim .activity-pill { animation: none;
 }
 .ua-status {
   position: absolute;
-  right: -3px;
-  top: -3px;
-  width: 12px;
-  height: 12px;
+  right: calc(var(--ua-size) * -0.1);
+  top: calc(var(--ua-size) * -0.1);
+  width: max(12px, calc(var(--ua-size) * 0.4));
+  height: max(12px, calc(var(--ua-size) * 0.4));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3586,12 +3588,12 @@ body.no-motion .activity-pill, body.no-ui-anim .activity-pill { animation: none;
   pointer-events: none;
 }
 .ua-status[hidden] { display: none; }
-.ua-status svg { width: 8px; height: 8px; stroke-width: 2.6; }
+.ua-status svg { width: 65%; height: 65%; stroke-width: 2.6; }
 .ua-status[data-status="hidden-page"] { background: var(--muted); }
 .user-avatar.away .ua-circle { filter: saturate(0.4); }
 .user-avatar.on-hidden .ua-circle { opacity: 0.6; border-style: dashed; border-color: var(--muted); }
 .user-avatar.self .ua-circle { border-color: var(--panel); box-shadow: 0 0 0 1.5px var(--accent), 0 1px 2px rgba(0, 0, 0, 0.18); }
-.user-avatar.more { display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: var(--muted); background: var(--panel); border: 1px solid var(--border); cursor: default; }
+.user-avatar.more { display: inline-flex; align-items: center; justify-content: center; font-size: calc(var(--ua-size) * 0.37); font-weight: 700; color: var(--muted); background: var(--panel); border: 1px solid var(--border); cursor: default; }
 
 /* ----- Группа аватаров (src/avatar-group.ts): аватары стоят абсолютно, сдвиг — transform ----- */
 .avatar-group { position: relative; display: block; flex: none; }
@@ -3616,7 +3618,6 @@ body.no-ui-anim .avatar-group.open .user-avatar .ua-circle { transform: none; }
 .avatar-menu-head { display: flex; align-items: center; gap: 10px; padding: 6px 10px 8px; margin-bottom: 4px; border-bottom: 1px solid var(--border); }
 /* аватар в шапке — не пункт меню: правило .menu-list button его не растягивает */
 .avatar-menu .avatar-menu-head .user-avatar { --ua-size: 32px; display: inline-block; width: var(--ua-size); height: var(--ua-size); flex: none; padding: 0; border-radius: 50%; background: transparent; cursor: default; pointer-events: none; }
-.avatar-menu-head .ua-circle { font-size: 12px; }
 .avatar-menu-who { min-width: 0; }
 .avatar-menu-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .avatar-menu-sub { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

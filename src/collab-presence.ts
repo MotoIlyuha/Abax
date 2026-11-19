@@ -276,7 +276,8 @@ function renderStrip(): void {
   if (strip.dataset.key === key && group) return;
   strip.dataset.key = key;
   if (!group) {
-    group = createAvatarGroup({ label: 'Участники' });
+    // по высоте — как кнопка «Поделиться» (48 px): круг 42 px и курсор, выступающий вниз на 6 px
+    group = createAvatarGroup({ label: 'Участники', size: 42, tight: 4, open: 14 });
     strip.textContent = '';
     strip.appendChild(group.el);
   }

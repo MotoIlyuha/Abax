@@ -43,8 +43,8 @@ export interface AvatarGroupOptions {
   label?: string;
 }
 
-/** На сколько курсор выступает за круг справа (см. .ua-cursor в style.css), px. */
-const CURSOR_OUT = 4;
+/** На сколько курсор выступает за круг справа и снизу — доля диаметра (см. .ua-cursor в style.css). */
+const CURSOR_OUT = 0.15;
 /** Мышь ушла — пауза перед сворачиванием, мс. */
 const LEAVE_MS = 220;
 /** Пауза между аватарами, когда стопка раскрывается («Улучшенные»), с. */
@@ -158,11 +158,14 @@ export function createAvatarGroup(opts: AvatarGroupOptions = {}): AvatarGroup {
   const size = opts.size ?? 26;
   const tight = opts.tight ?? 3;
   const openGap = opts.open ?? 10;
+  const out = Math.round(size * CURSOR_OUT);
   const root = document.createElement('div');
   root.className = 'avatar-group';
   root.setAttribute('role', 'group');
   root.setAttribute('aria-label', opts.label ?? 'Участники');
-  root.style.height = `${size + CURSOR_OUT}px`;
+  root.style.height = `${size + out}px`;
+  // размер аватаров внутри — от диаметра группы (курсор, значок статуса, шрифт)
+  root.style.setProperty('--ua-size', `${size}px`);
   const g: GroupState = { el: root, slots: [], W: S(0), springy: false };
   live.add(g);
   let open = false;
@@ -175,7 +178,7 @@ export function createAvatarGroup(opts: AvatarGroupOptions = {}): AvatarGroup {
   function layout(entering: Set<Slot> = new Set(), opening = false): void {
     const list = present();
     const gap = interactive() && list.length > 1 ? openGap : tight;
-    const widthAt = (gp: number): number => (list.length ? (list.length - 1) * (size + gp) + size + CURSOR_OUT : 0);
+    const widthAt = (gp: number): number => (list.length ? (list.length - 1) * (size + gp) + size + out : 0);
     const width = widthAt(gap);
     // ширина свёрнутой стопки: по ней шапка (src/topbar-fit.ts) решает, что убрать, — раскрытие ничего не прячет
     root.dataset.restWidth = String(widthAt(tight));
