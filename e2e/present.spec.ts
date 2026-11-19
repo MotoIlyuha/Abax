@@ -115,6 +115,7 @@ test.describe('окно демонстрации', () => {
     await page.mouse.move(box.x + 700, box.y + 500);
     await page.mouse.down();
     await page.mouse.move(box.x + 500, box.y + 400, { steps: 5 });
+    await page.waitForTimeout(150); // курсор стоял перед отпусканием — без инерции, сдвиг ровно 200×100
     await page.mouse.up();
     await page.keyboard.up('Space');
     await board.settleCamera();
