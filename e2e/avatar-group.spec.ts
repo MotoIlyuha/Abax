@@ -176,10 +176,17 @@ test('группа аватаров: раскрытие, меню, скрыть 
   await expect(accessItem).toBeVisible();
   await a.keyboard.press('Escape');
   await expect(menu).toHaveCount(0);
+  // перезаход: Енот перезагрузил вкладку — право сохранилось за ним, страница по-прежнему скрыта
+  await g2.reload();
+  await expect(group.locator('.user-avatar[aria-label^="Енот"]')).toHaveCount(1, { timeout: 15000 });
+  await g2.waitForFunction(() => !!(window as any).__doska);
+  await expect(g2.locator('body')).toHaveClass(/collab-guest/, { timeout: 15000 });
+  await expect.poll(() => guestPages(g2), { timeout: 15000 }).toBe(1);
   await group.hover();
   await group.locator('.user-avatar[aria-label^="Енот"]').click();
   await accessItem.click();
   await expect(rows.nth(1).locator('.avatar-access-select')).toContainText('Скрыта');
+  await menuShot('access-after-rejoin');
   await rows.nth(1).locator('.avatar-access-select').click();
   await listbox.locator('.ss-opt', { hasText: 'По роли' }).click();
   await expect.poll(() => guestPages(g2), { timeout: 10000 }).toBe(2);

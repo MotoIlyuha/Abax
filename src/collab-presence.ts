@@ -263,7 +263,7 @@ export function participantMenuEntries(u: CollabUser): AvatarMenuEntry[] {
     out.push({ kind: 'sep' });
     out.push({
       kind: 'submenu', id: 'access', label: 'Настройки доступа', icon: ACCESS_ICON,
-      title: 'Права на страницы только для этого участника — действуют, пока он на доске',
+      title: 'Права на страницы только для этого участника — сохраняются за ним и после перезахода',
       // свежая запись участника: после смены права и возврата в подменю видно новое значение
       content: () => accessSubmenu(collabUsers().find(x => x.userId === u.userId) ?? u),
     });

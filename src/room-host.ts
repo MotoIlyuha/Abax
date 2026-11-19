@@ -117,6 +117,12 @@ export interface RoomHubOptions {
    * его делает сам владелец комнаты. kind — что произошло: patch, project, task-draft, task-submit, react, comment.
    */
   onChange?: (project: Project, kind: ChangeKind) => void;
+  /**
+   * Автор изменил личные права участника на страницы (меню аватара «Настройки доступа», таблица участников P2P).
+   * principal — автор элементов участника (u:<userId> в облаке, c:<id> в P2P), personal — все его личные права
+   * сейчас. Облачная комната сохраняет их за пользователем, чтобы они пережили перезаход.
+   */
+  onPersonalRights?: (principal: string, personal: Record<string, PageRight>) => void;
   /** Через сколько молчания участник считается «отошедшим». */
   awayMs?: number;
   /** Часы (для тестов). */
@@ -394,6 +400,8 @@ export class Room {
   permsKey = '{}';
   /** Секреты возобновления P2P-участников → их автор элементов (SPEC_NIGHT6 §4.3): только в памяти комнаты. */
   resumes = new Map<string, string>();
+  /** Личные права страниц, запомненные за автором элементов участника: возвращаются при его перезаходе. */
+  rightsBy = new Map<string, { personal: Record<string, PageRight>; personalAll?: PageRight }>();
 
   constructor(readonly code: string, private readonly opts: { now: () => number; awayMs: number; maxEditors: () => number }) {}
 
@@ -659,6 +667,26 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
     for (const [secret, p] of room.resumes) if (p === a.principal && secret !== m.secret) room.resumes.delete(secret);
     a.principal = want;
     sendTo(info.sock, { t: 'resume', ok: true, principal: want });
+    // тот же участник вернулся: его личные права страниц — снова его
+    if (restoreRights(a)) { broadcastUsers(); pushRights(info.uid); }
+  }
+
+  /** Запомнить личные права участника за его автором элементов (и сообщить владельцу комнаты). */
+  function rememberRights(uid: number): void {
+    const a = room.access.get(uid);
+    if (!a?.principal) return;
+    room.rightsBy.set(a.principal, { personal: { ...a.personal }, ...(a.personalAll ? { personalAll: a.personalAll } : {}) });
+    options.onPersonalRights?.(a.principal, { ...a.personal });
+  }
+
+  /** Вернуть участнику запомненные за ним личные права; false — запомненного нет. */
+  function restoreRights(a: ParticipantAccess): boolean {
+    const saved = a.principal ? room.rightsBy.get(a.principal) : undefined;
+    if (!saved) return false;
+    a.personal = { ...saved.personal };
+    if (saved.personalAll) a.personalAll = saved.personalAll;
+    else delete a.personalAll;
+    return true;
   }
 
   /** Доступ нового гостя: из параметров подключения (облако), старых прав (rights) или по умолчанию (P2P). */
@@ -721,6 +749,8 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
         a.principal = `c:${randomToken(6, true)}`;
         room.resumes.set(randomToken(16), a.principal);
       }
+      // автор передан транспортом (облако, u:<id>) — права, заданные ему раньше в этой комнате, сразу его
+      restoreRights(a);
       room.access.set(uid, a);
     }
 
@@ -962,6 +992,7 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
     if (Object.keys(pages).length === 0) return;
     const r = room.setRights(target.uid, { pages });
     if (!r.ok) { sendTo(info.sock, { t: 'set-rights', uid: target.uid, ok: false, error: r.error ?? '' }); return; }
+    rememberRights(target.uid);
     broadcastUsers();
     pushRights(target.uid);
   }
@@ -1151,6 +1182,7 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
     },
     setRights(uid, patch) {
       const r = room.setRights(uid, patch);
+      if (r.ok) rememberRights(uid);
       broadcastUsers();
       pushRights(uid);
       return r;

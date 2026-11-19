@@ -103,6 +103,7 @@ class Room {
     this.followHost = false; // «Автопереход участников за мной»
     this.permsKey = '{}'; // слепок permissions проекта, известный хабу
     this.resumes = new Map(); // секрет возобновления участника -> его автор элементов (только в памяти)
+    this.rightsBy = new Map(); // автор элементов -> { personal, personalAll? }: личные права, возвращаются при перезаходе
   }
   clientOf(uid) {
     return [...this.clients.values()].find(c => c.uid === uid);
@@ -495,6 +496,25 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
     for (const [secret, p] of room.resumes) if (p === a.principal && secret !== m.secret) room.resumes.delete(secret);
     a.principal = want;
     sendTo(info.sock, { t: 'resume', ok: true, principal: want });
+    // тот же участник вернулся: его личные права страниц — снова его
+    if (restoreRights(a)) { broadcastUsers(); pushRights(info.uid); }
+  }
+
+  /** Запомнить личные права участника за его автором элементов (зеркало rememberRights из src/room-host.ts). */
+  function rememberRights(uid) {
+    const a = room.access.get(uid);
+    if (!a || !a.principal) return;
+    room.rightsBy.set(a.principal, { personal: { ...a.personal }, ...(a.personalAll ? { personalAll: a.personalAll } : {}) });
+  }
+
+  /** Вернуть участнику запомненные за ним личные права; false — запомненного нет. */
+  function restoreRights(a) {
+    const saved = a.principal ? room.rightsBy.get(a.principal) : undefined;
+    if (!saved) return false;
+    a.personal = { ...saved.personal };
+    if (saved.personalAll) a.personalAll = saved.personalAll;
+    else delete a.personalAll;
+    return true;
   }
 
   const permsKeyOf = p => JSON.stringify((p && p.permissions) || {});
@@ -577,6 +597,7 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
     if (Object.keys(pages).length === 0) return;
     const r = room.setRights(target.uid, { pages });
     if (!r.ok) { sendTo(info.sock, { t: 'set-rights', uid: target.uid, ok: false, error: r.error || '' }); return; }
+    rememberRights(target.uid);
     broadcastUsers();
     pushRights(target.uid);
   }
@@ -890,7 +911,13 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
     room,
     attach,
     refresh,
-    setRights: (uid, patch) => { const r = room.setRights(uid, patch); broadcastUsers(); pushRights(uid); return r; },
+    setRights: (uid, patch) => {
+      const r = room.setRights(uid, patch);
+      if (r.ok) rememberRights(uid);
+      broadcastUsers();
+      pushRights(uid);
+      return r;
+    },
     pushPatch: patch => validPatch(patch) && acceptPatch(null, patch),
     pushProject: project => {
       const before = accessBefore(project);

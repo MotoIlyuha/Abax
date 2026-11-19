@@ -17,7 +17,11 @@ interface ShareServer {
   port: number;
   code: string;
   hostKey: string;
-  room: { project: Project | null; clients: Map<unknown, { uid: number; selection: string[]; cursor: unknown; pageId: string | null }> };
+  room: {
+    project: Project | null; clients: Map<unknown, { uid: number; selection: string[]; cursor: unknown; pageId: string | null }>;
+    /** Личные права, запомненные за участниками (возвращаются при перезаходе). */
+    rightsBy: Map<string, unknown>;
+  };
   setRights(uid: number, patch: unknown): { ok: boolean; error?: string };
   attach(sock: unknown, opts: { isHost?: boolean; name?: string }): number | null;
   refresh(sock: unknown): boolean;
@@ -83,6 +87,9 @@ beforeEach(async () => {
   document.body.innerHTML = '<div id="canvas-wrap"></div>';
   localStorage.clear();
   server.room.project = demo();
+  // хаб общий для файла, а гость при подключении возобновляется тем же участником: права прошлого теста
+  // вернулись бы к нему (так и задумано для перезахода) — каждый тест начинается с чистого гостя
+  server.room.rightsBy.clear();
   await freshModules();
 });
 afterEach(async () => {

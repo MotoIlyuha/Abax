@@ -125,6 +125,33 @@ describe.each(kinds)('$name', kind => {
       expect(snap(host, a.uid).access.personal).toBeUndefined();
     });
 
+    it('права сохраняются за участником: перезаход с секретом возобновления возвращает их, новый гость — без них', () => {
+      const { hub, host, join } = room(kind.make());
+      const a = join('Аня');
+      const secret = a.s.last('init')!.resume as string;
+      host.recv({ t: 'set-rights', uid: a.uid, pages: { pg2: 'hidden' } });
+      a.s.close();
+      const back = join('Аня');
+      expect(back.s.last('init')!.project.pages).toHaveLength(2);
+      back.s.recv({ t: 'resume', secret });
+      expect(back.s.last('resume')).toMatchObject({ ok: true });
+      expect(back.s.last('rights')!.rights.pages.pg2).toBe('hidden');
+      expect(back.s.last('project')!.project.pages.map((p: Msg) => p.id)).toEqual(['pg1']);
+      expect(host.last('users')!.users.find((u: Msg) => u.userId === back.uid).access.personal).toEqual({ pg2: 'hidden' });
+      // другой гость (без секрета Ани) прав Ани не получает
+      const other = join('Боря');
+      expect(other.s.last('init')!.project.pages).toHaveLength(2);
+      // «По роли» тоже запоминается: после следующего перезахода страница снова видна
+      host.recv({ t: 'set-rights', uid: back.uid, pages: { pg2: null } });
+      back.s.close();
+      // после возобновления у участника прежний секрет
+      const again = join('Аня');
+      again.s.recv({ t: 'resume', secret });
+      expect(again.s.last('resume')).toMatchObject({ ok: true });
+      expect(again.s.last('init')!.project.pages).toHaveLength(2);
+      expect(hub.users().find((u: Msg) => u.userId === again.uid).access.personal).toBeUndefined();
+    });
+
     it('гость не меняет права; автору нельзя; чужие страницы, «edit» и мусор — пропускаются', () => {
       const hub = kind.make({ multiHost: true });
       const { host, join } = room(hub);

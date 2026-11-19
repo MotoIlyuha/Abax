@@ -113,9 +113,39 @@ export function resolveInviteKey(app: AppContext, key: unknown, projectId?: stri
 }
 
 /** Действующее приглашение по токену или именному адресу; null — нет (причина — resolveInviteKey). */
-export function findActiveInvite(app: AppContext, token: unknown, projectId?: string): InviteRights | null {
+export function findActiveInvite(app: AppContext, token: unknown, projectId?: string, userId?: string | null): InviteRights | null {
   const r = resolveInviteKey(app, token, projectId);
-  return 'ok' in r ? r.ok : null;
+  return 'ok' in r ? withMemberRights(app, r.ok, userId) : null;
+}
+
+// ----- Личные права участника (меню аватара «Настройки доступа») -----
+
+/** Личные права пользователя на страницы доски; {} — нет. */
+export function memberPageRights(app: AppContext, projectId: string, userId: string): Record<string, PageRight> {
+  const row = app.db.prepare('SELECT page_rights_json FROM member_page_rights WHERE project_id = ? AND user_id = ?').get(projectId, userId) as { page_rights_json: string } | undefined;
+  return row ? parsePageRights(row.page_rights_json) : {};
+}
+
+/** Сохранить личные права пользователя на страницы доски целиком (пустые — строка удаляется). */
+export function setMemberPageRights(app: AppContext, projectId: string, userId: string, rights: Record<string, PageRight>): void {
+  const clean = parsePageRights(JSON.stringify(rights));
+  if (Object.keys(clean).length === 0) {
+    app.db.prepare('DELETE FROM member_page_rights WHERE project_id = ? AND user_id = ?').run(projectId, userId);
+    return;
+  }
+  app.db.prepare(`INSERT INTO member_page_rights (project_id, user_id, page_rights_json, updated_at) VALUES (?, ?, ?, ?)
+    ON CONFLICT(project_id, user_id) DO UPDATE SET page_rights_json = excluded.page_rights_json, updated_at = excluded.updated_at`)
+    .run(projectId, userId, JSON.stringify(clean), app.now());
+}
+
+/**
+ * Права приглашения с личными правами этого пользователя на страницы (они поверх старых page_rights ссылки).
+ * Без пользователя (нет сессии) — как есть: личные права даются только узнаваемому участнику.
+ */
+export function withMemberRights(app: AppContext, invite: InviteRights, userId: string | null | undefined): InviteRights {
+  if (!userId) return invite;
+  const own = memberPageRights(app, invite.projectId, userId);
+  return Object.keys(own).length ? { ...invite, pageRights: { ...invite.pageRights, ...own } } : invite;
 }
 
 /** Последний вход по приглашению: не чаще раза в минуту на токен. */

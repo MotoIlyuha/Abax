@@ -15,7 +15,7 @@ function tgPayload(now: number, over: Record<string, string | number> = {}) {
 describe('миграция V2', () => {
   it('колонки профиля и таблицы входа; повторное открытие не ломает базу', () => {
     const db = openDb(':memory:');
-    expect(db.pragma('user_version', { simple: true })).toBe(6); // V6 — свой аватар
+    expect(db.pragma('user_version', { simple: true })).toBe(7); // V7 — личные права участника на страницы
     const cols = (db.prepare('PRAGMA table_info(users)').all() as { name: string }[]).map(c => c.name);
     expect(cols).toEqual(expect.arrayContaining(['cursor_id', 'name_custom', 'email', 'google_sub']));
     const tables = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]).map(t => t.name);
@@ -86,7 +86,7 @@ describe('миграция V5 (модерация именных адресов)
     db.prepare("INSERT INTO projects (id, owner_id, title, rev, data_json, created_at, updated_at) VALUES ('p1', 'u1', 'Доска', 1, '{}', 1, 1)").run();
     db.prepare("INSERT INTO public_aliases (alias, project_id, owner_id, created_at, updated_at) VALUES ('geo', 'p1', 'u1', 2, 2)").run();
     migrate(db);
-    expect(db.pragma('user_version', { simple: true })).toBe(6);
+    expect(db.pragma('user_version', { simple: true })).toBe(7);
     expect(db.prepare('SELECT alias, owner_id, state, created_at, blocked_at, blocked_reason FROM public_aliases').get())
       .toEqual({ alias: 'geo', owner_id: 'u1', state: 'active', created_at: 2, blocked_at: null, blocked_reason: null });
     const idx = (db.prepare('PRAGMA index_list(public_aliases)').all() as { name: string }[]).map(i => i.name);
@@ -102,7 +102,7 @@ describe('миграция V6 (свой аватар)', () => {
     migrate(db, 5);
     db.prepare("INSERT INTO users (id, display_name, plan, created_at, updated_at) VALUES ('u1', 'Анна', 'free', 1, 1)").run();
     migrate(db);
-    expect(db.pragma('user_version', { simple: true })).toBe(6);
+    expect(db.pragma('user_version', { simple: true })).toBe(7);
     expect(db.prepare('SELECT display_name, avatar FROM users').get()).toEqual({ display_name: 'Анна', avatar: null });
     db.close();
   });
@@ -196,5 +196,23 @@ describe('имя от Telegram и своё имя', () => {
     const t = await call(app, 'POST', '/api/auth/telegram', tgPayload(app.clock.t, { first_name: 'Ж'.repeat(50) }));
     expect(t.body.user.nameCustom).toBe(false);
     expect(Array.from(t.body.user.displayName as string).length).toBeLessThanOrEqual(32);
+  });
+});
+
+describe('миграция V7 (личные права участника на страницы)', () => {
+  it('поверх базы V6: данные целы, новая таблица пуста и чистится вместе с доской', () => {
+    const db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    migrate(db, 6);
+    db.prepare("INSERT INTO users (id, display_name, plan, created_at, updated_at) VALUES ('u1', 'Анна', 'pro', 1, 1)").run();
+    db.prepare("INSERT INTO users (id, display_name, plan, created_at, updated_at) VALUES ('u2', 'Боря', 'free', 1, 1)").run();
+    db.prepare("INSERT INTO projects (id, owner_id, title, rev, data_json, created_at, updated_at) VALUES ('p1', 'u1', 'Доска', 1, '{}', 1, 1)").run();
+    migrate(db);
+    expect(db.pragma('user_version', { simple: true })).toBe(7);
+    expect(db.prepare('SELECT title FROM projects').get()).toEqual({ title: 'Доска' });
+    db.prepare("INSERT INTO member_page_rights (project_id, user_id, page_rights_json, updated_at) VALUES ('p1', 'u2', '{\"pg\":\"hidden\"}', 2)").run();
+    db.prepare("DELETE FROM projects WHERE id = 'p1'").run();
+    expect(db.prepare('SELECT COUNT(*) AS n FROM member_page_rights').get()).toEqual({ n: 0 });
+    db.close();
   });
 });
