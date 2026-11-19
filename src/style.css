@@ -1289,6 +1289,13 @@ body:not(.no-motion) .ctx-panel[data-kind="shapes"] { animation: none; }
   background: var(--surface-sunken);
   border-right: 1px solid var(--border);
 }
+.sd-nav-version {
+  margin-top: auto; align-self: flex-start;
+  padding: 4px 10px; border: 0; border-radius: 6px; background: none;
+  font: inherit; font-size: 12px; color: var(--fg-tertiary); cursor: pointer;
+}
+.sd-nav-version:hover { background: var(--hover-strong); color: var(--fg); }
+.sd-nav-version:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .sd-nav-title { font-size: 15px; font-weight: 700; padding: 0 10px 14px; }
 .sd-nav-item {
   display: flex;

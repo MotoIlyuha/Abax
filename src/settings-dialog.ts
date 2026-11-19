@@ -63,6 +63,7 @@ export function openSettingsDialog(sections: SettingsSection[], section?: string
   navTitle.textContent = 'Настройки';
   nav.appendChild(navTitle);
   for (const s of sections) nav.appendChild(navItem(s));
+  nav.appendChild(versionButton());
 
   const main = document.createElement('div');
   main.className = 'sd-main';
@@ -93,6 +94,24 @@ export function openSettingsDialog(sections: SettingsSection[], section?: string
   nav.querySelector<HTMLElement>('.sd-nav-item.active')?.focus();
 }
 
+/** Текущая версия в левом нижнем углу; клик копирует её в буфер обмена. */
+function versionButton(): HTMLButtonElement {
+  const b = document.createElement('button');
+  b.className = 'sd-nav-version';
+  const text = `v${__APP_VERSION__}`;
+  b.textContent = text;
+  b.title = 'Скопировать версию';
+  let timer = 0;
+  b.addEventListener('click', async () => {
+    let ok = false;
+    try { await navigator.clipboard.writeText(__APP_VERSION__); ok = true; } catch { /* буфер недоступен */ }
+    b.textContent = ok ? 'Скопировано' : text;
+    clearTimeout(timer);
+    timer = window.setTimeout(() => { b.textContent = text; }, 1200);
+  });
+  return b;
+}
+
 function navItem(s: SettingsSection): HTMLButtonElement {
   const b = document.createElement('button');
   b.className = 'sd-nav-item';
@@ -113,7 +132,7 @@ export function addSettingsSection(s: SettingsSection): void {
   const b = navItem(s);
   b.classList.add('sd-nav-new');
   b.addEventListener('animationend', () => b.classList.remove('sd-nav-new'), { once: true });
-  d.nav.appendChild(b);
+  d.nav.insertBefore(b, d.nav.querySelector('.sd-nav-version'));
 }
 
 /** Раздел пропадает из открытого окна; был открыт — открывается «Доска» (или первый). */
