@@ -257,3 +257,15 @@ export const test = base.extend<{ board: Board }>({
 });
 
 export { expect };
+
+/**
+ * Выпадающий список на пружинах (src/spring-select.ts): открыть кнопку trigger и выбрать пункт value.
+ * verify: false — не ждать нового значения на кнопке: пункт-действие («Отозвать приглашение») значение не меняет,
+ * а сервер может отказать (лимит редакторов) — тогда кнопка вернётся к прежнему.
+ */
+export async function pickOption(page: Page, trigger: Locator, value: string, opts: { verify?: boolean } = {}): Promise<void> {
+  await trigger.click();
+  const menu = page.locator(`[role="listbox"]#${await trigger.getAttribute('aria-controls')}`);
+  await menu.locator(`[role="option"][data-value="${value}"]`).click();
+  if (opts.verify !== false) await expect(trigger).toHaveAttribute('data-value', value);
+}

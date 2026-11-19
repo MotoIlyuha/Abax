@@ -146,7 +146,7 @@ export const GUIDES_ICON = svg('<path d="M2 6h20" stroke-dasharray="2 2.2"/><rec
 export const INTERACTIONS_ICON = svg('<path d="M9 9l11 4.2-4.8 1.6L13.6 20z"/><path d="M5.5 5.5l1.8 1.8M9 3v2.5M3 9h2.5M4.6 13.4l1.8-1.8M13.4 4.6l-1.8 1.8"/>');
 
 /** Иконка координатной плоскости с нулём в начале координат — когда деления включены. */
-export const COORD_ICON_ZERO = svg('<path d="M5 19V5M5 19h14"/><path d="M5 5l-2 3M5 5l2 3M19 19l-3-2M19 19l-3 2"/><circle cx="12" cy="12" r="1"/><ellipse class="coord-zero" cx="2.6" cy="20.8" rx="1.3" ry="1.9" stroke-width="1.3"/>');
+export const COORD_ICON_ZERO = svg('<path d="M5 19V5M5 19h14"/><path d="M5 5l-2 3M5 5l2 3M19 19l-3-2M19 19l-3 2"/><circle cx="12" cy="12" r="1"/><ellipse class="coord-zero" cx="1.9" cy="21.55" rx="1.3" ry="1.9" stroke-width="1.3"/>');
 
 export const WIDTH_ICON = svg('<path d="M4 6h16" stroke-width="1.2"/><path d="M4 12h16" stroke-width="2.4"/><path d="M4 18.5h16" stroke-width="4"/>');
 

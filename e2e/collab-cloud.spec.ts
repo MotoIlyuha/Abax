@@ -7,7 +7,8 @@ test.describe('совместная работа через интернет', (
     await host.board.rect(400, 300, 500, 400);
     await host.share();
     const url = await host.shareCloud();
-    await expect(host.dialog.locator('.share-cloud-status')).toHaveText('Ссылка откроется на любом устройстве с интернетом.');
+    // пояснение — в подсказке ссылки, а не текстом в окне
+    await expect(host.dialog.locator('.share-link-cloud')).toHaveAttribute('title', /Ссылка откроется на любом устройстве с интернетом/);
 
     const guest = await join(url, 'Из облака');
     await expect.poll(() => guest.board.count('shape')).toBe(1);

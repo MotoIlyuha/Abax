@@ -1,7 +1,7 @@
 // Модель доступа Ночи №6 (SPEC_NIGHT6 §2): роли, итоговое право, возможности, токены и адреса, автор элемента.
 import { describe, expect, it } from 'vitest';
 import {
-  aliasProblem, effectivePageAccess, isAliasShaped, isPrincipal, isStoredRole, isTokenShaped, legacyRoleOf, normalizeRole,
+  ALIAS_MAX, ALIAS_MIN, aliasCandidates, aliasProblem, effectivePageAccess, isAliasShaped, isNewAliasOk, isPrincipal, isStoredRole, isTokenShaped, legacyRoleOf, normalizeRole,
   participantCaps, roleLabel, RESERVED_ALIASES,
 } from '../../src/access';
 import { invitePageRight } from '../../src/project-access';
@@ -98,6 +98,35 @@ describe('токены и именные адреса', () => {
     }
     expect(RESERVED_ALIASES.has('j')).toBe(true);
   });
+  it('новый адрес — не короче 12 символов; старые 3–11-символьные по-прежнему узнаются при входе', () => {
+    expect(ALIAS_MIN).toBe(12);
+    expect(isAliasShaped('geo')).toBe(true);
+    expect(isNewAliasOk('geo')).toBe(false);
+    expect(isNewAliasOk('fizika-2026')).toBe(false);
+    expect(isNewAliasOk('fizika-uroki')).toBe(true);
+    expect(isNewAliasOk('Fizika-uroki')).toBe(false);
+  });
+  it('похожие адреса: год, слово-уточнение и цифры; нужной формы и длины, без повторов и без самого адреса', () => {
+    const zero = () => 0;
+    // короткий: год не дотягивает до минимума, число дополняет до него целиком
+    expect(aliasCandidates('fizika', 2026, zero)).toEqual([
+      'fizika-uroki', 'fizika-10000', 'fizika-doska', 'fizika-uroki-2026', 'fizika-klass',
+    ]);
+    // достаточно длинный: сначала с годом
+    expect(aliasCandidates('fizika-shkola', 2026, zero).slice(0, 3)).toEqual(['fizika-shkola-2026', 'fizika-shkola-uroki', 'fizika-shkola-10']);
+    // очень короткий: слово и год
+    expect(aliasCandidates('geo', 2026, zero)[0]).toBe('geo-uroki-2026');
+    // длинный адрес укорачивается до ALIAS_MAX, дефис на стыке не остаётся
+    const long = aliasCandidates('abcdefghijklmnopq-stuvw', 2026, zero);
+    expect(long[0]).toBe('abcdefghijklmnopq-2026');
+    for (const base of ['geo', 'fizika', 'physics-9a', 'abcdefghijklmnopq-stuvw', 'a'.repeat(23)]) {
+      const rnd = (n: number) => Math.floor(Math.random() * n);
+      const cs = aliasCandidates(base, 2026, rnd);
+      expect(cs.length).toBeGreaterThanOrEqual(3);
+      expect(new Set(cs).size).toBe(cs.length);
+      for (const c of cs) { expect(c).not.toBe(base); expect(c.length).toBeLessThanOrEqual(ALIAS_MAX); expect(isNewAliasOk(c)).toBe(true); }
+    }
+  });
   it('адрес и токен не пересекаются: строка 24 символов из строчных букв — только токен', () => {
     const s = 'abcdefghijklmnopqrstuvwx';
     expect(isTokenShaped(s)).toBe(true);
@@ -105,11 +134,13 @@ describe('токены и именные адреса', () => {
   });
   it('подсказки к адресу', () => {
     expect(aliasProblem('ab')).toMatch(/короче/);
+    expect(aliasProblem('fizika')).toBe('Не короче 12 символов');
+    expect(aliasProblem('fizika-uroki')).toBeNull();
     expect(aliasProblem('Ab-c')).toMatch(/строчные/);
     expect(aliasProblem('1abc')).toMatch(/буквы/);
     expect(aliasProblem('ab--c')).toMatch(/Дефис/);
     expect(aliasProblem('admin')).toMatch(/системой/);
-    expect(aliasProblem('physics-9a')).toBeNull();
+    expect(aliasProblem('physics-9a-2026')).toBeNull();
   });
   it('тариф: именной адрес — Pro/Tutor; лимит записей на аккаунт', () => {
     expect(PLAN_LIMITS.free.canSetAlias).toBe(false);

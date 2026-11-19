@@ -66,7 +66,7 @@ export function showPill(opts: PillOptions): () => void {
     const icon = document.createElement('i');
     icon.className = 'ap-cursor';
     const id = isCursorId(opts.cursorId) ? opts.cursorId : DEFAULT_CURSOR_ID;
-    icon.innerHTML = cursorSvg(id, { size: 16 });
+    icon.innerHTML = cursorSvg(id, { size: 14 });
     el.appendChild(icon);
   }
   const text = document.createElement('span');

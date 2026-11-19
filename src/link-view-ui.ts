@@ -111,6 +111,7 @@ export function inviteFailureNotice(reason: string, code?: string): readonly [st
   switch (code) {
     case 'link-paused': return ['Доступ по ссылке закрыт', 'Автор закрыл доступ к доске по ссылке. Когда он откроет его снова, эта же ссылка заработает.'];
     case 'alias-released': return ['Адрес больше не используется', 'Автор освободил этот адрес. Попросите у него новую ссылку.'];
+    case 'alias-blocked': return ['Адрес недоступен', 'Этот адрес отключён. Попросите автора прислать обычную ссылку.'];
     case 'alias-inactive': return ['Адрес временно неактивен', 'Именной адрес доски сейчас не работает. Попросите автора прислать обычную ссылку.'];
     case 'board-deleted': return ['Доска удалена', 'Автор удалил эту доску.'];
     default: return NOTICE_INVITE_GONE;

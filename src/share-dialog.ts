@@ -1,25 +1,40 @@
-import { showToast } from './about';
 import { connectOwnerRoom } from './cloud-room';
 import { collabActive, collabUsers, PRESENCE_EVENT, type CollabUser } from './collab';
 import { getParticipantInitials } from './presence';
-import { cursorPreset } from './cursors';
 import { profileName } from './profile';
 import { state } from './state';
 import { isPageRight } from './limits';
-import { claimMenu, closeMenu, openMenu, releaseMenu, settleMenu } from './menu-motion';
-import { ALIAS_MAX, aliasProblem, roleLabel, type AccessRole, type StoredRole } from './access';
+import { claimMenu, closeMenu, menuMotion, openMenu, releaseMenu, settleMenu } from './menu-motion';
+import { ALIAS_MAX, aliasProblem, isAliasShaped, roleLabel, type AccessRole, type StoredRole } from './access';
 import {
-  MAX_GUESTS_OPTIONS, ROLE_OPTIONS, TEXT_OFFLINE, TEXT_UNSYNCED, aliasErrorText, cloudShareAvailable, cloudSynced, emailInviteErrorText,
+  MAX_GUESTS_OPTIONS, ROLE_OPTIONS, TEXT_OFFLINE, TEXT_UNSYNCED, aliasErrorText, aliasSuggestionsOf, checkAlias, cloudShareAvailable, cloudSynced, emailInviteErrorText,
   emailInviteStatusText, fetchAlias, fetchEmailInvites, fetchLink, linkUrlOf, planLocks, releaseAlias, resetLink, revokeEmailInvite, saveAlias, saveLink,
   sendEmailInvite, setMaxGuestsInProject, setPageRightInProject, setPermissionField, storedRoleLabel,
   type EmailInvite, type LinkInfo,
 } from './invite-ui';
 import { ApiError } from './api-client';
+import { ICONS } from './icons';
+import { createSpringSelect, type SelectOption, type SpringSelect } from './spring-select';
+import { createToggleSwitch, setToggleChecked } from './toggle-switch';
+import { createNumberStepper } from './number-stepper';
+import { createSegmented } from './segmented';
+import { attachOverlayScroll, type OverlayScroll } from './overlay-scroll';
+import { createSpoiler } from './spoiler';
+import { clamp, reduceMotion, uiAnimOff } from './motion';
+import { createRoll } from './roll-text';
+import { flyInvite, shakeField } from './invite-motion';
 import type { PageRight } from './types';
 
-// Окно «Поделиться» (SPEC_NIGHT6 §6): вкладки «Поделиться» и «Настройки доступа», три разных списка
-// («Сейчас на доске», «У кого есть доступ», статус приглашения), общая ссылка, подключение без облака.
-// Узлы формы создаются один раз: фоновое обновление списков не сбивает ввод и фокус. Только createElement/textContent.
+// Окно «Поделиться» (SPEC_NIGHT6 §6; редизайн — ветка design/share-dialog).
+// Две вкладки прямо в шапке (Smooth tab, src/segmented.ts): «Поделиться» и «Настройки доступа»; панели едут
+// от той же пружины, что и «пилюля» вкладок, высота окна — между высотами панелей; на сенсорном экране — свайп.
+// «Поделиться» — только частое: общая ссылка (выключатель, роль, «Копировать»), приглашение по почте и список
+// «Есть доступ» (роль и «Отозвать приглашение» — в выпадающем списке строки); «Без облака» — спойлер внизу.
+// Полосы прокрутки панелей — тонкие, поверх содержимого (src/overlay-scroll.ts).
+// Пояснения — в подсказках (title), а не текстом в окне. Списка «Сейчас на доске» в окне нет: кто на доске,
+// показывает отдельный виджет. Узлы формы создаются один раз: фоновое обновление списков не сбивает ввод и фокус.
+// Движение — по трём режимам анимаций доски (компоненты spring-select, toggle-switch, number-stepper, segmented,
+// roll-text, invite-motion, spoiler). Только createElement/textContent; SVG — константы кода.
 
 // ----- Совместная работа без облака: интерфейс транспорта (приложение Electron или вкладка браузера) -----
 
@@ -73,6 +88,29 @@ function savedRelayUrl(): string {
 /** Ошибки, при которых стоит предложить ввести адрес ретранслятора. */
 const RELAY_ADDRESS_ERRORS = /адрес ретранслятора|подключиться к ретранслятору/i;
 
+/** Действие «Отозвать приглашение» в выпадающем списке роли строки. */
+const REVOKE = '__revoke';
+const OWNER_COLOR = { bg: '#e03131', fg: '#fff' };
+const SENT_MS = 1500;
+/** Пауза после ввода адреса до проверки на сервере. */
+const ALIAS_CHECK_MS = 300;
+
+/** Что умеет роль — подсказки пунктов выбора роли. */
+const ROLE_TIPS: Record<AccessRole, string> = {
+  editor: 'Рисует и меняет доску',
+  commenter: 'Смотрит, комментирует и пишет в чат',
+  reader: 'Только смотрит',
+};
+const PAGE_RIGHT_OPTIONS: readonly SelectOption[] = [
+  { value: '', label: 'По роли', title: 'Как разрешает роль участника' },
+  { value: 'view', label: 'Только просмотр', title: 'Страницу меняете только вы' },
+  { value: 'hidden', label: 'Скрыта', title: 'Страницу видите только вы' },
+];
+
+const CHECK_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+const RESET_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 12a8.5 8.5 0 0 1 14.6-5.9L20.5 8.5"/><path d="M20.5 3.5v5h-5"/><path d="M20.5 12a8.5 8.5 0 0 1-14.6 5.9L3.5 15.5"/><path d="M3.5 20.5v-5h5"/></svg>';
+const CLOSE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg>';
+
 // ----- Мелкие строители разметки -----
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text?: string): HTMLElementTagNameMap[K] {
@@ -88,29 +126,23 @@ function btn(cls: string, text: string, onClick: () => void, label?: string): HT
   b.addEventListener('click', onClick);
   return b;
 }
-function selectEl(cls: string, options: readonly (readonly [string, string])[], value: string, label: string): HTMLSelectElement {
-  const sel = el('select', cls);
-  sel.setAttribute('aria-label', label);
-  setOptions(sel, options, value);
-  return sel;
+/** Иконка-константа из кода. */
+function icon(cls: string, svg: string): HTMLSpanElement {
+  const s = el('span', cls);
+  s.setAttribute('aria-hidden', 'true');
+  s.innerHTML = svg; // константа из кода
+  return s;
 }
-function setOptions(sel: HTMLSelectElement, options: readonly (readonly [string, string])[], value: string): void {
-  const key = JSON.stringify(options);
-  if (sel.dataset.opts !== key) {
-    sel.textContent = '';
-    for (const [v, t] of options) {
-      const o = el('option', '', t);
-      o.value = v;
-      sel.appendChild(o);
-    }
-    sel.dataset.opts = key;
-  }
-  if (document.activeElement !== sel) sel.value = value;
+/** Подсказка элемента (tooltip.ts переносит title в data-tip — сравниваем с обоими). */
+function tip(e: HTMLElement, text: string): void {
+  if ((e.dataset.tip ?? e.getAttribute('title') ?? '') === text) return;
+  e.removeAttribute('data-tip');
+  if (text) e.title = text; else e.removeAttribute('title');
 }
 /** Список ролей для выбора; старая роль edit/view — отдельной строкой, пока выбрана. */
-function roleOptions(current?: StoredRole): (readonly [string, string])[] {
-  const out: (readonly [string, string])[] = ROLE_OPTIONS.map(r => [r, roleLabel(r)] as const);
-  if (current === 'edit' || current === 'view') out.push([current, storedRoleLabel(current)]);
+function roleOptions(current?: StoredRole): SelectOption[] {
+  const out: SelectOption[] = ROLE_OPTIONS.map(r => ({ value: r, label: roleLabel(r), title: ROLE_TIPS[r] }));
+  if (current === 'edit' || current === 'view') out.push({ value: current, label: storedRoleLabel(current) });
   return out;
 }
 
@@ -137,7 +169,7 @@ function reconcile<T>(list: HTMLElement, items: readonly T[], keyOf: (x: T) => s
 function tabbable(e: HTMLElement, root: HTMLElement): boolean {
   if ((e as HTMLButtonElement).disabled || e.tabIndex < 0) return false;
   for (let p: HTMLElement | null = e; p && p !== root; p = p.parentElement) {
-    if (p.hidden) return false;
+    if (p.hidden || p.hasAttribute('inert')) return false;
     const d = p.parentElement;
     if (d instanceof HTMLDetailsElement && !d.open && p.tagName !== 'SUMMARY') return false;
   }
@@ -178,6 +210,8 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
   let link: LinkInfo | null = null;
   let linkMessage = '';
   let linkBusy = false;
+  /** Выключатель уже переведён, сервер ещё отвечает: показываем выбранное, а не прежнее. */
+  let pendingEnabled: boolean | null = null;
   let confirmReset = false;
   let emails: EmailInvite[] = [];
   let emailMessage = '';
@@ -192,133 +226,246 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
   /** Кто сейчас на доске (для перезапроса приглашений при входе и выходе). */
   let presentKey = '';
   let emailsTimer = 0;
+  let sentTimer = 0;
+  let copyTimer = 0;
   /** Ошибка последнего действия без облака (например, лимит редакторов) — видна в окне, а не системным alert. */
   let p2pMessage = '';
 
-  // ----- Каркас -----
+  // ----- Шапка: вкладки (Smooth tab) и «закрыть» -----
   const head = el('div', 'share-head');
-  const title = el('h2', 'share-title');
+  const title = el('h2', 'share-title share-live', `Поделиться: «${state.project.name || 'Без названия'}»`);
   title.id = 'share-dialog-title';
-  const closeX = btn('share-close', '×', () => close(), 'Закрыть');
-  head.append(title, closeX);
-
-  const tabs = el('div', 'share-tabs');
-  tabs.setAttribute('role', 'tablist');
-  tabs.setAttribute('aria-label', 'Разделы окна «Поделиться»');
-  const tabShare = btn('share-tab', 'Поделиться', () => selectTab('share'));
-  const tabSettings = btn('share-tab', 'Настройки доступа', () => selectTab('settings'));
-  tabShare.id = 'share-tab-share';
-  tabSettings.id = 'share-tab-settings';
-  const panelShare = el('div', 'share-panel');
-  const panelSettings = el('div', 'share-panel');
-  panelShare.id = 'share-panel-share';
-  panelSettings.id = 'share-panel-settings';
-  for (const [t, p] of [[tabShare, panelShare], [tabSettings, panelSettings]] as const) {
-    t.setAttribute('role', 'tab');
-    t.setAttribute('aria-controls', p.id);
-    p.setAttribute('role', 'tabpanel');
-    p.setAttribute('aria-labelledby', t.id);
-  }
-  tabs.append(tabShare, tabSettings);
-  tabs.addEventListener('keydown', ev => {
-    const order = [tabShare, tabSettings];
-    const i = order.indexOf(document.activeElement as HTMLButtonElement);
-    if (i < 0) return;
-    let next = -1;
-    if (ev.key === 'ArrowRight') next = (i + 1) % order.length;
-    else if (ev.key === 'ArrowLeft') next = (i - 1 + order.length) % order.length;
-    else if (ev.key === 'Home') next = 0;
-    else if (ev.key === 'End') next = order.length - 1;
-    if (next < 0) return;
-    ev.preventDefault();
-    selectTab(next === 0 ? 'share' : 'settings');
-    order[next].focus();
-  });
+  const closeX = btn('share-close', '', () => close(), 'Закрыть');
+  closeX.append(icon('share-close-icon', CLOSE_ICON));
 
   const live = el('div', 'share-live');
   live.setAttribute('role', 'status');
   live.setAttribute('aria-live', 'polite');
   const say = (text: string) => { live.textContent = ''; live.textContent = text; };
 
-  const foot = el('div', 'share-foot');
-  foot.appendChild(btn('ctx-custom-btn share-done', 'Готово', () => close()));
-  dlg.append(head, tabs, panelShare, panelSettings, live, foot);
+  /** Панель вкладки: рамка (под полосу прокрутки), прокручиваемая панель и содержимое. */
+  const makePanel = (id: string, tabId: string): { box: HTMLElement; panel: HTMLElement; inner: HTMLElement } => {
+    const box = el('div', 'share-panel-box');
+    const panel = el('div', 'share-panel');
+    panel.id = id;
+    panel.setAttribute('role', 'tabpanel');
+    panel.setAttribute('aria-labelledby', tabId);
+    const inner = el('div', 'share-page-inner');
+    panel.append(inner);
+    box.append(panel);
+    return { box, panel, inner };
+  };
+  const main = makePanel('share-panel-share', 'share-tab-share');
+  const settings = makePanel('share-panel-settings', 'share-tab-settings');
+  const panels = [main, settings];
+  const view = el('div', 'share-view');
+  const track = el('div', 'share-track');
+  track.append(main.box, settings.box);
+  view.append(track);
+  const scrolls: OverlayScroll[] = panels.map(p => attachOverlayScroll(p.panel, { axis: 'y', host: p.box }));
 
-  // ----- Вкладка «Поделиться»: облачная часть -----
+  /** Соседняя панель видна вполовину прозрачной, пока въезжает (как в образце). */
+  const NEIGHBOUR_OPACITY = 0.35;
+  const narrow = () => !!window.matchMedia?.('(max-width: 520px)').matches;
+  let tabMoving = false;
+  /** Панели и высота окна в дробном положении p (0 — «Поделиться», 1 — «Настройки доступа»). */
+  const paintTabs = (p: number, how: 'spring' | 'css' | 'jump') => {
+    tabMoving = how === 'spring';
+    view.classList.toggle('tabs-css', how === 'css');
+    view.classList.remove('tabs-follow');
+    track.style.transform = `translate3d(${(-p * 50).toFixed(3)}%, 0, 0)`;
+    panels.forEach((x, i) => {
+      x.box.style.opacity = String(1 - Math.min(Math.abs(p - i), 1) * (1 - NEIGHBOUR_OPACITY));
+    });
+    if (narrow()) { view.style.removeProperty('height'); return; }
+    const h0 = main.box.offsetHeight;
+    const h1 = settings.box.offsetHeight;
+    view.style.height = `${(h0 + (h1 - h0) * clamp(p, 0, 1)).toFixed(2)}px`;
+  };
+  const tabs = createSegmented({
+    tabs: true, className: 'share-tabs', label: 'Разделы окна «Поделиться»', value: 'share',
+    options: [
+      { value: 'share', label: 'Поделиться', id: 'share-tab-share', controls: 'share-panel-share' },
+      { value: 'settings', label: 'Настройки доступа', id: 'share-tab-settings', controls: 'share-panel-settings' },
+    ],
+    onPaint: paintTabs,
+    onChange: v => selectTab(v as 'share' | 'settings'),
+  });
+  head.append(tabs.el, closeX);
+  dlg.append(head, title, view, live);
+
+  function selectTab(t: 'share' | 'settings'): void {
+    if (t === 'settings') renderSettings();
+    tabs.setValue(t);
+    panels.forEach((x, i) => {
+      const on = (i === 0) === (t === 'share');
+      if (on) x.panel.removeAttribute('inert'); else x.panel.setAttribute('inert', '');
+    });
+    scrolls.forEach(sc => sc.sync());
+  }
+
+  /** Содержимое панели изменилось (появилась ссылка, добавилось приглашение): окно плавно подстраивает высоту. */
+  const fit = () => {
+    if (tabMoving || narrow()) return;
+    const h = (tabs.value === 'share' ? main : settings).box.offsetHeight;
+    const was = view.offsetHeight;
+    if (Math.abs(was - h) < 1 && view.style.height) return;
+    // крупный скачок (появилась ссылка, строка приглашения) — плавно; мелкие шаги (спойлер едет сам) — сразу
+    const animate = !!view.style.height && Math.abs(h - was) >= 24 && !uiAnimOff() && !reduceMotion();
+    view.classList.toggle('tabs-follow', animate);
+    view.style.height = `${h}px`;
+  };
+  const fitObserver = typeof ResizeObserver === 'function' ? new ResizeObserver(fit) : null;
+  for (const x of panels) fitObserver?.observe(x.inner);
+
+  // свайп по панелям (палец или перо): панели и «пилюля» идут за пальцем, отпустили — пружина доводит
+  const SWIPE_VELOCITY = 0.11; // px/мс
+  const AXIS_LOCK = 6;
+  let swipe: { id: number; x0: number; y0: number; p0: number; axis: 'x' | 'y' | null; w: number; samples: { x: number; t: number }[] } | null = null;
+  let eatClick = false;
+  view.addEventListener('pointerdown', e => {
+    if (e.pointerType === 'mouse' || uiAnimOff()) return;
+    swipe = { id: e.pointerId, x0: e.clientX, y0: e.clientY, p0: tabs.progress, axis: null, w: view.clientWidth || 1, samples: [{ x: e.clientX, t: e.timeStamp }] };
+  });
+  view.addEventListener('pointermove', e => {
+    const d = swipe;
+    if (!d || d.id !== e.pointerId) return;
+    if (!d.axis) {
+      const dx = e.clientX - d.x0, dy = e.clientY - d.y0;
+      if (Math.max(Math.abs(dx), Math.abs(dy)) < AXIS_LOCK) return;
+      // вертикаль выигрывает ничью: чаще всего хотят прокрутить
+      d.axis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+      if (d.axis === 'y') { swipe = null; return; }
+      d.p0 = tabs.progress; d.x0 = e.clientX; d.samples = [{ x: e.clientX, t: e.timeStamp }];
+      try { view.setPointerCapture(e.pointerId); } catch { /* не страшно */ }
+    }
+    d.samples.push({ x: e.clientX, t: e.timeStamp });
+    while (d.samples.length > 2 && e.timeStamp - d.samples[0].t > 100) d.samples.shift();
+    const raw = d.p0 - (e.clientX - d.x0) / d.w;
+    // за крайней вкладкой панель идёт на треть хода
+    tabs.drag(raw < 0 ? raw * 0.35 : raw > 1 ? 1 + (raw - 1) * 0.35 : raw);
+  });
+  const endSwipe = (e: PointerEvent, cancelled: boolean) => {
+    const d = swipe;
+    if (!d || d.id !== e.pointerId) return;
+    swipe = null;
+    if (d.axis !== 'x') return;
+    if (!cancelled) { eatClick = true; window.setTimeout(() => { eatClick = false; }, 0); }
+    const first = d.samples[0];
+    const vx = (e.clientX - first.x) / Math.max(e.timeStamp - first.t, 1);
+    const p = tabs.progress;
+    let next = Math.round(p);
+    if (!cancelled && Math.abs(vx) > SWIPE_VELOCITY) next = vx < 0 ? Math.floor(p) + 1 : Math.ceil(p) - 1;
+    next = clamp(next, 0, 1);
+    panels.forEach((x, i) => { if (i === next) x.panel.removeAttribute('inert'); else x.panel.setAttribute('inert', ''); });
+    if (next === 1) renderSettings();
+    tabs.release(next, (-vx * 1000) / d.w);
+  };
+  // контейнер вкладок не прокручивается никогда (браузер мог бы сдвинуть его, показывая элемент в фокусе)
+  view.addEventListener('scroll', () => { view.scrollLeft = 0; view.scrollTop = 0; });
+  view.addEventListener('pointerup', e => endSwipe(e, false));
+  view.addEventListener('pointercancel', e => endSwipe(e, true));
+  view.addEventListener('click', e => { if (eatClick) { eatClick = false; e.preventDefault(); e.stopPropagation(); } }, true);
+
+  // ----- Главная: облачная часть -----
   const cloudBox = el('div', 'share-invite');
 
-  // приглашение по почте: форма создаётся один раз
+  // общая ссылка: выключатель с ролью, адрес и «Копировать»
+  const linkBox = el('section', 'share-link-box share-card');
+  const linkRole = createSpringSelect({
+    className: 'share-chip share-link-role', label: 'Роль по общей ссылке', options: roleOptions(), value: 'editor',
+    // до создания ссылки роль — лишь выбор формы: ссылку создаёт выключатель (с этой ролью)
+    onChange: v => { if (link) void changeLink({ defaultRole: v as StoredRole }); },
+  });
+  const linkRow = createToggleSwitch({ className: 'share-link-row share-toggle', label: 'Общая ссылка', icon: ICONS.link, checked: false, onChange: on => { void changeLink({ enabled: on }); } });
+  const linkSwitch = linkRow.querySelector<HTMLInputElement>('.switch-input')!;
+  linkSwitch.classList.add('share-switch');
+  linkSwitch.setAttribute('aria-label', 'Общая ссылка');
+  linkSwitch.setAttribute('aria-checked', 'false');
+  linkRow.insertBefore(linkRole.el, linkSwitch);
+  const urlRow = el('div', 'share-url-row');
+  urlRow.hidden = true;
+  const urlInput = el('input', 'share-url');
+  urlInput.readOnly = true;
+  urlInput.setAttribute('aria-label', 'Общая ссылка');
+  urlInput.addEventListener('focus', () => urlInput.select());
+  const copyRoll = createRoll('share-copy-label', 18);
+  copyRoll.set('Копировать', { instant: true });
+  const copyBtn = btn('share-copy share-btn-soft', '', () => { void copyLink(); }, 'Скопировать общую ссылку');
+  copyBtn.append(copyRoll.el);
+  // «Сбросить ссылку…» — рядом с самой ссылкой; подтверждение встаёт на место строки адреса, одной линией
+  const resetBtn = btn('share-reset share-icon-btn', '', () => {
+    confirmReset = true;
+    renderReset();
+    resetConfirm.querySelector<HTMLElement>('[data-key="reset-no"]')?.focus();
+  }, 'Сбросить ссылку');
+  resetBtn.append(icon('share-reset-icon', RESET_ICON));
+  resetBtn.title = 'Сбросить ссылку: выдать новую, прежняя перестанет работать';
+  resetBtn.dataset.key = 'reset';
+  urlRow.append(urlInput, resetBtn, copyBtn);
+  const resetConfirm = el('div', 'share-confirm share-reset-confirm');
+  resetConfirm.setAttribute('role', 'alert');
+  resetConfirm.hidden = true;
+  const resetYes = btn('share-btn-soft danger', 'Сбросить', () => { void doReset(); });
+  resetYes.dataset.key = 'reset-yes';
+  const resetNo = btn('share-btn-soft', 'Отмена', () => { confirmReset = false; renderReset(); resetBtn.focus(); });
+  resetNo.dataset.key = 'reset-no';
+  resetConfirm.append(el('span', 'share-confirm-text', 'Старая ссылка перестанет работать'), resetYes, resetNo);
+  const linkMsg = el('div', 'share-cloud-error');
+  linkMsg.setAttribute('role', 'alert');
+  linkBox.append(linkRow, urlRow, resetConfirm);
+
+  // приглашение по почте: поле с ролью и «Пригласить»; форма создаётся один раз
   const emailBox = el('section', 'share-email');
-  emailBox.appendChild(el('h3', 'share-cloud-title', 'Пригласить по почте'));
   const emailForm = el('div', 'share-email-form');
+  const emailField = el('div', 'share-email-field');
   const emailInput = el('input', 'share-email-input');
   emailInput.type = 'email';
-  emailInput.placeholder = 'student@example.com';
+  emailInput.placeholder = 'Пригласить по почте';
   emailInput.setAttribute('aria-label', 'Почта приглашённого');
   emailInput.autocomplete = 'off';
-  const emailRoleSel = selectEl('share-invite-select share-email-role', roleOptions(), emailRole, 'Роль приглашённого');
-  emailRoleSel.addEventListener('change', () => { emailRole = emailRoleSel.value as StoredRole; });
-  const emailSend = btn('ctx-custom-btn share-email-send', 'Пригласить', () => { void sendEmail(); });
+  emailInput.spellcheck = false;
+  const emailRoleSel = createSpringSelect({
+    className: 'share-chip share-email-role', label: 'Роль приглашённого', options: roleOptions(), value: emailRole,
+    title: 'В письме — личная ссылка. Её можно переслать, поэтому не выдавайте роль выше нужной',
+    onChange: v => { emailRole = v as StoredRole; },
+  });
+  emailField.append(emailInput, emailRoleSel.el);
+  const sendRoll = createRoll('share-send-label', 18);
+  sendRoll.set('Пригласить', { instant: true });
+  const emailSend = btn('share-email-send share-btn-primary', '', () => { void sendEmail(); });
+  emailSend.append(sendRoll.el);
   emailInput.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); void sendEmail(); } });
-  emailForm.append(emailInput, emailRoleSel, emailSend);
-  const emailHint = el('div', 'share-hint', 'В письме личная ссылка. Её можно переслать — не выдавайте роль выше нужной.');
+  emailInput.addEventListener('input', () => { emailField.classList.remove('is-bad'); if (emailMessage) { emailMessage = ''; renderEmails(); } });
+  emailForm.append(emailField, emailSend);
   const emailMsg = el('div', 'share-cloud-error');
   emailMsg.setAttribute('role', 'alert');
-  emailBox.append(emailForm, emailHint);
+  emailBox.append(emailForm);
 
-  // сейчас на доске
-  const presentBox = el('section', 'share-present');
-  const presentTitle = el('h3', 'share-cloud-title');
-  const presentList = el('ul', 'share-people');
-  const presentEmpty = el('div', 'share-hint', 'Сейчас на доске никого, кроме вас.');
-  presentBox.append(presentTitle, presentList, presentEmpty);
-
-  // у кого есть доступ
+  // у кого есть доступ: владелец и приглашения по почте
   const accessBox = el('section', 'share-access');
-  accessBox.appendChild(el('h3', 'share-cloud-title', 'У кого есть доступ'));
+  accessBox.appendChild(el('h3', 'share-cloud-title', 'Есть доступ'));
   const accessList = el('ul', 'share-people');
   const revokedBox = el('div', 'share-revoked');
   accessBox.append(accessList, revokedBox);
   const ownerRow = el('li', 'share-person share-owner');
   ownerRow.dataset.key = 'owner';
-  const linkRow = el('li', 'share-person share-link-row');
-  linkRow.dataset.key = 'link';
-  const linkRoleSel = selectEl('share-invite-select share-link-role', roleOptions(), 'editor', 'Роль по общей ссылке');
-  linkRoleSel.dataset.field = 'role';
-  // до создания ссылки роль — лишь выбор формы: ссылку создаёт выключатель (с этой ролью)
-  linkRoleSel.addEventListener('change', () => { if (link) void changeLink({ defaultRole: linkRoleSel.value as StoredRole }); });
-  const linkSwitch = btn('share-switch', '', () => { void toggleLink(); });
-  linkSwitch.setAttribute('role', 'switch');
-  linkSwitch.setAttribute('aria-label', 'Общая ссылка');
+  const emailSelects = new Map<string, { sel: SpringSelect; key: string }>();
 
-  // общая ссылка
-  const linkBox = el('section', 'share-link-box');
+  cloudBox.append(linkBox, emailBox, accessBox);
 
-  cloudBox.append(emailBox, presentBox, accessBox, linkBox);
-
-  // ----- Подключение без облака -----
+  // ----- Подключение без облака: на «Поделиться» первым (облака нет) или спойлером внизу -----
   const p2pBox = el('div', 'share-p2p');
-  const otherWays = el('details', 'share-other');
-  const otherSummary = el('summary', '', 'Другие способы подключения (без облака)');
-  otherWays.appendChild(otherSummary);
-
-  // ----- Вкладка «Настройки доступа» -----
-  const settingsBox = el('div', 'share-settings');
-  panelSettings.appendChild(settingsBox);
+  /** Выпадающие списки P2P пересоздаются вместе с блоком: перед этим открытые закрываются. */
+  let p2pSelects: SpringSelect[] = [];
+  const p2pHolder = el('div', 'share-p2p-holder');
+  const otherWays = createSpoiler({
+    className: 'share-other', summary: 'Без облака', content: p2pHolder,
+    title: 'Совместная работа без сервера Abax: по локальной сети или через ретранслятор',
+    onToggle: open => { if (open) renderP2P(); },
+  });
 
   // ----- Поведение -----
-
-  function selectTab(t: 'share' | 'settings'): void {
-    tabShare.setAttribute('aria-selected', String(t === 'share'));
-    tabSettings.setAttribute('aria-selected', String(t === 'settings'));
-    tabShare.tabIndex = t === 'share' ? 0 : -1;
-    tabSettings.tabIndex = t === 'settings' ? 0 : -1;
-    panelShare.hidden = t !== 'share';
-    panelSettings.hidden = t !== 'settings';
-    if (t === 'settings') renderSettings();
-  }
-
-  const projectName = () => state.project.name || 'Без названия';
 
   async function loadCloud(): Promise<void> {
     if (!cloudShareAvailable()) return;
@@ -343,23 +490,31 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
   }
 
   async function changeLink(body: { defaultRole?: StoredRole; enabled?: boolean }): Promise<void> {
-    if (linkBusy) return;
+    if (linkBusy) { renderLink(); return; }
     linkBusy = true;
+    pendingEnabled = body.enabled ?? null;
     linkMessage = '';
     renderLink();
     try {
-      const role = body.defaultRole ?? (link?.role as StoredRole | undefined) ?? (linkRoleSel.value as StoredRole);
+      const role = body.defaultRole ?? (link?.role as StoredRole | undefined) ?? (linkRole.value as StoredRole);
       link = await saveLink(state.project.id, { defaultRole: role, ...(body.enabled !== undefined ? { enabled: body.enabled } : {}) });
       if (link.enabled) void connectOwnerRoom();
       say(body.enabled === false ? 'Общая ссылка выключена' : body.enabled === true ? 'Общая ссылка включена' : `Роль по ссылке: ${storedRoleLabel(link.role)}`);
     } catch (e) {
       linkMessage = e instanceof ApiError && e.status === 404 ? TEXT_UNSYNCED : e instanceof ApiError && e.isNetwork ? TEXT_OFFLINE : 'Не удалось изменить ссылку';
-    } finally { linkBusy = false; renderCloud(); }
+    } finally { linkBusy = false; pendingEnabled = null; renderCloud(); }
   }
 
-  function toggleLink(): Promise<void> {
-    // нет ссылки — включение создаёт её с выбранной ролью; есть — пауза или включение того же адреса
-    return changeLink({ enabled: !(link && link.enabled) });
+  async function copyLink(): Promise<void> {
+    if (!link?.enabled) return;
+    try {
+      await navigator.clipboard.writeText(linkUrlOf(link));
+      say('Ссылка скопирована');
+      copyBtn.classList.add('is-done');
+      copyRoll.set('Скопировано', { icon: CHECK_ICON });
+      clearTimeout(copyTimer);
+      copyTimer = window.setTimeout(() => { copyBtn.classList.remove('is-done'); copyRoll.set('Копировать'); }, SENT_MS);
+    } catch { say('Не удалось скопировать ссылку'); }
   }
 
   async function doReset(): Promise<void> {
@@ -369,31 +524,58 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
     try {
       link = await resetLink(link.token);
       say('Ссылка сброшена: прежняя больше не работает');
-    } catch { linkMessage = 'Не удалось сбросить ссылку'; } finally { linkBusy = false; renderCloud(); }
+    } catch { linkMessage = 'Не удалось сбросить ссылку'; } finally { linkBusy = false; renderCloud(); renderSettings(); }
   }
 
   async function sendEmail(): Promise<void> {
     const email = emailInput.value.trim();
     if (emailBusy) return;
-    if (!email) { emailMessage = 'Введите адрес почты'; renderEmails(); emailInput.focus(); return; }
+    if (!email) { shakeField(emailField); say('Введите адрес почты'); emailInput.focus(); return; }
     emailBusy = true;
     emailMessage = '';
     renderEmails();
     try {
       const r = await sendEmailInvite(state.project.id, email, emailRole);
+      const isNew = !emails.some(x => x.id === r.invite.id);
       emails = [r.invite, ...emails.filter(x => x.id !== r.invite.id)];
       emailInput.value = '';
       const text = r.mailed ? `Приглашение отправлено: ${r.invite.email}` : `Приглашение обновлено: ${r.invite.email}`;
-      showToast(text);
       say(text);
+      // кнопка вкатывает «Готово» на зелёном, адрес улетает в новую строку списка
+      emailSend.classList.add('is-sent');
+      sendRoll.set('Готово', { icon: CHECK_ICON });
+      clearTimeout(sentTimer);
+      sentTimer = window.setTimeout(() => { emailSend.classList.remove('is-sent'); sendRoll.set('Пригласить'); }, SENT_MS);
+      emailBusy = false;
+      renderEmails();
+      const row = accessList.querySelector<HTMLElement>(`[data-invite-id="${attrValue(r.invite.id)}"]`);
+      if (row && isNew) arrive(row, email);
     } catch (e) {
       emailMessage = emailInviteErrorText(e);
+      shakeField(emailField);
     } finally { emailBusy = false; renderEmails(); }
+  }
+
+  /** Новая строка приглашения: «Улучшенные» — адрес прилетает из поля; «Обычные» — строка проявляется. */
+  function arrive(row: HTMLElement, text: string): void {
+    const mode = menuMotion();
+    if (mode === 'off') return;
+    if (mode === 'normal') {
+      row.classList.add('inv-appear');
+      row.addEventListener('animationend', () => row.classList.remove('inv-appear'), { once: true });
+      return;
+    }
+    const av = row.querySelector<HTMLElement>('.share-avatar');
+    if (!av) return;
+    row.scrollIntoView?.({ block: 'nearest' });
+    row.classList.add('inv-pending');
+    flyInvite(emailField, text, av, dlg, () => row.classList.remove('inv-pending'));
   }
 
   async function changeEmailRole(inv: EmailInvite, role: StoredRole): Promise<void> {
     if (emailBusy) return;
     emailBusy = true;
+    renderEmails();
     try {
       const r = await sendEmailInvite(state.project.id, inv.email, role);
       emails = emails.map(x => (x.id === r.invite.id ? r.invite : x));
@@ -404,6 +586,7 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
   async function revokeEmail(inv: EmailInvite): Promise<void> {
     if (emailBusy) return;
     emailBusy = true;
+    renderEmails();
     try {
       await revokeEmailInvite(inv);
       emails = emails.filter(x => x.id !== inv.id);
@@ -412,16 +595,17 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
       say(`Приглашение ${inv.email} отозвано`);
     } catch (e) {
       emailMessage = e instanceof ApiError && e.isNetwork ? TEXT_OFFLINE : 'Не удалось отозвать приглашение';
-    } finally { emailBusy = false; renderEmails(); renderAccess(); }
+    } finally { emailBusy = false; renderEmails(); }
   }
 
-  // ----- Отрисовка частей -----
+  // ----- Отрисовка частей главной -----
 
   function renderEmails(): void {
     emailInput.disabled = emailBusy;
-    emailRoleSel.disabled = emailBusy;
+    emailRoleSel.setDisabled(emailBusy);
     emailSend.disabled = emailBusy;
-    emailSend.textContent = emailBusy ? 'Отправляем…' : 'Пригласить';
+    if (emailBusy) sendRoll.set('Отправка…');
+    else if (!emailSend.classList.contains('is-sent')) sendRoll.set('Пригласить');
     // блок ошибки — только когда есть что сказать (пустой мешал бы искать ошибки окна)
     emailMsg.textContent = emailMessage;
     if (emailMessage && !emailMsg.isConnected) emailBox.appendChild(emailMsg);
@@ -430,122 +614,63 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
     renderAccess();
   }
 
-  function sourceText(u: CollabUser | ShareUser): string {
-    const a = u.access;
-    if (!a) return '';
-    if (a.source === 'link') return 'по общей ссылке';
-    if (a.source === 'alias') return 'по именному адресу';
-    if (a.source === 'email') {
-      const inv = a.inviteId ? emails.find(x => x.id === a.inviteId) : undefined;
-      return inv ? `по приглашению ${inv.email}` : 'по приглашению на почту';
-    }
-    if (a.source === 'p2p') return 'по ссылке без облака';
-    return '';
-  }
-
-  function personRow(prev: HTMLElement | null, color: { bg: string; fg: string }, initials: string, name: string, meta: string): HTMLElement {
-    const row = prev ?? el('li', 'share-person');
+  function personRow(row: HTMLElement, color: { bg: string; fg: string }, initials: string, name: string, meta: string): HTMLElement {
     if (!row.querySelector('.share-avatar')) {
       const av = el('span', 'share-avatar');
       av.setAttribute('aria-hidden', 'true');
       const text = el('span', 'share-person-text');
       text.append(el('span', 'share-person-name'), el('span', 'share-person-meta'));
-      row.append(av, text);
+      row.prepend(av, text);
     }
     const av = row.querySelector<HTMLElement>('.share-avatar')!;
     av.textContent = initials;
     av.style.background = color.bg;
     av.style.color = color.fg;
     row.querySelector('.share-person-name')!.textContent = name;
-    row.querySelector('.share-person-meta')!.textContent = meta;
+    const m = row.querySelector<HTMLElement>('.share-person-meta')!;
+    m.textContent = meta;
+    m.hidden = !meta;
     return row;
-  }
-
-  function renderPresent(): void {
-    const users: (CollabUser | ShareUser)[] = collabActive() ? [...collabUsers()] : status.active ? status.users ?? [] : [];
-    const hosts = users.filter(u => u.host);
-    const guests = users.filter(u => !u.host);
-    presentTitle.textContent = `Сейчас на доске · ${guests.length + (hosts.length > 0 ? 1 : 0)}`;
-    const items: { key: string; u: CollabUser | ShareUser | null }[] = [];
-    if (hosts.length > 0) items.push({ key: 'owner', u: null });
-    for (const g of guests) items.push({ key: `u${g.userId}`, u: g });
-    reconcile(presentList, items, x => x.key, (x, prev) => {
-      if (!x.u) {
-        const me = profileName() || 'Вы';
-        const devices = hosts.length > 1 ? ` · ${hosts.length} ${hosts.length < 5 ? 'устройства' : 'устройств'}` : '';
-        return personRow(prev, { bg: '#e03131', fg: '#fff' }, getParticipantInitials(me), me, `вы · владелец${devices}`);
-      }
-      const u = x.u;
-      const preset = cursorPreset(u.cursorId);
-      const role = u.access && u.access.role !== 'owner' ? roleLabel(u.access.role as AccessRole) : '';
-      const page = 'pageId' in u && u.pageId ? state.project.pages.find(p => p.id === u.pageId)?.name : undefined;
-      const where = 'hiddenPage' in u && u.hiddenPage ? 'на скрытой странице' : page ? `«${page}»` : '';
-      const meta = [role, sourceText(u), where, u.away ? 'отошёл' : ''].filter(Boolean).join(' · ');
-      return personRow(prev, { bg: preset.badgeBg, fg: preset.badgeText }, getParticipantInitials(u.name), u.name, meta);
-    });
-    presentEmpty.hidden = guests.length > 0;
-    // кто-то вошёл или вышел — у приглашений по почте мог появиться «заходил(а)»: список перезапрашивается
-    const who = guests.map(g => g.userId).sort((x, y) => x - y).join(',');
-    if (who !== presentKey) {
-      presentKey = who;
-      if (cloudShareAvailable() && cloudSynced() && loadedFor === state.project.id) {
-        clearTimeout(emailsTimer);
-        emailsTimer = window.setTimeout(() => {
-          const id = state.project.id;
-          void fetchEmailInvites(id).then(list => { if (state.project.id === id && current) { emails = list; renderEmails(); } }, () => {});
-        }, 600);
-      }
-    }
   }
 
   function renderAccess(): void {
     const me = profileName() || 'Вы';
-    personRow(ownerRow, { bg: '#e03131', fg: '#fff' }, getParticipantInitials(me), me, 'Владелец');
-    // строка общей ссылки: роль и выключатель
-    if (!linkRow.firstChild) {
-      const icon = el('span', 'share-avatar share-avatar-link', '🔗');
-      icon.setAttribute('aria-hidden', 'true');
-      const text = el('span', 'share-person-text');
-      text.append(el('span', 'share-person-name', 'Все, у кого есть ссылка'), el('span', 'share-person-meta'));
-      const ctl = el('span', 'share-person-ctl');
-      ctl.append(linkRoleSel, linkSwitch);
-      linkRow.append(icon, text, ctl);
-    }
-    const on = !!link?.enabled;
-    linkRow.querySelector('.share-person-meta')!.textContent = !link ? 'ссылка не создана' : on ? 'ссылка включена' : 'ссылка выключена';
-    setOptions(linkRoleSel, roleOptions(link?.role), link?.role ?? linkRoleSel.value ?? 'editor');
-    linkRoleSel.disabled = linkBusy;
-    linkSwitch.setAttribute('aria-checked', String(on));
-    linkSwitch.textContent = on ? 'Вкл' : 'Выкл';
-    linkSwitch.disabled = linkBusy;
-    linkSwitch.classList.toggle('on', on);
+    personRow(ownerRow, OWNER_COLOR, getParticipantInitials(me), me, '');
+    if (!ownerRow.querySelector('.share-person-role')) ownerRow.append(el('span', 'share-person-role', 'Владелец'));
 
     type Row = { key: string; inv?: EmailInvite };
-    const rows: Row[] = [{ key: 'owner' }, { key: 'link' }, ...emails.map(inv => ({ key: `e${inv.id}`, inv }))];
+    const rows: Row[] = [{ key: 'owner' }, ...emails.map(inv => ({ key: `e${inv.id}`, inv }))];
+    const alive = new Set<string>();
     reconcile(accessList, rows, r => r.key, (r, prev) => {
       if (r.key === 'owner') return ownerRow;
-      if (r.key === 'link') return linkRow;
       const inv = r.inv!;
+      alive.add(inv.id);
       const row = prev ?? el('li', 'share-person share-email-item');
       row.dataset.inviteId = inv.id;
-      if (!prev) {
-        const icon = el('span', 'share-avatar share-avatar-mail', '✉');
-        icon.setAttribute('aria-hidden', 'true');
-        const text = el('span', 'share-person-text');
-        text.append(el('span', 'share-person-name share-email-addr'), el('span', 'share-person-meta share-email-meta'));
-        const ctl = el('span', 'share-person-ctl');
-        const roleSel = selectEl('share-invite-select share-email-row-role', roleOptions(inv.role), inv.role, `Роль ${inv.email}`);
-        roleSel.addEventListener('change', () => { void changeEmailRole(inv, roleSel.value as StoredRole); });
-        const off = btn('share-email-revoke', 'Отозвать', () => { void revokeEmail(inv); }, `Отозвать приглашение ${inv.email}`);
-        ctl.append(roleSel, off);
-        row.append(icon, text, ctl);
+      let entry = emailSelects.get(inv.id);
+      if (!entry) {
+        const sel = createSpringSelect({
+          className: 'share-chip share-email-row-role', label: `Роль ${inv.email}`, options: [], value: inv.role,
+          onChange: v => {
+            const now = emails.find(x => x.id === inv.id) ?? inv;
+            if (v === REVOKE) void revokeEmail(now);
+            else void changeEmailRole(now, v as StoredRole);
+          },
+        });
+        entry = { sel, key: '' };
+        emailSelects.set(inv.id, entry);
+        row.append(sel.el);
       }
-      row.querySelector('.share-email-addr')!.textContent = inv.email;
-      row.querySelector('.share-email-meta')!.textContent = `${storedRoleLabel(inv.role)} · ${emailInviteStatusText(inv)}`;
-      setOptions(row.querySelector<HTMLSelectElement>('.share-email-row-role')!, roleOptions(inv.role), inv.role);
-      for (const c of row.querySelectorAll<HTMLButtonElement | HTMLSelectElement>('button, select')) c.disabled = emailBusy;
+      personRow(row, { bg: 'var(--accent-soft)', fg: 'var(--accent)' }, (inv.email.trim()[0] ?? '?').toUpperCase(), inv.email, emailInviteStatusText(inv));
+      row.querySelector('.share-person-name')!.classList.add('share-email-addr');
+      row.querySelector('.share-person-meta')!.classList.add('share-email-meta');
+      const opts: SelectOption[] = [...roleOptions(inv.role), { value: REVOKE, label: 'Отозвать приглашение', danger: true, action: true, title: 'Отзывается только эта ссылка из письма' }];
+      const key = JSON.stringify([inv.role, inv.email]);
+      if (entry.key !== key) { entry.sel.setOptions(opts, inv.role); entry.key = key; }
+      entry.sel.setDisabled(emailBusy);
       return row;
     });
+    for (const [id, entry] of emailSelects) if (!alive.has(id)) { entry.sel.close(true); emailSelects.delete(id); }
 
     revokedBox.textContent = '';
     if (revokedHint && link?.enabled) {
@@ -555,71 +680,53 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
   }
 
   function renderLink(): void {
-    const focusKey = (document.activeElement as HTMLElement | null)?.closest('.share-link-box') ? (document.activeElement as HTMLElement).dataset.key : undefined;
-    linkBox.textContent = '';
-    linkBox.appendChild(el('h3', 'share-cloud-title', 'Общая ссылка'));
-    if (!link) {
-      linkBox.appendChild(el('div', 'share-hint', 'Включите общую ссылку в списке выше — по ней войдёт любой, у кого она есть.'));
-    } else {
+    const on = !!link?.enabled;
+    const shown = linkBusy && pendingEnabled !== null ? pendingEnabled : on;
+    setToggleChecked(linkSwitch, shown);
+    linkSwitch.setAttribute('aria-checked', String(shown));
+    linkSwitch.disabled = linkBusy;
+    linkRow.classList.toggle('busy', linkBusy);
+    const opts = roleOptions(link?.role);
+    if (linkRole.el.dataset.opts !== JSON.stringify(opts.map(x => x.value))) {
+      linkRole.setOptions(opts, link?.role ?? linkRole.value);
+      linkRole.el.dataset.opts = JSON.stringify(opts.map(x => x.value));
+    } else if (link) linkRole.setValue(link.role);
+    linkRole.setDisabled(linkBusy);
+    tip(linkRow, !link ? 'Включите — по ссылке войдёт любой, у кого она есть'
+      : on ? 'По ссылке войдёт любой, у кого она есть'
+        : 'Ссылка выключена: по ней никто не войдёт. Включите снова — заработает тот же адрес');
+    renderReset();
+    if (link) {
       const url = linkUrlOf(link);
-      const rowEl = el('div', 'share-url-row');
-      const input = el('input', 'share-url');
-      input.readOnly = true;
-      input.value = url;
-      input.setAttribute('aria-label', 'Общая ссылка');
-      input.dataset.key = 'url';
-      input.addEventListener('focus', () => input.select());
-      const copy = btn('ctx-custom-btn share-copy', 'Копировать', () => {
-        void navigator.clipboard.writeText(url).then(() => { say('Ссылка скопирована'); showToast('Ссылка скопирована'); }, () => say('Не удалось скопировать ссылку'));
-      }, 'Скопировать общую ссылку');
-      copy.dataset.key = 'copy';
-      copy.disabled = !link.enabled;
-      rowEl.append(input, copy);
-      linkBox.appendChild(rowEl);
-      if (!link.enabled) linkBox.appendChild(el('div', 'share-hint', 'Ссылка выключена: по ней сейчас никто не войдёт. Включите её снова — заработает тот же адрес.'));
-      if (!link.enabled) {
-        const lv = el('label', 'share-invite-check');
-        const cb = el('input');
-        cb.type = 'checkbox';
-        cb.dataset.key = 'linkview';
-        cb.checked = state.project.permissions?.linkView === false;
-        cb.addEventListener('change', () => { setPermissionField('linkView', cb.checked ? false : undefined); say(cb.checked ? 'Просмотр по ссылке на доску закрыт' : 'Просмотр по ссылке на доску открыт'); });
-        lv.append(cb, el('span', '', 'И закрыть просмотр по ссылке на доску'));
-        linkBox.appendChild(lv);
-      }
-      if (link.alias) {
-        const al = el('div', 'share-alias-line');
-        al.append(el('span', '', `Именной адрес: ${link.alias}`));
-        const edit = btn('share-inline-btn', 'Изменить', () => { selectTab('settings'); tabSettings.focus(); });
-        edit.dataset.key = 'alias';
-        al.appendChild(edit);
-        linkBox.appendChild(al);
-      }
-      if (confirmReset) {
-        const c = el('div', 'share-confirm');
-        c.setAttribute('role', 'alert');
-        c.appendChild(el('span', '', 'Старая ссылка перестанет работать. '));
-        const yes = btn('ctx-custom-btn danger', 'Сбросить', () => { void doReset(); });
-        yes.dataset.key = 'reset-yes';
-        const no = btn('ctx-custom-btn', 'Отмена', () => { confirmReset = false; renderLink(); });
-        no.dataset.key = 'reset-no';
-        c.append(yes, no);
-        linkBox.appendChild(c);
-      } else {
-        const reset = btn('share-inline-btn share-reset', 'Сбросить ссылку…', () => { confirmReset = true; renderLink(); linkBox.querySelector<HTMLButtonElement>('[data-key="reset-no"]')?.focus(); });
-        reset.dataset.key = 'reset';
-        reset.disabled = linkBusy;
-        linkBox.appendChild(reset);
-      }
+      if (urlInput.value !== url) urlInput.value = url;
     }
-    if (linkMessage) linkBox.appendChild(el('div', 'share-cloud-error', linkMessage));
-    if (focusKey) linkBox.querySelector<HTMLElement>(`[data-key="${focusKey}"]`)?.focus();
+    copyBtn.disabled = !on;
+    linkMsg.textContent = linkMessage;
+    if (linkMessage && !linkMsg.isConnected) linkBox.appendChild(linkMsg);
+    else if (!linkMessage) linkMsg.remove();
   }
 
   function renderCloud(): void {
-    renderEmails();
-    renderPresent();
     renderLink();
+    renderEmails();
+    // вкладка «Настройки доступа» всегда в окне (её видно при свайпе): ссылка там тоже должна быть свежей
+    renderSettings();
+    watchPresence();
+  }
+
+  /** Кто-то вошёл или вышел — у приглашений по почте мог появиться «заходил(а)»: список перезапрашивается. */
+  function watchPresence(): void {
+    const users: (CollabUser | ShareUser)[] = collabActive() ? [...collabUsers()] : status.active ? status.users ?? [] : [];
+    const who = users.filter(u => !u.host).map(g => g.userId).sort((x, y) => x - y).join(',');
+    if (who === presentKey) return;
+    presentKey = who;
+    if (cloudShareAvailable() && cloudSynced() && loadedFor === state.project.id) {
+      clearTimeout(emailsTimer);
+      emailsTimer = window.setTimeout(() => {
+        const id = state.project.id;
+        void fetchEmailInvites(id).then(list => { if (state.project.id === id && current) { emails = list; renderEmails(); } }, () => {});
+      }, 600);
+    }
   }
 
   // ----- Без облака -----
@@ -640,7 +747,7 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
     await refreshStatus(true);
   }
 
-  function copyButton(cls: string, url: string): HTMLButtonElement {
+  function copyButton(cls: string, url: string, hint: string): HTMLButtonElement {
     // ссылка — кнопка: клавиатура и скринридер; клик копирует, текст на миг меняется
     const b = btn(cls, url, () => {
       void navigator.clipboard.writeText(url);
@@ -648,29 +755,24 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
       say('Ссылка скопирована');
       setTimeout(() => { b.textContent = url; }, 1200);
     }, `Скопировать ссылку ${url}`);
-    b.title = 'Клик — скопировать ссылку';
+    b.title = hint;
     return b;
   }
 
   function renderRelay(box: HTMLElement): void {
     if (!deps.api.shareCloudStart) return;
     const wrap = el('div', 'share-cloud');
-    wrap.appendChild(el('h3', 'share-cloud-title', 'Через интернет'));
     const cloud = status.cloud;
     const running = !!cloud && (cloud.state === 'online' || cloud.state === 'reconnecting' || cloud.state === 'connecting');
     if (running) {
+      wrap.appendChild(el('h3', 'share-cloud-title', 'Через интернет'));
       if (cloud!.url) {
-        const b = copyButton('share-link share-link-cloud', cloud!.url);
+        const b = copyButton('share-link share-link-cloud', cloud!.url, 'Ссылка откроется на любом устройстве с интернетом. Клик — скопировать');
         b.dataset.key = 'relay-link';
         wrap.appendChild(b);
       }
-      const note = el('div', 'share-cloud-status');
-      if (cloud!.state === 'reconnecting') {
-        note.classList.add('warn');
-        note.textContent = 'Связь с сервером прервалась — переподключаемся. Гости подождут.';
-      } else note.textContent = 'Ссылка откроется на любом устройстве с интернетом.';
-      wrap.appendChild(note);
-      const stop = btn('ctx-custom-btn danger', 'Закрыть доступ через интернет', async () => {
+      if (cloud!.state === 'reconnecting') wrap.appendChild(el('div', 'share-cloud-status warn', 'Связь с сервером прервалась — переподключаемся. Гости подождут.'));
+      const stop = btn('share-btn-soft danger', 'Закрыть доступ через интернет', async () => {
         await deps.api.shareCloudStop?.();
         cloudUi.error = null;
         await refreshStatus(true);
@@ -693,10 +795,11 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
       input.addEventListener('input', () => { cloudUi.relayDraft = input!.value; });
       wrap.appendChild(input);
     }
-    const start = btn('ctx-custom-btn', cloudUi.starting ? 'Подключение…' : error ? 'Подключиться снова' : 'Пригласить через интернет', () => {
+    const start = btn('share-btn-soft', cloudUi.starting ? 'Подключение…' : error ? 'Подключиться снова' : 'Пригласить через интернет', () => {
       const relay = input ? input.value.trim() : savedRelayUrl();
       void startCloudShare(relay);
     });
+    start.title = 'Гости из любой сети подключатся через сервер-ретранслятор';
     start.dataset.key = 'relay-start';
     start.disabled = cloudUi.starting;
     input?.addEventListener('keydown', ev => { if (ev.key === 'Enter') start.click(); });
@@ -706,15 +809,13 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
 
   function renderParticipants(box: HTMLElement): void {
     const users = (status.users || []).filter(u => !u.host);
-    if (users.length === 0) {
-      box.appendChild(el('div', 'ctx-label', 'Откройте ссылку на другом устройстве или в тестовом окне'));
-      return;
-    }
-    box.appendChild(el('div', 'ctx-label', `Участники (${users.length}) — права по страницам:`));
+    if (users.length === 0) return;
+    const sec = el('section', 'share-p2p-people');
+    sec.appendChild(el('h3', 'share-cloud-title', 'Участники'));
     if (p2pMessage) {
       const err = el('div', 'share-cloud-error share-p2p-error', p2pMessage);
       err.setAttribute('role', 'alert');
-      box.appendChild(err);
+      sec.appendChild(err);
     }
     const table = el('div', 'share-table');
     for (const u of users) {
@@ -722,45 +823,60 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
       const head2 = el('div', 'share-user-head');
       const dot = el('i');
       dot.style.background = u.away ? '#9aa0ab' : u.color;
-      head2.append(dot, el('span', '', u.name + (u.away ? ' · Отошёл' : '')));
-      row.appendChild(head2);
-      for (const pg of state.project.pages) {
-        const cur = u.rights?.pages?.[pg.id] || u.rights?.default || 'view';
-        const options = (['view', 'edit', 'hidden'] as const).map(v => [v, `${pg.name}: ${v === 'view' ? 'Просмотр' : v === 'edit' ? 'Редактирование' : 'Скрыть'}`] as const);
-        const sel = selectEl('', [...options, ['', `${pg.name}: как у роли`]], cur, `${u.name}, страница «${pg.name}»`);
-        sel.dataset.key = `u${u.userId}-${pg.id}`;
-        sel.addEventListener('change', async () => {
-          // «как у роли» снимает личное право участника на страницу
-          const r = await deps.api.shareSetRights(u.userId, { pages: { [pg.id]: sel.value === '' ? null : sel.value } });
-          p2pMessage = r.ok ? '' : r.error || 'Не удалось изменить права';
+      const name = el('span', 'share-user-name', u.name + (u.away ? ' · Отошёл' : ''));
+      // роль участника (Ночь №6)
+      const role = u.access && u.access.role !== 'owner' ? u.access.role : 'commenter';
+      const roleSel = createSpringSelect({
+        className: 'share-chip share-user-role', label: `Роль участника ${u.name}`, value: role,
+        options: ROLE_OPTIONS.map(r => ({ value: r, label: roleLabel(r), title: ROLE_TIPS[r] })),
+        onChange: async v => {
+          const r = await deps.api.shareSetRights(u.userId, { role: v });
+          p2pMessage = r.ok ? '' : r.error || 'Не удалось изменить роль';
           if (!r.ok) say(p2pMessage);
           await refreshStatus(true);
-        });
-        row.appendChild(sel);
-      }
-      // роль участника (Ночь №6): после прав страниц, чтобы их порядок в строке не менялся
-      const role = u.access && u.access.role !== 'owner' ? u.access.role : 'commenter';
-      const roleSel = selectEl('share-user-role', ROLE_OPTIONS.map(r => [r, `Роль: ${roleLabel(r)}`] as const), role, `Роль участника ${u.name}`);
-      roleSel.dataset.key = `u${u.userId}-role`;
-      roleSel.addEventListener('change', async () => {
-        const r = await deps.api.shareSetRights(u.userId, { role: roleSel.value });
-        p2pMessage = r.ok ? '' : r.error || 'Не удалось изменить роль';
-        if (!r.ok) say(p2pMessage);
-        await refreshStatus(true);
+        },
       });
-      row.appendChild(roleSel);
+      roleSel.el.dataset.key = `u${u.userId}-role`;
+      p2pSelects.push(roleSel);
+      head2.append(dot, name, roleSel.el);
+      row.appendChild(head2);
+      // личные права по страницам: «как у роли» снимает личное право
+      for (const pg of state.project.pages) {
+        const cur = u.rights?.pages?.[pg.id] || u.rights?.default || 'view';
+        const line = el('div', 'share-user-page');
+        line.append(el('span', 'share-user-page-name', pg.name || 'Без названия'));
+        const sel = createSpringSelect({
+          className: 'share-chip share-user-right', label: `${u.name}, страница «${pg.name}»`, value: cur,
+          options: [
+            { value: 'view', label: 'Просмотр' }, { value: 'edit', label: 'Редактирование' }, { value: 'hidden', label: 'Скрыть' },
+            { value: '', label: 'Как у роли' },
+          ],
+          onChange: async v => {
+            const r = await deps.api.shareSetRights(u.userId, { pages: { [pg.id]: v === '' ? null : v } });
+            p2pMessage = r.ok ? '' : r.error || 'Не удалось изменить права';
+            if (!r.ok) say(p2pMessage);
+            await refreshStatus(true);
+          },
+        });
+        sel.el.dataset.key = `u${u.userId}-${pg.id}`;
+        p2pSelects.push(sel);
+        line.append(sel.el);
+        row.appendChild(line);
+      }
       table.appendChild(row);
     }
-    box.appendChild(table);
+    sec.appendChild(table);
+    box.appendChild(sec);
   }
 
   function renderP2P(): void {
     const focusKey = p2pBox.contains(document.activeElement) ? (document.activeElement as HTMLElement).dataset.key : undefined;
+    for (const s of p2pSelects) s.close(true);
+    p2pSelects = [];
     p2pBox.textContent = '';
-    p2pBox.appendChild(el('h3', 'share-cloud-title', 'Подключение без облака'));
     if (!status.active) {
       if (p2pMessage) p2pBox.appendChild(el('div', 'share-cloud-error', p2pMessage));
-      const start = btn('ctx-custom-btn', 'Включить совместную работу', async () => {
+      const start = btn('share-btn-primary share-p2p-start', 'Включить совместную работу', async () => {
         await deps.saveNow();
         const r = await deps.api.shareStart();
         if (!r.ok || (!r.connected && (!r.port || !r.code || !r.hostKey))) {
@@ -773,6 +889,7 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
         if (!r.connected) await deps.startHost(r.port!, r.code!, r.hostKey!);
         await refreshStatus(true);
       });
+      start.title = 'Гости подключаются прямо к этому устройству — без сервера Abax';
       start.dataset.key = 'p2p-start';
       p2pBox.appendChild(start);
     } else {
@@ -780,50 +897,64 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
       if (status.url) {
         const urls = status.urls ?? [];
         const chosen = urls[lanChoice]?.url ?? status.url;
-        const sub = el('div', 'share-cloud-title', status.localOnly ? 'Только на этом компьютере' : `В этой сети${urls[lanChoice] ? ` (${urls[lanChoice].iface} ${urls[lanChoice].address})` : ''}:`);
-        p2pBox.appendChild(sub);
-        const b = copyButton('share-link', chosen);
-        b.dataset.key = 'lan-link';
-        p2pBox.appendChild(b);
-        if (status.localOnly) {
-          p2pBox.appendChild(el('div', 'share-cloud-status warn', 'Нет подключения к сети: адрес 127.0.0.1 работает только на этом компьютере. Подключитесь к Wi-Fi или позовите гостей через интернет.'));
-        } else if (urls.length > 1) {
-          const other = selectEl('share-invite-select share-lan-choice', urls.map((u, i) => [String(i), `${u.iface} ${u.address}${u.kind === 'virtual' ? ' (виртуальный адаптер)' : ''}`] as const), String(lanChoice), 'Другой адрес этого компьютера');
-          other.dataset.key = 'lan-choice';
-          other.addEventListener('change', () => { lanChoice = Number(other.value) || 0; renderP2P(); });
-          const lbl = el('label', 'share-invite-role');
-          lbl.append(el('span', '', 'Другой адрес: '), other);
-          p2pBox.appendChild(lbl);
+        const lan = el('section', 'share-lan');
+        const sub = el('div', 'share-lan-head');
+        sub.append(el('h3', 'share-cloud-title', status.localOnly ? 'Только на этом компьютере' : 'В этой сети'));
+        if (!status.localOnly && urls.length > 1) {
+          const other = createSpringSelect({
+            className: 'share-chip share-lan-choice', label: 'Другой адрес этого компьютера', value: String(lanChoice),
+            options: urls.map((u, i) => ({ value: String(i), label: `${u.iface} ${u.address}`, title: u.kind === 'virtual' ? 'Виртуальный адаптер' : undefined })),
+            onChange: v => { lanChoice = Number(v) || 0; renderP2P(); },
+          });
+          other.el.dataset.key = 'lan-choice';
+          p2pSelects.push(other);
+          sub.append(other.el);
         }
-        const testBtn = btn('ctx-custom-btn', '+ Тестовое окно гостя', () => { void deps.api.shareOpenTestWindow(); });
-        testBtn.dataset.key = 'test';
-        p2pBox.appendChild(testBtn);
+        lan.append(sub);
+        const where = urls[lanChoice] ? `${urls[lanChoice].iface} ${urls[lanChoice].address}. ` : '';
+        const b = copyButton('share-link', chosen, `${where}Откройте ссылку на другом устройстве или в тестовом окне. Клик — скопировать`);
+        b.dataset.key = 'lan-link';
+        lan.appendChild(b);
+        if (status.localOnly) {
+          lan.appendChild(el('div', 'share-cloud-status warn', 'Нет подключения к сети: адрес 127.0.0.1 работает только на этом компьютере. Подключитесь к Wi-Fi или позовите гостей через интернет.'));
+        }
+        p2pBox.appendChild(lan);
       }
       renderRelay(p2pBox);
-      const stopBtn = btn('ctx-custom-btn danger', 'Выключить совместную работу', async () => {
+      renderParticipants(p2pBox);
+      const actions = el('div', 'share-p2p-actions');
+      if (status.url) {
+        const testBtn = btn('share-btn-soft', 'Тестовое окно гостя', () => { void deps.api.shareOpenTestWindow(); });
+        testBtn.title = 'Открыть окно гостя на этом компьютере — посмотреть доску его глазами';
+        testBtn.dataset.key = 'test';
+        actions.appendChild(testBtn);
+      }
+      const stopBtn = btn('share-btn-soft danger', 'Выключить совместную работу', async () => {
         await deps.api.shareStop();
         deps.stopCollab();
         Object.assign(cloudUi, { starting: false, error: null, askRelay: false });
         await refreshStatus(true);
       });
       stopBtn.dataset.key = 'p2p-stop';
-      p2pBox.appendChild(stopBtn);
-      renderParticipants(p2pBox);
+      actions.appendChild(stopBtn);
+      p2pBox.appendChild(actions);
     }
     if (focusKey) p2pBox.querySelector<HTMLElement>(`[data-key="${attrValue(focusKey)}"]`)?.focus();
   }
 
-  /** Размещение блоков: без облака путь без сервера — первым и развёрнут; с облаком — свёрнут, но не скрыт. */
+  /** Размещение блоков: без облака путь без сервера — на вкладке «Поделиться» первым и развёрнут; с облаком — в спойлере внизу. */
   function layout(): void {
     const cloud = cloudShareAvailable();
     cloudBox.hidden = !cloud;
-    if (!cloudBox.parentElement) panelShare.appendChild(cloudBox);
     if (cloud) {
-      if (p2pBox.parentElement !== otherWays) otherWays.appendChild(p2pBox);
-      if (otherWays.parentElement !== panelShare) panelShare.appendChild(otherWays);
-      if (status.active) otherWays.open = true;
+      if (p2pBox.parentElement !== p2pHolder) p2pHolder.append(p2pBox);
+      if (cloudBox.parentElement !== main.inner) main.inner.prepend(cloudBox);
+      if (otherWays.parentElement !== main.inner) main.inner.append(otherWays);
+      // идёт совместная работа без облака — спойлер раскрыт
+      if (status.active && !otherWays.open) otherWays.open = true;
     } else {
-      if (p2pBox.parentElement !== panelShare) panelShare.insertBefore(p2pBox, panelShare.firstChild);
+      if (p2pBox.parentElement !== main.inner) main.inner.prepend(p2pBox);
+      if (cloudBox.parentElement !== main.inner) main.inner.append(cloudBox);
       otherWays.remove();
     }
   }
@@ -831,15 +962,43 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
   async function refreshStatus(force = false): Promise<void> {
     try { status = await deps.api.shareStatus(); } catch { status = { active: false }; }
     const key = JSON.stringify([status, cloudUi.starting, cloudUi.error, cloudUi.askRelay, lanChoice, p2pMessage, state.project.pages.map(p => [p.id, p.name])]);
-    if (force || key !== statusKey) { statusKey = key; renderP2P(); }
+    // пока в блоке открыт выпадающий список, блок не пересоздаётся (меню не пропадёт из-под руки):
+    // statusKey не обновлён — перерисует следующее обновление
+    if ((force || key !== statusKey) && !p2pSelects.some(s => s.open)) { statusKey = key; renderP2P(); }
     layout();
-    renderPresent();
+    watchPresence();
   }
 
-  // ----- Вкладка «Настройки доступа» -----
+  // ----- Страница «Настройки доступа»: узлы создаются один раз, renderSettings() только сверяет значения -----
 
   /** Состояние редактора именного адреса между перерисовками. */
-  const aliasUi = { loadedFor: '', alias: null as string | null, former: [] as string[], draft: '', message: '', busy: false, confirmRelease: '' };
+  const aliasUi = {
+    loadedFor: '', alias: null as string | null, former: [] as string[], draft: '', message: '', busy: false, confirmRelease: '',
+    /** Свободные похожие адреса, если введённый занят. */
+    suggestions: [] as string[],
+  };
+  /** Проверка адреса на лету: пауза после ввода и номер запроса (ответ на устаревший ввод не показывается). */
+  let aliasCheckTimer = 0;
+  let aliasCheckSeq = 0;
+  /** Пока владелец печатает: свободен ли адрес, а если занят или короток — свободные похожие (без «Сохранить»). */
+  function scheduleAliasCheck(): void {
+    clearTimeout(aliasCheckTimer);
+    const seq = ++aliasCheckSeq;
+    const v = aliasUi.draft.trim();
+    if (!isAliasShaped(v) || ownAlias(v) || planLocks('canSetAlias')) return;
+    const id = state.project.id;
+    aliasCheckTimer = window.setTimeout(() => {
+      void checkAlias(id, v).then(r => {
+        if (seq !== aliasCheckSeq || state.project.id !== id || aliasUi.draft.trim() !== v) return;
+        aliasUi.suggestions = r.suggestions;
+        if (r.status === 'taken') aliasUi.message = 'Этот адрес уже занят';
+        else if (r.status === 'blocked') aliasUi.message = 'Этот адрес заблокирован';
+        renderAliasMessage();
+      }, () => { /* без сети — проверит «Сохранить» */ });
+    }, ALIAS_CHECK_MS);
+  }
+  /** Свой адрес (текущий или бывший) можно вернуть, даже если он короче нынешнего минимума. */
+  const ownAlias = (v: string) => v === aliasUi.alias || aliasUi.former.includes(v);
 
   async function loadAlias(): Promise<void> {
     if (!cloudShareAvailable() || !cloudSynced()) return;
@@ -856,11 +1015,22 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
   }
 
   async function submitAlias(): Promise<void> {
+    // ответ проверки на лету, пришедший после нажатия, уже не нужен
+    aliasCheckSeq++;
+    clearTimeout(aliasCheckTimer);
     const draft = aliasUi.draft.trim();
-    const problem = aliasProblem(draft);
-    if (problem) { aliasUi.message = problem; renderSettings(); return; }
+    const problem = ownAlias(draft) ? null : aliasProblem(draft);
+    if (problem) {
+      // та же подсказка уже видна под полем (проверка на лету) — второй строкой её не повторяем; пустое поле — подсказываем
+      aliasUi.message = aliasProblemEl.textContent ? '' : problem;
+      aliasProblemEl.classList.add('is-error');
+      shakeField(aliasField);
+      renderSettings();
+      return;
+    }
     aliasUi.busy = true;
     aliasUi.message = '';
+    aliasUi.suggestions = [];
     renderSettings();
     try {
       const r = await saveAlias(state.project.id, draft);
@@ -868,7 +1038,11 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
       aliasUi.former = r.former;
       if (link) link = { ...link, alias: r.alias, prettyUrl: r.prettyUrl ?? link.prettyUrl };
       say(`Именной адрес: ${r.alias}`);
-    } catch (e) { aliasUi.message = aliasErrorText(e); } finally { aliasUi.busy = false; renderSettings(); renderLink(); }
+    } catch (e) {
+      aliasUi.message = aliasErrorText(e);
+      aliasUi.suggestions = aliasSuggestionsOf(e);
+      shakeField(aliasField);
+    } finally { aliasUi.busy = false; renderSettings(); renderLink(); }
   }
 
   async function doRelease(alias: string): Promise<void> {
@@ -882,203 +1056,297 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
     } catch (e) { aliasUi.message = aliasErrorText(e); } finally { aliasUi.busy = false; renderSettings(); renderLink(); }
   }
 
-  /** Галочка настройки; locked — недоступна на тарифе (метка Pro). */
-  function check(field: string, text: string, checked: boolean, onChange: (on: boolean) => void, locked = false): HTMLElement {
-    const row = el('label', 'share-invite-check');
-    const cb = el('input');
-    cb.type = 'checkbox';
-    cb.dataset.field = field;
-    cb.dataset.key = field;
-    cb.checked = checked;
-    cb.disabled = locked;
-    cb.addEventListener('change', () => { onChange(cb.checked); renderSettings(); });
-    row.append(cb, el('span', '', text));
-    if (locked) row.appendChild(el('span', 'share-pro-tag', 'Pro'));
-    return row;
-  }
+  const section = (cls: string, heading: string): HTMLElement => {
+    const s = el('section', `share-section ${cls}`);
+    s.appendChild(el('h3', 'share-cloud-title', heading));
+    return s;
+  };
+  const proTag = () => el('span', 'share-pro-tag', 'Pro');
 
-  function renderAliasEditor(box: HTMLElement): void {
-    const sec = el('section', 'share-alias');
-    sec.appendChild(el('h3', 'share-cloud-title', 'Именной адрес'));
-    const locked = planLocks('canSetAlias');
-    sec.appendChild(el('div', 'share-hint', 'Короткий адрес вроде /j/physics-9a ведёт на общую ссылку доски и даёт те же права. Это не секрет: его может набрать любой.'));
-    const row = el('div', 'share-alias-row');
-    const prefix = el('span', 'share-alias-prefix', '/j/');
-    const input = el('input', 'share-alias-input');
-    input.type = 'text';
-    input.value = aliasUi.draft;
-    input.placeholder = 'physics-9a';
-    input.maxLength = ALIAS_MAX;
-    input.spellcheck = false;
-    input.autocomplete = 'off';
-    input.dataset.key = 'alias-input';
-    input.setAttribute('aria-label', 'Именной адрес доски');
-    input.disabled = locked || aliasUi.busy;
-    const save = btn('ctx-custom-btn share-alias-save', aliasUi.alias ? 'Изменить' : 'Сохранить', () => { void submitAlias(); });
-    save.dataset.key = 'alias-save';
-    save.disabled = locked || aliasUi.busy;
-    const problemEl = el('div', 'share-hint share-alias-problem');
-    problemEl.setAttribute('aria-live', 'polite');
-    const showProblem = () => {
-      const v = input.value.trim();
-      problemEl.textContent = v ? aliasProblem(v) ?? '' : '';
-    };
-    input.addEventListener('input', () => { aliasUi.draft = input.value.toLowerCase(); if (input.value !== aliasUi.draft) input.value = aliasUi.draft; aliasUi.message = ''; showProblem(); });
-    input.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); void submitAlias(); } });
-    row.append(prefix, input, save);
-    if (locked) row.appendChild(el('span', 'share-pro-tag', 'Pro'));
-    sec.appendChild(row);
+  // страницы: «По роли» / «Только просмотр» / «Скрыта»; старое «редактирование для всех» — пока стоит
+  const pagesSec = section('share-page-rights', 'Страницы');
+  // длинный список страниц прокручивается внутри своей карточки — со своей тонкой полосой прокрутки
+  const pagesCard = el('div', 'share-card share-pages-card');
+  const pagesList = el('div', 'share-rows share-pages-list');
+  pagesCard.append(pagesList);
+  pagesSec.append(pagesCard);
+  const pagesScroll = attachOverlayScroll(pagesList, { axis: 'y', host: pagesCard, edges: 'shadow' });
+  const pageSelects = new Map<string, { sel: SpringSelect; opts: string }>();
+
+  // права участников: переключатели с короткой подписью, пояснение — в подсказке
+  const permSec = section('share-perms', 'Права участников');
+  const permCard = el('div', 'share-card share-rows');
+  permSec.append(permCard);
+  const toggleRow = (field: string, label: string, hint: string, onChange: (on: boolean) => void): { row: HTMLLabelElement; input: HTMLInputElement } => {
+    const row = createToggleSwitch({ className: 'share-toggle share-setting', label, checked: false, onChange: on => { onChange(on); renderSettings(); }, title: hint });
+    const input = row.querySelector<HTMLInputElement>('.switch-input')!;
+    input.dataset.field = field;
+    input.dataset.key = field;
+    return { row, input };
+  };
+  const protectT = toggleRow('protectElements', 'Защита чужих элементов', 'Участники не могут сдвигать, менять и стирать чужие элементы — только свои',
+    on => setPermissionField('protectElements', on ? true : undefined));
+  const copyT = toggleRow('allowCopy', 'Копирование и экспорт', 'Читатели и комментаторы могут копировать и экспортировать. Видимое на экране всё равно можно сфотографировать',
+    on => {
+      setPermissionField('allowCopy', on ? undefined : false);
+      // старые ссылки с запретом копирования не должны молча его потерять — ссылка получает тот же флаг
+      if (link) void saveLink(state.project.id, { defaultRole: link.role, allowCopy: on }).then(r => { link = r; }, () => {});
+    });
+  const cloneT = toggleRow('allowClone', 'Копия доски себе', 'Участники могут сделать себе копию доски',
+    on => setPermissionField('forbidClone', on ? undefined : true));
+  const linkViewT = toggleRow('linkView', 'Просмотр по ссылке на доску', 'Ссылка на доску или страницу открывает её только для чтения — без приглашения',
+    on => setPermissionField('linkView', on ? undefined : false));
+  for (const t of [copyT, cloneT]) t.row.insertBefore(proTag(), t.input);
+  permCard.append(protectT.row, copyT.row, cloneT.row, linkViewT.row);
+
+  // гости: кто зовёт всех к себе (сегменты), максимум гостей (счётчик)
+  const guestsSec = section('share-guests', 'Гости');
+  const guestsCard = el('div', 'share-card share-rows');
+  guestsSec.append(guestsCard);
+  const summonRow = el('div', 'share-setting share-summon');
+  const summonLabel = el('span', 'share-setting-label', 'Позвать всех к себе');
+  tip(summonLabel, 'Кто может перенести всех участников к себе на экран');
+  const summon = createSegmented({
+    className: 'share-summon-seg', label: 'Кто может позвать всех к себе', value: 'owner',
+    options: [{ value: 'owner', label: 'Только я' }, { value: 'editors', label: 'И редакторы', title: 'Я и редакторы' }],
+    onChange: v => { setPermissionField('summon', v === 'editors' ? 'editors' : undefined); renderSettings(); },
+  });
+  for (const b of summon.el.querySelectorAll<HTMLElement>('[role="radio"]')) b.dataset.key = `summon-${b.dataset.value}`;
+  summonRow.append(summonLabel, summon.el);
+  const maxRow = el('div', 'share-setting share-max-guests');
+  const maxLabel = el('span', 'share-setting-label', 'Максимум гостей');
+  const maxOrder = [...MAX_GUESTS_OPTIONS.filter(n => n > 0), 0];
+  const maxStepper = createNumberStepper({
+    className: 'share-max-stepper', label: 'Максимум гостей', values: maxOrder, value: 0,
+    format: n => (n === 0 ? '∞' : String(n)), spoken: n => (n === 0 ? 'без ограничений' : String(n)),
+    onChange: n => { setMaxGuestsInProject(n); renderSettings(); },
+  });
+  maxStepper.el.dataset.field = 'maxGuests';
+  maxStepper.el.dataset.key = 'maxGuests';
+  const maxPro = proTag();
+  maxRow.append(maxLabel, maxPro, maxStepper.el);
+  guestsCard.append(summonRow, maxRow);
+
+  // ссылка: именной адрес, бывшие адреса, сброс
+  const aliasSec = section('share-alias', 'Ссылка');
+  const aliasCard = el('div', 'share-card share-rows');
+  const aliasLabelRow = el('div', 'share-setting share-alias-head');
+  const aliasLabel = el('span', 'share-setting-label', 'Именной адрес');
+  const aliasPro = proTag();
+  aliasLabelRow.append(aliasLabel, aliasPro);
+  const aliasRow = el('div', 'share-alias-row');
+  const aliasField = el('div', 'share-alias-field');
+  const aliasPrefix = el('span', 'share-alias-prefix', '/j/');
+  const aliasInput = el('input', 'share-alias-input');
+  aliasInput.type = 'text';
+  aliasInput.placeholder = 'physics-9a-2026';
+  aliasInput.maxLength = ALIAS_MAX;
+  aliasInput.spellcheck = false;
+  aliasInput.autocomplete = 'off';
+  aliasInput.dataset.key = 'alias-input';
+  aliasInput.setAttribute('aria-label', 'Именной адрес доски');
+  aliasField.append(aliasPrefix, aliasInput);
+  const aliasSave = btn('share-alias-save share-btn-soft', 'Сохранить', () => { void submitAlias(); });
+  aliasSave.dataset.key = 'alias-save';
+  aliasRow.append(aliasField, aliasSave);
+  const aliasProblemEl = el('div', 'share-hint share-alias-problem');
+  aliasProblemEl.setAttribute('aria-live', 'polite');
+  const aliasErr = el('div', 'share-cloud-error');
+  aliasErr.setAttribute('role', 'alert');
+  const showProblem = () => {
+    const v = aliasInput.value.trim();
+    aliasProblemEl.textContent = v && !ownAlias(v) ? aliasProblem(v) ?? '' : '';
+  };
+  // свободные похожие адреса под ошибкой «занят»: нажатие подставляет адрес в поле, сохраняет — «Сохранить»
+  const aliasSuggest = el('div', 'share-alias-suggest');
+  const aliasSuggestList = el('div', 'share-alias-suggest-list');
+  aliasSuggest.append(el('span', 'share-alias-suggest-label', 'Свободны:'), aliasSuggestList);
+  function pickSuggestion(v: string): void {
+    aliasUi.draft = v;
+    aliasInput.value = v;
+    aliasUi.message = '';
+    aliasUi.suggestions = [];
+    aliasCheckSeq++;
+    clearTimeout(aliasCheckTimer);
+    aliasField.classList.remove('is-bad');
+    aliasProblemEl.classList.remove('is-error');
     showProblem();
-    sec.appendChild(problemEl);
-    if (aliasUi.message) {
-      const err = el('div', 'share-cloud-error', aliasUi.message);
-      err.setAttribute('role', 'alert');
-      sec.appendChild(err);
-    }
-    if (aliasUi.former.length > 0) {
-      sec.appendChild(el('div', 'share-cloud-title', 'Бывшие адреса — ведут на эту же доску'));
-      const list = el('ul', 'share-people');
-      for (const f of aliasUi.former) {
-        const li = el('li', 'share-person');
-        li.appendChild(el('span', 'share-person-name', `/j/${f}`));
-        if (aliasUi.confirmRelease === f) {
-          const c = el('span', 'share-confirm');
-          c.appendChild(el('span', '', 'Адрес перестанет вести на доску и больше никому не достанется. '));
-          const yes = btn('ctx-custom-btn danger', 'Освободить', () => { void doRelease(f); });
-          yes.dataset.key = `release-yes-${f}`;
-          const no = btn('ctx-custom-btn', 'Отмена', () => { aliasUi.confirmRelease = ''; renderSettings(); });
-          no.dataset.key = `release-no-${f}`;
-          c.append(yes, no);
-          li.appendChild(c);
-        } else {
-          const rel = btn('share-inline-btn', 'Освободить', () => { aliasUi.confirmRelease = f; renderSettings(); settingsBox.querySelector<HTMLElement>(`[data-key="release-no-${attrValue(f)}"]`)?.focus(); }, `Освободить адрес ${f}`);
-          rel.dataset.key = `release-${f}`;
-          li.appendChild(rel);
-        }
-        list.appendChild(li);
-      }
-      sec.appendChild(list);
-    }
-    if (!link?.enabled) sec.appendChild(el('div', 'share-hint', 'Адрес работает, пока включена общая ссылка.'));
-    box.appendChild(sec);
+    renderAliasMessage();
+    aliasInput.focus();
+  }
+  aliasInput.addEventListener('input', () => {
+    aliasUi.draft = aliasInput.value.toLowerCase();
+    if (aliasInput.value !== aliasUi.draft) aliasInput.value = aliasUi.draft;
+    aliasUi.message = '';
+    aliasUi.suggestions = [];
+    aliasField.classList.remove('is-bad');
+    aliasProblemEl.classList.remove('is-error');
+    showProblem();
+    renderAliasMessage();
+    scheduleAliasCheck();
+  });
+  aliasInput.addEventListener('keydown', ev => { if (ev.key === 'Enter') { ev.preventDefault(); void submitAlias(); } });
+  const formerHead = el('div', 'share-cloud-title share-former-title', 'Бывшие адреса');
+  tip(formerHead, 'Ведут на эту же доску');
+  const formerList = el('ul', 'share-people share-former');
+  aliasCard.append(aliasLabelRow, aliasRow, aliasProblemEl, formerHead, formerList);
+  aliasSec.append(aliasCard);
+
+  settings.inner.append(pagesSec, permSec, guestsSec, aliasSec);
+
+  function renderAliasMessage(): void {
+    // ошибка сервера с тем же текстом, что подсказка под полем, — не повторяется
+    if (aliasUi.message && aliasUi.message === aliasProblemEl.textContent) { aliasUi.message = ''; aliasProblemEl.classList.add('is-error'); }
+    aliasErr.textContent = aliasUi.message;
+    if (aliasUi.message && !aliasErr.isConnected) aliasProblemEl.after(aliasErr);
+    else if (!aliasUi.message) aliasErr.remove();
+    reconcile(aliasSuggestList, aliasUi.suggestions, v => v, (v, prev) => {
+      if (prev) return prev;
+      const b = btn('share-alias-chip', v, () => pickSuggestion(v));
+      tip(b, `Подставить /j/${v}`);
+      return b;
+    });
+    if (aliasUi.suggestions.length && !aliasSuggest.isConnected) (aliasErr.isConnected ? aliasErr : aliasProblemEl).after(aliasSuggest);
+    else if (!aliasUi.suggestions.length) aliasSuggest.remove();
   }
 
-  function renderSettings(): void {
-    const focusKey = settingsBox.contains(document.activeElement) ? (document.activeElement as HTMLElement).dataset.key : undefined;
-    settingsBox.textContent = '';
+  function renderPages(): void {
     const perms = state.project.permissions ?? {};
     const legacyLink = link?.role === 'edit' || link?.role === 'view';
-
-    // права страниц: «По роли» / «Только просмотр» / «Скрыта»; старое «редактирование для всех» — пока стоит
-    const pages = el('section', 'share-page-rights');
-    pages.appendChild(el('h3', 'share-cloud-title', 'Страницы'));
+    type Item = { key: string; pg?: typeof state.project.pages[number]; warn?: boolean };
+    const items: Item[] = [];
     for (const pg of state.project.pages) {
-      const row = el('label', 'share-page-right');
-      row.dataset.pageId = pg.id;
-      row.appendChild(el('span', 'share-page-name', pg.name || 'Без названия'));
+      items.push({ key: `p${pg.id}`, pg });
+      if (perms.pageRights?.[pg.id] === 'edit') items.push({ key: `w${pg.id}`, pg, warn: true });
+    }
+    const alive = new Set<string>();
+    reconcile(pagesList, items, x => x.key, (x, prev) => {
+      const pg = x.pg!;
       const cur = perms.pageRights?.[pg.id];
-      const options: (readonly [string, string])[] = [['', 'По роли'], ['view', 'Только просмотр'], ['hidden', 'Скрыта']];
-      if (cur === 'edit') options.splice(1, 0, ['edit', 'Редактирование для всех (старая настройка)']);
-      const sel = selectEl('share-invite-select', options, isPageRight(cur) ? cur : '', `Доступ к странице «${pg.name}»`);
-      sel.dataset.key = `page-${pg.id}`;
-      sel.addEventListener('change', () => {
-        const v = sel.value;
-        setPageRightInProject(pg.id, isPageRight(v) ? v as PageRight : '');
-        renderSettings();
-      });
-      row.appendChild(sel);
-      pages.appendChild(row);
-      if (cur === 'edit') {
-        const warn = el('div', 'share-warn');
+      if (x.warn) {
+        const warn = prev ?? el('div', 'share-warn');
+        warn.textContent = '';
         warn.appendChild(el('span', '', legacyLink
           ? `«${pg.name}»: по старой настройке гости старой ссылки могут её редактировать. Для новых ролей действует роль. `
           : `«${pg.name}»: старая настройка «редактирование для всех» больше не повышает роль — действует роль. `));
         const ok = btn('share-inline-btn', 'Понятно', () => { setPageRightInProject(pg.id, ''); renderSettings(); }, `Понятно: страница «${pg.name}» — по роли`);
         ok.dataset.key = `page-ok-${pg.id}`;
         warn.appendChild(ok);
-        pages.appendChild(warn);
+        return warn;
       }
-    }
-    settingsBox.appendChild(pages);
+      alive.add(pg.id);
+      const row = prev ?? el('div', 'share-page-right share-setting');
+      row.dataset.pageId = pg.id;
+      let entry = pageSelects.get(pg.id);
+      if (!entry) {
+        const sel = createSpringSelect({
+          className: 'share-chip share-page-select', label: `Доступ к странице «${pg.name}»`, options: PAGE_RIGHT_OPTIONS, value: '',
+          onChange: v => { setPageRightInProject(pg.id, isPageRight(v) ? v as PageRight : ''); renderSettings(); },
+        });
+        sel.el.dataset.key = `page-${pg.id}`;
+        entry = { sel, opts: '' };
+        pageSelects.set(pg.id, entry);
+        row.append(el('span', 'share-page-name share-setting-label'), sel.el);
+      }
+      row.querySelector('.share-page-name')!.textContent = pg.name || 'Без названия';
+      const options = cur === 'edit' ? [PAGE_RIGHT_OPTIONS[0], { value: 'edit', label: 'Редактирование для всех (старая настройка)' }, ...PAGE_RIGHT_OPTIONS.slice(1)] : [...PAGE_RIGHT_OPTIONS];
+      const value = isPageRight(cur) ? cur : '';
+      const opts = JSON.stringify(options.map(o => o.value));
+      if (entry.opts !== opts) { entry.sel.setOptions(options, value); entry.opts = opts; }
+      else entry.sel.setValue(value);
+      return row;
+    });
+    for (const [id, entry] of pageSelects) if (!alive.has(id)) { entry.sel.close(true); pageSelects.delete(id); }
+  }
 
-    // защита чужих элементов
-    const protect = el('section', 'share-protect');
-    protect.appendChild(el('h3', 'share-cloud-title', 'Защита'));
-    protect.appendChild(check('protectElements', 'Участники не могут сдвигать, менять и стирать чужие элементы (свои — могут)',
-      perms.protectElements === true, on => setPermissionField('protectElements', on ? true : undefined)));
-    settingsBox.appendChild(protect);
+  function renderFormer(): void {
+    reconcile(formerList, aliasUi.former, f => `f${f}`, (f, prev) => {
+      const li = prev ?? el('li', 'share-person');
+      li.textContent = '';
+      li.appendChild(el('span', 'share-person-name', `/j/${f}`));
+      if (aliasUi.confirmRelease === f) {
+        const c = el('span', 'share-confirm');
+        const text = el('span', 'share-confirm-text', 'Адрес больше никому не достанется');
+        text.title = 'Адрес перестанет вести на доску и больше никому не достанется';
+        c.appendChild(text);
+        const yes = btn('share-btn-soft danger', 'Освободить', () => { void doRelease(f); });
+        yes.dataset.key = `release-yes-${f}`;
+        const no = btn('share-btn-soft', 'Отмена', () => { aliasUi.confirmRelease = ''; renderSettings(); });
+        no.dataset.key = `release-no-${f}`;
+        c.append(yes, no);
+        li.appendChild(c);
+      } else {
+        const rel = btn('share-inline-btn', 'Освободить', () => {
+          aliasUi.confirmRelease = f;
+          renderSettings();
+          formerList.querySelector<HTMLElement>(`[data-key="release-no-${attrValue(f)}"]`)?.focus();
+        }, `Освободить адрес ${f}`);
+        rel.dataset.key = `release-${f}`;
+        li.appendChild(rel);
+      }
+      return li;
+    });
+    formerHead.hidden = aliasUi.former.length === 0;
+    formerList.hidden = aliasUi.former.length === 0;
+  }
 
-    // копирование и копия доски
-    const copy = el('section', 'share-copy-settings');
-    copy.appendChild(el('h3', 'share-cloud-title', 'Копирование'));
+  /** Строка адреса или подтверждение сброса на её месте. */
+  function renderReset(): void {
+    const on = !!link?.enabled;
+    const confirming = confirmReset && !!link;
+    urlRow.hidden = !on || confirming;
+    resetConfirm.hidden = !confirming;
+    resetBtn.disabled = linkBusy;
+    resetYes.disabled = linkBusy;
+  }
+
+  function renderSettings(): void {
+    const perms = state.project.permissions ?? {};
+    renderPages();
+    setToggleChecked(protectT.input, perms.protectElements === true);
     const copyLocked = planLocks('canProtectCopy');
-    copy.appendChild(check('allowCopy', 'Читатели и комментаторы могут копировать и экспортировать (видимое на экране всё равно можно сфотографировать)',
-      copyLocked ? true : perms.allowCopy !== false, on => {
-        setPermissionField('allowCopy', on ? undefined : false);
-        // старые ссылки с запретом копирования не должны молча его потерять — ссылка получает тот же флаг
-        if (link) void saveLink(state.project.id, { defaultRole: link.role, allowCopy: on }).then(r => { link = r; }, () => {});
-      }, copyLocked));
+    setToggleChecked(copyT.input, copyLocked ? true : perms.allowCopy !== false);
+    copyT.input.disabled = copyLocked;
+    copyT.row.classList.toggle('locked', copyLocked);
     const cloneLocked = planLocks('canProtectClone');
-    copy.appendChild(check('allowClone', 'Можно сделать копию доски себе', cloneLocked ? true : perms.forbidClone !== true,
-      on => setPermissionField('forbidClone', on ? undefined : true), cloneLocked));
-    settingsBox.appendChild(copy);
-
-    // ссылки
-    const links = el('section', 'share-links-settings');
-    links.appendChild(el('h3', 'share-cloud-title', 'Ссылки'));
-    links.appendChild(check('linkView', 'Просмотр по ссылке на доску и страницу (без приглашения, только чтение)', perms.linkView !== false,
-      on => setPermissionField('linkView', on ? undefined : false)));
-    settingsBox.appendChild(links);
-    if (cloudShareAvailable() && cloudSynced()) renderAliasEditor(settingsBox);
-
-    // участники
-    const people = el('section', 'share-settings-people');
-    people.appendChild(el('h3', 'share-cloud-title', 'Участники'));
-    const group = el('div', 'share-radio-group');
-    group.setAttribute('role', 'radiogroup');
-    group.setAttribute('aria-label', 'Кто может позвать всех к себе');
-    group.appendChild(el('span', 'share-radio-title', 'Кто может позвать всех к себе:'));
-    for (const [v, t] of [['owner', 'Только я'], ['editors', 'Я и редакторы']] as const) {
-      const lbl = el('label', 'share-radio');
-      const r = el('input');
-      r.type = 'radio';
-      r.name = 'share-summon';
-      r.value = v;
-      r.dataset.key = `summon-${v}`;
-      r.checked = (perms.summon ?? 'owner') === v;
-      r.addEventListener('change', () => { if (r.checked) { setPermissionField('summon', v === 'editors' ? 'editors' : undefined); renderSettings(); } });
-      lbl.append(r, el('span', '', t));
-      group.appendChild(lbl);
-    }
-    people.appendChild(group);
+    setToggleChecked(cloneT.input, cloneLocked ? true : perms.forbidClone !== true);
+    cloneT.input.disabled = cloneLocked;
+    cloneT.row.classList.toggle('locked', cloneLocked);
+    for (const [t, locked] of [[copyT, copyLocked], [cloneT, cloneLocked]] as const) t.row.querySelector<HTMLElement>('.share-pro-tag')!.hidden = !locked;
+    setToggleChecked(linkViewT.input, perms.linkView !== false);
+    summon.setValue(perms.summon === 'editors' ? 'editors' : 'owner');
     const maxLocked = planLocks('canSetMaxGuests');
-    const maxRow = el('label', 'share-invite-role share-max-guests');
-    maxRow.appendChild(el('span', '', 'Максимум гостей: '));
     const curMax = perms.maxGuests ?? 0;
-    const opts = [...new Set([...MAX_GUESTS_OPTIONS, curMax && curMax <= 50 ? curMax : 0])].sort((a, b) => a - b);
-    const maxSel = selectEl('share-invite-select', opts.map(n => [String(n), n === 0 ? 'без ограничений' : String(n)] as const), maxLocked ? '1' : String(curMax || 0), 'Максимум гостей');
-    maxSel.dataset.field = 'maxGuests';
-    maxSel.dataset.key = 'maxGuests';
-    maxSel.disabled = maxLocked;
-    maxSel.addEventListener('change', () => { setMaxGuestsInProject(Number(maxSel.value)); renderSettings(); });
-    maxRow.appendChild(maxSel);
-    if (maxLocked) {
-      maxRow.appendChild(el('span', 'share-pro-tag', 'Pro'));
-      maxRow.title = 'На бесплатном тарифе — один гость. Свой лимит гостей доступен в подписке Pro';
+    maxStepper.setValue(maxLocked ? 1 : (maxOrder.includes(curMax) ? curMax : 0));
+    maxStepper.setDisabled(maxLocked);
+    maxPro.hidden = !maxLocked;
+    tip(maxRow, maxLocked ? 'На бесплатном тарифе — один гость. Свой лимит гостей доступен в подписке Pro' : 'Сколько гостей может быть на доске одновременно');
+    // ссылка — только для доски в облаке
+    const cloud = cloudShareAvailable() && cloudSynced();
+    aliasSec.hidden = !cloud;
+    if (cloud) {
+      const locked = planLocks('canSetAlias');
+      aliasPro.hidden = !locked;
+      tip(aliasLabel, `Короткий адрес вроде /j/physics-9a-2026 ведёт на общую ссылку доски и даёт те же права. Это не секрет: его может набрать любой.${link?.enabled ? '' : ' Работает, пока включена общая ссылка.'}`);
+      if (document.activeElement !== aliasInput && aliasInput.value !== aliasUi.draft) aliasInput.value = aliasUi.draft;
+      aliasInput.disabled = locked || aliasUi.busy;
+      aliasSave.disabled = locked || aliasUi.busy;
+      aliasSave.textContent = aliasUi.alias ? 'Изменить' : 'Сохранить';
+      showProblem();
+      renderAliasMessage();
+      renderFormer();
+      if (aliasUi.loadedFor !== state.project.id) void loadAlias();
     }
-    people.appendChild(maxRow);
-    settingsBox.appendChild(people);
-    if (focusKey) settingsBox.querySelector<HTMLElement>(`[data-key="${attrValue(focusKey)}"]`)?.focus();
-    if (cloudShareAvailable() && cloudSynced() && aliasUi.loadedFor !== state.project.id) void loadAlias();
   }
 
   // ----- Открытие, клавиатура, закрытие -----
 
   function onKey(ev: KeyboardEvent): void {
     if (ev.key === 'Escape') {
-      if (confirmReset) { confirmReset = false; renderLink(); ev.stopPropagation(); return; }
       ev.preventDefault();
       ev.stopPropagation();
+      if (confirmReset) { confirmReset = false; renderReset(); return; }
+      if (aliasUi.confirmRelease) { aliasUi.confirmRelease = ''; renderSettings(); return; }
       close();
       return;
     }
@@ -1093,7 +1361,7 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
   }
   dlg.addEventListener('keydown', onKey);
 
-  const onPresence = () => renderPresent();
+  const onPresence = () => watchPresence();
   document.addEventListener(PRESENCE_EVENT, onPresence);
   const timer = window.setInterval(() => {
     if (!dlg.isConnected) { close(); return; }
@@ -1107,18 +1375,25 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
     current = null;
     clearInterval(timer);
     clearTimeout(emailsTimer);
+    clearTimeout(sentTimer);
+    clearTimeout(copyTimer);
+    clearTimeout(aliasCheckTimer);
     document.removeEventListener(PRESENCE_EVENT, onPresence);
+    for (const s of [linkRole, emailRoleSel, ...p2pSelects, ...[...emailSelects.values()].map(x => x.sel), ...[...pageSelects.values()].map(x => x.sel)]) s.close(true);
+    fitObserver?.disconnect();
+    for (const sc of [...scrolls, pagesScroll]) sc.destroy();
     releaseMenu('share');
     closeMenu(dlg);
-    const back = opener && opener.isConnected ? opener : document.getElementById('btn-share');
-    back?.focus();
+    const back2 = opener && opener.isConnected ? opener : document.getElementById('btn-share');
+    back2?.focus();
   }
   current = { close };
 
-  title.textContent = `Поделиться: «${projectName()}»`;
-  selectTab('share');
   layout();
   renderCloud();
+  renderSettings();
+  selectTab('share');
+  fit();
   // до первого await кадр не рисуется: окно сразу появляется с анимацией, а не на своём месте
   claimMenu('share', () => close());
   const shareButton = document.getElementById('btn-share');
@@ -1126,6 +1401,8 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
   openMenu(dlg, {
     from: visible ?? dlg,
     remove: true,
+    items: () => [head, ...[...main.inner.children].filter((c): c is HTMLElement => c instanceof HTMLElement && !c.hidden)],
+    onSettled: () => fit(),
     // под кнопкой «Поделиться», по её правому краю
     place: () => {
       // на узком экране окно во весь экран (style.css)
@@ -1136,6 +1413,10 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
     },
   });
   await refreshStatus(true);
-  tabShare.focus();
+  // фокус — в поле приглашения, а без него — на первую кнопку страницы (на сенсорном экране клавиатуру не открываем)
+  const coarse = !!window.matchMedia?.('(pointer: coarse)').matches;
+  const firstField = !coarse && tabbable(emailInput, dlg) && !cloudBox.hidden ? emailInput
+    : [...main.inner.querySelectorAll<HTMLElement>(FOCUSABLE)].find(e => tabbable(e, dlg) && e.tagName !== 'INPUT');
+  (firstField ?? closeX).focus({ preventScroll: true });
   void loadCloud();
 }

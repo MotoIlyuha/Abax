@@ -16,7 +16,7 @@ export interface ToolDef {
 /** Все инструменты в порядке по умолчанию. */
 export const TOOL_DEFS: ToolDef[] = [
   // вместо стандартной стрелки — персональный курсор пользователя (SPEC_NIGHT4 §4); разметка — из каталога
-  { id: 'select', title: 'Выделение и перемещение', get icon() { return cursorSvg(myCursorId(), { size: 24, className: 'cursor-icon' }); } },
+  { id: 'select', title: 'Выделение и перемещение', get icon() { return cursorSvg(myCursorId(), { size: 20, className: 'cursor-icon' }); } },
   { id: 'pan', title: 'Панорама', icon: TOOL_ICONS.pan },
   { id: 'pen', title: 'Перо', icon: TOOL_ICONS.pen },
   { id: 'highlighter', title: 'Маркер', icon: TOOL_ICONS.highlighter },

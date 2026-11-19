@@ -9,7 +9,7 @@ import { onDraft, state, update } from './state';
 import { getSyncedRev } from './sync-state';
 import { MAX_GUESTS_LIMIT, PLAN_LIMITS } from './limits';
 import { limitsEnforced, userPlan } from './plan';
-import { normalizeRole, roleLabel, type AccessRole, type StoredRole } from './access';
+import { ALIAS_MAX, ALIAS_MIN, isNewAliasOk, normalizeRole, roleLabel, type AccessRole, type StoredRole } from './access';
 import type { PageRight, ProjectPermissions } from './types';
 
 // Общая ссылка доски и приглашения по почте: запросы к серверу и тексты (без вёрстки окна — она в share-dialog.ts).
@@ -215,8 +215,22 @@ export async function fetchAlias(projectId: string): Promise<AliasInfo> {
 export async function saveAlias(projectId: string, alias: string): Promise<AliasInfo> {
   return api().request<AliasInfo>('PUT', `/api/projects/${encodeURIComponent(projectId)}/alias`, { alias });
 }
+/** Проверка адреса на лету: free — свободен, own — свой, taken — чужой, blocked — заблокирован, short — короче минимума. */
+export interface AliasCheck { alias: string; status: 'free' | 'own' | 'taken' | 'blocked' | 'short' | 'bad'; suggestions: string[] }
+export async function checkAlias(projectId: string, alias: string): Promise<AliasCheck> {
+  const r = await api().request<AliasCheck>('GET', `/api/projects/${encodeURIComponent(projectId)}/alias/check?alias=${encodeURIComponent(alias)}`);
+  // ответ сети не доверенный: только адреса правильной формы
+  return { ...r, suggestions: Array.isArray(r?.suggestions) ? r.suggestions.filter(isNewAliasOk).slice(0, 3) : [] };
+}
 export async function releaseAlias(projectId: string, alias: string): Promise<void> {
   await api().request('DELETE', `/api/projects/${encodeURIComponent(projectId)}/alias/${encodeURIComponent(alias)}`);
+}
+
+/** Свободные похожие адреса из ответа «адрес занят» (до трёх; только правильной формы — данные сети не доверенные). */
+export function aliasSuggestionsOf(e: unknown): string[] {
+  if (!(e instanceof ApiError)) return [];
+  const list = (e.data as { suggestions?: unknown } | null)?.suggestions;
+  return Array.isArray(list) ? list.filter(isNewAliasOk).slice(0, 3) : [];
 }
 
 /** Текст ошибки именного адреса по коду сервера. */
@@ -224,9 +238,10 @@ export function aliasErrorText(e: unknown): string {
   if (!(e instanceof ApiError)) return 'Не удалось сохранить адрес';
   if (e.isNetwork) return TEXT_OFFLINE;
   switch (e.code) {
-    case 'bad-alias': return 'Адрес не подходит: 3–23 строчные латинские буквы, цифры и дефис, с буквы';
+    case 'bad-alias': return `Адрес не подходит: ${ALIAS_MIN}–${ALIAS_MAX} строчных латинских букв, цифр и дефисов, с буквы`;
     case 'plan-limit-alias': return 'Именной адрес доступен в подписке Pro';
     case 'alias-taken': return 'Этот адрес уже занят';
+    case 'alias-blocked': return 'Этот адрес заблокирован';
     case 'alias-limit': return 'Слишком много адресов. Освободите один из бывших';
     default: return 'Не удалось сохранить адрес';
   }

@@ -3,7 +3,7 @@
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { test as base, type Browser, type BrowserContext, type Page } from '@playwright/test';
-import { Board, expect } from './fixtures';
+import { Board, expect, pickOption } from './fixtures';
 
 export { expect };
 
@@ -185,9 +185,10 @@ export class Host {
 
   /** Право гостя на страницу через выпадающий список в диалоге. */
   async setRight(guest: string, pageIndex: number, right: 'view' | 'edit' | 'hidden'): Promise<void> {
-    const sel = this.userRow(guest).locator('select').nth(pageIndex);
+    const sel = this.userRow(guest).locator('.share-user-right').nth(pageIndex);
     await expect(sel).toBeVisible();
-    await sel.selectOption(right);
+    // сервер может отказать (лимит редакторов): итог проверяет сам тест
+    await pickOption(this.page, sel, right, { verify: false });
   }
 }
 
