@@ -103,6 +103,9 @@
   --menu-grow: 520 34; /* меню растягивается до своего размера: небольшой перелёт */
   --menu-item: 560 38; /* пункт меню появляется */
   --menu-close: 1200 70; /* меню втягивается обратно в кнопку, без перелёта */
+  --avatar-spread: 420 26; /* группа аватаров раскрывается и сворачивается: небольшой перелёт (src/avatar-group.ts) */
+  --avatar-pop: 520 20; /* новый аватар в группе выпрыгивает */
+  --avatar-gone: 900 60; /* ушедший аватар сжимается, без перелёта */
   --input-caret: 700 32; /* поле почты: курсор, тянется от скорости */
   --input-morph: 300 20; /* поле почты ↔ пилюля «Код отправлен» */
   --toast-bg: #141917; /* тост */
@@ -3506,9 +3509,129 @@ body.no-motion .activity-pill, body.no-ui-anim .activity-pill { animation: none;
   line-height: 12px;
   pointer-events: none;
 }
-#collab-presence { display: inline-flex; align-items: center; gap: 2px; margin-left: 4px; }
+#collab-presence { display: inline-flex; align-items: center; gap: 2px; margin: 0 2px 0 4px; }
 #collab-presence[hidden] { display: none; }
-.presence-avatar, .page-avatar {
+
+/* ----- Аватар пользователя (src/avatar.ts): круг с инициалами, курсор справа внизу, статус справа вверху ----- */
+.user-avatar {
+  --ua-size: 26px;
+  position: relative;
+  display: inline-block;
+  width: var(--ua-size);
+  height: var(--ua-size);
+  flex: none;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.user-avatar:focus-visible { outline: none; }
+.user-avatar:focus-visible .ua-circle { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--accent); }
+.ua-circle {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid var(--panel);
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+  transition: transform 0.16s cubic-bezier(0.22, 0.8, 0.24, 1), filter 0.16s;
+}
+/* курсор у правого нижнего края: остриё смотрит на круг; не выходит за промежуток до соседа (CURSOR_OUT в avatar-group.ts) */
+.ua-cursor {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+  filter: drop-shadow(0 0.5px 0.5px rgba(0, 0, 0, 0.25));
+  transition: opacity 0.16s;
+}
+.ua-cursor svg { display: block; width: 14px; height: 14px; }
+.user-avatar.cursor-off .ua-cursor { opacity: 0.35; }
+.user-avatar.cursor-off .ua-cursor::after {
+  content: '';
+  position: absolute;
+  left: -1px;
+  top: 6px;
+  width: 15px;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--muted);
+  transform: rotate(45deg);
+}
+.ua-status {
+  position: absolute;
+  right: -3px;
+  top: -3px;
+  width: 12px;
+  height: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--panel);
+  border-radius: 50%;
+  background: #f59f00;
+  color: #ffffff;
+  pointer-events: none;
+}
+.ua-status[hidden] { display: none; }
+.ua-status svg { width: 8px; height: 8px; stroke-width: 2.6; }
+.ua-status[data-status="hidden-page"] { background: var(--muted); }
+.user-avatar.away .ua-circle { filter: saturate(0.4); }
+.user-avatar.on-hidden .ua-circle { opacity: 0.6; border-style: dashed; border-color: var(--muted); }
+.user-avatar.self .ua-circle { border-color: var(--panel); box-shadow: 0 0 0 1.5px var(--accent), 0 1px 2px rgba(0, 0, 0, 0.18); }
+.user-avatar.more { display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: var(--muted); background: var(--panel); border: 1px solid var(--border); cursor: default; }
+
+/* ----- Группа аватаров (src/avatar-group.ts): аватары стоят абсолютно, сдвиг — transform ----- */
+.avatar-group { position: relative; display: block; flex: none; }
+.avatar-group > .ag-item { position: absolute; left: 0; top: 0; transform-origin: 50% 50%; }
+/* свёрнутая стопка: аватары ещё не нажимаются, нажатие раскрывает её */
+.avatar-group:not(.open) .user-avatar { cursor: default; }
+.avatar-group.open .user-avatar:not(.more):hover .ua-circle,
+.avatar-group.open .user-avatar[aria-expanded="true"] .ua-circle { transform: translateY(-1px) scale(1.08); }
+/* «Обычные»: CSS-переходы вместо пружин */
+.avatar-group.ag-css { transition: width 0.2s cubic-bezier(0.22, 0.8, 0.24, 1); }
+.avatar-group.ag-css > .ag-item { transition: transform 0.2s cubic-bezier(0.22, 0.8, 0.24, 1); }
+@keyframes ag-enter { from { opacity: 0; scale: 0.4; } }
+@keyframes ag-leave { to { opacity: 0; scale: 0.4; } }
+.avatar-group > .ag-item.ag-enter { animation: ag-enter 0.18s cubic-bezier(0.22, 0.8, 0.24, 1); }
+.avatar-group > .ag-item.ag-leave { animation: ag-leave 0.16s ease-in forwards; pointer-events: none; }
+/* «Выкл»: без движения */
+body.no-ui-anim :is(.ua-circle, .ua-cursor) { transition: none; }
+body.no-ui-anim .avatar-group.open .user-avatar .ua-circle { transform: none; }
+
+/* ----- Меню аватара (src/avatar-menu.ts) ----- */
+.avatar-menu { position: fixed; z-index: 80; min-width: 240px; max-width: min(320px, calc(100vw - 16px)); }
+.avatar-menu-head { display: flex; align-items: center; gap: 10px; padding: 6px 10px 8px; margin-bottom: 4px; border-bottom: 1px solid var(--border); }
+/* аватар в шапке — не пункт меню: правило .menu-list button его не растягивает */
+.avatar-menu .avatar-menu-head .user-avatar { --ua-size: 32px; display: inline-block; width: var(--ua-size); height: var(--ua-size); flex: none; padding: 0; border-radius: 50%; background: transparent; cursor: default; pointer-events: none; }
+.avatar-menu-head .ua-circle { font-size: 12px; }
+.avatar-menu-who { min-width: 0; }
+.avatar-menu-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.avatar-menu-sub { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.avatar-menu button.avatar-menu-item:disabled { opacity: 0.5; cursor: default; background: transparent; }
+.avatar-menu-badge { flex: none; padding: 1px 6px; border-radius: 999px; background: var(--accent-soft); color: var(--muted); font-size: 11px; }
+.avatar-menu button.avatar-menu-item.danger { color: var(--danger); }
+.avatar-menu button.avatar-menu-item.danger .main-menu-icon { color: var(--danger); }
+.avatar-menu button.avatar-menu-item.danger:hover, .avatar-menu button.avatar-menu-item.danger.armed { background: var(--danger-soft); }
+.avatar-menu .avatar-menu-switch { margin-top: 0; border-top: 0; gap: 8px; justify-content: flex-start; border-radius: 7px; }
+.avatar-menu .avatar-menu-switch:hover:not(:has(.switch-input:disabled)), .avatar-menu .avatar-menu-switch:has(.switch-input:focus-visible) { background: var(--accent-soft); }
+.avatar-menu .avatar-menu-switch:has(.switch-input:disabled) { opacity: 0.5; cursor: default; }
+.avatar-menu .avatar-menu-switch .view-icon { width: 18px; height: 18px; flex: none; display: inline-flex; align-items: center; justify-content: center; color: var(--icon-menu); }
+.avatar-menu .avatar-menu-switch .view-icon svg { width: 18px; height: 18px; }
+.avatar-menu .avatar-menu-switch .switch-text { flex: 1; }
+
+.page-avatar {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -3521,11 +3644,9 @@ body.no-motion .activity-pill, body.no-ui-anim .activity-pill { animation: none;
   cursor: pointer;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
 }
-.presence-avatar { width: 26px; height: 26px; font-size: 10px; margin-left: -6px; }
-.presence-avatar:first-child { margin-left: 0; }
-.presence-avatar.more, .page-avatar.more { background: var(--panel); color: var(--muted); cursor: default; border-color: var(--border); }
-.presence-avatar.on-hidden, .page-avatar.on-hidden { opacity: 0.6; border-style: dashed; border-color: var(--muted); }
-.presence-avatar:hover, .page-avatar:hover { transform: translateY(-1px); }
+.page-avatar.more { background: var(--panel); color: var(--muted); cursor: default; border-color: var(--border); }
+.page-avatar.on-hidden { opacity: 0.6; border-style: dashed; border-color: var(--muted); }
+.page-avatar:hover { transform: translateY(-1px); }
 .page-avatars {
   position: absolute;
   right: 6px;

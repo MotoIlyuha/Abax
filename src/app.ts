@@ -5495,7 +5495,7 @@ export function initApp(c: HTMLCanvasElement): void {
     const d = (ev as CustomEvent<CollabGotoDetail>).detail;
     if (d) void goToCollabPoint(d);
   });
-  initCollabPresence(refreshPageAvatars);
+  initCollabPresence(refreshPageAvatars, { openProfile: () => openAllSettings('profile') });
   initSyncIndicator();
   c.addEventListener('dragover', e => { if (draggedColor && canEditBoard()) e.preventDefault(); });
   c.addEventListener('drop', e => {

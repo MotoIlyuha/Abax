@@ -16,9 +16,10 @@ import { chatReceive, chatReset, setChatAvailable, setChatCanWrite, setChatSende
 import { viewCenter, viewportSize } from './camera-anim';
 import { cancelActiveInteraction } from './interaction';
 import { nearestAvailablePage } from './presence';
+import { cursorShown, onCursorVisibility, resetCursorVisibility } from './cursor-visibility';
 import {
   CLOSE_BAD_CODE, CLOSE_BAD_REQUEST, CLOSE_FREE_LIMIT, CLOSE_HOST_OFFLINE, CLOSE_PROTOCOL_MISMATCH, CLOSE_RATE_LIMITED,
-  CLOSE_ROOM_CLOSED, CLOSE_ROOM_FULL, CLOSE_ROOM_NOT_FOUND, CLOSE_TOO_SLOW, PROTO,
+  CLOSE_REMOVED, CLOSE_ROOM_CLOSED, CLOSE_ROOM_FULL, CLOSE_ROOM_NOT_FOUND, CLOSE_TOO_SLOW, PROTO,
   wsTransport, type CollabTransport, type RelayEvent,
 } from './collab-transport';
 
@@ -202,12 +203,26 @@ export function collabUsers(): readonly CollabUser[] { return users; }
 /** Мой номер участника в комнате (-1 — не подключён). */
 export function myCollabId(): number { return myUserId; }
 
-/** «Позвать всех сюда» (только автор): гости переходят на страницу и наводят камеру на центр моего экрана. */
-export function sendSummon(pageId: string = state.pageId): boolean {
-  if (!connected || role !== 'host' || !transport) return false;
+/** Звать участников к себе можно: автор или редактор, если доска это разрешает (возможность summon; проверяет хаб). */
+export function canSummon(): boolean {
+  return connected && (role === 'host' || myCaps?.summon === true);
+}
+
+/**
+ * «Позвать всех сюда»: гости переходят на страницу и наводят камеру на центр моего экрана.
+ * to — номер участника: позвать только его (меню аватара «Позвать к себе»).
+ */
+export function sendSummon(pageId: string = state.pageId, to?: number): boolean {
+  if (!canSummon() || !transport) return false;
   const { w, h } = viewportSize();
   const v = viewCenter(state.camera, w, h);
-  return transport.send(JSON.stringify({ t: 'summon', pageId, vx: v.vx, vy: v.vy, vz: v.vz })) !== false;
+  return transport.send(JSON.stringify({ t: 'summon', pageId, vx: v.vx, vy: v.vy, vz: v.vz, ...(to !== undefined ? { to } : {}) })) !== false;
+}
+
+/** «Убрать из совместной работы» (только автор): хаб закрывает соединение участника (код 4411). */
+export function sendRemove(uid: number): boolean {
+  if (!connected || role !== 'host' || !transport || uid === myUserId) return false;
+  return transport.send(JSON.stringify({ t: 'remove', uid })) !== false;
 }
 
 /** Тумблер «Автопереход участников за мной» (только автор; тариф проверяет хаб). */
@@ -402,7 +417,10 @@ function receiveSummon(m: Record<string, unknown>): void {
   const page = state.project.pages.find(p => p.id === m.pageId);
   if (!page) return;
   const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
-  showPill({ kind: 'info', text: `Автор позвал всех на страницу «${page.name}»` });
+  const who = users.find(u => u.userId === m.by);
+  const name = !who || who.host ? 'Автор' : String(who.name ?? '') || 'Участник';
+  const you = typeof m.to === 'number' && m.to === myUserId;
+  showPill({ kind: 'info', text: `${name} позвал${you ? ' вас' : ' всех'} на страницу «${page.name}»` });
   const detail: CollabSummonDetail = { pageId: page.id, vx: num(m.vx, 0), vy: num(m.vy, 0), vz: num(m.vz, 1), by: num(m.by, -1) };
   document.dispatchEvent(new CustomEvent<CollabSummonDetail>('doska:collab-summon', { detail }));
 }
@@ -1032,6 +1050,10 @@ const CLOSED_NOTICES: Record<number, { title: string; text: string }> = {
     title: 'Неверная ссылка',
     text: 'Проверьте ссылку или попросите автора прислать её заново.',
   },
+  [CLOSE_REMOVED]: {
+    title: 'Вас отключили от доски',
+    text: 'Автор убрал вас из совместной работы.',
+  },
   [CLOSE_ROOM_CLOSED]: {
     title: 'Совместная работа завершена',
     text: 'Автор закрыл доступ к доске.',
@@ -1110,6 +1132,9 @@ function removeCursorNode(uid: number): void {
   fxForget(`u${uid}`);
 }
 
+// скрыли или снова показали чужие курсоры (меню аватаров) — перерисовать курсоры, краевые курсоры и аватары
+onCursorVisibility(() => renderRemoteCursors());
+
 export function renderRemoteCursors(): void {
   const wrap = document.getElementById('canvas-wrap');
   if (!wrap) return;
@@ -1123,7 +1148,7 @@ export function renderRemoteCursors(): void {
   const cam = state.camera;
   const seen = new Set<number>();
   for (const u of users) {
-    if (u.userId === myUserId || !u.cursor || u.pageId !== state.pageId) continue;
+    if (u.userId === myUserId || !u.cursor || u.pageId !== state.pageId || !cursorShown(u.userId)) continue;
     seen.add(u.userId);
     const sx = (u.cursor.x - cam.x) * cam.zoom;
     const sy = (u.cursor.y - cam.y) * cam.zoom;
@@ -1249,6 +1274,7 @@ export function stopCollab(): void {
   viewSent = null;
   presenceKey = '';
   hostPages.clear();
+  resetCursorVisibility();
   setChatSender(null);
   setChatAvailable(false);
   clearPills();

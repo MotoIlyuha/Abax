@@ -7,7 +7,7 @@ import { PLAN_LIMITS, canCreatePage, effectiveMaxGuests, isPageRight, planOf, sa
 import { OWNER_CAPS, effectivePageAccess, normalizeRole, participantCaps, type AccessRole, type ParticipantCaps, type StoredRole } from './access';
 import { applyBoardPatch, isBoardPatch, type BoardPatch, type ElementOp } from './delta';
 import { sanitizeElement } from './file';
-import { CLOSE_FREE_LIMIT, CLOSE_ROOM_FULL, PROTO } from './collab-transport';
+import { CLOSE_FREE_LIMIT, CLOSE_REMOVED, CLOSE_ROOM_FULL, PROTO } from './collab-transport';
 import { CHAT_HISTORY, createRateLimiter, normalizeChatText, type ChatMessage } from './room-chat';
 import { cleanCursorId } from './cursors';
 import { guardPageReplace, guardPatch, type GuardWho } from './element-guard';
@@ -25,6 +25,8 @@ const DEFAULT_AWAY_MS = 45000;
 export const FREE_LIMIT_REASON = 'free-limit-reached';
 /** Причина отказа в пакете { t: 'denied' }, когда мест нет по лимиту автора (planLimited: false, код 4430). */
 export const ROOM_FULL_REASON = 'room-full';
+/** Причина закрытия сокета участнику, которого автор убрал из совместной работы (код 4411). */
+export const REMOVED_REASON = 'removed-by-host';
 /** Пределы зума в пакетах view и summon — как ZOOM_MIN / ZOOM_MAX в src/state.ts (паритет — tests/unit/room-host.test.ts). */
 export const VIEW_ZOOM_MIN = 0.05;
 export const VIEW_ZOOM_MAX = 32;
@@ -732,6 +734,7 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
       if (m.t === 'chat') { acceptChat(info, m); return; }
       if (m.t === 'view') { acceptView(info, m); return; }
       if (m.t === 'summon') { acceptSummon(info, m); return; }
+      if (m.t === 'remove') { acceptRemove(info, m); return; }
       if (m.t === 'follow-host') { acceptFollowHost(info, m); return; }
       if (m.t === 'patch') {
         if (isBoardPatch(m)) { acceptPatch(info, m); info.edited = true; }
@@ -869,14 +872,29 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
     broadcastUsers();
   }
 
-  /** «Позвать всех сюда»: от автора или (по настройке доски) редактора, гостям, которым страница видна. */
+  /**
+   * «Позвать всех сюда»: от автора или (по настройке доски) редактора, гостям, которым страница видна.
+   * to — номер участника: позвать только его (меню аватара «Позвать к себе»); в пакете ему приходит to.
+   */
   function acceptSummon(info: Client, m: Rec): void {
     if (!info.host && !capsOf(info).summon) return;
     const view = cleanView(m);
     if (!view || !room.project?.pages.some(p => p.id === view.pageId)) return;
+    const to = m.to === undefined ? null : Number.isInteger(m.to) ? m.to as number : NaN;
+    if (Number.isNaN(to) || to === info.uid) return;
     for (const c of room.clients.values()) {
       if (c.host || room.userPageRight(c.uid, view.pageId) === 'hidden') continue;
-      sendTo(c.sock, { t: 'summon', ...view, by: info.uid });
+      if (to !== null && c.uid !== to) continue;
+      sendTo(c.sock, { t: 'summon', ...view, by: info.uid, ...(to !== null ? { to } : {}) });
+    }
+  }
+
+  /** «Убрать из совместной работы»: только автор и только гостя (не устройство автора) — соединение закрывается. */
+  function acceptRemove(info: Client, m: Rec): void {
+    if (!info.host || !Number.isInteger(m.uid)) return;
+    for (const c of room.clients.values()) {
+      if (c.uid !== m.uid || c.host) continue;
+      try { c.sock.close(CLOSE_REMOVED, REMOVED_REASON); } catch { /* уже закрыт */ }
     }
   }
 

@@ -30,6 +30,8 @@ export const CLOSE_BAD_CODE = 4403;
 export const CLOSE_ROOM_NOT_FOUND = 4404;
 export const CLOSE_TOO_SLOW = 4408;
 export const CLOSE_ROOM_CLOSED = 4410;
+/** Автор убрал участника из совместной работы (меню аватара). */
+export const CLOSE_REMOVED = 4411;
 export const CLOSE_PROTOCOL_MISMATCH = 4426;
 export const CLOSE_RATE_LIMITED = 4429;
 export const CLOSE_ROOM_FULL = 4430;

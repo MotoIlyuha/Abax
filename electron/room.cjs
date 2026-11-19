@@ -54,6 +54,9 @@ const VIEW_ZOOM_MAX = 32;
 /** Коды закрытия (src/collab-transport.ts). */
 const CLOSE_ROOM_FULL = 4430;
 const ROOM_FULL_REASON = 'room-full';
+/** Автор убрал участника из совместной работы — зеркало CLOSE_REMOVED / REMOVED_REASON из src/collab-transport.ts и src/room-host.ts. */
+const CLOSE_REMOVED = 4411;
+const REMOVED_REASON = 'removed-by-host';
 /** Верхняя граница своего лимита гостей (MAX_GUESTS_LIMIT в src/limits.ts). */
 const MAX_GUESTS_LIMIT = 50;
 
@@ -518,13 +521,26 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
     broadcastUsers();
   }
 
+  // to — позвать одного участника (меню аватара); зеркало acceptSummon из src/room-host.ts
   function acceptSummon(info, m) {
     if (!info.host && !capsOf(info).summon) return;
     const view = cleanView(m);
     if (!view || !(room.project && room.project.pages.some(p => p.id === view.pageId))) return;
+    const to = m.to === undefined ? null : Number.isInteger(m.to) ? m.to : NaN;
+    if (Number.isNaN(to) || to === info.uid) return;
     for (const c of room.clients.values()) {
       if (c.host || room.userPageRight(c.uid, view.pageId) === 'hidden') continue;
-      sendTo(c.sock, { t: 'summon', ...view, by: info.uid });
+      if (to !== null && c.uid !== to) continue;
+      sendTo(c.sock, { t: 'summon', ...view, by: info.uid, ...(to !== null ? { to } : {}) });
+    }
+  }
+
+  // «Убрать из совместной работы»: только автор и только гостя
+  function acceptRemove(info, m) {
+    if (!info.host || !Number.isInteger(m.uid)) return;
+    for (const c of room.clients.values()) {
+      if (c.uid !== m.uid || c.host) continue;
+      try { c.sock.close(CLOSE_REMOVED, REMOVED_REASON); } catch { /* уже закрыт */ }
     }
   }
 
@@ -607,6 +623,7 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
       if (m.t === 'chat') { acceptChat(info, m); return; }
       if (m.t === 'view') { acceptView(info, m); return; }
       if (m.t === 'summon') { acceptSummon(info, m); return; }
+      if (m.t === 'remove') { acceptRemove(info, m); return; }
       if (m.t === 'follow-host') { acceptFollowHost(info, m); return; }
       if (m.t === 'project' && validProject(m.project)) {
         info.edited = true;
