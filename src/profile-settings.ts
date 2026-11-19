@@ -1,9 +1,10 @@
-// Раздел настроек «Профиль» (SPEC_NIGHT4 §10): имя, курсор с превью, вход, привязка способов входа и выход.
+// Раздел настроек «Профиль» (SPEC_NIGHT4 §10): аватар, имя, курсор с превью, вход, привязка способов входа и выход.
 // Пользовательские данные (имя, почта, @username) — только textContent.
 
 import { getApi } from './api-client';
 import { AuthError, authErrorText, logout } from './auth';
 import { createCursorPicker } from './cursor-picker';
+import { createAvatarEditor } from './avatar-editor';
 import { createLetterLimit } from './letter-limit';
 import { NAME_LIMIT, NAME_NEAR, initialChoice, previewLocked } from './onboarding-logic';
 import { PROVIDER_ICONS } from './icons';
@@ -45,6 +46,17 @@ export function renderProfileSettings(host: HTMLElement, rerender: () => void, o
   name.addEventListener('keydown', e => { if (e.key === 'Enter') name.blur(); });
   nameField.append(nameRowWithDice(name, limited.el), el('span', 'ps-hint', 'Его видят участники совместной работы рядом с вашим курсором.'));
 
+  // ----- аватар: буквы, смайл или фото — слева от имени -----
+  const avatar = createAvatarEditor({
+    value: profile.avatar,
+    name: profile.name || 'Вы',
+    cursorId: profile.cursorId,
+    overDialog: true,
+    onChange: v => { setProfile({ avatar: v }); picker.setAvatar(v); },
+  });
+  const identity = el('div', 'ps-identity');
+  identity.append(avatar.el, nameField);
+
   // ----- курсор -----
   const cursorBlock = el('div', 'ps-block');
   cursorBlock.appendChild(el('div', 'ps-caption', 'Курсор, цвет выделения и бейдж'));
@@ -53,9 +65,10 @@ export function renderProfileSettings(host: HTMLElement, rerender: () => void, o
     choice: initialChoice(profile.cursorId, entitled),
     entitled,
     name: profile.name || 'Вы',
-    onChange: c => { if (!previewLocked(c)) setProfile({ cursorId: c.saved }); },
+    avatar: profile.avatar,
+    onChange: c => { avatar.setCursor(c.preview); if (!previewLocked(c)) setProfile({ cursorId: c.saved }); },
   });
-  name.addEventListener('input', () => picker.setName(name.value.trim() || 'Вы'));
+  name.addEventListener('input', () => { picker.setName(name.value.trim() || 'Вы'); avatar.setName(name.value.trim() || 'Вы'); });
   cursorBlock.appendChild(picker.el);
 
   // ----- аккаунт -----
@@ -122,9 +135,9 @@ export function renderProfileSettings(host: HTMLElement, rerender: () => void, o
   acc.appendChild(msg);
   if (opts.notice) say(opts.notice.text, opts.notice.kind);
 
-  box.append(nameField, cursorBlock, acc);
+  box.append(identity, cursorBlock, acc);
   host.appendChild(box);
   // вошли / вышли / сменился тариф — раздел перерисовывается
   const off = onAccountChange(() => rerender());
-  return { dispose: () => { off(); limited.destroy(); picker.dispose(); } };
+  return { dispose: () => { off(); limited.destroy(); picker.dispose(); avatar.dispose(); } };
 }

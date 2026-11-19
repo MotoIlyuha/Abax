@@ -1,6 +1,7 @@
 // Окно первого входа (SPEC_NIGHT4 §9): два шага в одной ленте со «слайдом».
 // Шаг 1 — способ входа (Почта, Telegram, Google) или «Продолжить без входа».
-// Шаг 2 — имя (подсказка-placeholder из смешных имён), курсор с превью и, если вошли, привязка других способов.
+// Шаг 2 — аватар (буквы, смайл или фото), имя (подсказка-placeholder из смешных имён), курсор с превью и,
+// если вошли, привязка других способов.
 // Весь текст пользователя — через textContent; иконки — константы.
 
 import { getApi, type MeResponse } from './api-client';
@@ -9,6 +10,8 @@ import {
   type AuthMode, type AuthResume,
 } from './auth';
 import { createCursorPicker, type CursorPicker } from './cursor-picker';
+import { createAvatarEditor } from './avatar-editor';
+import { cleanAvatar } from './avatar-value';
 import { DEFAULT_CURSOR_ID } from './cursors';
 import { BACK_CHEVRON_ICON, CLOSE_ICON, PROVIDER_ICONS } from './icons';
 import { createEmailLogin, springLayout, type EmailLogin, type EmailStage } from './email-login';
@@ -185,6 +188,9 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
   const placeholder = resume?.placeholder || randomFunnyName();
   const entitled = cursorEntitled();
   let choice: CursorChoice = initialChoice(resume?.cursorId ?? getProfile().cursorId ?? DEFAULT_CURSOR_ID, entitled);
+  let avatarValue: string | null = resume && resume.avatar !== undefined ? cleanAvatar(resume.avatar) ?? null : getProfile().avatar;
+  /** Что запомнить перед переходом к провайдеру входа. */
+  const resumeNow = (): AuthResume => ({ where: 'onboarding', name: nameInput.value, cursorId: choice.saved, placeholder, avatar: avatarValue });
   let step: 1 | 2 = 1;
 
   const root = el('div');
@@ -225,7 +231,7 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
     const b = button(`ob-btn ob-provider ob-${p}`, PROVIDER_NAMES[p], PROVIDER_ICONS[p]);
     b.dataset.provider = p;
     b.addEventListener('click', () => {
-      void chooseProvider(p, 'login', () => ({ where: 'onboarding', name: nameInput.value, cursorId: choice.saved, placeholder }), say1, () => {
+      void chooseProvider(p, 'login', resumeNow, say1, () => {
         if (!emailLogin) {
           emailLogin = createEmailLogin({ mode: 'login', onDone: () => go(2), onResize: fitHeight, onStage: setEmailStage });
           msg1.hidden = true;
@@ -269,10 +275,20 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
   const nameField = createLetterLimit({ input: nameInput, limit: NAME_LIMIT, near: NAME_NEAR, pileHost: () => root, floorEl: () => win });
   nameField.set(resume?.name ?? '', false);
   nameLabel.append(nameCaption, nameRowWithDice(nameInput, nameField.el), nameHint);
+  // аватар слева от имени: по умолчанию буквы, смайл — кнопкой в углу круга, фото — «Установить фото»
+  const avatarEditor = createAvatarEditor({
+    value: avatarValue,
+    name: resolveName(nameInput.value, placeholder),
+    cursorId: choice.preview,
+    overDialog: true,
+    onChange: v => { avatarValue = v; picker.setAvatar(v); },
+  });
+  const identity = el('div', 'ob-identity');
+  identity.append(avatarEditor.el, nameLabel);
   const cursorCaption = el('div', 'ob-caption', 'Выберите свой курсор');
   const picker: CursorPicker = createCursorPicker({
-    choice, entitled, name: resolveName(nameInput.value, placeholder),
-    onChange: c => { choice = c; fitHeight(); },
+    choice, entitled, name: resolveName(nameInput.value, placeholder), avatar: avatarValue,
+    onChange: c => { choice = c; avatarEditor.setCursor(c.preview); fitHeight(); },
   });
   const link = el('div', 'ob-link');
   const msg2 = el('div', 'ob-msg');
@@ -281,11 +297,16 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
   const say2 = (text: string, kind: 'error' | 'info' = 'error') => { msg2.hidden = false; msg2.textContent = text; msg2.dataset.kind = kind; fitHeight(); };
   const done = button('ob-btn ob-primary ob-continue', 'Продолжить');
   done.addEventListener('click', finish);
-  s2.append(head, nameLabel, cursorCaption, picker.el, link, msg2, done);
+  s2.append(head, identity, cursorCaption, picker.el, link, msg2, done);
 
   track.append(s1, s2);
 
-  nameInput.addEventListener('input', () => picker.setName(resolveName(nameInput.value, placeholder)));
+  const showName = () => {
+    const n = resolveName(nameInput.value, placeholder);
+    picker.setName(n);
+    avatarEditor.setName(n);
+  };
+  nameInput.addEventListener('input', showName);
   nameInput.addEventListener('keydown', e => {
     if (e.key === 'Tab') {
       const fill = tabFill(nameInput.value, nameInput.placeholder, e.shiftKey);
@@ -293,7 +314,7 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
         e.preventDefault();
         nameField.set(fill);
         nameInput.setSelectionRange(fill.length, fill.length);
-        picker.setName(fill);
+        showName();
       }
     } else if (e.key === 'Enter') {
       e.preventDefault();
@@ -316,7 +337,7 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
       const b = button(`ob-btn ob-chip ob-${p}`, PROVIDER_NAMES[p], PROVIDER_ICONS[p]);
       b.dataset.provider = p;
       b.addEventListener('click', () => {
-        void chooseProvider(p, 'link', () => ({ where: 'onboarding', name: nameInput.value, cursorId: choice.saved, placeholder }), say2, () => {
+        void chooseProvider(p, 'link', resumeNow, say2, () => {
           if (!form.firstChild) {
             const login = createEmailLogin({ mode: 'link', onDone: () => { renderLink(); say2('Почта привязана', 'info'); }, onResize: fitHeight });
             b.hidden = true;
@@ -335,8 +356,15 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
     // вошли — имя аккаунта (если оно есть и поле ещё пустое)
     const fromAccount = accountName(account());
     if (fromAccount && !nameInput.value.trim()) nameField.set(fromAccount);
+    // вошли — и аватар аккаунта, если свой ещё не выбран
+    const accountAvatar = signedIn() ? cleanAvatar(account()?.user.avatar ?? null) ?? null : null;
+    if (accountAvatar && avatarValue === null) {
+      avatarValue = accountAvatar;
+      avatarEditor.setValue(accountAvatar);
+      picker.setAvatar(accountAvatar);
+    }
     h2.textContent = signedIn() ? 'Вы вошли. Как вас называть?' : 'Как вас зовут?';
-    picker.setName(resolveName(nameInput.value, placeholder));
+    showName();
     renderLink();
   }
 
@@ -382,7 +410,7 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
 
   function finish(): void {
     const name = resolveName(nameInput.value, placeholder);
-    setProfile({ name, cursorId: choice.saved, onboarded: true });
+    setProfile({ name, cursorId: choice.saved, avatar: avatarValue, onboarded: true });
     if (getApi()) void pushProfile();
     close();
   }
@@ -402,6 +430,8 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
   /** Клавиша пришла не из окна (фокус где-то снаружи): доске её не отдаём, фокус возвращаем в окно. */
   function onOutsideKey(e: KeyboardEvent): void {
     if (e.target instanceof Node && root.contains(e.target)) return;
+    // окно поверх знакомства (выбор смайла, обрезка фото) разбирает свои клавиши само
+    if (e.target instanceof Element && e.target.closest('[data-own-keys]')) return;
     e.stopPropagation();
     if (e.key === 'Escape') { e.preventDefault(); finish(); return; }
     if (e.key === 'Tab') { e.preventDefault(); if (step === 2) nameInput.focus(); else focusStep1(); }
@@ -426,6 +456,7 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
     current = null;
     nameField.destroy();
     picker.dispose();
+    avatarEditor.dispose();
     window.removeEventListener('keydown', onOutsideKey, true);
     root.remove();
     opts.onDone?.();

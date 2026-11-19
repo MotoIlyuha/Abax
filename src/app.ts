@@ -40,6 +40,7 @@ import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker&inline';
 import { initChatButton } from './collab-chat';
 import { collabActive, isHost, myCollabCaps, myColor, noteSelection, readOnly, startHostConnection, stopCollab, type CollabGotoDetail, type CollabSummonDetail } from './collab';
 import { animateCameraTo, cameraAnimating, clampZoom } from './camera-anim';
+import { stopFollowByUser } from './follow';
 import { fillPageAvatars, initCollabPresence } from './collab-presence';
 import { closePresent, openPresent, presentOpen } from './present';
 import { renderProfileSettings } from './profile-settings';
@@ -56,7 +57,8 @@ import { renderToolbarEditor } from './toolbar-editor';
 import { renderHotkeysSettings } from './hotkeys-settings';
 import { DEFAULT_NEW_PAGE_KEY, DRAFT_KEY, comboLabel, macKeys, newPageKeyProblem } from './hotkeys';
 import { renderAbout, showToast } from './about';
-import { closeIconPicker, openIconPicker } from './icon-picker';
+import { closeIconPicker } from './icon-picker';
+import { createIconButton, type IconButton } from './icon-button';
 import { capitalize, dayLabel, pagesLabel } from './format';
 import { buildCustomColorPicker } from './color-picker';
 import { copySelection, duplicateSelection as duplicateInPlace, pasteFromMemory, pasteFromSystem } from './clipboard';
@@ -177,7 +179,7 @@ function restoreSettings(): void {
       state.settings = {
         toolbarPos: v.toolbarPos as ToolbarPos,
         snapToGrid: typeof v.snapToGrid === 'boolean' ? v.snapToGrid : false,
-        wheelMode: v.wheelMode === 'zoom' ? 'zoom' : 'scroll',
+        wheelMode: v.wheelMode === 'scroll' ? 'scroll' : 'zoom',
         pageTransition: PAGE_TRANSITIONS.some(t => t.mode === v.pageTransition) ? v.pageTransition : 'slide',
         pageKeyMod: v.pageKeyMod === 'ctrl' ? 'ctrl' : 'alt',
         mouseMode: v.mouseMode === 'history' || v.mouseMode === 'custom' ? v.mouseMode : 'pages',
@@ -346,8 +348,11 @@ function insideTextMenus(t: EventTarget | null): boolean {
   return t instanceof Node && (quickMenuEl().contains(t) || ctxLayerEl().contains(t));
 }
 
-/** append — набранный символ, с которого начали ввод надписи выделенной фигуры. */
-export function beginTextEdit(opts: { el?: TextEl | NoteEl | ShapeEl; at?: { x: number; y: number }; target?: 'text' | 'note'; append?: string }): void {
+/**
+ * append — набранный символ, с которого начали ввод надписи выделенной фигуры;
+ * backspace — ввод начали с Backspace: последний символ надписи стирается.
+ */
+export function beginTextEdit(opts: { el?: TextEl | NoteEl | ShapeEl; at?: { x: number; y: number }; target?: 'text' | 'note'; append?: string; backspace?: boolean }): void {
   closeEditor(true);
   const el = opts.el ?? null;
   const target: Editing['target'] = el ? (el.type === 'note' ? 'note' : el.type === 'shape' ? 'shape' : 'text') : (opts.target ?? 'text');
@@ -356,7 +361,9 @@ export function beginTextEdit(opts: { el?: TextEl | NoteEl | ShapeEl; at?: { x: 
   ta.spellcheck = false;
   ta.className = target === 'text' ? 'inplace-edit' : `inplace-edit ${target}`;
   if (el?.type === 'shape') {
-    ta.value = (el.text ?? '') + (opts.append ?? '');
+    const chars = Array.from(el.text ?? ''); // по кодовым точкам: эмодзи стирается целиком
+    if (opts.backspace) chars.pop();
+    ta.value = chars.join('') + (opts.append ?? '');
     state.hideTextId = el.id; // контур остаётся на холсте, надпись живёт в редакторе
   } else if (el) {
     ta.value = el.text;
@@ -2841,6 +2848,7 @@ function glideView(cx: number, cy: number, zoom: number): void {
 
 /** Плавный масштаб относительно центра холста: кнопки «+»/«−», пункты 50…800 %, «Другой масштаб». */
 function zoomCenterSmooth(zoom: number): void {
+  stopFollowByUser();
   const r = canvas.getBoundingClientRect();
   const goal = cameraAnimating() ? viewGoal : null;
   const cam = state.camera;
@@ -3066,7 +3074,7 @@ async function goToCollabPoint(d: CollabGotoDetail): Promise<void> {
   if (state.view !== 'board' || !state.project.pages.some(p => p.id === d.pageId)) return;
   if (d.pageId !== state.pageId) await switchPageHandler(d.pageId);
   if (state.pageId !== d.pageId) return;
-  if (d.x !== undefined && d.y !== undefined) animateCameraTo(d.x, d.y, d.zoom);
+  if (d.x !== undefined && d.y !== undefined) animateCameraTo(d.x, d.y, d.zoom, d.ms);
 }
 
 /** Аватары участников у карточек страниц (состав комнаты изменился). */
@@ -3447,9 +3455,7 @@ function renderPages(): void {
   if (reordering()) return;
   try {
     document.getElementById('project-name')!.textContent = state.project.name;
-    const icon = document.getElementById('project-icon')!;
-    paintProjectIcon(icon, state.project.icon);
-    icon.title = state.project.icon ? 'Сменить иконку проекта' : 'Добавить иконку проекта';
+    topProjectIcon?.set(state.project.icon ?? null);
     const list = document.getElementById('pages-list')!;
     const pages = state.project.pages;
     const seen = new Set<string>();
@@ -3955,35 +3961,18 @@ async function setProjectIconHandler(id: string, icon: string | null): Promise<v
   renderPages();
 }
 
-/** Иконка в кнопке: эмодзи, загруженная картинка или (нет иконки) приглашение её поставить. */
-function paintProjectIcon(host: HTMLElement, icon: string | undefined): void {
-  host.textContent = '';
-  host.classList.toggle('empty', !icon);
-  if (!icon) {
-    host.innerHTML = ICONS.addIcon;
-  } else if (icon.startsWith('data:image/')) {
-    const img = document.createElement('img');
-    img.src = icon;
-    img.alt = '';
-    host.appendChild(img);
-  } else {
-    const glyph = document.createElement('span');
-    glyph.textContent = icon;
-    host.appendChild(glyph);
-  }
-}
+/** Кнопка иконки открытого проекта в шапке (из index.html; создаётся при запуске). */
+let topProjectIcon: IconButton | null = null;
 
-/** Кнопка-иконка проекта: клик — окно выбора иконки, как в Miro. */
+/** Кнопка-иконка проекта на домашней: клик — окно выбора иконки, как в Miro (src/icon-button.ts). */
 function projectIconButton(meta: ProjectMeta, variant: 'badge' | 'row'): HTMLButtonElement {
-  const b = document.createElement('button');
-  b.className = `project-icon ${variant}`;
-  b.title = meta.icon ? 'Сменить иконку' : 'Добавить иконку';
-  paintProjectIcon(b, meta.icon);
-  b.addEventListener('click', e => {
-    e.stopPropagation();
-    openIconPicker(b, meta.icon ?? null, icon => { void setProjectIconHandler(meta.id, icon); });
-  });
-  return b;
+  return createIconButton({
+    className: `project-icon ${variant}`,
+    value: meta.icon ?? null,
+    title: v => (v ? 'Сменить иконку' : 'Добавить иконку'),
+    stopPropagation: true,
+    onPick: icon => { void setProjectIconHandler(meta.id, icon); },
+  }).el;
 }
 
 // ----- Последнее открытие: на этом устройстве, по проектам -----
@@ -4726,10 +4715,12 @@ function wireTopbar(): void {
   document.querySelector<HTMLElement>('#btn-share .share-icon')!.innerHTML = ICONS.share;
   document.getElementById('btn-share')!.addEventListener('click', () => { void openShareDialog(); });
   initChatButton();
-  const iconBtn = document.getElementById('project-icon') as HTMLButtonElement;
-  iconBtn.addEventListener('click', () => {
-    if (state.linkMode) return;
-    openIconPicker(iconBtn, state.project.icon ?? null, icon => { void setProjectIconHandler(state.project.id, icon); });
+  topProjectIcon = createIconButton({
+    el: document.getElementById('project-icon') as HTMLButtonElement,
+    value: state.project.icon ?? null,
+    title: v => (v ? 'Сменить иконку проекта' : 'Добавить иконку проекта'),
+    enabled: () => !state.linkMode,
+    onPick: icon => { void setProjectIconHandler(state.project.id, icon); },
   });
   // guest-режим: скрываем недоступные функции
   if (collabActive() && !isHost()) {
@@ -4739,7 +4730,7 @@ function wireTopbar(): void {
     // группа импорта скрывается целиком: иначе в шапке остаётся пустой контейнер с отступами
     document.querySelector<HTMLElement>('.import-group')!.style.display = 'none';
     // иконку проекта меняет только автор
-    iconBtn.disabled = true;
+    topProjectIcon.el.disabled = true;
   }
   // сервер совместной работы живёт в main-процессе Electron: в браузере и на Android раздавать нечем
   if (!doskaApi && isNativeApp()) document.getElementById('btn-share')!.style.display = 'none';
@@ -4902,7 +4893,7 @@ function wireTopbar(): void {
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && menuShown(menu)) { setMenuOpen(false); menuButton.focus(); } });
   document.getElementById('btn-undo')!.addEventListener('click', () => undo());
   document.getElementById('btn-redo')!.addEventListener('click', () => redo());
-  document.getElementById('btn-fit')!.addEventListener('click', () => fitContent(true));
+  document.getElementById('btn-fit')!.addEventListener('click', () => { stopFollowByUser(); fitContent(true); });
   const exportButton = document.getElementById('btn-export')!;
   exportButton.title = 'Экспорт';
   exportButton.setAttribute('aria-expanded', 'false');
@@ -5219,7 +5210,7 @@ function wireZoomInput(): void {
       state.board.backgroundColor = b.dataset.bg; state.board.elements = [...state.board.elements]; update(true); void saveNow(); close(); return;
     }
     if (view === 'fullscreen') { if (document.fullscreenElement) void document.exitFullscreen(); else void document.documentElement.requestFullscreen(); }
-    if (view === 'fit') fitContent(true);
+    if (view === 'fit') { stopFollowByUser(); fitContent(true); }
     if (b.dataset.zoom) zoomCenterSmooth(Number(b.dataset.zoom) / 100);
     close();
   });
@@ -5287,7 +5278,17 @@ function openZoomInput(label: HTMLElement, onDone?: () => void): void {
       close(null);
     }
   });
-  input.addEventListener('blur', () => close(check(true)));
+  input.addEventListener('blur', e => {
+    // фокус ушёл на пункт меню «Масштаб и вид»: поле просто закрывается, меню остаётся — пункт сам решит, что делать
+    if ((e.relatedTarget as HTMLElement | null)?.closest('#view-menu')) {
+      if (done) return;
+      done = true;
+      box.remove();
+      label.hidden = false;
+      return;
+    }
+    close(check(true));
+  });
 }
 
 /** Окно демонстрации: открыть или закрыть. */
@@ -5495,7 +5496,7 @@ export function initApp(c: HTMLCanvasElement): void {
     const d = (ev as CustomEvent<CollabGotoDetail>).detail;
     if (d) void goToCollabPoint(d);
   });
-  initCollabPresence(refreshPageAvatars);
+  initCollabPresence(refreshPageAvatars, { openProfile: () => openAllSettings('profile') });
   initSyncIndicator();
   c.addEventListener('dragover', e => { if (draggedColor && canEditBoard()) e.preventDefault(); });
   c.addEventListener('drop', e => {

@@ -26,6 +26,8 @@ export interface UserRow {
   google_sub: string | null;
   /** Подтверждённый адрес Google (миграция V3): по нему находятся приглашения по почте. */
   google_email: string | null;
+  /** Свой аватар (миграция V6): смайл или фото data:image (src/avatar-value.ts); null — буквы. */
+  avatar: string | null;
 }
 
 /** Код входа по почте (хранится только хеш). */
@@ -272,8 +274,27 @@ ALTER TABLE public_aliases ADD COLUMN blocked_reason TEXT;
 CREATE INDEX idx_aliases_created ON public_aliases(created_at);
 `;
 
+/** Свой аватар пользователя: смайл или фото, обрезанное под круг (null — буквы имени). */
+const SCHEMA_V6 = `
+ALTER TABLE users ADD COLUMN avatar TEXT;
+`;
+
+/**
+ * Личные права участника на страницы доски (меню аватара «Настройки доступа»): за пользователем, а не за ссылкой —
+ * переживают перезаход и действуют поверх роли его приглашения. Строка удаляется вместе с доской или пользователем.
+ */
+const SCHEMA_V7 = `
+CREATE TABLE member_page_rights (
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  page_rights_json TEXT NOT NULL DEFAULT '{}',
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (project_id, user_id)
+);
+`;
+
 /** Миграции по порядку; номер версии хранится в PRAGMA user_version. */
-const MIGRATIONS: string[] = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5];
+const MIGRATIONS: string[] = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7];
 
 /** target — до какой версии (по умолчанию — до последней; меньше — только в тестах миграций). */
 export function migrate(db: Db, target = MIGRATIONS.length): void {

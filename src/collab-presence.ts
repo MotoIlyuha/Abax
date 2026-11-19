@@ -1,16 +1,24 @@
 import { state, onChange, onDraft, update } from './state';
 import type { PageRight } from './types';
 import {
-  PRESENCE_EVENT, collabActive, collabUsers, hostFollowEnabled, isHost, myCollabId, sendFollowHost, sendProjectNow, sendSummon,
-  type CollabGotoDetail, type CollabUser,
+  PRESENCE_EVENT, canSummon, collabActive, collabAvatar, collabUsers, hostFollowEnabled, isHost, myCollabId, sendFollowHost, sendPageRights, sendProjectNow,
+  sendRemove, sendSummon, type CollabGotoDetail, type CollabUser,
 } from './collab';
 import { DEFAULT_CURSOR_ID, cursorPreset, cursorSvg, isCursorId } from './cursors';
 import { computeEdgePointer, type SafeInsets } from './edge-pointer';
-import { getParticipantInitials, pageAvatars } from './presence';
+import { pageAvatars } from './presence';
 import { showPill } from './activity-pills';
 import { PLAN_LIMITS } from './limits';
 import { limitsEnforced, userPlan } from './plan';
-import { FOLLOW_ICON, SUMMON_ICON } from './icons';
+import { ACCESS_ICON, FOLLOW_ICON, ICON_ARROW, ICONS, PROFILE_ICON, SUMMON_ICON } from './icons';
+import { STATUS_TEXT, type AvatarData, type AvatarStatus } from './avatar';
+import { createAvatarGroup, type AvatarGroup, type AvatarGroupItem } from './avatar-group';
+import { closeAvatarMenu, openAvatarMenu, type AvatarMenuEntry, type AvatarSubmenu } from './avatar-menu';
+import { attachOverlayScroll } from './overlay-scroll';
+import { createSpringSelect, type SelectOption, type SpringSelect } from './spring-select';
+import { cursorShown, othersCursorsHidden, setOthersCursorsHidden, setUserCursorHidden, userCursorHidden } from './cursor-visibility';
+import { myAvatar, myCursorId, onProfileChange, profileName } from './profile';
+import { followWaiting, followingUid, initFollow, onFollowChange, startFollow, stopFollow } from './follow';
 
 // Присутствие участников (SPEC_NIGHT5 §8): краевые курсоры у границы экрана, аватары в шапке и у страниц,
 // кнопки автора «Позвать всех сюда» и «Автопереход участников за мной». Имена и цвета приходят от других
@@ -18,7 +26,7 @@ import { FOLLOW_ICON, SUMMON_ICON } from './icons';
 
 /** Отступ краевого курсора от интерфейса (шапка, панель инструментов, док страниц), px. */
 export const EDGE_PAD = 8;
-/** Сколько аватаров в шапке, дальше — «+N». */
+/** Сколько чужих аватаров в шапке (кроме моего), дальше — «+N». */
 const STRIP_MAX = 5;
 /** Остриё стрелки каталога смотрит вверх-влево (по диагонали): поворот, при котором оно смотрит вдоль луча. */
 const ARROW_ANGLE = -3 * Math.PI / 4;
@@ -81,58 +89,271 @@ export function goToParticipant(u: CollabUser, reason: CollabGotoDetail['reason'
   if (target) goTo(target);
 }
 
-/** Круглый аватар участника (1–2 буквы). */
-export function makeAvatar(u: CollabUser, cls: string): HTMLButtonElement {
-  const b = el('button', cls, getParticipantInitials(u.name));
-  b.type = 'button';
-  const { bg, fg } = avatarColors(u);
-  b.style.background = u.away ? '#9aa0ab' : bg;
-  b.style.color = u.away ? '#ffffff' : fg;
-  const title = participantTitle(u);
-  b.title = title;
-  b.setAttribute('aria-label', title);
-  if (u.hiddenPage) b.classList.add('on-hidden');
-  if (u.away) b.classList.add('away');
-  b.dataset.userId = String(u.userId);
-  b.addEventListener('click', e => {
-    e.stopPropagation();
-    goToParticipant(u, 'avatar');
-  });
-  // перетаскивание карточки страницы не должно начинаться с аватара
-  b.addEventListener('pointerdown', e => e.stopPropagation());
-  return b;
-}
-
 // ----- Аватары у карточек страниц -----
 
-/** Аватары участников на странице (до 3 + «+N»); перестраивается, только если состав изменился. */
+/** Группы аватаров у карточек страниц (по контейнеру карточки). */
+const pageGroups = new WeakMap<HTMLElement, AvatarGroup>();
+
+/**
+ * Аватары участников на странице (до 3 + «+N») — та же группа аватаров, что в шапке, поменьше; нажатие — то же
+ * меню аватара. Обновляется, только если состав или вид изменились.
+ */
 export function fillPageAvatars(box: HTMLElement, pageId: string): void {
   const users = collabActive() ? collabUsers() : [];
   const { shown, more } = pageAvatars(users, pageId, myCollabId());
-  const key = shown.map(u => `${u.userId}:${u.name}:${u.cursorId ?? ''}:${u.away ? 1 : 0}`).join(',') + `+${more}`;
+  const key = shown.map(u => `${u.userId}:${u.name}:${u.cursorId ?? ''}:${u.avatar ?? ''}:${u.away ? 1 : 0}:${cursorShown(u.userId) ? 1 : 0}`).join(',')
+    + `+${more}|${state.project.pages.map(p => p.name).join('/')}`;
   if (box.dataset.key === key) return;
   box.dataset.key = key;
-  box.textContent = '';
-  for (const u of shown) box.appendChild(makeAvatar(u, 'page-avatar'));
-  if (more > 0) box.appendChild(el('span', 'page-avatar more', `+${more}`));
+  let g = pageGroups.get(box);
+  if (!g) {
+    const created = createAvatarGroup({ label: 'Участники на странице', size: 22, tight: 3, open: 8, itemClass: 'page-avatar' });
+    g = created;
+    pageGroups.set(box, created);
+    box.textContent = '';
+    box.appendChild(created.el);
+  }
+  const group = g;
+  const items: AvatarGroupItem[] = shown.map(u => ({ key: `u${u.userId}`, data: avatarData(u), onActivate: (b: HTMLElement) => openMenuFor(u.userId, b, group) }));
+  if (more > 0) {
+    const rest = users.filter(u => u.userId !== myCollabId() && !u.hiddenPage && u.pageId === pageId).slice(shown.length);
+    items.push({ key: 'more', more: { count: more, title: rest.map(u => String(u.name ?? '') || 'Участник').join(', ') } });
+  }
+  group.set(items);
   box.hidden = shown.length === 0;
 }
 
-// ----- Аватары в шапке -----
+// ----- Группа аватаров в шапке -----
+
+let group: AvatarGroup | null = null;
+/** Открыть настройки профиля (передаёт приложение). */
+let openProfile: () => void = () => {};
+/** Чьё меню открыто: номер участника. */
+let menuFor: number | null = null;
+
+export function avatarStatus(u: Pick<CollabUser, 'away' | 'hiddenPage'>): AvatarStatus {
+  if (u.hiddenPage) return 'hidden-page';
+  return u.away ? 'away' : 'online';
+}
+
+/** Данные аватара участника (или мой: self). */
+export function avatarData(u: CollabUser, self = false): AvatarData {
+  const { bg, fg } = avatarColors(u);
+  return {
+    name: String(u.name ?? ''),
+    bg, fg,
+    cursorId: u.cursorId ?? null,
+    // мой аватар — из профиля: меняется сразу, не дожидаясь хаба
+    avatar: self ? myAvatar() : collabAvatar(u),
+    status: avatarStatus(u),
+    self,
+    cursorHidden: !self && !cursorShown(u.userId),
+    title: self ? `Вы — ${String(u.name ?? '') || 'Участник'}${u.away ? ' · Отошёл' : ''}` : participantTitle(u),
+  };
+}
+
+/** Я в комнате: запись хаба обо мне, а до неё — профиль. */
+function meUser(): CollabUser {
+  const me = myCollabId();
+  const u = collabUsers().find(x => x.userId === me);
+  if (u) return u;
+  return { userId: me, name: profileName(), color: '#868e96', host: isHost(), away: false, cursor: null, pageId: state.pageId, selection: [], rights: { default: 'edit', pages: {} }, cursorId: myCursorId() };
+}
+
+/** Страница, на которой я сейчас, скрыта от участника u (по правам, что пришли автору). */
+function myPageHiddenFor(u: CollabUser): boolean {
+  const r = u.rights;
+  if (!r) return false;
+  return (r.pages?.[state.pageId] ?? r.default) === 'hidden';
+}
+
+/** Пункты меню моего аватара: профиль, позвать всех, скрыть курсоры других. */
+export function selfMenuEntries(anchor: HTMLElement): AvatarMenuEntry[] {
+  const out: AvatarMenuEntry[] = [
+    { kind: 'action', id: 'profile', label: 'Настройки профиля', icon: PROFILE_ICON, run: () => openProfile() },
+  ];
+  if (canSummon()) {
+    out.push({
+      kind: 'action', id: 'summon-all', label: 'Позвать всех к себе', icon: SUMMON_ICON,
+      disabled: onDraft(), title: onDraft() ? 'Черновик виден только вам — позвать на него нельзя' : 'Участники перейдут на вашу страницу и к центру вашего экрана',
+      run: () => {
+        if (isHost()) { summonHere(anchor); return; }
+        if (sendSummon(state.pageId)) showPill({ kind: 'ok', text: 'Вы позвали всех на эту страницу' });
+      },
+    });
+  }
+  // чужие курсоры бывают только в совместной работе
+  if (collabActive()) out.push({ kind: 'switch', id: 'hide-cursors', label: 'Скрыть курсоры других', icon: ICONS.eyeOff, checked: othersCursorsHidden(), onChange: setOthersCursorsHidden, title: 'Только у вас: другие участники ничего не заметят' });
+  return out;
+}
+
+/**
+ * Личное право участника на страницу — те же варианты, что «Страницы» в «Поделиться» → «Настройки доступа»,
+ * но только для одного участника. «По роли» снимает личное право: действует его роль и настройка страницы.
+ */
+const PERSONAL_PAGE_OPTIONS: readonly SelectOption[] = [
+  { value: '', label: 'По роли', title: 'Как для всех: по роли участника и настройке страницы' },
+  { value: 'view', label: 'Только просмотр', title: 'Участник смотрит, но не меняет страницу' },
+  { value: 'hidden', label: 'Скрыта', title: 'Участник не видит страницу' },
+];
+
+/** Подменю «Настройки доступа»: страницы доски и личное право участника u на каждой. */
+export function accessSubmenu(u: CollabUser): AvatarSubmenu {
+  const name = String(u.name ?? '') || 'Участник';
+  const personal = u.access?.personal ?? {};
+  const box = el('div', 'avatar-access');
+  const list = el('div', 'avatar-access-list');
+  box.append(list);
+  const selects: SpringSelect[] = [];
+  for (const pg of state.project.pages) {
+    const pageName = pg.name || 'Без названия';
+    const row = el('div', 'avatar-access-row');
+    row.dataset.pageId = pg.id;
+    const label = el('span', 'avatar-access-name', pageName);
+    label.title = pageName;
+    const cur = personal[pg.id] ?? '';
+    // «Редактирование» могло прийти из таблицы участников P2P в «Поделиться» — показываем как есть
+    const options = cur === 'edit'
+      ? [PERSONAL_PAGE_OPTIONS[0], { value: 'edit', label: 'Редактирование', title: 'Участник меняет страницу' }, ...PERSONAL_PAGE_OPTIONS.slice(1)]
+      : PERSONAL_PAGE_OPTIONS;
+    const sel = createSpringSelect({
+      className: 'avatar-access-select', label: `${name}: доступ к странице «${pageName}»`, options, value: cur, align: 'end',
+      onChange: v => {
+        if (v === 'edit') return;
+        const right = v === 'view' || v === 'hidden' ? v : null;
+        if (!sendPageRights(u.userId, { [pg.id]: right })) showPill({ kind: 'warn', text: 'Нет связи с доской — доступ не изменён' });
+      },
+    });
+    sel.el.dataset.key = `access-${pg.id}`;
+    selects.push(sel);
+    row.append(label, sel.el);
+    list.append(row);
+  }
+  // длинный список страниц прокручивается внутри меню — своей тонкой полосой
+  attachOverlayScroll(list, { axis: 'y', host: box, edges: 'shadow' });
+  return { el: box, close: () => { for (const s of selects) s.close(true); } };
+}
+
+/** Пункты меню чужого аватара: перейти, скрыть курсор, позвать к себе, следить, доступ, исключить. */
+export function participantMenuEntries(u: CollabUser): AvatarMenuEntry[] {
+  const name = String(u.name ?? '') || 'Участник';
+  const out: AvatarMenuEntry[] = [
+    {
+      kind: 'action', id: 'goto', label: 'Перейти к участнику', icon: ICON_ARROW,
+      disabled: !!u.hiddenPage || !u.pageId, title: u.hiddenPage ? 'Участник сейчас на скрытой странице' : undefined,
+      run: () => goToParticipant(u, 'avatar'),
+    },
+    {
+      kind: 'switch', id: 'hide-cursor', label: 'Скрыть курсор', icon: ICONS.eyeOff,
+      checked: othersCursorsHidden() || userCursorHidden(u.userId), disabled: othersCursorsHidden(),
+      title: othersCursorsHidden() ? 'Скрыты курсоры всех участников — их можно вернуть в меню своего аватара' : 'Только у вас: участник ничего не заметит',
+      onChange: on => setUserCursorHidden(u.userId, on),
+    },
+  ];
+  if (canSummon() && !u.host) {
+    const reason = onDraft() ? 'Черновик виден только вам — позвать на него нельзя'
+      : myPageHiddenFor(u) ? 'Эта страница скрыта от участника' : '';
+    out.push({
+      kind: 'action', id: 'summon', label: 'Позвать к себе', icon: SUMMON_ICON, disabled: !!reason,
+      title: reason || 'Участник перейдёт на вашу страницу и к центру вашего экрана',
+      run: () => { if (sendSummon(state.pageId, u.userId)) showPill({ kind: 'ok', text: `Вы позвали к себе: ${name}` }); },
+    });
+  }
+  const following = followingUid() === u.userId;
+  out.push({
+    kind: 'action', id: 'follow', label: following ? 'Перестать следить' : 'Следить за участником', icon: FOLLOW_ICON,
+    title: following ? undefined : 'Ваш экран будет повторять страницу и камеру участника. Чтобы выйти — сдвиньте холст. Участник ничего не заметит',
+    run: () => { if (following) stopFollow(); else startFollow(u.userId); },
+  });
+  if (isHost() && !u.host) {
+    out.push({ kind: 'sep' });
+    out.push({
+      kind: 'submenu', id: 'access', label: 'Настройки доступа', icon: ACCESS_ICON,
+      title: 'Права на страницы только для этого участника — сохраняются за ним и после перезахода',
+      // свежая запись участника: после смены права и возврата в подменю видно новое значение
+      content: () => accessSubmenu(collabUsers().find(x => x.userId === u.userId) ?? u),
+    });
+    out.push({
+      kind: 'action', id: 'remove', label: 'Исключить', icon: ICONS.del, danger: true, confirm: 'Нажмите ещё раз, чтобы исключить',
+      title: 'Отключить участника от доски сейчас. Ссылка или приглашение продолжают действовать — их отзывают в окне «Поделиться»',
+      run: () => { if (sendRemove(u.userId)) showPill({ kind: 'info', text: `${name} больше не участвует в совместной работе` }); },
+    });
+  }
+  return out;
+}
+
+function menuSub(u: CollabUser, self: boolean): string {
+  const status = STATUS_TEXT[avatarStatus(u)];
+  if (self) return status ? `Это вы · ${status}` : 'Это вы';
+  const where = u.hiddenPage ? '' : pageName(u.pageId);
+  return [u.host ? 'Автор' : '', where ? `страница «${where}»` : '', status].filter(Boolean).join(' · ');
+}
+
+/** Меню аватара uid; from — группа, из которой его открыли (держится раскрытой, пока меню открыто). */
+function openMenuFor(uid: number, anchor: HTMLElement, from: AvatarGroup | null = group): void {
+  if (menuFor === uid && anchor.getAttribute('aria-expanded') === 'true') { closeAvatarMenu(); return; }
+  const self = uid === myCollabId();
+  const u = self ? meUser() : collabUsers().find(x => x.userId === uid);
+  if (!u) return;
+  // прежнее меню (в том числе из другой группы) закрывается до того, как это станет текущим
+  closeAvatarMenu(true);
+  from?.hold(true);
+  menuFor = uid;
+  openAvatarMenu({
+    anchor,
+    face: avatarData(u, self),
+    name: String(u.name ?? '') || 'Участник',
+    sub: menuSub(u, self),
+    entries: self ? selfMenuEntries(anchor) : participantMenuEntries(u),
+    onClose: () => {
+      if (menuFor !== uid) return;
+      menuFor = null;
+      from?.hold(false);
+    },
+  });
+}
+
+/** Состав группы: я первым (ключ 'me' — мой аватар не пересоздаётся при входе в комнату), затем другие (до STRIP_MAX) и «+N». */
+export function groupItems(users: readonly CollabUser[], me: CollabUser): AvatarGroupItem[] {
+  const others = users.filter(u => u.userId !== me.userId);
+  const shown = others.slice(0, STRIP_MAX);
+  const items: AvatarGroupItem[] = [
+    { key: 'me', data: avatarData(me, true), onActivate: b => openMenuFor(me.userId, b) },
+    ...shown.map(u => ({ key: `u${u.userId}`, data: avatarData(u), onActivate: (b: HTMLElement) => openMenuFor(u.userId, b) })),
+  ];
+  const rest = others.slice(STRIP_MAX);
+  if (rest.length > 0) items.push({ key: 'more', more: { count: rest.length, title: rest.map(u => String(u.name ?? '') || 'Участник').join(', ') } });
+  return items;
+}
+
+/** Короткая подпись аватара для ключей перерисовки (фото — длина и хвост, а не вся строка). */
+function avatarSig(a: string | null): string {
+  return a ? `${a.length}:${a.slice(-24)}` : '';
+}
 
 function renderStrip(): void {
   const strip = document.getElementById('collab-presence');
   if (!strip) return;
   const me = myCollabId();
-  const others = collabActive() ? collabUsers().filter(u => u.userId !== me) : [];
-  const shown = others.slice(0, STRIP_MAX);
-  const key = shown.map(u => `${u.userId}:${u.name}:${u.cursorId ?? ''}:${u.away ? 1 : 0}:${u.hiddenPage ? 'h' : u.pageId ?? ''}`).join(',') + `+${others.length}|${state.project.pages.map(p => p.name).join('/')}`;
-  if (strip.dataset.key === key) return;
+  const users = collabActive() ? collabUsers() : [];
+  const others = users.filter(u => u.userId !== me);
+  const self = meUser();
+  // мой аватар виден всегда, даже если на доске больше никого нет
+  // фото: в ключе — версия (photo:N) и, пока фото не пришло, признак его отсутствия
+  const key = users.map(u => `${u.userId}:${u.name}:${u.cursorId ?? ''}:${u.avatar ?? ''}${collabAvatar(u) ? '' : '-'}:${u.away ? 1 : 0}:${u.hiddenPage ? 'h' : u.pageId ?? ''}:${cursorShown(u.userId) ? 1 : 0}`).join(',')
+    + `|${me}|${self.name}:${self.cursorId ?? ''}:${avatarSig(myAvatar())}|${state.project.pages.map(p => p.name).join('/')}`;
+  if (strip.dataset.key === key && group) return;
   strip.dataset.key = key;
-  strip.textContent = '';
-  for (const u of shown) strip.appendChild(makeAvatar(u, 'presence-avatar'));
-  if (others.length > STRIP_MAX) strip.appendChild(el('span', 'presence-avatar more', `+${others.length - STRIP_MAX}`));
-  strip.hidden = others.length === 0;
+  if (!group) {
+    // по высоте — как кнопка «Поделиться» (48 px): круг 42 px и курсор, выступающий вниз на 6 px
+    group = createAvatarGroup({ label: 'Участники', size: 42, tight: 4, open: 14 });
+    strip.textContent = '';
+    strip.appendChild(group.el);
+  }
+  // участник ушёл — его меню закрывается
+  if (menuFor !== null && menuFor !== me && !others.some(u => u.userId === menuFor)) closeAvatarMenu();
+  strip.hidden = false;
+  group.set(groupItems(users, self));
 }
 
 // ----- Краевые курсоры -----
@@ -199,7 +420,7 @@ export function renderEdgePointers(): void {
     const cam = state.camera;
     const me = myCollabId();
     for (const u of collabUsers()) {
-      if (u.userId === me) continue;
+      if (u.userId === me || !cursorShown(u.userId)) continue;
       const pt = participantPoint(u, state.pageId);
       if (!pt) continue;
       const p = computeEdgePointer((pt.x - cam.x) * cam.zoom, (pt.y - cam.y) * cam.zoom, w, h, insets);
@@ -274,6 +495,32 @@ function refreshHostControls(force = false): void {
   const badge = document.getElementById('follow-hidden-badge');
   if (badge) badge.hidden = !(hidden && hostFollowEnabled());
   if (!host) closeSummonPopover();
+}
+
+// ----- «Следим за …»: плашка сверху посередине, пока включено слежение -----
+
+let followBannerKey = '';
+
+/** Плашка слежения: имя участника — цветом его бейджа; на скрытой от меня странице — пометка. */
+function renderFollowBanner(): void {
+  const banner = document.getElementById('follow-banner');
+  if (!banner) return;
+  const uid = followingUid();
+  const u = uid === null ? undefined : collabUsers().find(x => x.userId === uid);
+  const key = u ? `${u.userId}|${u.name}|${u.cursorId ?? ''}|${u.color}|${followWaiting() ? 1 : 0}` : '';
+  if (key === followBannerKey) return;
+  followBannerKey = key;
+  document.body.classList.toggle('following', !!u);
+  banner.hidden = !u;
+  banner.textContent = '';
+  if (!u) return;
+  const { bg, fg } = avatarColors(u);
+  const name = el('span', 'follow-name', String(u.name ?? '') || 'Участник');
+  name.style.background = bg;
+  name.style.color = fg;
+  banner.append('Следим за ', name);
+  if (followWaiting()) banner.append(el('span', 'follow-wait', ' · на скрытой странице'));
+  banner.title = 'Чтобы перестать следить, сдвиньте холст';
 }
 
 let popover: HTMLElement | null = null;
@@ -356,10 +603,14 @@ function toggleFollow(): void {
 
 let inited = false;
 
-/** Обновить всё присутствие (краевые курсоры, шапка, кнопки автора); onPageAvatars — аватары у карточек страниц. */
-export function initCollabPresence(onPageAvatars?: () => void): void {
+/**
+ * Обновить всё присутствие (краевые курсоры, группа аватаров в шапке, кнопки автора); onPageAvatars — аватары у карточек
+ * страниц, opts.openProfile — пункт «Настройки профиля» в меню моего аватара.
+ */
+export function initCollabPresence(onPageAvatars?: () => void, opts: { openProfile?: () => void } = {}): void {
   if (inited) return;
   inited = true;
+  if (opts.openProfile) openProfile = opts.openProfile;
   const summon = document.getElementById('btn-summon');
   if (summon) {
     summon.innerHTML = SUMMON_ICON; // константа модуля
@@ -370,6 +621,9 @@ export function initCollabPresence(onPageAvatars?: () => void): void {
     follow.innerHTML = FOLLOW_ICON; // константа модуля
     follow.addEventListener('click', toggleFollow);
   }
+  // мой аватар без комнаты строится по профилю: имя и курсор меняются в настройках
+  onProfileChange(() => renderStrip());
+  renderStrip();
   document.addEventListener(PRESENCE_EVENT, () => {
     renderEdgePointers();
     renderStrip();
@@ -378,6 +632,9 @@ export function initCollabPresence(onPageAvatars?: () => void): void {
   });
   // смена страницы или прав без сообщений комнаты (например, автор открыл скрытую страницу)
   onChange(() => refreshHostControls());
+  initFollow();
+  onFollowChange(renderFollowBanner);
+  document.addEventListener(PRESENCE_EVENT, renderFollowBanner);
   window.addEventListener('resize', () => renderEdgePointers());
   refreshHostControls(true);
 }

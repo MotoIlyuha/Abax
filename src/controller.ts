@@ -20,6 +20,7 @@ import { fxForget, fxMove } from './cursor-fx';
 import { settingsDialogOpen } from './settings-dialog';
 import { presenting, requestRender, renderScene } from './renderer';
 import { animateCameraTo, cancelCameraAnim, clampZoom, motionReduced } from './camera-anim';
+import { stopFollowByUser } from './follow';
 import { cancelActiveInteraction, onCancelInteraction } from './interaction';
 
 /** Плавный перелёт камеры к мировой точке (SPEC_NIGHT5 §8); прерывается жестом пользователя. */
@@ -222,6 +223,7 @@ export function initController(canvas: HTMLCanvasElement): void {
       const rect = canvas.getBoundingClientRect();
       const dt = Math.min((time - pan.last) / 1000, 0.05);
       pan.last = time;
+      stopFollowByUser();
       state.camera.x += velocity(pos.x, rect.width) * AUTO_PAN_SPEED * dt / state.camera.zoom;
       state.camera.y += velocity(pos.y, rect.height) * AUTO_PAN_SPEED * dt / state.camera.zoom;
       onPointerMove(pan.event);
@@ -885,6 +887,7 @@ export function initController(canvas: HTMLCanvasElement): void {
     const mx = (a.x + b.x) / 2;
     const my = (a.y + b.y) / 2;
     const zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, gesture.cam.zoom * (dist / gesture.dist)));
+    stopFollowByUser();
     // сцена под стартовой серединой остаётся под текущей серединой
     const smx = gesture.mx / gesture.cam.zoom + gesture.cam.x;
     const smy = gesture.my / gesture.cam.zoom + gesture.cam.y;
@@ -930,6 +933,8 @@ export function initController(canvas: HTMLCanvasElement): void {
     switch (a.kind) {
       case 'pan': {
         const zoom = a.cam.zoom;
+        // своё перемещение по холсту выключает «Следить за участником»
+        if (lp.x !== a.sx || lp.y !== a.sy) stopFollowByUser();
         panSamples.push({ t: performance.now(), x: lp.x, y: lp.y });
         if (panSamples.length > 12) panSamples.shift();
         state.camera = {
@@ -1259,6 +1264,7 @@ export function initController(canvas: HTMLCanvasElement): void {
 
   function onWheel(e: WheelEvent): void {
     e.preventDefault();
+    stopFollowByUser();
     const lp = localPos(e);
     const k = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? 100 : 1;
     // WheelEvent не позволяет надёжно отличить мышь от тачпада.
@@ -1376,6 +1382,13 @@ export function initController(canvas: HTMLCanvasElement): void {
         beginTextEdit({ el: captioned });
         return;
       }
+      // у курсора в надписи Backspace стирает её последний символ, а не фигуру;
+      // у пустой фигуры стирать нечего — Backspace, как и Delete, удаляет её
+      if (e.code === 'Backspace' && !e.shiftKey && captioned.text) {
+        e.preventDefault();
+        beginTextEdit({ el: captioned, backspace: true });
+        return;
+      }
     }
     // страницы: переход Ctrl/Alt + номер и новая страница — сочетания из «Горячих клавиш»
     const pageNo = pageNumberFromEvent(e, state.settings.pageKeyMod);
@@ -1451,9 +1464,9 @@ export function initController(canvas: HTMLCanvasElement): void {
         break;
       case 'Delete':
       case 'Backspace': e.preventDefault(); if (canEditBoard()) deleteSelected(); break;
-      case 'Equal': zoomAtCenter(1.25); break;
-      case 'Minus': zoomAtCenter(1 / 1.25); break;
-      case 'Digit0': fitContent(true); break;
+      case 'Equal': stopFollowByUser(); zoomAtCenter(1.25); break;
+      case 'Minus': stopFollowByUser(); zoomAtCenter(1 / 1.25); break;
+      case 'Digit0': stopFollowByUser(); fitContent(true); break;
       case 'KeyB': togglePages(); break;
       default: {
         // клавиши инструментов настраиваются в окне «Все настройки»

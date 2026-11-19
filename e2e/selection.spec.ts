@@ -216,7 +216,19 @@ test.describe('камера', () => {
     await expect(page.locator('#zoom-label')).toHaveText('80%');
   });
 
-  test('колёсико прокручивает, Ctrl+колёсико — масштаб под курсором', async ({ board, page }) => {
+  test('по умолчанию колёсико масштабирует', async ({ board, page }) => {
+    const s = await board.screen({ x: 500, y: 400 });
+    await page.mouse.move(s.x, s.y);
+    await page.mouse.wheel(0, -120);
+    await board.settleCamera();
+    expect((await board.state()).camera.zoom).toBeGreaterThan(1);
+    expect((await board.state()).settings.wheelMode).toBe('zoom');
+  });
+
+  test('режим «Прокрутка»: колёсико прокручивает, Ctrl+колёсико — масштаб под курсором', async ({ board, page }) => {
+    await page.evaluate(() => localStorage.setItem('doska.settings', JSON.stringify({ toolbarPos: 'left', wheelMode: 'scroll' })));
+    await page.reload();
+    await board.ready();
     const s = await board.screen({ x: 500, y: 400 });
     await page.mouse.move(s.x, s.y);
     await page.mouse.wheel(0, 120);

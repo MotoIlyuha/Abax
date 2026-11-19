@@ -6,6 +6,7 @@ const tasks = require('./room-tasks.cjs');
 const notes = require('./room-comments.cjs');
 const access = require('./room-access.cjs');
 const guard = require('./room-guard.cjs');
+const avatars = require('./room-avatar.cjs');
 const crypto = require('crypto');
 
 /** Версия протокола сообщений. Поднимать при несовместимых изменениях формата. */
@@ -54,6 +55,9 @@ const VIEW_ZOOM_MAX = 32;
 /** Коды закрытия (src/collab-transport.ts). */
 const CLOSE_ROOM_FULL = 4430;
 const ROOM_FULL_REASON = 'room-full';
+/** Автор убрал участника из совместной работы — зеркало CLOSE_REMOVED / REMOVED_REASON из src/collab-transport.ts и src/room-host.ts. */
+const CLOSE_REMOVED = 4411;
+const REMOVED_REASON = 'removed-by-host';
 /** Верхняя граница своего лимита гостей (MAX_GUESTS_LIMIT в src/limits.ts). */
 const MAX_GUESTS_LIMIT = 50;
 
@@ -99,6 +103,7 @@ class Room {
     this.followHost = false; // «Автопереход участников за мной»
     this.permsKey = '{}'; // слепок permissions проекта, известный хабу
     this.resumes = new Map(); // секрет возобновления участника -> его автор элементов (только в памяти)
+    this.rightsBy = new Map(); // автор элементов -> { personal, personalAll? }: личные права, возвращаются при перезаходе
   }
   clientOf(uid) {
     return [...this.clients.values()].find(c => c.uid === uid);
@@ -195,6 +200,16 @@ class Room {
     }
     return { default: def, pages };
   }
+  /** Личные права гостя по страницам проекта (зеркало personalSnapshot из src/room-host.ts). */
+  personalSnapshot(a) {
+    const out = {};
+    if (!a || !this.project) return {};
+    for (const pg of this.project.pages) {
+      const r = (a.personal && a.personal[pg.id]) || a.personalAll;
+      if (r) out[pg.id] = r;
+    }
+    return Object.keys(out).length ? { personal: out } : {};
+  }
   usersSnapshot() {
     return [...this.clients.values()].map(c => {
       const a = this.access.get(c.uid);
@@ -205,7 +220,8 @@ class Room {
         selection: c.selection || [], rights: this.snapshotRights(c),
         ...(c.cursorId ? { cursorId: c.cursorId } : {}),
         ...(c.view ? { view: c.view } : {}),
-        access: c.host ? { role: 'owner', source: 'owner' } : { role: (a && a.role) || 'commenter', source: (a && a.source) || 'p2p' },
+        ...(c.avatar !== undefined ? { avatar: avatars.avatarKey(c.avatar, c.avatarRev) } : {}),
+        access: c.host ? { role: 'owner', source: 'owner' } : { role: (a && a.role) || 'commenter', source: (a && a.source) || 'p2p', ...this.personalSnapshot(a) },
       };
     });
   }
@@ -458,10 +474,17 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
     const resume = resumeOf(info);
     return {
       t: 'init', proto: PROTO, userId: info.uid, color: info.color, name: info.name, project: projectFor(info), ...accessFor(info),
-      users: usersFor(info), patches: true, chat: room.chat, followHost: room.followHost,
+      users: usersFor(info), patches: true, chat: room.chat, followHost: room.followHost, photos: photosNow(),
       ...(principal ? { principal } : {}), ...(resume ? { resume } : {}),
     };
   };
+
+  /** Фото аватаров участников (зеркало photosNow): в снимке участников только их версии. */
+  function photosNow() {
+    const out = {};
+    for (const c of room.clients.values()) if (c.avatar && avatars.isAvatarPhoto(c.avatar)) out[c.uid] = c.avatar;
+    return out;
+  }
 
   /** Секрет возобновления (зеркало acceptResume): до первой правки, автор свободен — он снова этого участника. */
   function acceptResume(info, m) {
@@ -473,6 +496,25 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
     for (const [secret, p] of room.resumes) if (p === a.principal && secret !== m.secret) room.resumes.delete(secret);
     a.principal = want;
     sendTo(info.sock, { t: 'resume', ok: true, principal: want });
+    // тот же участник вернулся: его личные права страниц — снова его
+    if (restoreRights(a)) { broadcastUsers(); pushRights(info.uid); }
+  }
+
+  /** Запомнить личные права участника за его автором элементов (зеркало rememberRights из src/room-host.ts). */
+  function rememberRights(uid) {
+    const a = room.access.get(uid);
+    if (!a || !a.principal) return;
+    room.rightsBy.set(a.principal, { personal: { ...a.personal }, ...(a.personalAll ? { personalAll: a.personalAll } : {}) });
+  }
+
+  /** Вернуть участнику запомненные за ним личные права; false — запомненного нет. */
+  function restoreRights(a) {
+    const saved = a.principal ? room.rightsBy.get(a.principal) : undefined;
+    if (!saved) return false;
+    a.personal = { ...saved.personal };
+    if (saved.personalAll) a.personalAll = saved.personalAll;
+    else delete a.personalAll;
+    return true;
   }
 
   const permsKeyOf = p => JSON.stringify((p && p.permissions) || {});
@@ -518,14 +560,46 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
     broadcastUsers();
   }
 
+  // to — позвать одного участника (меню аватара); зеркало acceptSummon из src/room-host.ts
   function acceptSummon(info, m) {
     if (!info.host && !capsOf(info).summon) return;
     const view = cleanView(m);
     if (!view || !(room.project && room.project.pages.some(p => p.id === view.pageId))) return;
+    const to = m.to === undefined ? null : Number.isInteger(m.to) ? m.to : NaN;
+    if (Number.isNaN(to) || to === info.uid) return;
     for (const c of room.clients.values()) {
       if (c.host || room.userPageRight(c.uid, view.pageId) === 'hidden') continue;
-      sendTo(c.sock, { t: 'summon', ...view, by: info.uid });
+      if (to !== null && c.uid !== to) continue;
+      sendTo(c.sock, { t: 'summon', ...view, by: info.uid, ...(to !== null ? { to } : {}) });
     }
+  }
+
+  // «Исключить» (меню аватара): только автор и только гостя
+  function acceptRemove(info, m) {
+    if (!info.host || !Number.isInteger(m.uid)) return;
+    for (const c of room.clients.values()) {
+      if (c.uid !== m.uid || c.host) continue;
+      try { c.sock.close(CLOSE_REMOVED, REMOVED_REASON); } catch { /* уже закрыт */ }
+    }
+  }
+
+  /** «Настройки доступа» из меню аватара: личные права гостя на страницы (зеркало acceptSetRights из src/room-host.ts). */
+  function acceptSetRights(info, m) {
+    if (!info.host || !Number.isInteger(m.uid) || !room.project) return;
+    const target = room.clientOf(m.uid);
+    const raw = m.pages;
+    if (!target || target.host || !raw || typeof raw !== 'object' || Array.isArray(raw)) return;
+    const pages = {};
+    for (const [pid, v] of Object.entries(raw)) {
+      if (!room.project.pages.some(p => p.id === pid)) continue;
+      if (v === null || v === 'view' || v === 'hidden') pages[pid] = v;
+    }
+    if (Object.keys(pages).length === 0) return;
+    const r = room.setRights(target.uid, { pages });
+    if (!r.ok) { sendTo(info.sock, { t: 'set-rights', uid: target.uid, ok: false, error: r.error || '' }); return; }
+    rememberRights(target.uid);
+    broadcastUsers();
+    pushRights(target.uid);
   }
 
   function acceptFollowHost(info, m) {
@@ -558,7 +632,7 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
       name: normalizeName(name) || (isHost ? 'Автор' : `Гость ${uid}`),
       color: isHost ? '#e03131' : COLORS[uid % COLORS.length],
       last: Date.now(), cursor: null, pageId: null, selection: [], patches,
-      cursorId: cleanCursorId(cursorId),
+      cursorId: cleanCursorId(cursorId), avatar: undefined, avatarRev: 0,
       view: null, chatOk: createRateLimiter(), edited: false,
     };
     room.clients.set(sock, info);
@@ -589,11 +663,23 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
       }
       if (m.t === 'caps') { info.patches = m.patches === true; return; }
       if (m.t === 'profile') {
-        // смена имени и курсора на лету (зеркало src/room-host.ts)
+        // смена имени, курсора и аватара на лету (зеркало src/room-host.ts)
         const nextName = m.name === undefined ? info.name : normalizeName(m.name);
         const nextCursor = m.cursorId === undefined ? info.cursorId : cleanCursorId(m.cursorId) ?? info.cursorId;
-        if (!nextName || (nextName === info.name && nextCursor === info.cursorId)) return;
-        info.name = nextName; info.cursorId = nextCursor; broadcastUsers(); return;
+        const cleaned = m.avatar === undefined ? undefined : avatars.cleanAvatar(m.avatar);
+        const nextAvatar = cleaned === undefined ? info.avatar : cleaned;
+        if (!nextName || (nextName === info.name && nextCursor === info.cursorId && nextAvatar === info.avatar)) return;
+        info.name = nextName; info.cursorId = nextCursor;
+        if (nextAvatar !== info.avatar) {
+          info.avatar = nextAvatar;
+          if (nextAvatar && avatars.isAvatarPhoto(nextAvatar)) {
+            // фото — отдельным сообщением и до снимка участников
+            info.avatarRev++;
+            const msg = JSON.stringify({ t: 'avatar', userId: info.uid, photo: nextAvatar });
+            for (const c of room.clients.values()) if (c.sock.readyState === 1) try { c.sock.send(msg); } catch { /* канал закрывается */ }
+          }
+        }
+        broadcastUsers(); return;
       }
       if (m.t === 'patch') { if (validPatch(m)) { acceptPatch(info, m); info.edited = true; } return; }
       if (m.t === 'resume') { acceptResume(info, m); return; }
@@ -607,6 +693,8 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
       if (m.t === 'chat') { acceptChat(info, m); return; }
       if (m.t === 'view') { acceptView(info, m); return; }
       if (m.t === 'summon') { acceptSummon(info, m); return; }
+      if (m.t === 'remove') { acceptRemove(info, m); return; }
+      if (m.t === 'set-rights') { acceptSetRights(info, m); return; }
       if (m.t === 'follow-host') { acceptFollowHost(info, m); return; }
       if (m.t === 'project' && validProject(m.project)) {
         info.edited = true;
@@ -823,7 +911,13 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
     room,
     attach,
     refresh,
-    setRights: (uid, patch) => { const r = room.setRights(uid, patch); broadcastUsers(); pushRights(uid); return r; },
+    setRights: (uid, patch) => {
+      const r = room.setRights(uid, patch);
+      if (r.ok) rememberRights(uid);
+      broadcastUsers();
+      pushRights(uid);
+      return r;
+    },
     pushPatch: patch => validPatch(patch) && acceptPatch(null, patch),
     pushProject: project => {
       const before = accessBefore(project);

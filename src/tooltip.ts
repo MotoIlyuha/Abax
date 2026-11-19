@@ -118,6 +118,8 @@ function place(el: HTMLDivElement, anchor: HTMLElement, preferred?: Side): void 
 
 function show(): void {
   if (!target || !target.isConnected || !target.dataset.tip) return;
+  // меню кнопки открыто — подсказка закрыла бы его (например, шапку меню аватара)
+  if (target.getAttribute('aria-expanded') === 'true') return;
   const el = ensureEl();
   render(el, target.dataset.tip);
   el.classList.remove('show');

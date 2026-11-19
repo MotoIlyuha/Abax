@@ -6,6 +6,7 @@ import { HttpError, type Ctx, type Reply, type Router } from './router';
 import { createUser, effectivePlan, findByDevice, getUser, meResponse, sha256Hex } from './users';
 import { resolveIdentity, type Identity } from './identity';
 import { canUseCursor, isCursorId } from '../src/cursors';
+import { MAX_AVATAR_PHOTO, cleanAvatar } from '../src/avatar-value';
 import { normalizeName } from '../src/room-host';
 
 // Сессии (JWT HS256 на node:crypto), анонимный вход по токену устройства и проверка Telegram Login Widget.
@@ -196,11 +197,11 @@ export function registerAuthRoutes(router: Router): void {
     return { json: meResponse(user, ctx.app.now(), ctx.app.opts.enforceLimits) };
   });
 
-  // профиль: своё имя и персональный курсор (SPEC_NIGHT4 §6)
+  // профиль: своё имя, персональный курсор (SPEC_NIGHT4 §6) и аватар (смайл или фото; null — буквы)
   router.patch('/api/me', async ctx => {
     const app = ctx.app;
     const user = requireUser(ctx);
-    const body = await ctx.body() as { displayName?: unknown; cursorId?: unknown } | undefined;
+    const body = await ctx.body() as { displayName?: unknown; cursorId?: unknown; avatar?: unknown } | undefined;
     if (!body || typeof body !== 'object') throw new HttpError(400, 'bad-request');
     const now = app.now();
     let name: string | null = null;
@@ -214,8 +215,14 @@ export function registerAuthRoutes(router: Router): void {
       if (!app.opts.devAuth && !canUseCursor(body.cursorId, effectivePlan(user, now))) throw new HttpError(403, 'plan-cursor');
       cursor = body.cursorId;
     }
+    let avatar: string | null | undefined;
+    if (body.avatar !== undefined) {
+      avatar = cleanAvatar(body.avatar);
+      if (avatar === undefined) throw new HttpError(400, 'bad-avatar');
+    }
     if (name !== null) app.db.prepare('UPDATE users SET display_name = ?, name_custom = 1, updated_at = ? WHERE id = ?').run(name, now, user.id);
     if (cursor !== null) app.db.prepare('UPDATE users SET cursor_id = ?, updated_at = ? WHERE id = ?').run(cursor, now, user.id);
+    if (avatar !== undefined) app.db.prepare('UPDATE users SET avatar = ?, updated_at = ? WHERE id = ?').run(avatar, now, user.id);
     return { json: meResponse(getUser(app.db, user.id)!, now, app.opts.enforceLimits) };
-  }, { maxBody: 4096 });
+  }, { maxBody: MAX_AVATAR_PHOTO + 4096 });
 }

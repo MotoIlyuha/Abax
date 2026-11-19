@@ -17,7 +17,11 @@ interface ShareServer {
   port: number;
   code: string;
   hostKey: string;
-  room: { project: Project | null; clients: Map<unknown, { uid: number; selection: string[]; cursor: unknown; pageId: string | null }> };
+  room: {
+    project: Project | null; clients: Map<unknown, { uid: number; selection: string[]; cursor: unknown; pageId: string | null }>;
+    /** Личные права, запомненные за участниками (возвращаются при перезаходе). */
+    rightsBy: Map<string, unknown>;
+  };
   setRights(uid: number, patch: unknown): { ok: boolean; error?: string };
   attach(sock: unknown, opts: { isHost?: boolean; name?: string }): number | null;
   refresh(sock: unknown): boolean;
@@ -83,6 +87,9 @@ beforeEach(async () => {
   document.body.innerHTML = '<div id="canvas-wrap"></div>';
   localStorage.clear();
   server.room.project = demo();
+  // хаб общий для файла, а гость при подключении возобновляется тем же участником: права прошлого теста
+  // вернулись бы к нему (так и задумано для перезахода) — каждый тест начинается с чистого гостя
+  server.room.rightsBy.clear();
   await freshModules();
 });
 afterEach(async () => {
@@ -863,6 +870,34 @@ describe('персональные курсоры (Ночь №4)', () => {
   });
 });
 
+describe('аватары участников', () => {
+  const PHOTO = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ==';
+  const pillTexts = () => [...document.querySelectorAll('#activity-pills .ap-text')].map(n => n.textContent);
+
+  it('свой аватар уходит сразу после входа и при смене; чужое фото приходит отдельно, смена — пилюля', async () => {
+    localStorage.setItem('doska.profile', JSON.stringify({ name: 'Ученик', cursorId: 'default', avatar: '🦊', onboarded: true, updatedAt: 1 }));
+    const other = await peer(`${base}&name=Аня`);
+    peers.push(other);
+    await collab.startCollab(base, false, 'Ученик');
+    await until(() => st.state.project.id === 'proj');
+    const me = collab.myCollabId();
+    // первое сообщение об аватаре — без пилюли у остальных (хаб не считает его сменой)
+    await until(() => last(other, 'users')?.users.some((u: Msg) => u.userId === me && u.avatar === '🦊'));
+    const profile = await import('../../src/profile');
+    profile.setProfile({ avatar: PHOTO });
+    await until(() => last(other, 'avatar')?.photo === PHOTO);
+    await until(() => last(other, 'users')?.users.some((u: Msg) => u.userId === me && u.avatar === 'photo:1'));
+    // чужой аватар: фото, затем смайл — пилюли «сменил аватар» (первое сообщение — без пилюли)
+    const otherId = (last(other, 'init') as Msg).userId as number;
+    other.ws.send(JSON.stringify({ t: 'profile', avatar: PHOTO }));
+    await until(() => collab.collabAvatar(collab.collabUsers().find(u => u.userId === otherId)!) === PHOTO);
+    expect(pillTexts()).not.toContain('Аня сменил аватар');
+    other.ws.send(JSON.stringify({ t: 'profile', avatar: '🐼' }));
+    await until(() => pillTexts().includes('Аня сменил аватар'));
+    expect(collab.collabAvatar(collab.collabUsers().find(u => u.userId === otherId)!)).toBe('🐼');
+  });
+});
+
 describe('уведомления и чат комнаты (Ночь №5)', () => {
   const pillTexts = () => [...document.querySelectorAll('#activity-pills .ap-text')].map(n => n.textContent);
 
@@ -915,6 +950,45 @@ describe('уведомления и чат комнаты (Ночь №5)', () =
     await until(() => got.length === 1);
     expect(got[0]).toMatchObject({ pageId: 'pg2', vx: 10, vy: 20, vz: 2 });
     expect(pillTexts()).toContain('Автор позвал всех на страницу «Вторая»');
+  });
+
+  it('«Позвать к себе» одного: пилюля «позвал вас»; автор убрал — соединение закрыто с кодом 4411', async () => {
+    await collab.startCollab(base, false, 'Ученик');
+    await until(() => st.state.project.id === 'proj');
+    const host = await peer(`${base}&host=1&key=${encodeURIComponent(server.hostKey)}`);
+    peers.push(host);
+    const me = collab.myCollabId();
+    host.ws.send(JSON.stringify({ t: 'summon', pageId: 'pg2', vx: 0, vy: 0, vz: 1, to: me }));
+    await until(() => pillTexts().includes('Автор позвал вас на страницу «Вторая»'));
+    const closed: number[] = [];
+    document.addEventListener('doska:collab-closed', e => closed.push((e as CustomEvent).detail.code), { once: true });
+    host.ws.send(JSON.stringify({ t: 'remove', uid: me }));
+    await until(() => closed.length === 1);
+    expect(closed[0]).toBe(4411);
+    expect(collab.collabActive()).toBe(false);
+    expect(collab.closedNotice(4411).title).toBe('Вас отключили от доски');
+  });
+
+  it('скрытый курсор участника не рисуется; «Скрыть курсоры других» — ни один', async () => {
+    const vis = await import('../../src/cursor-visibility');
+    document.body.insertAdjacentHTML('beforeend', '<div id="canvas-wrap"></div>');
+    await collab.startCollab(base, false, 'Ученик');
+    await until(() => st.state.project.id === 'proj');
+    const other = await peer(`${base}&name=${encodeURIComponent('Лемур')}`);
+    peers.push(other);
+    other.ws.send(JSON.stringify({ t: 'cursor', x: 5, y: 5, pageId: st.state.pageId }));
+    const nodes = () => document.querySelectorAll('#remote-cursors .remote-cursor').length;
+    await until(() => nodes() === 1);
+    const uid = collab.collabUsers().find(u => u.name === 'Лемур')!.userId;
+    vis.setUserCursorHidden(uid, true);
+    expect(nodes()).toBe(0);
+    vis.setUserCursorHidden(uid, false);
+    expect(nodes()).toBe(1);
+    vis.setOthersCursorsHidden(true);
+    expect(nodes()).toBe(0);
+    vis.setOthersCursorsHidden(false);
+    expect(nodes()).toBe(1);
+    document.getElementById('canvas-wrap')?.remove();
   });
 
   it('автопереход: состояние из init и сообщений', async () => {

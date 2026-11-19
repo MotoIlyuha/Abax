@@ -32,7 +32,7 @@
 - Старт ночи (ветка, журнал, первый коммит) — по п. 0.1 Locked Decisions текущей спецификации. Журнал прошлой ночи переименовывается в `NIGHT_LOG_NIGHT<N>.md`.
 
 ## 4. Сервер (`server/`, Ночи №3–6)
-- Каталог `server/` — Node + TypeScript + `better-sqlite3`; он импортирует из `src/` только чистые модули без DOM (`types`, `file`, `delta`, `limits`, `task-element`, `room-host`, `asset-store`, `project-access`, `cursors`, `sync-conflict`, `room-chat`, `board-url`, `comments`, `collab-transport`, `access`, `element-guard`). Зеркала для `electron/room.cjs`: `electron/room-access.cjs`, `electron/room-guard.cjs` (паритет — `tests/server/room-pointer.test.ts`).
+- Каталог `server/` — Node + TypeScript + `better-sqlite3`; он импортирует из `src/` только чистые модули без DOM (`types`, `file`, `delta`, `limits`, `task-element`, `room-host`, `asset-store`, `project-access`, `cursors`, `sync-conflict`, `room-chat`, `board-url`, `comments`, `collab-transport`, `access`, `element-guard`, `avatar-value`). Зеркала для `electron/room.cjs`: `electron/room-access.cjs`, `electron/room-guard.cjs` (паритет — `tests/server/room-pointer.test.ts`), `electron/room-avatar.cjs` (паритет — `tests/unit/avatar-value.test.ts`).
 - Клиент без настроенного адреса API (`apiUrl`) не делает сетевых запросов: все старые тесты работают как раньше.
 - Серверные тесты — `tests/server/*.test.ts` (`createAppServer({ dbPath: ':memory:' })`); типы сервера проверяет `npm run typecheck:tests`.
 
@@ -44,6 +44,10 @@
 - Протокол хабов меняется только одновременно в `src/room-host.ts` и `electron/room.cjs`, с одинаковыми сценариями тестов для обоих.
 - Чат комнаты — только в памяти хаба (буфер 100), не в проекте, файле и БД; текст сообщений и ссылки выводятся только через `textContent`.
 - Снимок участников строится на получателя: участник на скрытой для получателя странице приходит с `hiddenPage: true` без страницы, курсора, камеры и выделения.
+
+## 6.1. Аватар пользователя
+- Аватар — буквы имени (`null`), смайл или фото `data:image` (проверка — только `src/avatar-value.ts`). Выбор — `src/avatar-editor.ts` (онбординг и «Профиль»), кнопка смайла — общий компонент `src/icon-button.ts` (тот же, что у иконки проекта), обрезка фото — `src/avatar-crop.ts`.
+- В снимке участников — только смайл или `photo:<версия>`; само фото — в `init.photos` и сообщении `{t:'avatar'}` (снимок рассылается на каждое движение курсора). Первое сообщение участника об аватаре не считается сменой (пилюля «сменил аватар» — только на последующие).
 
 ## 7. Доступ и защита элементов (Ночь №6)
 - Итоговое право на странице и возможности участника считаются только функциями `src/access.ts` (`effectivePageAccess`, `participantCaps`); REST (`server/projects.ts`, `server/invite-routes.ts`), облачная комната и оба хаба вызывают их же (в `electron/room.cjs` — копия с тестом паритета). Скрытая кнопка в интерфейсе — не защита: каждое ограничение обязано проверяться хабом или сервером.

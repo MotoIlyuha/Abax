@@ -365,6 +365,8 @@ function choose(it: Inst, i: number): void {
   if (it.mode === 'enhanced') {
     it.TS.x = 0.955;
     it.closeAt = it.time + T_CLOSE;
+    // выбор сделан: пока список складывается, он уже не открыт — Esc достаётся окну или меню вокруг
+    it.trigger.setAttribute('aria-expanded', 'false');
     moving.add(it);
     wake();
   } else closeInst(it);
@@ -410,7 +412,7 @@ export function createSpringSelect(o: SpringSelectOptions): SpringSelect {
     } else if ((e.key === 'Enter' || e.key === ' ') && it.isOpen && it.hov >= 0) {
       e.preventDefault();
       choose(it, it.hov);
-    } else if (e.key === 'Escape' && it.isOpen) {
+    } else if (e.key === 'Escape' && it.isOpen && it.closeAt === 0) {
       // Esc закрывает только список, окно остаётся
       e.preventDefault();
       e.stopPropagation();

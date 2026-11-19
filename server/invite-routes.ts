@@ -6,7 +6,7 @@ import type { PageRight } from '../src/types';
 import { requireUser } from './auth';
 import type { AppContext } from './context';
 import type { AliasRow, InviteRow } from './db';
-import { activeAliasOf, isInviteKeyShaped, linkInviteOf, resolveInviteKey, rightsOfInvite, suggestFreeAliases, touchInvite, type InviteRights } from './invites';
+import { activeAliasOf, isInviteKeyShaped, linkInviteOf, resolveInviteKey, rightsOfInvite, suggestFreeAliases, touchInvite, withMemberRights, type InviteRights } from './invites';
 import { getActiveProject, ownerPlanOf, viewFor } from './projects';
 import { HttpError, type Ctx, type Router } from './router';
 import { effectivePlan } from './users';
@@ -48,10 +48,11 @@ function resolveInvite(ctx: Ctx, key: string) {
   const app = ctx.app;
   const res = resolveInviteKey(app, key);
   if ('error' in res) throw new HttpError(FAILURE_STATUS, res.error);
-  const invite = res.ok;
-  const row = getActiveProject(app, invite.projectId);
+  const row = getActiveProject(app, res.ok.projectId);
   if (!row) throw new HttpError(FAILURE_STATUS, 'board-deleted');
   const isOwner = !!ctx.user && ctx.user.id === row.owner_id;
+  // личные права этого участника на страницы (меню аватара «Настройки доступа») — поверх прав ссылки
+  const invite = isOwner ? res.ok : withMemberRights(app, res.ok, ctx.user?.id);
   if (!isOwner) touchInvite(app, invite.linkToken);
   const view = viewFor(app, row, isOwner ? { role: 'host' } : { role: 'guest', invite });
   return {

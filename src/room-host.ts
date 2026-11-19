@@ -7,9 +7,10 @@ import { PLAN_LIMITS, canCreatePage, effectiveMaxGuests, isPageRight, planOf, sa
 import { OWNER_CAPS, effectivePageAccess, normalizeRole, participantCaps, type AccessRole, type ParticipantCaps, type StoredRole } from './access';
 import { applyBoardPatch, isBoardPatch, type BoardPatch, type ElementOp } from './delta';
 import { sanitizeElement } from './file';
-import { CLOSE_FREE_LIMIT, CLOSE_ROOM_FULL, PROTO } from './collab-transport';
+import { CLOSE_FREE_LIMIT, CLOSE_REMOVED, CLOSE_ROOM_FULL, PROTO } from './collab-transport';
 import { CHAT_HISTORY, createRateLimiter, normalizeChatText, type ChatMessage } from './room-chat';
 import { cleanCursorId } from './cursors';
+import { avatarKey, cleanAvatar, isAvatarPhoto } from './avatar-value';
 import { guardPageReplace, guardPatch, type GuardWho } from './element-guard';
 import { addCommentReply, createCommentThread, resolveCommentThread, toggleElementReaction } from './comments';
 import { mergeGuestTask, mergeHostTask, projectTaskForRole, submitTaskAttempt, updateStudentDraft } from './task-element';
@@ -25,6 +26,8 @@ const DEFAULT_AWAY_MS = 45000;
 export const FREE_LIMIT_REASON = 'free-limit-reached';
 /** Причина отказа в пакете { t: 'denied' }, когда мест нет по лимиту автора (planLimited: false, код 4430). */
 export const ROOM_FULL_REASON = 'room-full';
+/** Причина закрытия сокета участнику, которого автор убрал из совместной работы (код 4411). */
+export const REMOVED_REASON = 'removed-by-host';
 /** Пределы зума в пакетах view и summon — как ZOOM_MIN / ZOOM_MAX в src/state.ts (паритет — tests/unit/room-host.test.ts). */
 export const VIEW_ZOOM_MIN = 0.05;
 export const VIEW_ZOOM_MAX = 32;
@@ -114,6 +117,12 @@ export interface RoomHubOptions {
    * его делает сам владелец комнаты. kind — что произошло: patch, project, task-draft, task-submit, react, comment.
    */
   onChange?: (project: Project, kind: ChangeKind) => void;
+  /**
+   * Автор изменил личные права участника на страницы (меню аватара «Настройки доступа», таблица участников P2P).
+   * principal — автор элементов участника (u:<userId> в облаке, c:<id> в P2P), personal — все его личные права
+   * сейчас. Облачная комната сохраняет их за пользователем, чтобы они пережили перезаход.
+   */
+  onPersonalRights?: (principal: string, personal: Record<string, PageRight>) => void;
   /** Через сколько молчания участник считается «отошедшим». */
   awayMs?: number;
   /** Часы (для тестов). */
@@ -150,6 +159,10 @@ interface Client {
   patches: boolean;
   cursorId?: string;
   allowProCursor: boolean;
+  /** Аватар: смайл, фото (data:image) или null — буквы; undefined — участник о нём ещё не сообщал (старая версия). */
+  avatar?: string | null;
+  /** Версия фото: растёт при каждой смене, по ней получатели отличают новое фото от прежнего. */
+  avatarRev: number;
   /** Центр экрана участника в мировых координатах и его зум (пакет view). */
   view: ParticipantView | null;
   /** Ограничитель частоты сообщений чата. */
@@ -175,10 +188,18 @@ export interface UserSnapshot {
   cursorId?: string;
   /** Камера участника (нет поля — участник её не присылал). */
   view?: ParticipantView | null;
+  /**
+   * Аватар: смайл, «photo:<версия>» (само фото — в init.photos и сообщении { t: 'avatar' }) или null — буквы.
+   * Нет поля — участник об аватаре ещё не сообщал: первое сообщение не считается сменой аватара.
+   */
+  avatar?: string | null;
   /** Участник на странице, скрытой для получателя: страница, курсор, камера и выделение не передаются. */
   hiddenPage?: true;
-  /** Роль и откуда доступ — только получателям-авторам (SPEC_NIGHT6 §3.2). */
-  access?: { role: AccessRole | 'owner'; source: AccessSource; inviteId?: string };
+  /**
+   * Роль, откуда доступ и личные права страниц (меню аватара «Настройки доступа») — только получателям-авторам
+   * (SPEC_NIGHT6 §3.2).
+   */
+  access?: { role: AccessRole | 'owner'; source: AccessSource; inviteId?: string; personal?: Record<string, PageRight> };
 }
 
 /**
@@ -379,6 +400,8 @@ export class Room {
   permsKey = '{}';
   /** Секреты возобновления P2P-участников → их автор элементов (SPEC_NIGHT6 §4.3): только в памяти комнаты. */
   resumes = new Map<string, string>();
+  /** Личные права страниц, запомненные за автором элементов участника: возвращаются при его перезаходе. */
+  rightsBy = new Map<string, { personal: Record<string, PageRight>; personalAll?: PageRight }>();
 
   constructor(readonly code: string, private readonly opts: { now: () => number; awayMs: number; maxEditors: () => number }) {}
 
@@ -481,6 +504,19 @@ export class Room {
     }
     return { default: def, pages };
   }
+  /**
+   * Личные права гостя по страницам проекта (старое «скрыть всё» — на каждой странице без своего права);
+   * нет личных прав — нет и поля (снимок уходит на каждое движение курсора).
+   */
+  personalSnapshot(a: ParticipantAccess | undefined): { personal?: Record<string, PageRight> } {
+    const out: Record<string, PageRight> = {};
+    if (!a || !this.project) return {};
+    for (const pg of this.project.pages) {
+      const r = a.personal[pg.id] ?? a.personalAll;
+      if (r) out[pg.id] = r;
+    }
+    return Object.keys(out).length ? { personal: out } : {};
+  }
   usersSnapshot(): UserSnapshot[] {
     const now = this.opts.now();
     return [...this.clients.values()].map(c => {
@@ -492,8 +528,9 @@ export class Room {
         rights: this.snapshotRights(c),
         ...(c.cursorId ? { cursorId: c.cursorId } : {}),
         ...(c.view ? { view: c.view } : {}),
+        ...(c.avatar !== undefined ? { avatar: avatarKey(c.avatar, c.avatarRev) } : {}),
         access: c.host ? { role: 'owner' as const, source: 'owner' as const }
-          : { role: a?.role ?? 'commenter', source: a?.source ?? 'p2p', ...(a?.inviteId ? { inviteId: a.inviteId } : {}) },
+          : { role: a?.role ?? 'commenter', source: a?.source ?? 'p2p', ...(a?.inviteId ? { inviteId: a.inviteId } : {}), ...this.personalSnapshot(a) },
       };
     });
   }
@@ -607,10 +644,17 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
     return {
       t: 'init', proto: PROTO, userId: info.uid, color: info.color, name: info.name,
       project: projectFor(info), ...accessFor(info), users: usersFor(info),
-      patches: true, chat: room.chat, followHost: room.followHost,
+      patches: true, chat: room.chat, followHost: room.followHost, photos: photosNow(),
       ...(principal ? { principal } : {}), ...(resume ? { resume } : {}),
     };
   };
+
+  /** Фото аватаров участников (по номеру): в снимке участников только их версии. */
+  function photosNow(): Record<number, string> {
+    const out: Record<number, string> = {};
+    for (const c of room.clients.values()) if (c.avatar && isAvatarPhoto(c.avatar)) out[c.uid] = c.avatar;
+    return out;
+  }
 
   /** Участник предъявил секрет возобновления (SPEC_NIGHT6 §4.3): до первой правки, автор свободен — он снова его. */
   function acceptResume(info: Client, m: Rec): void {
@@ -623,6 +667,26 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
     for (const [secret, p] of room.resumes) if (p === a.principal && secret !== m.secret) room.resumes.delete(secret);
     a.principal = want;
     sendTo(info.sock, { t: 'resume', ok: true, principal: want });
+    // тот же участник вернулся: его личные права страниц — снова его
+    if (restoreRights(a)) { broadcastUsers(); pushRights(info.uid); }
+  }
+
+  /** Запомнить личные права участника за его автором элементов (и сообщить владельцу комнаты). */
+  function rememberRights(uid: number): void {
+    const a = room.access.get(uid);
+    if (!a?.principal) return;
+    room.rightsBy.set(a.principal, { personal: { ...a.personal }, ...(a.personalAll ? { personalAll: a.personalAll } : {}) });
+    options.onPersonalRights?.(a.principal, { ...a.personal });
+  }
+
+  /** Вернуть участнику запомненные за ним личные права; false — запомненного нет. */
+  function restoreRights(a: ParticipantAccess): boolean {
+    const saved = a.principal ? room.rightsBy.get(a.principal) : undefined;
+    if (!saved) return false;
+    a.personal = { ...saved.personal };
+    if (saved.personalAll) a.personalAll = saved.personalAll;
+    else delete a.personalAll;
+    return true;
   }
 
   /** Доступ нового гостя: из параметров подключения (облако), старых прав (rights) или по умолчанию (P2P). */
@@ -673,7 +737,7 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
       name: normalizeName(name) || (isHost ? 'Автор' : `Гость ${uid}`),
       color: isHost ? '#e03131' : COLORS[uid % COLORS.length],
       last: now(), cursor: null, pageId: null, selection: [], patches,
-      cursorId: cleanCursorId(cursorId, allowProCursor), allowProCursor,
+      cursorId: cleanCursorId(cursorId, allowProCursor), allowProCursor, avatarRev: 0,
       view: null, chatOk: createRateLimiter(), edited: false,
     };
     room.clients.set(sock, info);
@@ -685,6 +749,8 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
         a.principal = `c:${randomToken(6, true)}`;
         room.resumes.set(randomToken(16), a.principal);
       }
+      // автор передан транспортом (облако, u:<id>) — права, заданные ему раньше в этой комнате, сразу его
+      restoreRights(a);
       room.access.set(uid, a);
     }
 
@@ -715,12 +781,24 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
         return;
       }
       if (m.t === 'profile') {
-        // смена имени и курсора на лету: имя — как при входе, курсор — по белому списку (и тарифу)
+        // смена имени, курсора и аватара на лету: имя — как при входе, курсор — по белому списку (и тарифу),
+        // аватар — смайл или фото (src/avatar-value.ts); неподходящее значение не принимается
         const nextName = m.name === undefined ? info.name : normalizeName(m.name);
         const nextCursor = m.cursorId === undefined ? info.cursorId : cleanCursorId(m.cursorId, info.allowProCursor) ?? info.cursorId;
-        if (!nextName || (nextName === info.name && nextCursor === info.cursorId)) return;
+        const cleaned = m.avatar === undefined ? undefined : cleanAvatar(m.avatar);
+        const nextAvatar = cleaned === undefined ? info.avatar : cleaned;
+        if (!nextName || (nextName === info.name && nextCursor === info.cursorId && nextAvatar === info.avatar)) return;
         info.name = nextName;
         info.cursorId = nextCursor;
+        if (nextAvatar !== info.avatar) {
+          info.avatar = nextAvatar;
+          if (nextAvatar && isAvatarPhoto(nextAvatar)) {
+            // фото — отдельным сообщением и до снимка: снимок участников рассылается на каждое движение курсора
+            info.avatarRev++;
+            const msg = JSON.stringify({ t: 'avatar', userId: info.uid, photo: nextAvatar });
+            for (const c of room.clients.values()) if (c.sock.readyState === 1) try { c.sock.send(msg); } catch { /* канал закрывается */ }
+          }
+        }
         broadcastUsers();
         return;
       }
@@ -732,6 +810,8 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
       if (m.t === 'chat') { acceptChat(info, m); return; }
       if (m.t === 'view') { acceptView(info, m); return; }
       if (m.t === 'summon') { acceptSummon(info, m); return; }
+      if (m.t === 'remove') { acceptRemove(info, m); return; }
+      if (m.t === 'set-rights') { acceptSetRights(info, m); return; }
       if (m.t === 'follow-host') { acceptFollowHost(info, m); return; }
       if (m.t === 'patch') {
         if (isBoardPatch(m)) { acceptPatch(info, m); info.edited = true; }
@@ -869,15 +949,52 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
     broadcastUsers();
   }
 
-  /** «Позвать всех сюда»: от автора или (по настройке доски) редактора, гостям, которым страница видна. */
+  /**
+   * «Позвать всех сюда»: от автора или (по настройке доски) редактора, гостям, которым страница видна.
+   * to — номер участника: позвать только его (меню аватара «Позвать к себе»); в пакете ему приходит to.
+   */
   function acceptSummon(info: Client, m: Rec): void {
     if (!info.host && !capsOf(info).summon) return;
     const view = cleanView(m);
     if (!view || !room.project?.pages.some(p => p.id === view.pageId)) return;
+    const to = m.to === undefined ? null : Number.isInteger(m.to) ? m.to as number : NaN;
+    if (Number.isNaN(to) || to === info.uid) return;
     for (const c of room.clients.values()) {
       if (c.host || room.userPageRight(c.uid, view.pageId) === 'hidden') continue;
-      sendTo(c.sock, { t: 'summon', ...view, by: info.uid });
+      if (to !== null && c.uid !== to) continue;
+      sendTo(c.sock, { t: 'summon', ...view, by: info.uid, ...(to !== null ? { to } : {}) });
     }
+  }
+
+  /** «Исключить» (меню аватара): только автор и только гостя (не устройство автора) — соединение закрывается. */
+  function acceptRemove(info: Client, m: Rec): void {
+    if (!info.host || !Number.isInteger(m.uid)) return;
+    for (const c of room.clients.values()) {
+      if (c.uid !== m.uid || c.host) continue;
+      try { c.sock.close(CLOSE_REMOVED, REMOVED_REASON); } catch { /* уже закрыт */ }
+    }
+  }
+
+  /**
+   * «Настройки доступа» из меню аватара: личные права гостя на страницы проекта — «Только просмотр», «Скрыта»
+   * или null («По роли»: личное право снимается). Только автор и только гостю; отказ (лимит редакторов) — автору.
+   */
+  function acceptSetRights(info: Client, m: Rec): void {
+    if (!info.host || !Number.isInteger(m.uid) || !room.project) return;
+    const target = room.clientOf(m.uid as number);
+    const raw = m.pages;
+    if (!target || target.host || !raw || typeof raw !== 'object' || Array.isArray(raw)) return;
+    const pages: Record<string, PageRight | null> = {};
+    for (const [pid, v] of Object.entries(raw as Rec)) {
+      if (!room.project.pages.some(p => p.id === pid)) continue;
+      if (v === null || v === 'view' || v === 'hidden') pages[pid] = v;
+    }
+    if (Object.keys(pages).length === 0) return;
+    const r = room.setRights(target.uid, { pages });
+    if (!r.ok) { sendTo(info.sock, { t: 'set-rights', uid: target.uid, ok: false, error: r.error ?? '' }); return; }
+    rememberRights(target.uid);
+    broadcastUsers();
+    pushRights(target.uid);
   }
 
   /** «Автопереход участников за мной»: только автор и только на тарифе, где это есть. */
@@ -1065,6 +1182,7 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
     },
     setRights(uid, patch) {
       const r = room.setRights(uid, patch);
+      if (r.ok) rememberRights(uid);
       broadcastUsers();
       pushRights(uid);
       return r;

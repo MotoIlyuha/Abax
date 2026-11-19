@@ -1,4 +1,4 @@
-import type { Element, FadeStroke, GridMode, Page, Project, ProjectMeta, Pt } from './types';
+import type { Element, FadeStroke, GridMode, Page, PageRight, Project, ProjectMeta, Pt } from './types';
 import { roleLabel, type AccessRole, type ParticipantCaps } from './access';
 import { state, openProject, setSelection, setCopyGuard, setTouchGuard, isDraftId, onDraft, onChange, touchProject, update } from './state';
 import { MAX_PATCH_OPS, applyBoardPatch, diffElements, isBoardPatch, type BoardPatch } from './delta';
@@ -7,7 +7,8 @@ import { sanitizeComments } from './file';
 import { clientId } from './identity';
 import { DEFAULT_CURSOR_ID, cursorPreset, cursorSvg, isCursorId } from './cursors';
 import { fxForget, fxMove } from './cursor-fx';
-import { myCursorId, onProfileChange, profileName } from './profile';
+import { myAvatar, myCursorId, onProfileChange, profileName } from './profile';
+import { PHOTO_KEY, isAvatarEmoji, isAvatarPhoto } from './avatar-value';
 import { setStorage, storage, type BoardsStorage } from './storage';
 import { getApi } from './api-client';
 import { hydrateFromCloud } from './cloud-assets';
@@ -16,9 +17,10 @@ import { chatReceive, chatReset, setChatAvailable, setChatCanWrite, setChatSende
 import { viewCenter, viewportSize } from './camera-anim';
 import { cancelActiveInteraction } from './interaction';
 import { nearestAvailablePage } from './presence';
+import { cursorShown, onCursorVisibility, resetCursorVisibility } from './cursor-visibility';
 import {
   CLOSE_BAD_CODE, CLOSE_BAD_REQUEST, CLOSE_FREE_LIMIT, CLOSE_HOST_OFFLINE, CLOSE_PROTOCOL_MISMATCH, CLOSE_RATE_LIMITED,
-  CLOSE_ROOM_CLOSED, CLOSE_ROOM_FULL, CLOSE_ROOM_NOT_FOUND, CLOSE_TOO_SLOW, PROTO,
+  CLOSE_REMOVED, CLOSE_ROOM_CLOSED, CLOSE_ROOM_FULL, CLOSE_ROOM_NOT_FOUND, CLOSE_TOO_SLOW, PROTO,
   wsTransport, type CollabTransport, type RelayEvent,
 } from './collab-transport';
 
@@ -51,10 +53,12 @@ export interface CollabUser {
   cursorId?: string;
   /** Центр экрана участника в мировых координатах и зум (SPEC_NIGHT5 §8). */
   view?: { pageId: string; vx: number; vy: number; vz: number } | null;
+  /** Аватар: смайл, «photo:<версия>» (фото — collabAvatar) или null — буквы; нет поля — участник о нём не сообщал. */
+  avatar?: string | null;
   /** Участник на странице, скрытой от меня: где он, не сообщается (SPEC_NIGHT5 §3.1). */
   hiddenPage?: boolean;
-  /** Роль и откуда доступ — приходит только автору (SPEC_NIGHT6 §3.2). */
-  access?: { role: AccessRole | 'owner'; source: 'owner' | 'link' | 'alias' | 'email' | 'p2p'; inviteId?: string };
+  /** Роль, откуда доступ и личные права страниц (pageId → право) — приходит только автору (SPEC_NIGHT6 §3.2). */
+  access?: { role: AccessRole | 'owner'; source: 'owner' | 'link' | 'alias' | 'email' | 'p2p'; inviteId?: string; personal?: Record<string, PageRight> };
 }
 
 /** Событие на document: автор позвал всех на страницу (SPEC_NIGHT5 §8); камеру наводит приложение. */
@@ -64,7 +68,7 @@ export interface CollabSummonDetail { pageId: string; vx: number; vy: number; vz
  * Событие на document 'doska:collab-goto': перейти к участнику (клик по краевому курсору или аватару, автопереход
  * за автором). Приложение переключает страницу и плавно наводит камеру на (x, y); zoom — нет: текущий масштаб.
  */
-export interface CollabGotoDetail { pageId: string; x?: number; y?: number; zoom?: number; reason: 'pointer' | 'avatar' | 'follow' }
+export interface CollabGotoDetail { pageId: string; x?: number; y?: number; zoom?: number; reason: 'pointer' | 'avatar' | 'follow'; /** длительность перелёта камеры, мс */ ms?: number }
 
 /** Событие на document 'doska:collab-presence': участники, их страницы или моя камера изменились (перерисовать присутствие). */
 export const PRESENCE_EVENT = 'doska:collab-presence';
@@ -90,6 +94,8 @@ let roleChangedPill = false;
 let transport: CollabTransport | null = null;
 let myUserId = -1;
 let users: CollabUser[] = [];
+/** Фото аватаров участников по номеру: приходят в init.photos и сообщениями { t: 'avatar' }. */
+const photos = new Map<number, string>();
 let myRights: { default: string; pages: Record<string, string> } = { default: 'view', pages: {} };
 let connected = false;
 let role: 'host' | 'guest' = 'guest';
@@ -202,12 +208,53 @@ export function collabUsers(): readonly CollabUser[] { return users; }
 /** Мой номер участника в комнате (-1 — не подключён). */
 export function myCollabId(): number { return myUserId; }
 
-/** «Позвать всех сюда» (только автор): гости переходят на страницу и наводят камеру на центр моего экрана. */
-export function sendSummon(pageId: string = state.pageId): boolean {
-  if (!connected || role !== 'host' || !transport) return false;
+/** Аватар участника для показа: смайл, фото (data:image) или null — буквы (фото ещё не пришло — тоже буквы). */
+export function collabAvatar(u: Pick<CollabUser, 'userId' | 'avatar'>): string | null {
+  const a = u.avatar;
+  if (typeof a !== 'string') return null;
+  if (PHOTO_KEY.test(a)) return photos.get(u.userId) ?? null;
+  return isAvatarEmoji(a) ? a : null;
+}
+
+/** Фото аватаров из init: прежние (другого подключения) забываются. */
+function resetPhotos(raw: unknown): void {
+  photos.clear();
+  if (!raw || typeof raw !== 'object') return;
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    const uid = Number(k);
+    if (Number.isInteger(uid) && isAvatarPhoto(v)) photos.set(uid, v);
+  }
+}
+
+/** Звать участников к себе можно: автор или редактор, если доска это разрешает (возможность summon; проверяет хаб). */
+export function canSummon(): boolean {
+  return connected && (role === 'host' || myCaps?.summon === true);
+}
+
+/**
+ * «Позвать всех сюда»: гости переходят на страницу и наводят камеру на центр моего экрана.
+ * to — номер участника: позвать только его (меню аватара «Позвать к себе»).
+ */
+export function sendSummon(pageId: string = state.pageId, to?: number): boolean {
+  if (!canSummon() || !transport) return false;
   const { w, h } = viewportSize();
   const v = viewCenter(state.camera, w, h);
-  return transport.send(JSON.stringify({ t: 'summon', pageId, vx: v.vx, vy: v.vy, vz: v.vz })) !== false;
+  return transport.send(JSON.stringify({ t: 'summon', pageId, vx: v.vx, vy: v.vy, vz: v.vz, ...(to !== undefined ? { to } : {}) })) !== false;
+}
+
+/** «Исключить» из меню аватара (только автор): хаб закрывает соединение участника (код 4411). */
+export function sendRemove(uid: number): boolean {
+  if (!connected || role !== 'host' || !transport || uid === myUserId) return false;
+  return transport.send(JSON.stringify({ t: 'remove', uid })) !== false;
+}
+
+/**
+ * «Настройки доступа» из меню аватара (только автор): личные права участника uid на страницы —
+ * 'view' («Только просмотр»), 'hidden' («Скрыта») или null («По роли»). Проверяет и применяет хаб.
+ */
+export function sendPageRights(uid: number, pages: Record<string, Extract<PageRight, 'view' | 'hidden'> | null>): boolean {
+  if (!connected || role !== 'host' || !transport || uid === myUserId) return false;
+  return transport.send(JSON.stringify({ t: 'set-rights', uid, pages })) !== false;
 }
 
 /** Тумблер «Автопереход участников за мной» (только автор; тариф проверяет хаб). */
@@ -297,6 +344,7 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
       handleResume(m);
       usersKnown = Array.isArray(m.users);
       if (Array.isArray(m.users)) users = m.users as CollabUser[];
+      resetPhotos(m.photos);
       followHost = m.followHost === true;
       setChatSender(sendChat);
       setChatAvailable(true);
@@ -311,6 +359,9 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
       renderRemoteCursors();
       settleReady(true);
       noteView(true);
+      // аватар в hello не передаётся — сообщаем его сразу (хаб не считает первое сообщение сменой аватара)
+      sentAvatar = undefined;
+      sendProfile(false);
     } else if (m.t === 'users') {
       const next = Array.isArray(m.users) ? m.users as CollabUser[] : users;
       if (usersKnown) showUserEvents(diffUsers(users, next, myUserId));
@@ -318,6 +369,9 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
       users = next;
       followHostPages(next);
       renderRemoteCursors();
+    } else if (m.t === 'avatar') {
+      // фото приходит до снимка участников с его новой версией
+      if (typeof m.userId === 'number' && isAvatarPhoto(m.photo)) photos.set(m.userId, m.photo);
     } else if (m.t === 'rights') {
       const nextRights = (m.rights as typeof myRights) || myRights;
       roleChangedPill = false;
@@ -351,6 +405,9 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
       document.dispatchEvent(new CustomEvent(PRESENCE_EVENT));
     } else if (m.t === 'summon') {
       receiveSummon(m);
+    } else if (m.t === 'set-rights') {
+      // хаб отклонил «Настройки доступа» из меню аватара (например, лимит редакторов)
+      if (role === 'host' && m.ok === false) showPill({ kind: 'warn', text: typeof m.error === 'string' && m.error ? m.error : 'Не удалось изменить доступ участника' });
     } else if (m.t === 'denied') {
       lastDenied = {
         reason: typeof m.reason === 'string' ? m.reason : '',
@@ -402,7 +459,10 @@ function receiveSummon(m: Record<string, unknown>): void {
   const page = state.project.pages.find(p => p.id === m.pageId);
   if (!page) return;
   const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
-  showPill({ kind: 'info', text: `Автор позвал всех на страницу «${page.name}»` });
+  const who = users.find(u => u.userId === m.by);
+  const name = !who || who.host ? 'Автор' : String(who.name ?? '') || 'Участник';
+  const you = typeof m.to === 'number' && m.to === myUserId;
+  showPill({ kind: 'info', text: `${name} позвал${you ? ' вас' : ' всех'} на страницу «${page.name}»` });
   const detail: CollabSummonDetail = { pageId: page.id, vx: num(m.vx, 0), vy: num(m.vy, 0), vz: num(m.vz, 1), by: num(m.by, -1) };
   document.dispatchEvent(new CustomEvent<CollabSummonDetail>('doska:collab-summon', { detail }));
 }
@@ -674,7 +734,7 @@ function flushCursor(): void {
 
 // ----- Камера и страница участника (SPEC_NIGHT5 §8) -----
 
-/** Пока камера двигается, {t:'view'} не уходит: отправка через столько после остановки. Смена страницы — сразу. */
+/** Пока камера двигается, {t:'view'} уходит не чаще, чем раз в столько (и последний вид — после остановки). Смена страницы — сразу. */
 export const VIEW_SEND_MS = 250;
 let viewSent: { pageId: string; vx: number; vy: number; vz: number } | null = null;
 let viewTimer = 0;
@@ -702,8 +762,8 @@ function noteView(now = false): void {
   if (!v) return;
   if (viewSent && viewSent.pageId === v.pageId && viewSent.vx === v.vx && viewSent.vy === v.vy && viewSent.vz === v.vz) return;
   if (now || !viewSent || viewSent.pageId !== v.pageId) { flushView(); return; }
-  clearTimeout(viewTimer);
-  viewTimer = window.setTimeout(flushView, VIEW_SEND_MS);
+  // не откладываем отправку на каждом кадре: за участником могут следить — его вид нужен и во время движения
+  if (!viewTimer) viewTimer = window.setTimeout(flushView, VIEW_SEND_MS);
 }
 
 /** Камера или страница с прошлой перерисовки присутствия. */
@@ -1032,6 +1092,10 @@ const CLOSED_NOTICES: Record<number, { title: string; text: string }> = {
     title: 'Неверная ссылка',
     text: 'Проверьте ссылку или попросите автора прислать её заново.',
   },
+  [CLOSE_REMOVED]: {
+    title: 'Вас отключили от доски',
+    text: 'Автор убрал вас из совместной работы.',
+  },
   [CLOSE_ROOM_CLOSED]: {
     title: 'Совместная работа завершена',
     text: 'Автор закрыл доступ к доске.',
@@ -1110,6 +1174,9 @@ function removeCursorNode(uid: number): void {
   fxForget(`u${uid}`);
 }
 
+// скрыли или снова показали чужие курсоры (меню аватаров) — перерисовать курсоры, краевые курсоры и аватары
+onCursorVisibility(() => renderRemoteCursors());
+
 export function renderRemoteCursors(): void {
   const wrap = document.getElementById('canvas-wrap');
   if (!wrap) return;
@@ -1123,7 +1190,7 @@ export function renderRemoteCursors(): void {
   const cam = state.camera;
   const seen = new Set<number>();
   for (const u of users) {
-    if (u.userId === myUserId || !u.cursor || u.pageId !== state.pageId) continue;
+    if (u.userId === myUserId || !u.cursor || u.pageId !== state.pageId || !cursorShown(u.userId)) continue;
     seen.add(u.userId);
     const sx = (u.cursor.x - cam.x) * cam.zoom;
     const sy = (u.cursor.y - cam.y) * cam.zoom;
@@ -1173,11 +1240,16 @@ export function foreignSelections(): { color: string; ids: string[] }[] {
     .map(u => ({ color: u.away ? '#9aa0ab' : userColors(u).selection, ids: u.selection }));
 }
 
-/** Свой профиль поменялся (имя или курсор) — сообщить комнате (хаб разошлёт всем). */
-function sendProfile(): void {
+/** Аватар, уже отправленный в эту комнату (фото тяжёлое — повторно не шлём); undefined — ещё не отправляли. */
+let sentAvatar: string | null | undefined;
+
+/** Свой профиль поменялся (имя, курсор или аватар) — сообщить комнате (хаб разошлёт всем); withName — и имя. */
+function sendProfile(withName = true): void {
   if (!connected) return;
-  const name = profileName();
-  send({ t: 'profile', ...(name ? { name } : {}), cursorId: myCursorId() });
+  const name = withName ? profileName() : '';
+  const avatar = myAvatar();
+  send({ t: 'profile', ...(name ? { name } : {}), cursorId: myCursorId(), ...(avatar !== sentAvatar ? { avatar } : {}) });
+  sentAvatar = avatar;
 }
 onProfileChange(() => sendProfile());
 
@@ -1236,6 +1308,7 @@ export function stopCollab(): void {
   clearTimeout(syncThrottle.timer);
   syncThrottle.timer = 0;
   users = [];
+  photos.clear();
   usersKnown = false;
   followHost = false;
   myUserId = -1;
@@ -1249,6 +1322,7 @@ export function stopCollab(): void {
   viewSent = null;
   presenceKey = '';
   hostPages.clear();
+  resetCursorVisibility();
   setChatSender(null);
   setChatAvailable(false);
   clearPills();

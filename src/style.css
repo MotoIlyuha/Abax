@@ -103,6 +103,9 @@
   --menu-grow: 520 34; /* меню растягивается до своего размера: небольшой перелёт */
   --menu-item: 560 38; /* пункт меню появляется */
   --menu-close: 1200 70; /* меню втягивается обратно в кнопку, без перелёта */
+  --avatar-spread: 420 26; /* группа аватаров раскрывается и сворачивается: небольшой перелёт (src/avatar-group.ts) */
+  --avatar-pop: 520 20; /* новый аватар в группе выпрыгивает */
+  --avatar-gone: 900 60; /* ушедший аватар сжимается, без перелёта */
   --input-caret: 700 32; /* поле почты: курсор, тянется от скорости */
   --input-morph: 300 20; /* поле почты ↔ пилюля «Код отправлен» */
   --toast-bg: #141917; /* тост */
@@ -1286,6 +1289,13 @@ body:not(.no-motion) .ctx-panel[data-kind="shapes"] { animation: none; }
   background: var(--surface-sunken);
   border-right: 1px solid var(--border);
 }
+.sd-nav-version {
+  margin-top: auto; align-self: flex-start;
+  padding: 4px 10px; border: 0; border-radius: 6px; background: none;
+  font: inherit; font-size: 12px; color: var(--fg-tertiary); cursor: pointer;
+}
+.sd-nav-version:hover { background: var(--hover-strong); color: var(--fg); }
+.sd-nav-version:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .sd-nav-title { font-size: 15px; font-weight: 700; padding: 0 10px 14px; }
 .sd-nav-item {
   display: flex;
@@ -2549,12 +2559,13 @@ body.no-ui-anim :is(.home-logo-image, .home-logo-back) { transition: none; }
 #view-menu .view-check { color: var(--accent); font-weight: 600; }
 #view-menu .view-swatch { width: 18px; height: 18px; border: 1px solid var(--border-control); border-radius: 50%; }
 /* заголовок подменю: тот же пункт, что в меню, но со стрелкой «назад»; пункты подменю выходят из-под него */
-#view-menu .view-back { position: relative; z-index: 2; background: var(--panel); font-weight: 600; }
-#view-menu .view-back:hover, #view-menu .view-back:focus-visible { background: var(--accent-soft); }
-#view-menu .view-back .view-icon { position: relative; }
-#view-menu .view-back .view-icon > span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
-#view-menu .view-back .vb-ghost { opacity: 0; }
-#view-menu .view-back .view-arrow.vb-ghost { position: static; }
+/* (то же — подменю «Настройки доступа» в меню аватара) */
+:is(#view-menu, .avatar-menu) .view-back { position: relative; z-index: 2; background: var(--panel); font-weight: 600; }
+:is(#view-menu, .avatar-menu) .view-back:hover, :is(#view-menu, .avatar-menu) .view-back:focus-visible { background: var(--accent-soft); }
+:is(#view-menu, .avatar-menu) .view-back :is(.view-icon, .main-menu-icon) { position: relative; }
+:is(#view-menu, .avatar-menu) .view-back :is(.view-icon, .main-menu-icon) > span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+:is(#view-menu, .avatar-menu) .view-back .vb-ghost { opacity: 0; }
+:is(#view-menu, .avatar-menu) .view-back .view-arrow.vb-ghost { position: static; }
 
 #toolbar[data-pos="right"] { transition: transform .2s ease; }
 body.settings-popover-open #toolbar[data-pos="right"] { transform: translateX(calc(100% + 20px)); pointer-events: none; }
@@ -3506,26 +3517,149 @@ body.no-motion .activity-pill, body.no-ui-anim .activity-pill { animation: none;
   line-height: 12px;
   pointer-events: none;
 }
-#collab-presence { display: inline-flex; align-items: center; gap: 2px; margin-left: 4px; }
+/* группа аватаров — слева от «Поделиться», без плашки (index.html); шапка сама не ловит указатель */
+#collab-presence { display: flex; align-items: center; flex: none; pointer-events: auto; }
+/* инициалы — на одной базовой линии с текстом «Поделиться»: по центру они на 2.4 px выше (замер в e2e/avatar-group.spec.ts);
+   сдвиг без влияния на раскладку шапки */
+#collab-presence .avatar-group { top: 2.4px; }
 #collab-presence[hidden] { display: none; }
-.presence-avatar, .page-avatar {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+
+/* ----- Аватар пользователя (src/avatar.ts): круг с инициалами, курсор справа внизу, статус справа вверху ----- */
+.user-avatar {
+  --ua-size: 26px;
+  position: relative;
+  display: inline-block;
+  width: var(--ua-size);
+  height: var(--ua-size);
   flex: none;
   padding: 0;
-  border: 2px solid var(--panel);
+  border: 0;
   border-radius: 50%;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+/* в группе размер задаёт сама группа (--ua-size на .avatar-group, src/avatar-group.ts) */
+.avatar-group .user-avatar { --ua-size: inherit; }
+.user-avatar:focus-visible { outline: none; }
+.user-avatar:focus-visible .ua-circle { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--accent); }
+.ua-circle {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: max(2px, calc(var(--ua-size) * 0.06)) solid var(--panel);
+  border-radius: 50%;
+  font-size: calc(var(--ua-size) * 0.37);
   font-weight: 700;
   line-height: 1;
-  cursor: pointer;
+  letter-spacing: -0.02em;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18);
+  transition: transform 0.16s cubic-bezier(0.22, 0.8, 0.24, 1), filter 0.16s;
 }
-.presence-avatar { width: 26px; height: 26px; font-size: 10px; margin-left: -6px; }
-.presence-avatar:first-child { margin-left: 0; }
-.presence-avatar.more, .page-avatar.more { background: var(--panel); color: var(--muted); cursor: default; border-color: var(--border); }
-.presence-avatar.on-hidden, .page-avatar.on-hidden { opacity: 0.6; border-style: dashed; border-color: var(--muted); }
-.presence-avatar:hover, .page-avatar:hover { transform: translateY(-1px); }
+/* курсор у правого нижнего края: остриё смотрит на круг; выступает на 15% диаметра (CURSOR_OUT в avatar-group.ts) */
+.ua-cursor {
+  position: absolute;
+  right: calc(var(--ua-size) * -0.15);
+  bottom: calc(var(--ua-size) * -0.15);
+  width: calc(var(--ua-size) * 0.54);
+  height: calc(var(--ua-size) * 0.54);
+  pointer-events: none;
+  filter: drop-shadow(0 0.5px 0.5px rgba(0, 0, 0, 0.25));
+  transition: opacity 0.16s;
+}
+.ua-cursor svg { display: block; width: 100%; height: 100%; }
+.user-avatar.cursor-off .ua-cursor { opacity: 0.35; }
+.user-avatar.cursor-off .ua-cursor::after {
+  content: '';
+  position: absolute;
+  left: -7%;
+  top: 43%;
+  width: 107%;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--muted);
+  transform: rotate(45deg);
+}
+.ua-status {
+  position: absolute;
+  right: calc(var(--ua-size) * -0.1);
+  top: calc(var(--ua-size) * -0.1);
+  width: max(12px, calc(var(--ua-size) * 0.4));
+  height: max(12px, calc(var(--ua-size) * 0.4));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1.5px solid var(--panel);
+  border-radius: 50%;
+  background: #f59f00;
+  color: #ffffff;
+  pointer-events: none;
+}
+.ua-status[hidden] { display: none; }
+.ua-status svg { width: 65%; height: 65%; stroke-width: 2.6; }
+.ua-status[data-status="hidden-page"] { background: var(--muted); }
+.user-avatar.away .ua-circle { filter: saturate(0.4); }
+.user-avatar.on-hidden .ua-circle { opacity: 0.6; border-style: dashed; border-color: var(--muted); }
+.user-avatar.self .ua-circle { border-color: var(--panel); box-shadow: 0 0 0 1.5px var(--accent), 0 1px 2px rgba(0, 0, 0, 0.18); }
+/* аватар: фото заполняет круг, смайл — крупнее букв (src/avatar.ts) */
+.ua-circle.ua-photo { overflow: hidden; }
+.ua-circle.ua-photo img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; pointer-events: none; }
+.ua-circle.ua-emoji { font-size: calc(var(--ua-size) * 0.52); font-weight: 400; letter-spacing: 0; font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif; }
+.user-avatar.more { display: inline-flex; align-items: center; justify-content: center; font-size: calc(var(--ua-size) * 0.37); font-weight: 700; color: var(--muted); background: var(--panel); border: 1px solid var(--border); cursor: default; }
+
+/* ----- Группа аватаров (src/avatar-group.ts): аватары стоят абсолютно, сдвиг — transform ----- */
+.avatar-group { position: relative; display: block; flex: none; }
+.avatar-group > .ag-item { position: absolute; left: 0; top: 0; transform-origin: 50% 50%; }
+/* свёрнутая стопка: аватары ещё не нажимаются, нажатие раскрывает её */
+.avatar-group:not(.open) .user-avatar { cursor: default; }
+.avatar-group.open .user-avatar:not(.more):hover .ua-circle,
+.avatar-group.open .user-avatar[aria-expanded="true"] .ua-circle { transform: translateY(-1px) scale(1.08); }
+/* «Обычные»: CSS-переходы вместо пружин */
+.avatar-group.ag-css { transition: width 0.2s cubic-bezier(0.22, 0.8, 0.24, 1); }
+.avatar-group.ag-css > .ag-item { transition: transform 0.2s cubic-bezier(0.22, 0.8, 0.24, 1); }
+@keyframes ag-enter { from { opacity: 0; scale: 0.4; } }
+@keyframes ag-leave { to { opacity: 0; scale: 0.4; } }
+.avatar-group > .ag-item.ag-enter { animation: ag-enter 0.18s cubic-bezier(0.22, 0.8, 0.24, 1); }
+.avatar-group > .ag-item.ag-leave { animation: ag-leave 0.16s ease-in forwards; pointer-events: none; }
+/* «Выкл»: без движения */
+body.no-ui-anim :is(.ua-circle, .ua-cursor) { transition: none; }
+body.no-ui-anim .avatar-group.open .user-avatar .ua-circle { transform: none; }
+
+/* ----- Меню аватара (src/avatar-menu.ts) ----- */
+.avatar-menu { position: fixed; z-index: 80; min-width: 240px; max-width: min(320px, calc(100vw - 16px)); }
+.avatar-menu-head { display: flex; align-items: center; gap: 10px; padding: 6px 10px 8px; margin-bottom: 4px; border-bottom: 1px solid var(--border); }
+/* аватар в шапке — не пункт меню: правило .menu-list button его не растягивает */
+.avatar-menu .avatar-menu-head .user-avatar { --ua-size: 32px; display: inline-block; width: var(--ua-size); height: var(--ua-size); flex: none; padding: 0; border-radius: 50%; background: transparent; cursor: default; pointer-events: none; }
+.avatar-menu-who { min-width: 0; }
+.avatar-menu-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.avatar-menu-sub { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.avatar-menu button.avatar-menu-item:disabled { opacity: 0.5; cursor: default; background: transparent; }
+.avatar-menu-badge { flex: none; padding: 1px 6px; border-radius: 999px; background: var(--accent-soft); color: var(--muted); font-size: 11px; }
+.avatar-menu button.avatar-menu-item.danger { color: var(--danger); }
+.avatar-menu button.avatar-menu-item.danger .main-menu-icon { color: var(--danger); }
+.avatar-menu button.avatar-menu-item.danger:hover, .avatar-menu button.avatar-menu-item.danger.armed { background: var(--danger-soft); }
+.avatar-menu .avatar-menu-switch { margin-top: 0; border-top: 0; gap: 8px; justify-content: flex-start; border-radius: 7px; }
+.avatar-menu .avatar-menu-switch:hover:not(:has(.switch-input:disabled)), .avatar-menu .avatar-menu-switch:has(.switch-input:focus-visible) { background: var(--accent-soft); }
+.avatar-menu .avatar-menu-switch:has(.switch-input:disabled) { opacity: 0.5; cursor: default; }
+.avatar-menu .avatar-menu-switch .view-icon { width: 18px; height: 18px; flex: none; display: inline-flex; align-items: center; justify-content: center; color: var(--icon-menu); }
+.avatar-menu .avatar-menu-switch .view-icon svg { width: 18px; height: 18px; }
+.avatar-menu .avatar-menu-switch .switch-text { flex: 1; }
+/* подменю «Настройки доступа»: страницы и личное право участника на каждой */
+.avatar-menu .view-arrow { color: var(--muted); font-size: 20px; line-height: 16px; }
+.avatar-menu-page .main-menu-icon svg { width: 18px; height: 18px; }
+.avatar-access { position: relative; }
+.avatar-access-list { max-height: min(264px, 45vh); overflow-y: auto; }
+.avatar-access-row { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 0 2px 0 10px; border-radius: 7px; }
+.avatar-access-row:hover { background: var(--hover); }
+.avatar-access-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* выпадающий список — не пункт меню: общие правила .menu-list button для него не действуют */
+.avatar-menu .avatar-access-select.ss-trigger { width: auto; flex: none; gap: 2px; height: 28px; padding: 0 4px 0 8px; color: var(--fg-secondary); font-size: 13px; }
+.avatar-menu .avatar-access-select.ss-trigger:hover, .avatar-menu .avatar-access-select.ss-trigger[aria-expanded="true"] { background: var(--hover-strong); color: var(--fg); }
+.avatar-menu .avatar-access-select.ss-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
 .page-avatars {
   position: absolute;
   right: 6px;
@@ -3535,8 +3669,8 @@ body.no-motion .activity-pill, body.no-ui-anim .activity-pill { animation: none;
   z-index: 1;
 }
 .page-avatars[hidden] { display: none; }
-.page-avatar { width: 20px; height: 20px; font-size: 8px; margin-left: -5px; }
-.page-avatar:first-child { margin-left: 0; }
+/* группа аватаров у карточки (src/collab-presence.ts): прижата вправо, раскрывается влево */
+.page-avatars .avatar-group { margin-left: auto; }
 
 /* краевые курсоры: участник на моей странице, но за краем экрана */
 #edge-pointers { position: absolute; inset: 0; pointer-events: none; z-index: 9; }
@@ -3637,6 +3771,40 @@ body.no-ui-anim .collab-edge-pointer, body.no-ui-anim .collab-edge-pointer .ep-l
   text-overflow: ellipsis;
 }
 #follow-hidden-badge[hidden] { display: none; }
+
+/* «Следим за …» (src/follow.ts): сверху посередине, пока мой экран повторяет экран участника */
+#follow-banner {
+  position: absolute;
+  top: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  max-width: calc(100% - 32px);
+  padding: 5px 6px 5px 14px;
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  background: var(--panel);
+  color: var(--fg);
+  font-size: 13px;
+  box-shadow: var(--shadow);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#follow-banner[hidden] { display: none; }
+#follow-banner .follow-name {
+  display: inline-block;
+  max-width: 220px;
+  margin-left: 2px;
+  padding: 1px 8px;
+  border-radius: 99px;
+  font-weight: 600;
+  vertical-align: bottom;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#follow-banner .follow-wait { color: var(--muted); padding-right: 8px; }
+body.following #follow-hidden-badge { top: 112px; }
 
 /* ----- Ночь №5, TASK-07: «Комната заполнена», все страницы скрыты, входящие приглашения ----- */
 /* все страницы скрыты автором: холст закрыт баннером, панели нет */
@@ -4088,3 +4256,117 @@ body:not(.no-motion) .ss-hl, body.no-ui-anim .ss-hl { transition: none; }
 .oscroll-fade-y { mask-image: linear-gradient(to bottom, rgb(0 0 0 / calc(1 - var(--oscroll-fs))) 0, #000 var(--oscroll-fade), #000 calc(100% - var(--oscroll-fade)), rgb(0 0 0 / calc(1 - var(--oscroll-fe))) 100%); }
 body.no-ui-anim :is(.oscroll-thumb, .oscroll-shade, .oscroll-fade-x, .oscroll-fade-y) { transition: none; }
 @media (prefers-reduced-motion: reduce) { :is(.oscroll-thumb, .oscroll-shade, .oscroll-fade-x, .oscroll-fade-y) { transition: none; } }
+
+/* ----- Выбор аватара (src/avatar-editor.ts): круг, кнопка смайла в правом нижнем углу, «Установить фото» ----- */
+.ob-identity, .ps-identity { display: flex; align-items: flex-start; gap: 18px; }
+.ob-identity > .ob-field, .ps-identity > .ps-field { flex: 1; min-width: 0; }
+.ob-identity { margin: 14px 0 16px; }
+.ob-identity > .ob-field { margin: 0; }
+.ae { flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 84px; }
+.ae-face { position: relative; width: 72px; height: 72px; }
+.user-avatar.ae-avatar { --ua-size: 72px; cursor: default; pointer-events: none; }
+.ae-avatar .ua-cursor, .ae-avatar .ua-status { display: none; }
+.ae-avatar .ua-circle { border-width: 3px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.16); }
+/* та же кнопка, что «Добавить иконку проекта» на карточке доски — в правом нижнем углу круга */
+.project-icon.ae-emoji {
+  position: absolute;
+  right: -6px;
+  bottom: -4px;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--panel);
+  box-shadow: var(--shadow-knob);
+  color: var(--muted);
+  transition: color 0.12s ease, transform 0.12s ease;
+}
+.project-icon.ae-emoji:hover { color: var(--fg); transform: scale(1.06); }
+.project-icon.ae-emoji:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ae-photo {
+  max-width: 100%;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.ae-photo:hover { background: var(--accent-soft); }
+.ae-photo.danger { color: var(--danger); }
+.ae-photo.danger:hover { background: var(--danger-soft); }
+.ae-photo:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+@media (max-width: 420px) {
+  .ob-identity, .ps-identity { gap: 12px; }
+}
+
+/* окно выбора смайла поверх модальных окон (настройки, знакомство) */
+#icon-picker.ip-over-dialog { z-index: 1000; }
+
+/* мой аватар с курсором — в правом верхнем углу холста выбора курсора (src/cursor-picker.ts), под курсором с именем */
+.user-avatar.cp-face { --ua-size: 40px; position: absolute; top: 12px; right: 16px; z-index: 1; cursor: inherit; }
+.cp-face .ua-circle { border-color: var(--paper); }
+
+/* ----- Обрезка фото под круг (src/avatar-crop.ts) ----- */
+.avatar-crop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: var(--scrim);
+  animation: ui-fade 0.18s ease-out;
+}
+.ac-window {
+  width: min(340px, 100%);
+  padding: 20px 20px 18px;
+  box-sizing: border-box;
+  border-radius: 16px;
+  background: var(--panel);
+  box-shadow: var(--shadow-dialog);
+  animation: ui-pop 0.18s cubic-bezier(0.22, 0.8, 0.24, 1);
+}
+.ac-title { margin: 0 0 14px; font-size: 17px; font-weight: 700; text-align: center; color: var(--fg); }
+.ac-stage {
+  width: 280px;
+  max-width: 100%;
+  aspect-ratio: 1;
+  margin: 0 auto;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--surface-sunken);
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.ac-stage.dragging { cursor: grabbing; }
+.ac-stage:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ac-canvas { display: block; width: 100%; height: 100%; }
+.ac-zoom { display: flex; align-items: center; gap: 8px; margin: 14px 4px 0; }
+.ac-range { flex: 1; min-width: 0; accent-color: var(--accent); }
+.ac-zoom-btn {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--fg-secondary);
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+.ac-zoom-btn:hover { background: var(--hover); color: var(--fg); }
+.ac-zoom-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ac-actions { display: flex; gap: 10px; margin-top: 18px; }
+.ac-actions .ob-btn { flex: 1; min-height: 40px; font-size: 14px; }
+body.no-ui-anim :is(.avatar-crop, .ac-window) { animation: none; }
+@media (prefers-reduced-motion: reduce) { :is(.avatar-crop, .ac-window) { animation: none; } }

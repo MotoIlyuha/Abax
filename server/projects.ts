@@ -248,7 +248,7 @@ export function registerProjectRoutes(router: Router): void {
     if (ctx.user && ctx.user.id === row.owner_id) return { json: viewFor(app, row, { role: 'host' }) };
     const token = ctx.query.get('invite');
     if (token) {
-      const invite = findActiveInvite(app, token, row.id);
+      const invite = findActiveInvite(app, token, row.id, ctx.user?.id ?? null);
       if (!invite) throw new HttpError(404, 'invite-not-found');
       return { json: viewFor(app, row, { role: 'guest', invite, ...(pageId ? { pageId } : {}) }) };
     }
@@ -314,7 +314,7 @@ export function registerProjectRoutes(router: Router): void {
     if (!first) throw new HttpError(404, 'project-not-found');
     const isOwner = !!ctx.user && ctx.user.id === first.owner_id;
     const token = ctx.query.get('invite');
-    const invite = !isOwner && token ? findActiveInvite(app, token, id) : null;
+    const invite = !isOwner && token ? findActiveInvite(app, token, id, ctx.user?.id ?? null) : null;
     if (!isOwner && !invite) throw new HttpError(ctx.user || token ? 403 : 401, ctx.user || token ? 'forbidden' : 'unauthorized');
 
     // присланные элементы: проверка формы и вынос картинок (асинхронно), потом — одна синхронная запись
@@ -352,7 +352,7 @@ export function registerProjectRoutes(router: Router): void {
     if (!row) throw new HttpError(404, 'project-not-found');
     const isOwner = row.owner_id === user.id;
     const token = ctx.query.get('invite');
-    const invite = token ? findActiveInvite(app, token, row.id) : null;
+    const invite = token ? findActiveInvite(app, token, row.id, user.id) : null;
     // без приглашения — только при включённом просмотре по ссылке (D2)
     if (!isOwner && !invite && !linkViewAllowed(row)) throw new HttpError(404, 'project-not-found');
     if (!isOwner && row.forbid_clone) throw new HttpError(403, 'clone-forbidden');

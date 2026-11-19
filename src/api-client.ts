@@ -32,6 +32,8 @@ export interface MeUser {
   id: string; displayName: string; tgUsername: string | null; avatarUrl: string | null; isAnonymous: boolean; plan: PlanTier;
   /** Профиль (Ночь №4): курсор, своё ли имя, привязанные способы входа. Старый сервер их не присылает. */
   cursorId?: string; nameCustom?: boolean; email?: string | null; telegram?: boolean; google?: boolean;
+  /** Свой аватар: смайл или фото data:image; null — буквы. Старый сервер поле не присылает. */
+  avatar?: string | null;
 }
 
 export interface MeResponse {

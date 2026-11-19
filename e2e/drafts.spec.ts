@@ -139,6 +139,8 @@ test.describe('черновик', () => {
 
   test('в окне демонстрации остаётся страница, на которой были до черновика', async ({ board, page }) => {
     await board.rect(100, 100, 220, 220);
+    // кнопка демонстрации скрыта, клик идёт событием без мыши — убираем указатель с холста сами, иначе его стрелка попадёт в «до»
+    await page.locator('#btn-share').hover();
     const [popup] = await Promise.all([page.waitForEvent('popup'), page.locator('#btn-present').dispatchEvent('click')]);
     await expect.poll(() => popup.evaluate(() => document.querySelector('canvas')?.width ?? 0)).toBeGreaterThan(0);
     const inkOf = () => popup.evaluate(() => {

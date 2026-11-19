@@ -706,7 +706,8 @@ test.describe('адаптивная шапка', () => {
     const fit = () => page.evaluate(() => [...document.body.classList].filter(c => c.startsWith('fit-')).sort().join(' '));
     await page.setViewportSize({ width: 1280, height: 800 });
     await expect.poll(fit).toBe('');
-    await page.setViewportSize({ width: 560, height: 800 });
+    // слева от «Поделиться» всегда есть мой аватар (группа аватаров: 48 px и промежуток)
+    await page.setViewportSize({ width: 620, height: 800 });
     await expect.poll(fit).toBe('fit-export');
     await expect(page.locator('#btn-export')).toBeHidden();
     await expect(page.locator('#btn-import')).toBeVisible();

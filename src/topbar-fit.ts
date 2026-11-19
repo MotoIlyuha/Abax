@@ -115,7 +115,10 @@ function measure(): FitInput | null {
     const width = el.classList.contains('project-group') ? Math.min(el.offsetWidth, PROJECT_MIN) : el.offsetWidth;
     items.push({ step, width, userHidden: step ? userBefore.get(step) : false });
   }
-  const rightFull = right.offsetWidth;
+  // группа аватаров считается свёрнутой: раскрытая наведением стопка не должна прятать кнопки шапки
+  const avatars = right.querySelector<HTMLElement>('.avatar-group');
+  const rest = Number(avatars?.dataset.restWidth);
+  const rightFull = right.offsetWidth - (avatars && Number.isFinite(rest) ? Math.max(0, avatars.offsetWidth - rest) : 0);
   const shareFull = share && share.offsetWidth ? share.offsetWidth : 0;
   let shareShrink = 0;
   if (shareFull) {
@@ -183,7 +186,10 @@ export function initTopbarFit(): void {
   for (const el of bar.querySelectorAll<HTMLElement>('.topbar-side, .topbar-side > *')) ro.observe(el);
   const toolbar = document.getElementById('toolbar');
   if (toolbar) ro.observe(toolbar);
-  const mo = observer = new MutationObserver(scheduleTopbarFit);
+  // движение аватаров в группе (стили кадров пружин) — не повод пересчитывать шапку; состав группы — повод
+  const mo = observer = new MutationObserver(records => {
+    if (records.some(r => !(r.type === 'attributes' && r.attributeName !== 'hidden' && r.target instanceof Element && r.target.closest('.avatar-group')))) scheduleTopbarFit();
+  });
   mo.observe(bar, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['hidden', 'style', 'class'] });
   mo.observe(document.body, { attributes: true, attributeFilter: ['class'] });
   if (toolbar) mo.observe(toolbar, { attributes: true, attributeFilter: ['data-pos', 'style', 'class'] });

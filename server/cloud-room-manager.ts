@@ -9,7 +9,7 @@ import type { PlanTier, Project } from '../src/types';
 import { ingestElement, ingestProjectImages } from './assets';
 import { verifySession } from './auth';
 import type { AppContext } from './context';
-import { findActiveInvite, touchInvite, type InviteRights } from './invites';
+import { findActiveInvite, setMemberPageRights, touchInvite, withMemberRights, type InviteRights } from './invites';
 import { getActiveProject, getProjectRow, mergeStale, ownerPlanOf, projectOf, writeProject } from './projects';
 import { effectivePlan, getUser, isAnonymousUser } from './users';
 
@@ -171,6 +171,11 @@ export function createCloudRooms(app: AppContext, attach: { onUpgrade(fn: (req: 
       multiHost: true,
       // копирование считается на участника (роль, права доски и запрет его ссылки) — SPEC_NIGHT6 D1
       onChange: (_p, kind) => onChange(room, kind),
+      // «Настройки доступа» из меню аватара: личные права узнаваемого участника (сессия, u:<id>) — за ним в базе,
+      // чтобы пережили перезаход; гость без сессии (c:<id>) узнаётся только хабом, пока комната жива
+      onPersonalRights: (principal, personal) => {
+        if (principal.startsWith('u:')) setMemberPageRights(app, id, principal.slice(2), personal);
+      },
     });
     room.hub.pushProject(projectOf(row));
     rooms.set(id, room);
@@ -223,7 +228,7 @@ export function createCloudRooms(app: AppContext, attach: { onUpgrade(fn: (req: 
       user = s ? getUser(app.db, s.sub) : null;
     }
     const isOwner = !!user && user.id === row.owner_id;
-    const invite = !isOwner && typeof hello.invite === 'string' ? findActiveInvite(app, hello.invite, projectId) : null;
+    const invite = !isOwner && typeof hello.invite === 'string' ? findActiveInvite(app, hello.invite, projectId, user?.id ?? null) : null;
     if (!isOwner && !invite) { sendClose(CLOSE_BAD_CODE, 'bad invite'); return; }
 
     const room = open(projectId);
@@ -296,7 +301,8 @@ export function createCloudRooms(app: AppContext, attach: { onUpgrade(fn: (req: 
       if (!invite) return;
       for (const c of [...room.conns]) {
         if (c.isHost || c.linkToken !== ev.token) continue;
-        const via = (room.hub.room.access.get(c.uid)?.source === 'alias') ? { ...invite, via: 'alias' as const } : invite;
+        const own = withMemberRights(app, invite, c.userId);
+        const via = (room.hub.room.access.get(c.uid)?.source === 'alias') ? { ...own, via: 'alias' as const } : own;
         room.hub.setAccess(c.uid, guestAccess(via, c.userId));
       }
       return;
