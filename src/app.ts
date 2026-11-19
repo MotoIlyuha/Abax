@@ -3642,6 +3642,8 @@ function wirePagesDock(): void {
       else renderPages();
     },
   });
+  // своя тонкая полоса прокрутки и растворение краёв, за которыми есть ещё страницы (src/overlay-scroll.ts)
+  attachOverlayScroll(list, { axis: () => (pagesAtTop() ? 'y' : 'x'), host: document.getElementById('pages-tray')!, edges: 'fade' });
   list.addEventListener('wheel', e => {
     // обычное колёсико листает горизонтальный список; вертикальный листается сам
     if (pagesAtTop() || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;

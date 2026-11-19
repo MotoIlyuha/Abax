@@ -479,12 +479,10 @@ select {
   margin: -14px -12px -12px;
   padding: 14px 12px 12px;
   overscroll-behavior-x: contain;
-  scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar) transparent;
 }
-#pages-list::-webkit-scrollbar { height: 5px; }
-#pages-list::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 99px; }
-#pages-list::-webkit-scrollbar-track { background: transparent; }
+/* полоса прокрутки — своя, тонкая (overlay-scroll.ts): у нижнего края списка, в его поле под карточками */
+#pages-tray .oscroll-thumb-x { bottom: 3px; }
+#pages-tray .oscroll-thumb-y { right: 2px; }
 
 .page-item {
   position: relative;
@@ -718,7 +716,6 @@ body.tool-dragging, body.tool-dragging * { cursor: grabbing !important; }
   overflow-y: auto;
   overscroll-behavior: contain;
 }
-#pages-dock[data-side="top"] #pages-list::-webkit-scrollbar { width: 5px; }
 #pages-dock[data-side="top"] .page-add { min-height: 96px; }
 /* «Анимация меню и панелей» выключена в настройках */
 body.no-ui-anim :is(#btn-pages, .pages-chev, #pages-tray, #pages-dock.open #pages-tray, .page-item, .page-add) { transition: none; }
@@ -3795,6 +3792,9 @@ body.fit-share .share-text { display: none; }
   width: 400px; max-height: min(80vh, 720px); padding: 0;
   display: flex; flex-direction: column; overflow: hidden; font-size: 13px;
 }
+/* подписи, кнопки и заголовки окна не выделяются мышью; выделяются только данные — поля, адреса почты, бывшие адреса */
+#share-dialog, #share-dialog .ss-menu { -webkit-user-select: none; user-select: none; }
+#share-dialog :is(input, textarea, .share-email-addr, .share-former .share-person-name, .share-cloud-error) { -webkit-user-select: text; user-select: text; }
 #share-dialog section { display: flex; flex-direction: column; gap: 6px; }
 #share-dialog [hidden] { display: none !important; }
 .share-head { flex: none; display: flex; align-items: center; gap: 8px; padding: 10px 10px 8px 14px; }
@@ -3946,7 +3946,7 @@ body.no-ui-anim .share-toggle :is(.switch-track, .switch-knob) { transition: non
 /* «Настройки доступа» */
 .share-page-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* список страниц: больше шести строк — прокрутка внутри карточки */
-.share-pages-card { padding: 0; }
+.share-pages-card { padding: 0; overflow: hidden; }
 .share-pages-list { display: flex; flex-direction: column; max-height: 224px; padding: 4px; overflow-y: auto; overscroll-behavior: contain; }
 .share-alias-head { min-height: 30px; }
 .share-alias-row { display: flex; gap: 6px; padding: 0 6px 6px; }
@@ -3959,6 +3959,7 @@ body.no-ui-anim .share-toggle :is(.switch-track, .switch-knob) { transition: non
 .share-alias-prefix { color: var(--muted); }
 .share-alias-input { flex: 1; min-width: 0; padding: 0; border: 0; outline: 0; background: transparent; color: var(--fg); font: inherit; }
 .share-alias-problem { padding-bottom: 4px; }
+.share-alias-problem.is-error { color: var(--danger); }
 .share-alias .share-cloud-error { padding: 0 10px 4px; }
 .share-former-title { padding: 4px 10px 0; }
 .share-former { padding: 0 4px 0 10px; }
@@ -4073,5 +4074,20 @@ body:not(.no-motion) .ss-hl, body.no-ui-anim .ss-hl { transition: none; }
 .oscroll-host:hover > .oscroll-thumb, .oscroll-host.scrolling > .oscroll-thumb, .oscroll-host.dragging > .oscroll-thumb { opacity: 0.9; }
 .oscroll-thumb-x:hover, .oscroll-host.dragging > .oscroll-thumb-x { height: 6px; bottom: 2px; }
 .oscroll-thumb-y:hover, .oscroll-host.dragging > .oscroll-thumb-y { width: 6px; right: 2px; }
-body.no-ui-anim .oscroll-thumb { transition: none; }
-@media (prefers-reduced-motion: reduce) { .oscroll-thumb { transition: none; } }
+/* «есть ещё»: тень у края, за которым есть содержимое (карточки) */
+.oscroll-shade { position: absolute; z-index: 2; pointer-events: none; opacity: 0; transition: opacity 0.2s ease; }
+.oscroll-shade-y { height: 12px; }
+.oscroll-shade-x { width: 16px; }
+.oscroll-shade-y.oscroll-shade-start { background: linear-gradient(to bottom, rgba(16, 24, 40, 0.1), rgba(16, 24, 40, 0)); }
+.oscroll-shade-y.oscroll-shade-end { background: linear-gradient(to top, rgba(16, 24, 40, 0.1), rgba(16, 24, 40, 0)); }
+.oscroll-shade-x.oscroll-shade-start { background: linear-gradient(to right, rgba(16, 24, 40, 0.1), rgba(16, 24, 40, 0)); }
+.oscroll-shade-x.oscroll-shade-end { background: linear-gradient(to left, rgba(16, 24, 40, 0.1), rgba(16, 24, 40, 0)); }
+.oscroll-host.oscroll-more-start > .oscroll-shade-start, .oscroll-host.oscroll-more-end > .oscroll-shade-end { opacity: 1; }
+/* «есть ещё»: содержимое растворяется у края (ленты поверх холста) */
+@property --oscroll-fs { syntax: '<number>'; inherits: false; initial-value: 0; }
+@property --oscroll-fe { syntax: '<number>'; inherits: false; initial-value: 0; }
+.oscroll-fade-x, .oscroll-fade-y { --oscroll-fade: 36px; transition: --oscroll-fs 0.2s ease, --oscroll-fe 0.2s ease; }
+.oscroll-fade-x { mask-image: linear-gradient(to right, rgb(0 0 0 / calc(1 - var(--oscroll-fs))) 0, #000 var(--oscroll-fade), #000 calc(100% - var(--oscroll-fade)), rgb(0 0 0 / calc(1 - var(--oscroll-fe))) 100%); }
+.oscroll-fade-y { mask-image: linear-gradient(to bottom, rgb(0 0 0 / calc(1 - var(--oscroll-fs))) 0, #000 var(--oscroll-fade), #000 calc(100% - var(--oscroll-fade)), rgb(0 0 0 / calc(1 - var(--oscroll-fe))) 100%); }
+body.no-ui-anim :is(.oscroll-thumb, .oscroll-shade, .oscroll-fade-x, .oscroll-fade-y) { transition: none; }
+@media (prefers-reduced-motion: reduce) { :is(.oscroll-thumb, .oscroll-shade, .oscroll-fade-x, .oscroll-fade-y) { transition: none; } }

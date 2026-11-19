@@ -106,11 +106,12 @@ describe('доступность и вкладки', () => {
       expect(panel.classList.contains('oscroll')).toBe(true);
       expect(panel.parentElement!.querySelector(':scope > .oscroll-thumb-y')).not.toBeNull();
     }
-    // список страниц прокручивается внутри карточки; ползунок — у карточки, не уезжает со строками
+    // список страниц прокручивается внутри карточки; ползунок и тени краёв — у карточки, не уезжают со строками
     const list = q('.share-pages-list');
     expect(list.classList.contains('oscroll')).toBe(true);
     expect(list.querySelectorAll('.share-page-right')).toHaveLength(2);
     expect(q('.share-pages-card > .oscroll-thumb-y')).not.toBeNull();
+    expect(dlg().querySelectorAll('.share-pages-card > .oscroll-shade')).toHaveLength(2);
   });
 
   it('Esc закрывает окно и возвращает фокус на кнопку «Поделиться»; повторное открытие — переключатель', async () => {
@@ -450,6 +451,11 @@ describe('страница «Настройки доступа»', () => {
     input().dispatchEvent(new Event('input'));
     expect(input().value).toBe('ab');
     expect(q('.share-alias-problem').textContent).toBe('Не короче 3 символов');
+    // сохранить с той же ошибкой: подсказка краснеет, второй строкой не повторяется
+    q<HTMLButtonElement>('.share-alias-save').click();
+    expect(q('.share-alias-problem').classList.contains('is-error')).toBe(true);
+    expect(dlg().querySelector('.share-alias .share-cloud-error')).toBeNull();
+    expect(api.calls.some(c => c[0] === 'PUT')).toBe(false);
     input().value = 'taken-one';
     input().dispatchEvent(new Event('input'));
     q<HTMLButtonElement>('.share-alias-save').click();

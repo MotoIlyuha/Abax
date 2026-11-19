@@ -326,12 +326,40 @@ describe('своя полоса прокрутки', () => {
     expect(o.thumb.style.height).toBe('25px');
     sc.scrollTop = 300;
     sc.dispatchEvent(new Event('scroll'));
-    expect(o.thumb.style.transform).toBe('translateY(75px)');
+    expect(o.thumb.style.transform).toBe('translate(0px, 75px)');
     expect(host.classList.contains('scrolling')).toBe(true);
     vi.advanceTimersByTime(1000);
     expect(host.classList.contains('scrolling')).toBe(false);
     o.destroy();
     expect(host.querySelector('.oscroll-thumb')).toBeNull();
+  });
+
+  it('края: тень у края, за которым есть ещё (shadow), растворение — переменными маски (fade)', () => {
+    const { host, sc } = scroller(400, 100);
+    attachOverlayScroll(sc, { axis: 'y', edges: 'shadow' }).sync();
+    expect(host.querySelectorAll('.oscroll-shade')).toHaveLength(2);
+    expect(host.classList.contains('oscroll-more-start')).toBe(false);
+    expect(host.classList.contains('oscroll-more-end')).toBe(true);
+    sc.scrollTop = 150;
+    sc.dispatchEvent(new Event('scroll'));
+    expect(host.classList.contains('oscroll-more-start')).toBe(true);
+    const f = scroller(400, 100);
+    attachOverlayScroll(f.sc, { axis: 'y', edges: 'fade' }).sync();
+    expect(f.sc.classList.contains('oscroll-fade-y')).toBe(true);
+    expect(f.sc.style.getPropertyValue('--oscroll-fe')).toBe('1');
+    expect(f.sc.style.getPropertyValue('--oscroll-fs')).toBe('0');
+  });
+
+  it('ось на лету: лента страниц вверху — колонка, внизу — ряд', () => {
+    let axis: 'x' | 'y' = 'x';
+    const { sc } = scroller(400, 100);
+    const o = attachOverlayScroll(sc, { axis: () => axis, edges: 'fade' });
+    expect(o.thumb.classList.contains('oscroll-thumb-x')).toBe(true);
+    axis = 'y';
+    o.sync();
+    expect(o.thumb.classList.contains('oscroll-thumb-y')).toBe(true);
+    expect(sc.classList.contains('oscroll-fade-y')).toBe(true);
+    expect(sc.classList.contains('oscroll-fade-x')).toBe(false);
   });
 
   it('содержимое помещается — ползунка нет', () => {

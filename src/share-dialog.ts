@@ -989,7 +989,14 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
   async function submitAlias(): Promise<void> {
     const draft = aliasUi.draft.trim();
     const problem = aliasProblem(draft);
-    if (problem) { aliasUi.message = problem; shakeField(aliasField); renderSettings(); return; }
+    if (problem) {
+      // та же подсказка уже видна под полем (проверка на лету) — второй строкой её не повторяем; пустое поле — подсказываем
+      aliasUi.message = aliasProblemEl.textContent ? '' : problem;
+      aliasProblemEl.classList.add('is-error');
+      shakeField(aliasField);
+      renderSettings();
+      return;
+    }
     aliasUi.busy = true;
     aliasUi.message = '';
     renderSettings();
@@ -1027,7 +1034,7 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
   const pagesList = el('div', 'share-rows share-pages-list');
   pagesCard.append(pagesList);
   pagesSec.append(pagesCard);
-  const pagesScroll = attachOverlayScroll(pagesList, { axis: 'y', host: pagesCard });
+  const pagesScroll = attachOverlayScroll(pagesList, { axis: 'y', host: pagesCard, edges: 'shadow' });
   const pageSelects = new Map<string, { sel: SpringSelect; opts: string }>();
 
   // права участников: переключатели с короткой подписью, пояснение — в подсказке
@@ -1119,6 +1126,7 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
     if (aliasInput.value !== aliasUi.draft) aliasInput.value = aliasUi.draft;
     aliasUi.message = '';
     aliasField.classList.remove('is-bad');
+    aliasProblemEl.classList.remove('is-error');
     showProblem();
     renderAliasMessage();
   });
@@ -1132,6 +1140,8 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
   settings.inner.append(pagesSec, permSec, guestsSec, aliasSec);
 
   function renderAliasMessage(): void {
+    // ошибка сервера с тем же текстом, что подсказка под полем, — не повторяется
+    if (aliasUi.message && aliasUi.message === aliasProblemEl.textContent) { aliasUi.message = ''; aliasProblemEl.classList.add('is-error'); }
     aliasErr.textContent = aliasUi.message;
     if (aliasUi.message && !aliasErr.isConnected) aliasProblemEl.after(aliasErr);
     else if (!aliasUi.message) aliasErr.remove();
