@@ -79,7 +79,7 @@ import { annotationButtons, initCommentsUi } from './comments-ui';
 import { openTaskDialog, taskDialogOpen, type TaskFormValues } from './task-dialog';
 import { TASK_H, TASK_W, createTaskElement } from './task-element';
 import { createToggleSwitch } from './toggle-switch';
-import { ALIGN_ICONS, BACKGROUND_ICON, BACK_ARROW_ICON, CLOSE_ICON_BOLD, COORD_ICON_ZERO, FONT_ICON, GRID_ICONS, GRIP_ICON, ICONS, OPACITY_ICON, PIN_ICON, PROFILE_ICON, SLIDER_TRACK_ICON, SMOOTH_PAN_ICON, SNAP_ICON, VALIGN_ICONS, WIDTH_ICON, svg } from './icons';
+import { ALIGN_ICONS, BACKGROUND_ICON, BACK_ARROW_ICON, COORD_ICON_ZERO, FONT_ICON, GRID_ICONS, GRIP_ICON, ICONS, OPACITY_ICON, PIN_ICON, PROFILE_ICON, SLIDER_TRACK_ICON, SMOOTH_PAN_ICON, SNAP_ICON, VALIGN_ICONS, WIDTH_ICON, svg } from './icons';
 import { setTopbarGroupHidden } from './topbar-hide';
 import {
   browserSetRights, browserShareStatus, startBrowserCloud, startBrowserHost, stopBrowserCloud, stopBrowserHost,
@@ -777,7 +777,7 @@ function dockCtxPanel(cp: CtxPanel): void {
   positionCtxPanel(cp);
 }
 
-/** Правый верхний угол: ручка перетаскивания, у откреплённой — ещё pin к кнопке-вызову и крестик. */
+/** Правый верхний угол: ручка перетаскивания, у откреплённой — ещё pin к кнопке-вызову. */
 function buildCtxBar(cp: CtxPanel): HTMLElement {
   const bar = document.createElement('div');
   bar.className = 'ctx-bar';
@@ -786,11 +786,6 @@ function buildCtxBar(cp: CtxPanel): HTMLElement {
   pin.title = cp.source === 'quick' ? 'Вернуть под меню выделения' : 'Вернуть к панели инструментов';
   pin.innerHTML = PIN_ICON;
   pin.addEventListener('click', () => dockCtxPanel(cp));
-  const close = document.createElement('button');
-  close.className = 'ctx-close';
-  close.title = 'Закрыть';
-  close.innerHTML = CLOSE_ICON_BOLD;
-  close.addEventListener('click', () => closePanel(cp));
   const grip = document.createElement('div');
   grip.className = 'ctx-grip';
   grip.title = 'Перетащить';
@@ -822,7 +817,7 @@ function buildCtxBar(cp: CtxPanel): HTMLElement {
     grip.addEventListener('pointerup', onUp);
     grip.addEventListener('pointercancel', onUp);
   });
-  bar.append(pin, close, grip);
+  bar.append(pin, grip);
   return bar;
 }
 
@@ -5095,7 +5090,7 @@ function wireZoomInput(): void {
     const p = makePage('root', `${row('data-view="fullscreen"', (document.fullscreenElement ? ICONS.fullscreenExit : ICONS.fullscreenEnter), 'Полный экран')}
       ${row('data-view="fit"', ICONS.fit, 'Показать всё')}<hr>
       ${subRows}${viewOnly ? '' : '<hr>'}
-      <div class="view-zoom-scroll"><div class="view-zoom-pills">${[50, 70, 100, 200, 400, 800].map(n => `<button data-zoom="${n}">${n}%</button>`).join('')}<button data-view="custom">Другой…</button></div></div>`);
+      <div class="view-zoom-scroll"><div class="view-zoom-pills">${[50, 70, 100, 200, 400, 800].map(n => `<button data-zoom="${n}">${n}%</button>`).join('')}</div></div>`);
     // колесо мыши прокручивает ряд по горизонтали; полоса прокрутки — своя, поверх pills (src/overlay-scroll.ts)
     attachOverlayScroll(p.querySelector<HTMLElement>('.view-zoom-pills')!, { axis: 'x', wheel: true });
     p.querySelector('[data-view="background"]')?.after(smoothPanSwitch('grid-switch view-switch', true));
@@ -5152,6 +5147,7 @@ function wireZoomInput(): void {
   };
   const close = () => {
     label.setAttribute('aria-expanded', 'false');
+    document.getElementById('zoom-input')?.blur();
     if (!menuShown(menu)) return;
     closeMenu(menu);
     releaseMenu('view');
@@ -5170,6 +5166,8 @@ function wireZoomInput(): void {
       onSettled: () => { if (menuShown(menu)) positionMenu(); },
     });
     label.setAttribute('aria-expanded', 'true');
+    // корневое меню сразу открывает поле масштаба — как раньше пункт «Другой…»
+    if (lvl === 'root') openZoomInput(label, close);
   };
   /** Переход внутри открытого меню: в подменю, назад или из одного подменю в другое. */
   const go = (target: ViewLevel) => {
@@ -5223,18 +5221,17 @@ function wireZoomInput(): void {
     if (view === 'fullscreen') { if (document.fullscreenElement) void document.exitFullscreen(); else void document.documentElement.requestFullscreen(); }
     if (view === 'fit') fitContent(true);
     if (b.dataset.zoom) zoomCenterSmooth(Number(b.dataset.zoom) / 100);
-    if (view === 'custom') { close(); openZoomInput(label); return; }
     close();
   });
   // ширина группы меняется (число масштаба, узкое окно) — меню вместе с ней
   new ResizeObserver(() => { if (menuShown(menu)) positionMenu(); }).observe(group);
   window.addEventListener('resize', () => { if (menuShown(menu)) positionMenu(); });
-  document.addEventListener('pointerdown', e => { if (menuShown(menu) && !menu.contains(e.target as Node) && !label.contains(e.target as Node) && !gridTrigger.contains(e.target as Node)) close(); });
+  document.addEventListener('pointerdown', e => { if (menuShown(menu) && !menu.contains(e.target as Node) && !label.contains(e.target as Node) && !(e.target as HTMLElement).closest('.zoom-edit') && !gridTrigger.contains(e.target as Node)) close(); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && menuShown(menu)) { close(); label.focus(); } });
 }
 
 /** Поле вместо подписи масштаба: Enter применяет (ошибку объясняет подсказка), Esc и уход из поля с ошибкой — отмена. */
-function openZoomInput(label: HTMLElement): void {
+function openZoomInput(label: HTMLElement, onDone?: () => void): void {
   const box = document.createElement('span');
   box.className = 'zoom-edit';
   const input = document.createElement('input');
@@ -5273,6 +5270,7 @@ function openZoomInput(label: HTMLElement): void {
     done = true;
     box.remove();
     label.hidden = false;
+    onDone?.();
     if (zoom === null) return;
     // относительно центра холста, как кнопки + и −
     zoomCenterSmooth(zoom);

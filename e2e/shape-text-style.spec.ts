@@ -15,13 +15,12 @@ async function makePng(page: Page, w: number, h: number): Promise<Buffer> {
 }
 
 test.describe('масштаб в шапке', () => {
-  test('«Другой масштаб…» в меню подписи — ввод точного значения с проверкой', async ({ board, page }) => {
+  test('открытие меню подписи сразу включает ввод — ввод точного значения с проверкой', async ({ board, page }) => {
     const label = page.locator('#zoom-label');
     const input = page.locator('#zoom-input');
     const hint = page.locator('.zoom-hint');
     const openInput = async () => {
       await label.click();
-      await page.locator('#view-menu [data-view="custom"]').click();
     };
     await openInput();
     await expect(input).toBeFocused();
