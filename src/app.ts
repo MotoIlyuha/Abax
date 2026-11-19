@@ -5113,6 +5113,8 @@ function wireZoomInput(): void {
       const coordSwitch = coordLabelsSwitch();
       if (coordSwitch) p.append(coordSwitch);
     } else if (lvl === 'interactions') {
+      // подсказки — слева: справа край окна, сверху и снизу они закрывали бы пункты меню и масштаб
+      p.dataset.tipSide = 'left';
       // в просмотре по ссылке доску не правят: остаётся только «Плавное движение»
       if (state.linkMode === null) p.append(settingSwitch('snapToGrid', 'Привязка к сетке', SNAP_ICON, 'Точки, фигуры и рамки при перемещении встают на узлы сетки'));
       p.append(settingSwitch('smoothPan', 'Плавное движение', SMOOTH_PAN_ICON, 'Небольшая инерция при перемещении по доске: после отпускания камера плавно останавливается'));

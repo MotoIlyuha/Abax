@@ -790,6 +790,43 @@ test.describe('подсказки', () => {
     await expect(page.locator('#morph-tip .mt-tip')).toBeVisible();
   });
 
+  test('подменю «Взаимодействия» в МВВ: подсветка и подсказка как у панели, подсказка слева', async ({ board, page }) => {
+    await page.locator('#zoom-label').click();
+    const menu = page.locator('#view-menu');
+    await menu.locator('[data-view="interactions"]').click();
+    const snap = menu.locator('.view-switch', { hasText: 'Привязка к сетке' });
+    await snap.hover();
+    const tip = page.locator('#morph-tip .mt-tip');
+    await expect(tip).toBeVisible();
+    await expect(tip).toHaveAttribute('data-side', 'left');
+    await expect(page.locator('#morph-tip .mt-lab.cur')).toContainText('узлы сетки');
+    await expect(menu.locator('.view-page > .mt-hl')).toHaveCount(1);
+    // пузырь целиком левее меню
+    await expect.poll(async () => {
+      const t = (await tip.boundingBox())!, m = (await menu.boundingBox())!;
+      return t.x + t.width <= m.x;
+    }).toBe(true);
+    // перетекает к соседнему переключателю
+    await menu.locator('.view-switch', { hasText: 'Направляющие' }).hover();
+    await expect(page.locator('#morph-tip .mt-lab.cur')).toContainText('пунктир');
+    await expect(tip).toHaveAttribute('data-side', 'left');
+    // «назад» — без подсказки: пузырь уходит
+    await menu.locator('.view-back').hover();
+    await expect(tip).toBeHidden();
+
+    // «Обычные» анимации: обычный пузырь, тоже слева
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Control+Comma');
+    await page.locator('.sd-general button', { hasText: /^Обычные$/ }).click();
+    await page.keyboard.press('Escape');
+    await page.locator('#zoom-label').click();
+    await menu.locator('[data-view="interactions"]').click();
+    await snap.hover();
+    await expect(page.locator('#tooltip')).toBeVisible();
+    await expect(page.locator('#tooltip')).toHaveAttribute('data-side', 'left');
+    void board;
+  });
+
   test('обычный пузырь вне панели инструментов работает как раньше', async ({ page }) => {
     await page.locator('#btn-pages').hover();
     await expect(page.locator('#tooltip')).toBeVisible();
