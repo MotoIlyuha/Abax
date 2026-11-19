@@ -2,7 +2,7 @@
 // «Горячие клавиши» (src/hotkeys.ts, клавиши инструментов — src/toolbar.ts), внизу — версия приложения
 // и «Сообщить о проблеме». Поиск фильтрует и советы, и клавиши. Весь текст — через textContent.
 
-import { CHAT_ICON, ICONS, PANEL_ICONS, TOOL_ICONS } from './icons';
+import { ICONS, NOTIFY_ICON, PANEL_ICONS, TOOL_ICONS } from './icons';
 import { DRAFT_KEY, FIXED_SHORTCUTS, comboLabel, macKeys, modLabel } from './hotkeys';
 import { keycaps, keycapsAny } from './hotkeys-settings';
 import type { PanelModeDef, PanelView } from './panel-types';
@@ -59,7 +59,7 @@ export function helpTips(): HelpTip[] {
       text: 'Пригласите учеников по ссылке и решите, кто что может на каждой странице.',
     },
     {
-      icon: CHAT_ICON,
+      icon: NOTIFY_ICON,
       title: 'Чат и уведомления',
       text: 'Кнопка справа в шапке: сообщения участников и события доски.',
     },
