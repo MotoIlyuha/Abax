@@ -7,6 +7,7 @@ const notes = require('./room-comments.cjs');
 const access = require('./room-access.cjs');
 const guard = require('./room-guard.cjs');
 const avatars = require('./room-avatar.cjs');
+const chatAtt = require('./room-chat-att.cjs');
 const crypto = require('crypto');
 
 /** Версия протокола сообщений. Поднимать при несовместимых изменениях формата. */
@@ -32,11 +33,15 @@ const CHAT_MAX_LEN = 500;
 const CHAT_HISTORY = 100;
 const CHAT_RATE_COUNT = 5;
 const CHAT_RATE_MS = 3000;
-/** Текст сообщения после trim; null — пустое, слишком длинное или не строка. */
-function normalizeChatText(raw) {
+/**
+ * Текст сообщения после trim; null — пустое (без вложения), слишком длинное или не строка.
+ * С вложением (allowEmpty) пустой или отсутствующий текст допустим и становится ''.
+ */
+function normalizeChatText(raw, allowEmpty = false) {
+  if (allowEmpty && raw === undefined) return '';
   if (typeof raw !== 'string') return null;
   const text = raw.trim();
-  return text.length === 0 || text.length > CHAT_MAX_LEN ? null : text;
+  return (text.length === 0 && !allowEmpty) || text.length > CHAT_MAX_LEN ? null : text;
 }
 /** Ограничитель частоты: true — сообщение можно принять (и оно учтено). */
 function createRateLimiter(count = CHAT_RATE_COUNT, windowMs = CHAT_RATE_MS) {
@@ -468,13 +473,21 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
     return undefined;
   };
 
+  /** Видна ли участнику страница (автору — любая): по ней объекты доски в чате приходят целиком или hidden. */
+  const canSeePageOf = uid => pageId => room.userPageRight(uid, pageId) !== 'hidden';
+  /** История чата для init — на получателя (SPEC_CHAT §7). */
+  const chatFor = info => {
+    const see = canSeePageOf(info.uid);
+    return room.chat.map(m => chatAtt.chatMessageFor(m, see));
+  };
+
   // patches: true — хаб понимает t: 'patch'; клиент отвечает { t: 'caps', patches: true }, и ему шлются патчи вместо проектов
   const initFor = info => {
     const principal = principalOf(info);
     const resume = resumeOf(info);
     return {
       t: 'init', proto: PROTO, userId: info.uid, color: info.color, name: info.name, project: projectFor(info), ...accessFor(info),
-      users: usersFor(info), patches: true, chat: room.chat, followHost: room.followHost, photos: photosNow(),
+      users: usersFor(info), patches: true, chat: chatFor(info), followHost: room.followHost, photos: photosNow(),
       ...(principal ? { principal } : {}), ...(resume ? { resume } : {}),
     };
   };
@@ -540,15 +553,34 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
     if (any) broadcastUsers();
   }
 
+  /** Сообщение чата (зеркало acceptChat из src/room-host.ts): текст, вложение, частота, бюджет, снимок на получателя. */
   function acceptChat(info, m) {
-    if (!capsOf(info).chat) return; // читатель чат читает, но не пишет
-    const text = normalizeChatText(m.text);
+    const caps = capsOf(info);
+    if (!caps.chat) return; // читатель чат читает, но не пишет
+    const att = chatAtt.cleanChatAttachment(m.att, { copy: caps.copy });
+    if (att === null) return;
+    // объекты со страницы, которую отправитель не видит, — не его
+    if (att && att.kind === 'board' && !canSeePageOf(info.uid)(att.pageId)) return;
+    const text = normalizeChatText(m.text, att !== undefined);
     if (text === null) return;
     const ts = Date.now();
     if (!info.chatOk(ts)) return; // флуд — молча
-    const msg = { id: `${ts.toString(36)}-${(++chatSeq).toString(36)}`, by: info.uid, name: info.name, ...(info.cursorId ? { cursorId: info.cursorId } : {}), text, ts };
-    room.chat = [...room.chat, msg].slice(-CHAT_HISTORY);
-    for (const c of room.clients.values()) sendTo(c.sock, { t: 'chat', ...msg });
+    const msg = {
+      id: `${ts.toString(36)}-${(++chatSeq).toString(36)}`, by: info.uid, name: info.name,
+      ...(info.cursorId ? { cursorId: info.cursorId } : {}), text, ts, ...(att ? { att } : {}),
+    };
+    room.chat = chatAtt.trimChatAttachments([...room.chat, msg].slice(-CHAT_HISTORY));
+    const stored = room.chat[room.chat.length - 1];
+    // вложение до 1 МБ: JSON строится один раз на полный снимок и один — на скрытый
+    let full = null;
+    let masked = null;
+    for (const c of room.clients.values()) {
+      if (c.sock.readyState !== 1) continue;
+      const view = chatAtt.chatMessageFor(stored, canSeePageOf(c.uid));
+      if (view === stored) { if (full === null) full = JSON.stringify({ t: 'chat', ...stored }); }
+      else if (masked === null) masked = JSON.stringify({ t: 'chat', ...view });
+      try { c.sock.send(view === stored ? full : masked); } catch { /* канал закрывается */ }
+    }
   }
 
   function acceptView(info, m) {

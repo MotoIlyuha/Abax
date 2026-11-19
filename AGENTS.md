@@ -32,7 +32,7 @@
 - Старт ночи (ветка, журнал, первый коммит) — по п. 0.1 Locked Decisions текущей спецификации. Журнал прошлой ночи переименовывается в `NIGHT_LOG_NIGHT<N>.md`.
 
 ## 4. Сервер (`server/`, Ночи №3–6)
-- Каталог `server/` — Node + TypeScript + `better-sqlite3`; он импортирует из `src/` только чистые модули без DOM (`types`, `file`, `delta`, `limits`, `task-element`, `room-host`, `asset-store`, `project-access`, `cursors`, `sync-conflict`, `room-chat`, `board-url`, `comments`, `collab-transport`, `access`, `element-guard`, `avatar-value`). Зеркала для `electron/room.cjs`: `electron/room-access.cjs`, `electron/room-guard.cjs` (паритет — `tests/server/room-pointer.test.ts`), `electron/room-avatar.cjs` (паритет — `tests/unit/avatar-value.test.ts`).
+- Каталог `server/` — Node + TypeScript + `better-sqlite3`; он импортирует из `src/` только чистые модули без DOM (`types`, `file`, `delta`, `limits`, `task-element`, `room-host`, `asset-store`, `project-access`, `cursors`, `sync-conflict`, `room-chat`, `board-url`, `comments`, `collab-transport`, `access`, `element-guard`, `avatar-value`). Зеркала для `electron/room.cjs`: `electron/room-access.cjs`, `electron/room-guard.cjs` (паритет — `tests/server/room-pointer.test.ts`), `electron/room-avatar.cjs` (паритет — `tests/unit/avatar-value.test.ts`), `electron/room-chat-att.cjs` (вложения чата, паритет — `tests/server/room-chat-att.test.ts`).
 - Клиент без настроенного адреса API (`apiUrl`) не делает сетевых запросов: все старые тесты работают как раньше.
 - Серверные тесты — `tests/server/*.test.ts` (`createAppServer({ dbPath: ':memory:' })`); типы сервера проверяет `npm run typecheck:tests`.
 
@@ -42,7 +42,7 @@
 
 ## 6. Совместная работа (Ночь №5)
 - Протокол хабов меняется только одновременно в `src/room-host.ts` и `electron/room.cjs`, с одинаковыми сценариями тестов для обоих.
-- Чат комнаты — только в памяти хаба (буфер 100), не в проекте, файле и БД; текст сообщений и ссылки выводятся только через `textContent`.
+- Чат комнаты — только в памяти хаба (буфер 100), не в проекте, файле и БД; текст сообщений и ссылки выводятся только через `textContent`. Вложения (картинка, объекты доски; SPEC_CHAT §7) — тоже только в памяти хаба, с бюджетом `CHAT_ATT_BUDGET` (старые → `gone`); правила — `src/room-chat.ts` (`cleanChatAttachment`, `trimChatAttachments`, `chatMessageFor`; зеркало — `electron/room-chat-att.cjs`): объекты доски — только с правом `copy`, без `task` и `by`; рассылка и история в `init` — снимок на получателя (объекты со скрытой для него страницы → `hidden`).
 - Снимок участников строится на получателя: участник на скрытой для получателя странице приходит с `hiddenPage: true` без страницы, курсора, камеры и выделения.
 
 ## 6.1. Аватар пользователя
