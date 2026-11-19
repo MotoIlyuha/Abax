@@ -165,6 +165,11 @@ export function renderExperimental(host: HTMLElement, deps: ExperimentalDeps): v
     planSel.addEventListener('change', () => { if (isPlanTier(planSel.value)) setUserPlan(planSel.value); });
     planRow.appendChild(planSel);
     box.appendChild(planRow);
+
+    const wipe = el('button', 'sd-btn sd-exp-hide', 'Очистить кэш');
+    wipe.title = 'Только для разработки: стирает локальные данные (профиль, проекты, настройки), кэш и перезагружает страницу — всё начнётся с онбординга';
+    wipe.addEventListener('click', () => { void wipeLocalData(); });
+    box.appendChild(wipe);
   }
 
   const hide = el('button', 'sd-btn sd-exp-hide', 'Скрыть раздел');
@@ -172,4 +177,21 @@ export function renderExperimental(host: HTMLElement, deps: ExperimentalDeps): v
   hide.addEventListener('click', () => deps.hide());
   box.appendChild(hide);
   host.appendChild(box);
+}
+
+/** Dev: стереть всё локальное хранилище и перезагрузить страницу — приложение начнётся с онбординга. */
+async function wipeLocalData(): Promise<void> {
+  try { localStorage.clear(); } catch { /* хранилище недоступно */ }
+  try { sessionStorage.clear(); } catch { /* хранилище недоступно */ }
+  try {
+    if ('caches' in window) for (const k of await caches.keys()) await caches.delete(k);
+  } catch { /* кэш недоступен */ }
+  try {
+    if (navigator.serviceWorker) for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister();
+  } catch { /* воркеров нет */ }
+  try {
+    const dbs = await indexedDB.databases?.();
+    for (const d of dbs ?? []) if (d.name) indexedDB.deleteDatabase(d.name);
+  } catch { /* IndexedDB недоступна */ }
+  location.reload();
 }
