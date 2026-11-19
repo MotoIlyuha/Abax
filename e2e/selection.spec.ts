@@ -194,10 +194,8 @@ test.describe('ручки редактирования', () => {
     expect(pts).toHaveLength(3);
   });
 
-  test('привязка к сетке при перемещении', async ({ board, page }) => {
-    await page.locator('#btn-settings').dispatchEvent('click');
-    await page.locator('#settings-popover label', { hasText: 'Привязка к сетке' }).locator('input').check();
-    await page.keyboard.press('Escape');
+  test('привязка к сетке при перемещении', async ({ board }) => {
+    await board.toggleInteraction('Привязка к сетке');
     await board.rect(400, 300, 500, 380);
     await board.tool('v');
     await board.drag([{ x: 450, y: 340 }, { x: 467, y: 353 }]);

@@ -319,21 +319,28 @@ test.describe('настройки доски', () => {
     }
   });
 
-  test('привязка к сетке — переключатель в меню «Масштаб и вид»', async ({ board, page }) => {
+  test('подменю «Взаимодействия» в МВВ: привязка, плавное движение, направляющие — переключатели', async ({ board, page }) => {
     await page.locator('#zoom-label').click();
-    const sw = page.locator('#view-menu .view-switch', { hasText: 'Привязка к сетке' });
-    await expect(sw.locator('.view-icon svg')).toHaveCount(1);
+    const menu = page.locator('#view-menu');
+    await menu.locator('[data-view="interactions"]').click();
+    await expect(menu.locator('.view-back')).toHaveText('Взаимодействия›');
+    const switches = menu.locator('.view-switch');
+    await expect(switches).toHaveText(['Привязка к сетке', 'Плавное движение', 'Направляющие']);
+    for (const sw of await switches.all()) await expect(sw.locator('.view-icon svg')).toHaveCount(1);
+    const sw = switches.filter({ hasText: 'Привязка к сетке' });
     const cb = sw.locator('input[role="switch"]');
     await expect(cb).not.toBeChecked();
     await sw.click();
     await expect(cb).toBeChecked();
     // меню не закрывается: можно сразу переключить обратно
-    await expect(page.locator('#view-menu')).toBeVisible();
+    await expect(menu).toBeVisible();
     expect((await board.state()).settings.snapToGrid).toBe(true);
-    // та же настройка, что в меню настроек
+    await switches.filter({ hasText: 'Направляющие' }).click();
+    expect((await board.state()).settings.alignGuides).toBe(false);
+    // в настройках этих пунктов больше нет
     await page.keyboard.press('Escape');
     await page.locator('#btn-settings').dispatchEvent('click');
-    await expect(page.locator('#settings-popover label', { hasText: 'Привязка к сетке' }).locator('input')).toBeChecked();
+    for (const text of ['Привязка к сетке', 'Плавное движение', 'Направляющие']) await expect(page.locator('#settings-popover', { hasText: text })).toHaveCount(0);
   });
 
   test('меню «Скрыть» — переключатели, меню не закрывается', async ({ board, page }) => {
@@ -675,7 +682,7 @@ test.describe('всплывающие меню', () => {
     void board;
   });
 
-  test('«Масштаб и вид»: шириной с группу; «Фон страницы» открывается внутри меню, «назад» возвращает', async ({ board, page }) => {
+  test('«Масштаб, вид и взаимодействия»: шириной с группу; «Фон страницы» открывается внутри меню, «назад» возвращает', async ({ board, page }) => {
     const menu = page.locator('#view-menu');
     await page.locator('#zoom-label').click();
     await expect(menu).toBeVisible();

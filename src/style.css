@@ -2440,7 +2440,7 @@ body.no-ui-anim :is(.ctx-panel, #settings-popover, #grid-menu, #settings-dialog,
 }
 
 /* ----- Всплывающие меню (src/menu-motion.ts) -----
-   «Меню» с подменю, «Экспорт», иконка проекта, «Поделиться», «Масштаб и вид», «Помощь и советы».
+   «Меню» с подменю, «Экспорт», иконка проекта, «Поделиться», «Масштаб, вид и взаимодействия», «Помощь и советы».
    Отступы у всех — по образцу главного меню: 6px от кнопки-вызова и внутри рамки, пункт — 8px 10px
    (надпись на 16px от рамки), разделитель — 5px 4px. */
 :root { --menu-pad: 6px; --menu-gap: 6px; }
@@ -2606,7 +2606,7 @@ body.no-ui-anim :is(.home-logo-image, .home-logo-back) { transition: none; }
 
 #view-grid-icon { display: inline-flex; align-items: center; color: var(--icon-secondary); }
 #view-grid-icon svg { width: 18px; height: 18px; }
-/* «Масштаб и вид»: ширину (= ширине группы) и место задаёт app.ts */
+/* «Масштаб, вид и взаимодействия»: ширину (= ширине группы) и место задаёт app.ts */
 #view-menu { position: fixed; z-index: 90; }
 #view-menu .view-text { overflow-wrap: anywhere; }
 #view-menu .view-check { color: var(--accent); font-weight: 600; }
@@ -2791,14 +2791,13 @@ body.link-view #project-icon { pointer-events: none; }
 /* Переключатель «Показать деления» в меню фона */
 .grid-switch { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 4px; padding: 8px 10px; border-top: 1px solid var(--border); cursor: pointer; white-space: nowrap; font: inherit; color: var(--fg); }
 #view-menu .grid-switch { margin: 4px 0 0; padding: 8px 10px; }
-.grid-switch.settings-switch { margin-top: 0; padding: 6px 10px; border-top: 0; }
 .grid-switch .switch-input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
 .grid-switch .switch-track { position: relative; flex: none; width: 34px; height: 20px; border-radius: 10px; background: var(--border-control); transition: background .15s; }
 .grid-switch .switch-knob { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 8px; background: #fff; transition: transform .15s; }
 .grid-switch .switch-input:checked + .switch-track { background: var(--accent); }
 .grid-switch .switch-input:checked + .switch-track .switch-knob { transform: translateX(14px); }
 .grid-switch .switch-input:focus-visible + .switch-track { outline: 2px solid var(--accent); outline-offset: 2px; }
-/* «Привязка к сетке» в меню «Масштаб и вид»: строка как у пунктов меню, справа переключатель */
+/* Переключатели подменю «Взаимодействия» в МВВ: строка как у пунктов меню, справа переключатель */
 #view-menu .view-switch { border-top: 0; margin-top: 0; gap: 10px; border-radius: 7px; justify-content: flex-start; }
 #view-menu .view-switch:hover, #view-menu .view-switch:has(.switch-input:focus-visible) { background: var(--accent-soft); }
 .grid-switch .switch-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -3888,7 +3887,7 @@ body.hide-export-button .export-group { display: none; }
 #view-menu { max-height: calc(100vh - 90px); overflow-y: auto; }
 /* список страниц не заходит под нижний правый угол (ширина — в --bottombar-w, см. app.ts) */
 #pages-dock:not([data-side="top"]) { right: calc(24px + var(--bottombar-w, 0px)); }
-/* список не помещается рядом с углом: угол («Масштаб и вид», «Помощь») поднимается вместе с кнопкой «Страницы», список — на всю ширину */
+/* список не помещается рядом с углом: угол («Масштаб, вид и взаимодействия», «Помощь») поднимается вместе с кнопкой «Страницы», список — на всю ширину */
 #bottombar { transition: transform 0.38s cubic-bezier(0.22, 0.8, 0.24, 1); }
 body.pages-lift #bottombar { transform: translateY(calc(-1 * var(--tray-h, 150px) - 10px)); }
 body.pages-lift #pages-dock:not([data-side="top"]) { right: 12px; }
@@ -3921,7 +3920,7 @@ body.fit-share .share-icon { display: block; }
 body.fit-share .share-text { display: none; }
 #main-menu button:disabled { opacity: .45; cursor: default; }
 #main-menu button:disabled:hover { background: transparent; }
-/* Масштаб в меню «Масштаб и вид»: ряд pills с горизонтальной прокруткой; полоса видна только при использовании */
+/* Масштаб в меню «Масштаб, вид и взаимодействия»: ряд pills с горизонтальной прокруткой; полоса видна только при использовании */
 #view-menu .view-zoom-scroll { position: relative; }
 #view-menu .view-zoom-pills { display: flex; gap: 6px; padding: 6px 4px 6px; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
 #view-menu .view-zoom-pills::-webkit-scrollbar { display: none; }

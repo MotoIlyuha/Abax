@@ -133,11 +133,17 @@ export const GRID_ICONS: Record<GridMode, string> = {
   coord: svg('<path d="M5 19V5M5 19h14"/><path d="M5 5l-2 3M5 5l2 3M19 19l-3-2M19 19l-3 2"/><circle cx="12" cy="12" r="1"/>'),
 };
 
-/** «Привязка к сетке»: магнит-подкова. */
 /** Иконка «Плавное перемещение»: стрелка с затухающим следом. */
 export const SMOOTH_PAN_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h5M4 12h9M4 16h5"/><path d="M14 8l5 4-5 4"/></svg>';
 
+/** «Привязка к сетке»: магнит-подкова. */
 export const SNAP_ICON = svg('<path d="M6 4h4v9a2 2 0 0 0 4 0V4h4v9a6 6 0 0 1-12 0z"/><path d="M6 8h4M14 8h4"/>');
+
+/** «Направляющие»: два прямоугольника, выровненные по верхнему краю, и пунктир по общей линии. */
+export const GUIDES_ICON = svg('<path d="M2 6h20" stroke-dasharray="2 2.2"/><rect x="4" y="6" width="6" height="7" rx="1"/><rect x="14" y="6" width="6" height="12" rx="1"/>');
+
+/** Подменю «Взаимодействия»: стрелка курсора с лучиками нажатия. */
+export const INTERACTIONS_ICON = svg('<path d="M9 9l11 4.2-4.8 1.6L13.6 20z"/><path d="M5.5 5.5l1.8 1.8M9 3v2.5M3 9h2.5M4.6 13.4l1.8-1.8M13.4 4.6l-1.8 1.8"/>');
 
 /** Иконка координатной плоскости с нулём в начале координат — когда деления включены. */
 export const COORD_ICON_ZERO = svg('<path d="M5 19V5M5 19h14"/><path d="M5 5l-2 3M5 5l2 3M19 19l-3-2M19 19l-3 2"/><circle cx="12" cy="12" r="1"/><ellipse class="coord-zero" cx="2.6" cy="20.8" rx="1.3" ry="1.9" stroke-width="1.3"/>');

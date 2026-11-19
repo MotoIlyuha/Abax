@@ -78,7 +78,7 @@ import { annotationButtons, initCommentsUi } from './comments-ui';
 import { openTaskDialog, taskDialogOpen, type TaskFormValues } from './task-dialog';
 import { TASK_H, TASK_W, createTaskElement } from './task-element';
 import { createToggleSwitch } from './toggle-switch';
-import { ALIGN_ICONS, BACKGROUND_ICON, BACK_ARROW_ICON, CLOSE_ICON_BOLD, COORD_ICON_ZERO, FONT_ICON, GRID_ICONS, GRIP_ICON, ICONS, OPACITY_ICON, PIN_ICON, PROFILE_ICON, SLIDER_TRACK_ICON, SMOOTH_PAN_ICON, SNAP_ICON, VALIGN_ICONS, WIDTH_ICON, svg } from './icons';
+import { ALIGN_ICONS, BACKGROUND_ICON, BACK_ARROW_ICON, CLOSE_ICON_BOLD, COORD_ICON_ZERO, FONT_ICON, GRID_ICONS, GRIP_ICON, ICONS, OPACITY_ICON, PIN_ICON, PROFILE_ICON, SLIDER_TRACK_ICON, GUIDES_ICON, INTERACTIONS_ICON, SMOOTH_PAN_ICON, SNAP_ICON, VALIGN_ICONS, WIDTH_ICON, svg } from './icons';
 import { setTopbarGroupHidden } from './topbar-hide';
 import {
   browserSetRights, browserShareStatus, startBrowserCloud, startBrowserHost, stopBrowserCloud, stopBrowserHost,
@@ -2222,20 +2222,6 @@ function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
     row.appendChild(b);
   }
   pop.appendChild(row);
-  const lbl3 = document.createElement('label');
-  lbl3.className = 'ctx-check';
-  const cb3 = document.createElement('input');
-  cb3.type = 'checkbox';
-  cb3.checked = state.settings.snapToGrid;
-  cb3.addEventListener('change', () => {
-    setSettings({ snapToGrid: cb3.checked });
-    persistSettings();
-  });
-  const span3 = document.createElement('span');
-  span3.textContent = 'Привязка к сетке';
-  lbl3.append(cb3, span3);
-  pop.appendChild(lbl3);
-  pop.appendChild(smoothPanSwitch('grid-switch settings-switch', false));
   const lbl8 = document.createElement('label');
   lbl8.className = 'ctx-check';
   lbl8.title = macKeys('Изображения и страницы PDF не искажаются при изменении размера — Ctrl или Shift зажимать не нужно');
@@ -2250,8 +2236,6 @@ function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
   span8.textContent = 'Пропорциональный размер изображений';
   lbl8.append(cb8, span8);
   pop.appendChild(lbl8);
-  pop.appendChild(settingCheck('alignGuides', 'Направляющие выравнивания',
-    'При переносе и изменении размера — пунктир от соседних объектов, к их краям и центрам объект примагничивается'));
   const lbl4 = document.createElement('div');
   lbl4.className = 'ctx-label';
   lbl4.textContent = 'Колёсико мыши';
@@ -2336,7 +2320,7 @@ function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
   pop.appendChild(lbl7);
 }
 
-type BoolSetting = 'alignGuides' | 'closePagesOnPick' | 'thumbViewport' | 'pageLinks' | 'recursionEnabled';
+type BoolSetting = 'closePagesOnPick' | 'thumbViewport' | 'pageLinks' | 'recursionEnabled';
 
 /** Флажок настройки доски: меняет и сразу сохраняет. */
 function settingCheck(key: BoolSetting, text: string, hint?: string, after?: () => void): HTMLElement {
@@ -2355,18 +2339,6 @@ function settingCheck(key: BoolSetting, text: string, hint?: string, after?: () 
   span.textContent = text;
   lbl.append(cb, span);
   return lbl;
-}
-
-/** Переключатель «Плавное перемещение»: меняет и сразу сохраняет (в меню вида и в настройках доски). */
-function smoothPanSwitch(className: string, withIcon: boolean): HTMLElement {
-  return createToggleSwitch({
-    className,
-    label: 'Плавное движение',
-    icon: withIcon ? SMOOTH_PAN_ICON : undefined,
-    title: 'Небольшая инерция при перемещении по доске: после отпускания камера плавно останавливается',
-    checked: state.settings.smoothPan,
-    onChange: on => { setSettings({ smoothPan: on }); persistSettings(); },
-  });
 }
 
 function applyToolbarPos(): void {
@@ -3555,7 +3527,7 @@ function revealActivePage(smooth: boolean): void {
 }
 
 /**
- * Список страниц внизу не помещается в ширину рядом с правым нижним углом: «Масштаб и вид» и «Помощь»
+ * Список страниц внизу не помещается в ширину рядом с правым нижним углом: «Масштаб, вид и взаимодействия» и «Помощь»
  * поднимаются вместе с кнопкой «Страницы» (класс pages-lift у body), и список занимает всю ширину.
  * Решение не зависит от самого подъёма (ширина угла от него не меняется), поэтому не мигает.
  */
@@ -5027,18 +4999,20 @@ function wireHelpMenu(): void {
   });
 }
 
-// ----- «Масштаб и вид»: меню над группой в правом нижнем углу -----
+// ----- «Масштаб, вид и взаимодействия»: меню над группой в правом нижнем углу -----
 
 /** Цвета фона страницы в подменю «Фон страницы». */
 const PAGE_BACKGROUNDS: readonly [string, string][] = [
   ['Белый', '#ffffff'], ['Светло-серый', '#f1f1f1'], ['Серый', '#aaaaaa'], ['Тёмно-серый', '#444444'], ['Чёрный', '#000000'],
   ['Голубой', '#e7f7ff'], ['Сиреневый', '#eeeaff'], ['Розовый', '#fdebef'], ['Жёлтый', '#fff8db'], ['Зелёный', '#edf8e5'],
 ];
-type ViewLevel = 'root' | 'grid' | 'background';
+type ViewLevel = 'root' | 'grid' | 'background' | 'interactions';
+type ViewSub = Exclude<ViewLevel, 'root'>;
+const VIEW_SUB_TITLES: Record<ViewSub, string> = { grid: 'Тип сетки', background: 'Фон страницы', interactions: 'Взаимодействия' };
 
 /**
- * Меню «Масштаб и вид»: всегда шириной с группу масштаба и выходит из всей группы (src/menu-motion.ts).
- * «Тип сетки» и «Фон страницы» открываются внутри того же меню: заголовок со стрелкой «назад» и пункты подменю.
+ * Меню «Масштаб, вид и взаимодействия»: всегда шириной с группу масштаба и выходит из всей группы (src/menu-motion.ts).
+ * «Тип сетки», «Фон страницы» и «Взаимодействия» открываются внутри того же меню: заголовок со стрелкой «назад» и пункты подменю.
  */
 function wireZoomInput(): void {
   const label = document.getElementById('zoom-label')!;
@@ -5062,15 +5036,16 @@ function wireZoomInput(): void {
     p.innerHTML = html;
     return p;
   };
-  const subTitle = (lvl: 'grid' | 'background') => (lvl === 'grid' ? 'Тип сетки' : 'Фон страницы');
-  const subIcon = (lvl: 'grid' | 'background') => (lvl === 'grid' ? GRID_ICONS.square : BACKGROUND_ICON);
+  const subTitle = (lvl: ViewSub) => VIEW_SUB_TITLES[lvl];
+  const subIcon = (lvl: ViewSub) => (lvl === 'grid' ? GRID_ICONS.square : lvl === 'background' ? BACKGROUND_ICON : INTERACTIONS_ICON);
   const rootPage = (): HTMLElement => {
     // в режиме просмотра по ссылке тип сетки и фон страницы не меняются: пунктов нет
     const viewOnly = state.linkMode !== null;
-    const subRows = viewOnly ? '' : row('data-view="grid"', subIcon('grid'), subTitle('grid'), true) + row('data-view="background"', subIcon('background'), subTitle('background'), true);
+    const subs: ViewSub[] = viewOnly ? ['interactions'] : ['grid', 'background', 'interactions'];
+    const subRows = subs.map(s => row(`data-view="${s}"`, subIcon(s), subTitle(s), true)).join('');
     const p = makePage('root', `${row('data-view="fullscreen"', (document.fullscreenElement ? ICONS.fullscreenExit : ICONS.fullscreenEnter), 'Полный экран')}
       ${row('data-view="fit"', ICONS.fit, 'Показать всё')}<hr>
-      ${subRows}${viewOnly ? '' : '<hr>'}
+      ${subRows}<hr>
       <div class="view-zoom-scroll"><div class="view-zoom-pills">${[50, 70, 100, 200, 400, 800].map(n => `<button data-zoom="${n}">${n}%</button>`).join('')}<button data-view="custom">Другой…</button></div><div class="view-zoom-thumb" hidden></div></div>`);
     // колесо мыши прокручивает ряд по горизонтали
     const pills = p.querySelector<HTMLElement>('.view-zoom-pills')!;
@@ -5109,20 +5084,17 @@ function wireZoomInput(): void {
       const up = () => { box.classList.remove('dragging'); thumb.removeEventListener('pointermove', move); thumb.removeEventListener('pointerup', up); thumb.removeEventListener('pointercancel', up); };
       thumb.addEventListener('pointermove', move); thumb.addEventListener('pointerup', up); thumb.addEventListener('pointercancel', up);
     });
-    // «Привязка к сетке» — та же настройка, что во всплывающем меню настроек (в просмотре по ссылке пункта нет)
-    const snapSwitch = createToggleSwitch({
-      className: 'grid-switch view-switch',
-      label: 'Привязка к сетке',
-      icon: SNAP_ICON,
-      title: 'Точки, фигуры и рамки при перемещении встают на узлы сетки',
-      checked: state.settings.snapToGrid,
-      onChange: on => { setSettings({ snapToGrid: on }); persistSettings(); },
-    });
-    p.querySelector('[data-view="background"]')?.after(snapSwitch, smoothPanSwitch('grid-switch view-switch', true));
     return p;
   };
   const check = (on: boolean) => (on ? '<span class="view-check" aria-hidden="true">✓</span>' : '');
-  const subPage = (lvl: 'grid' | 'background'): HTMLElement => {
+  /** Переключатель настройки доски в подменю «Взаимодействия»: меню не закрывается, настройка сразу сохраняется. */
+  const settingSwitch = (key: 'snapToGrid' | 'smoothPan' | 'alignGuides', label: string, icon: string, title: string) => createToggleSwitch({
+    className: 'grid-switch view-switch',
+    label, icon, title,
+    checked: state.settings[key],
+    onChange: on => { setSettings({ [key]: on }); persistSettings(); },
+  });
+  const subPage = (lvl: ViewSub): HTMLElement => {
     // заголовок — тот же пункт, что в меню (иконка, название, стрелка), поверх — стрелка «назад»
     const p = makePage(lvl, `<button class="view-back" data-view="back" aria-label="Назад"><span class="view-icon"><span class="vb-arrow">${BACK_ARROW_ICON}</span><span class="vb-ghost">${subIcon(lvl)}</span></span><span class="view-text">${subTitle(lvl)}</span><span class="view-arrow vb-ghost" aria-hidden="true">›</span></button><hr>`);
     if (lvl === 'grid') {
@@ -5140,6 +5112,11 @@ function wireZoomInput(): void {
       }
       const coordSwitch = coordLabelsSwitch();
       if (coordSwitch) p.append(coordSwitch);
+    } else if (lvl === 'interactions') {
+      // в просмотре по ссылке доску не правят: остаётся только «Плавное движение»
+      if (state.linkMode === null) p.append(settingSwitch('snapToGrid', 'Привязка к сетке', SNAP_ICON, 'Точки, фигуры и рамки при перемещении встают на узлы сетки'));
+      p.append(settingSwitch('smoothPan', 'Плавное движение', SMOOTH_PAN_ICON, 'Небольшая инерция при перемещении по доске: после отпускания камера плавно останавливается'));
+      if (state.linkMode === null) p.append(settingSwitch('alignGuides', 'Направляющие', GUIDES_ICON, 'При переносе и изменении размера — пунктир от соседних объектов, к их краям и центрам объект примагничивается'));
     } else {
       const current = state.board.backgroundColor ?? '#ffffff';
       for (const [name, color] of PAGE_BACKGROUNDS) {
@@ -5234,7 +5211,7 @@ function wireZoomInput(): void {
   menu.addEventListener('click', e => {
     const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button'); if (!b || !menuShown(menu)) return;
     const view = b.dataset.view;
-    if (view === 'grid' || view === 'background') { go(view); return; }
+    if (view === 'grid' || view === 'background' || view === 'interactions') { go(view); return; }
     if (view === 'back') { go('root'); return; }
     if (b.dataset.grid) { setGrid(b.dataset.grid as GridMode); void saveNow(); close(); return; }
     if (b.dataset.bg) {

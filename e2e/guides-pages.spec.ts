@@ -41,7 +41,7 @@ test.describe('направляющие выравнивания', () => {
     await page.keyboard.press('Control+z');
 
     expect((await board.state()).settings.alignGuides).toBe(true);
-    await toggleSetting(board, 'Направляющие выравнивания');
+    await board.toggleInteraction('Направляющие');
     expect((await board.state()).settings.alignGuides).toBe(false);
     await board.tool('v');
     await board.click({ x: 650, y: 505 });
