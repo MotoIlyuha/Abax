@@ -6,7 +6,7 @@ import {
 } from './collab';
 import { DEFAULT_CURSOR_ID, cursorPreset, cursorSvg, isCursorId } from './cursors';
 import { computeEdgePointer, type SafeInsets } from './edge-pointer';
-import { getParticipantInitials, pageAvatars } from './presence';
+import { pageAvatars } from './presence';
 import { showPill } from './activity-pills';
 import { PLAN_LIMITS } from './limits';
 import { limitsEnforced, userPlan } from './plan';
@@ -86,40 +86,37 @@ export function goToParticipant(u: CollabUser, reason: CollabGotoDetail['reason'
   if (target) goTo(target);
 }
 
-/** Круглый аватар участника (1–2 буквы). */
-export function makeAvatar(u: CollabUser, cls: string): HTMLButtonElement {
-  const b = el('button', cls, getParticipantInitials(u.name));
-  b.type = 'button';
-  const { bg, fg } = avatarColors(u);
-  b.style.background = u.away ? '#9aa0ab' : bg;
-  b.style.color = u.away ? '#ffffff' : fg;
-  const title = participantTitle(u);
-  b.title = title;
-  b.setAttribute('aria-label', title);
-  if (u.hiddenPage) b.classList.add('on-hidden');
-  if (u.away) b.classList.add('away');
-  b.dataset.userId = String(u.userId);
-  b.addEventListener('click', e => {
-    e.stopPropagation();
-    goToParticipant(u, 'avatar');
-  });
-  // перетаскивание карточки страницы не должно начинаться с аватара
-  b.addEventListener('pointerdown', e => e.stopPropagation());
-  return b;
-}
-
 // ----- Аватары у карточек страниц -----
 
-/** Аватары участников на странице (до 3 + «+N»); перестраивается, только если состав изменился. */
+/** Группы аватаров у карточек страниц (по контейнеру карточки). */
+const pageGroups = new WeakMap<HTMLElement, AvatarGroup>();
+
+/**
+ * Аватары участников на странице (до 3 + «+N») — та же группа аватаров, что в шапке, поменьше; нажатие — то же
+ * меню аватара. Обновляется, только если состав или вид изменились.
+ */
 export function fillPageAvatars(box: HTMLElement, pageId: string): void {
   const users = collabActive() ? collabUsers() : [];
   const { shown, more } = pageAvatars(users, pageId, myCollabId());
-  const key = shown.map(u => `${u.userId}:${u.name}:${u.cursorId ?? ''}:${u.away ? 1 : 0}`).join(',') + `+${more}`;
+  const key = shown.map(u => `${u.userId}:${u.name}:${u.cursorId ?? ''}:${u.away ? 1 : 0}:${cursorShown(u.userId) ? 1 : 0}`).join(',')
+    + `+${more}|${state.project.pages.map(p => p.name).join('/')}`;
   if (box.dataset.key === key) return;
   box.dataset.key = key;
-  box.textContent = '';
-  for (const u of shown) box.appendChild(makeAvatar(u, 'page-avatar'));
-  if (more > 0) box.appendChild(el('span', 'page-avatar more', `+${more}`));
+  let g = pageGroups.get(box);
+  if (!g) {
+    const created = createAvatarGroup({ label: 'Участники на странице', size: 22, tight: 3, open: 8, itemClass: 'page-avatar' });
+    g = created;
+    pageGroups.set(box, created);
+    box.textContent = '';
+    box.appendChild(created.el);
+  }
+  const group = g;
+  const items: AvatarGroupItem[] = shown.map(u => ({ key: `u${u.userId}`, data: avatarData(u), onActivate: (b: HTMLElement) => openMenuFor(u.userId, b, group) }));
+  if (more > 0) {
+    const rest = users.filter(u => u.userId !== myCollabId() && !u.hiddenPage && u.pageId === pageId).slice(shown.length);
+    items.push({ key: 'more', more: { count: more, title: rest.map(u => String(u.name ?? '') || 'Участник').join(', ') } });
+  }
+  group.set(items);
   box.hidden = shown.length === 0;
 }
 
@@ -229,12 +226,15 @@ function menuSub(u: CollabUser, self: boolean): string {
   return [u.host ? 'Автор' : '', where ? `страница «${where}»` : '', status].filter(Boolean).join(' · ');
 }
 
-function openMenuFor(uid: number, anchor: HTMLElement): void {
-  if (menuFor === uid) { closeAvatarMenu(); return; }
+/** Меню аватара uid; from — группа, из которой его открыли (держится раскрытой, пока меню открыто). */
+function openMenuFor(uid: number, anchor: HTMLElement, from: AvatarGroup | null = group): void {
+  if (menuFor === uid && anchor.getAttribute('aria-expanded') === 'true') { closeAvatarMenu(); return; }
   const self = uid === myCollabId();
   const u = self ? meUser() : collabUsers().find(x => x.userId === uid);
   if (!u) return;
-  group?.hold(true);
+  // прежнее меню (в том числе из другой группы) закрывается до того, как это станет текущим
+  closeAvatarMenu(true);
+  from?.hold(true);
   menuFor = uid;
   openAvatarMenu({
     anchor,
@@ -245,7 +245,7 @@ function openMenuFor(uid: number, anchor: HTMLElement): void {
     onClose: () => {
       if (menuFor !== uid) return;
       menuFor = null;
-      group?.hold(false);
+      from?.hold(false);
     },
   });
 }

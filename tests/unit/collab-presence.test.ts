@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { avatarColors, gotoTarget, makeAvatar, participantPoint, participantTitle, safeInsets, EDGE_PAD } from '../../src/collab-presence';
+import { avatarColors, goToParticipant, gotoTarget, participantPoint, participantTitle, safeInsets, EDGE_PAD } from '../../src/collab-presence';
 import { cursorPreset } from '../../src/cursors';
 import type { CollabUser } from '../../src/collab';
 import { state } from '../../src/state';
@@ -60,24 +60,14 @@ describe('аватар участника', () => {
     expect(participantTitle(user({ away: true, pageId: null }))).toBe('Капибара · Отошёл');
   });
 
-  it('имя с разметкой остаётся текстом, инициалы', () => {
-    const b = makeAvatar(user({ name: '<img src=x onerror=alert(1)> Енот' }), 'presence-avatar');
-    expect(b.querySelector('img')).toBeNull();
-    expect(b.textContent).toBe('IS'); // буквы и цифры первых двух слов, разметка не исполняется
-    expect(b.getAttribute('aria-label')).toContain('<img src=x onerror=alert(1)>');
-    expect(b.classList.contains('presence-avatar')).toBe(true);
-  });
-
-  it('клик по аватару: переход к участнику; на скрытой странице — пилюля', () => {
+  it('переход к участнику; на скрытой странице — пилюля', () => {
     document.body.innerHTML = '<div id="activity-pills"></div>';
     const got: unknown[] = [];
     const on = (e: Event) => got.push((e as CustomEvent).detail);
     document.addEventListener('doska:collab-goto', on);
-    makeAvatar(user({ view: { pageId: 'p1', vx: 1, vy: 2, vz: 2 } }), 'page-avatar').click();
+    goToParticipant(user({ view: { pageId: 'p1', vx: 1, vy: 2, vz: 2 } }), 'avatar');
     expect(got).toEqual([{ pageId: 'p1', x: 1, y: 2, zoom: 2, reason: 'avatar' }]);
-    const hidden = makeAvatar(user({ host: true, hiddenPage: true, pageId: null }), 'page-avatar');
-    expect(hidden.classList.contains('on-hidden')).toBe(true);
-    hidden.click();
+    goToParticipant(user({ host: true, hiddenPage: true, pageId: null }), 'avatar');
     expect(got).toHaveLength(1);
     expect([...document.querySelectorAll('#activity-pills .ap-text')].map(n => n.textContent)).toContain('Автор сейчас на скрытой странице');
     document.removeEventListener('doska:collab-goto', on);

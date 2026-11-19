@@ -119,6 +119,20 @@ test('группа аватаров: раскрытие, меню, скрыть 
   await expect(g1.locator('#activity-pills .activity-pill', { hasText: 'позвал вас на страницу' })).toBeVisible();
   expect(await pageIdOf(g2)).toBe(pages[0]);
 
+  // у карточки страницы в доке — те же аватары: Капибара на второй, Енот на первой; нажатие — то же меню
+  await boardA.openPages();
+  const card = a.locator('#pages-list .page-item').nth(1);
+  const cardAvatar = card.locator('.page-avatars .user-avatar.page-avatar');
+  await expect(cardAvatar).toHaveCount(1, { timeout: 10000 });
+  await expect(cardAvatar).toHaveAttribute('aria-label', /^Капибара/);
+  await expect(cardAvatar.locator('.ua-cursor svg')).toHaveCount(1);
+  await expect(a.locator('#pages-list .page-item').nth(0).locator('.page-avatars .user-avatar')).toHaveCount(1);
+  if (shots) { const d = (await a.locator('#pages-tray').boundingBox())!; await a.screenshot({ path: `${shots}/pages-dock.png`, clip: { x: d.x - 10, y: d.y - 10, width: d.width + 20, height: d.height + 20 } }); }
+  await cardAvatar.click();
+  await expect(menu.locator('.avatar-menu-name')).toHaveText('Капибара');
+  await a.keyboard.press('Escape');
+  await expect(menu).toHaveCount(0);
+
   // «Убрать из совместной работы»: с подтверждением; гость видит причину, у автора аватар исчезает
   await group.hover();
   await group.locator('.user-avatar[aria-label^="Енот"]').click();

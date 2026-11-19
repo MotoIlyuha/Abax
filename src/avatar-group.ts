@@ -41,6 +41,8 @@ export interface AvatarGroupOptions {
   tight?: number;
   open?: number;
   label?: string;
+  /** Класс узлов аватаров (например, 'presence-avatar' в шапке, 'page-avatar' у карточек страниц). */
+  itemClass?: string;
 }
 
 /** На сколько курсор выступает за круг справа и снизу — доля диаметра (см. .ua-cursor в style.css). */
@@ -139,10 +141,10 @@ function removeSlot(g: GroupState, sl: Slot): void {
 }
 
 /** Аватар или счётчик «+N». */
-function makeNode(item: AvatarGroupItem): HTMLElement {
-  if (item.data) return createUserAvatar(item.data, 'presence-avatar');
+function makeNode(item: AvatarGroupItem, cls: string): HTMLElement {
+  if (item.data) return createUserAvatar(item.data, cls);
   const n = document.createElement('span');
-  n.className = 'presence-avatar more user-avatar';
+  n.className = `${cls} more user-avatar`;
   return n;
 }
 
@@ -280,7 +282,7 @@ export function createAvatarGroup(opts: AvatarGroupOptions = {}): AvatarGroup {
         // аватар сменился счётчиком или наоборот — новый узел
         if (sl && !!sl.item.data !== !!item.data) { sl.leaving = true; sl = undefined; }
         if (!sl) {
-          const el = makeNode(item);
+          const el = makeNode(item, opts.itemClass ?? 'presence-avatar');
           el.classList.add('ag-item');
           sl = { key: item.key, el, item, x: S(0), s: S(1), wait: 0, leaving: false };
           entering.add(sl);
