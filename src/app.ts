@@ -347,8 +347,11 @@ function insideTextMenus(t: EventTarget | null): boolean {
   return t instanceof Node && (quickMenuEl().contains(t) || ctxLayerEl().contains(t));
 }
 
-/** append — набранный символ, с которого начали ввод надписи выделенной фигуры. */
-export function beginTextEdit(opts: { el?: TextEl | NoteEl | ShapeEl; at?: { x: number; y: number }; target?: 'text' | 'note'; append?: string }): void {
+/**
+ * append — набранный символ, с которого начали ввод надписи выделенной фигуры;
+ * backspace — ввод начали с Backspace: последний символ надписи стирается.
+ */
+export function beginTextEdit(opts: { el?: TextEl | NoteEl | ShapeEl; at?: { x: number; y: number }; target?: 'text' | 'note'; append?: string; backspace?: boolean }): void {
   closeEditor(true);
   const el = opts.el ?? null;
   const target: Editing['target'] = el ? (el.type === 'note' ? 'note' : el.type === 'shape' ? 'shape' : 'text') : (opts.target ?? 'text');
@@ -357,7 +360,9 @@ export function beginTextEdit(opts: { el?: TextEl | NoteEl | ShapeEl; at?: { x: 
   ta.spellcheck = false;
   ta.className = target === 'text' ? 'inplace-edit' : `inplace-edit ${target}`;
   if (el?.type === 'shape') {
-    ta.value = (el.text ?? '') + (opts.append ?? '');
+    const chars = Array.from(el.text ?? ''); // по кодовым точкам: эмодзи стирается целиком
+    if (opts.backspace) chars.pop();
+    ta.value = chars.join('') + (opts.append ?? '');
     state.hideTextId = el.id; // контур остаётся на холсте, надпись живёт в редакторе
   } else if (el) {
     ta.value = el.text;

@@ -1376,6 +1376,13 @@ export function initController(canvas: HTMLCanvasElement): void {
         beginTextEdit({ el: captioned });
         return;
       }
+      // у курсора в надписи Backspace стирает её последний символ, а не фигуру;
+      // у пустой фигуры стирать нечего — Backspace, как и Delete, удаляет её
+      if (e.code === 'Backspace' && !e.shiftKey && captioned.text) {
+        e.preventDefault();
+        beginTextEdit({ el: captioned, backspace: true });
+        return;
+      }
     }
     // страницы: переход Ctrl/Alt + номер и новая страница — сочетания из «Горячих клавиш»
     const pageNo = pageNumberFromEvent(e, state.settings.pageKeyMod);

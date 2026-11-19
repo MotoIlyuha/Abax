@@ -158,6 +158,30 @@ test.describe('надпись в фигуре', () => {
     expect(await board.count()).toBe(0);
   });
 
+  test('после поворота Backspace стирает символ надписи, а не фигуру', async ({ board, page }) => {
+    await board.rect(400, 300, 600, 400);
+    await page.keyboard.type('abc');
+    // поворот фиксирует ввод; курсор в надписи остаётся
+    await board.drag([{ x: 387, y: 287 }, { x: 470, y: 220 }, { x: 563, y: 237 }], { steps: 10 });
+    await expect(page.locator('.shape-caret')).toBeVisible();
+    await page.keyboard.press('Backspace');
+    const editor = page.locator('#overlay textarea.inplace-edit.shape');
+    await expect(editor).toBeFocused();
+    await expect(editor).toHaveValue('ab');
+    await page.keyboard.press('Backspace');
+    await page.keyboard.press('Enter');
+    const els = await board.elements();
+    expect(els).toHaveLength(1);
+    expect(els[0]).toMatchObject({ type: 'shape', text: 'a' });
+    expect(els[0].rot).toBeCloseTo(Math.PI / 2, 2);
+    // у пустой фигуры стирать нечего — Backspace удаляет её
+    await page.keyboard.press('Enter');
+    await editor.fill('');
+    await page.keyboard.press('Enter');
+    await page.keyboard.press('Backspace');
+    expect(await board.count()).toBe(0);
+  });
+
   test('перенос фигуры не теряет только что набранную надпись', async ({ board, page }) => {
     await board.rect(400, 300, 600, 400);
     await page.keyboard.type('abc');
