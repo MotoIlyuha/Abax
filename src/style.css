@@ -3691,44 +3691,6 @@ body:not(.no-motion) .nb-badge { transition: none; }
 body.no-ui-anim :is(.nb-badge, .notify-btn) { transition: none; animation: none; }
 @media (prefers-reduced-motion: reduce) { :is(.nb-badge, .notify-btn) { transition: none; animation: none; } }
 
-/* ----- Чат комнаты (SPEC_NIGHT5 §6) ----- */
-#chat-panel {
-  position: fixed;
-  top: 58px;
-  right: 16px;
-  z-index: 76;
-  display: flex;
-  flex-direction: column;
-  width: 320px;
-  max-width: calc(100vw - 32px);
-  height: min(460px, calc(100vh - 80px));
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  background: var(--panel);
-  box-shadow: var(--shadow-card);
-  overflow: hidden;
-}
-#chat-panel[hidden] { display: none; }
-.chat-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--border); }
-.chat-title { font-weight: 700; }
-.chat-close { border: none; background: none; color: var(--muted); font-size: 14px; cursor: pointer; padding: 2px 6px; border-radius: 6px; }
-.chat-close:hover { background: var(--hover); color: var(--fg); }
-.chat-list { flex: 1; overflow-y: auto; padding: 8px 12px; display: flex; flex-direction: column; gap: 8px; }
-.chat-empty { flex: 1; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 13px; }
-.chat-empty[hidden] { display: none; }
-.chat-msg { display: flex; flex-direction: column; gap: 2px; }
-.chat-msg.mine { align-items: flex-end; }
-.chat-meta { display: flex; align-items: center; gap: 6px; font-size: 11px; }
-.chat-name { padding: 1px 6px; border-radius: 6px; font-weight: 600; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chat-time { color: var(--muted); }
-.chat-text { max-width: 100%; padding: 6px 10px; border-radius: 10px; background: var(--surface-sunken); font-size: 13px; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; }
-.chat-msg.mine .chat-text { background: var(--accent-soft); }
-.chat-text a { color: var(--accent); }
-.chat-input { margin: 8px 12px 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; resize: none; font: inherit; font-size: 13px; background: var(--panel); color: var(--fg); }
-.chat-input:focus { outline: none; border-color: var(--accent); }
-.chat-foot { display: flex; justify-content: space-between; gap: 8px; min-height: 18px; padding: 4px 12px 8px; font-size: 11px; color: var(--muted); }
-.chat-hint { color: var(--danger); }
-
 /* ----- Присутствие участников (SPEC_NIGHT5 §8) ----- */
 #btn-summon[hidden], #btn-follow[hidden] { display: none; }
 #btn-follow { position: relative; }
@@ -4092,7 +4054,6 @@ body.all-pages-hidden #goo-layer { display: none; }
 }
 
 /* ----- Ночь №6, TASK-07: интерфейс читателя ----- */
-.chat-readonly .chat-hint { color: var(--muted); }
 .cp-readonly { font-size: 12px; color: var(--muted); padding: 4px 0; }
 
 /* ----- Вёрстка шапки: экспорт справа, «Поделиться», нижний правый угол ----- */
@@ -4843,3 +4804,205 @@ body.no-ui-anim .ss-badge.on { animation: none; }
   .sp-close { z-index: 61; top: 76px; right: 20px; width: 40px; height: 40px; border: 0; border-radius: 10px; box-shadow: none; background: transparent; }
   .sp-close:hover { background: var(--hover); }
 }
+/* ----- Режим «Чат и уведомления» боковой панели (src/notify-panel.ts, SPEC_CHAT §6) ----- */
+.np { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.np-tabs-row { flex: none; padding: 4px 12px 8px; }
+.np-views { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.np-view { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.np-view[hidden] { display: none; }
+.np-compose { flex: none; padding: 8px 12px 12px; border-top: 1px solid var(--divider); }
+.np-compose[hidden] { display: none; }
+.np-reader { padding: 10px 4px 2px; text-align: center; font-size: 12.5px; color: var(--muted); }
+/* действия в шапке панели */
+.np-actions { display: flex; align-items: center; gap: 2px; }
+.np-act {
+  width: 32px; height: 32px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 9px; background: transparent; color: var(--icon-secondary); cursor: pointer;
+  transition: background-color .15s ease, color .15s ease;
+}
+.np-act:hover:not(:disabled) { background: var(--hover); color: var(--fg); }
+.np-act:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.np-act:disabled { color: var(--fg-disabled); cursor: default; }
+.np-act svg { width: 18px; height: 18px; }
+.np-moon { display: inline-flex; will-change: transform; }
+.np-moon svg { width: 19px; height: 19px; fill: transparent; transition: fill .3s ease; }
+.np-dnd.on { color: var(--fg); background: var(--hover-strong); }
+.np-dnd.on .np-moon svg { fill: currentColor; }
+.np-moon.np-moon-pop { animation: np-moon-pop .3s cubic-bezier(.23, 1, .32, 1); }
+@keyframes np-moon-pop { 0% { transform: rotate(-18deg) scale(.8); } 100% { transform: none; } }
+
+/* Tab pill (src/tab-pill.ts): тёмная пилюля на двух пружинах, подпись на ней белая */
+.tp { position: relative; display: flex; padding: 3px; border-radius: 999px; background: var(--surface-muted); }
+.tp-pill { position: absolute; left: 0; top: 3px; bottom: 3px; width: 0; border-radius: 999px; background: var(--fg); pointer-events: none; will-change: left, width; }
+.tp.tp-css .tp-pill { transition: left .25s cubic-bezier(.23, 1, .32, 1), width .25s cubic-bezier(.23, 1, .32, 1); }
+.tp-tab {
+  position: relative; z-index: 1; flex: 1 1 auto; display: inline-flex; align-items: center; justify-content: center;
+  height: 30px; padding: 0 12px; border: 0; border-radius: 999px; background: none; cursor: pointer;
+  font: inherit; font-size: 13px; font-weight: 600; color: var(--fg-secondary); white-space: nowrap; transition: color .12s ease;
+}
+.tp-tab:not(.tp-on):hover { color: var(--fg); }
+/* до первого измерения — по выбору; дальше — по тому, накрывает ли пилюля подпись (tp-on) */
+.tp:not(.tp-measured) .tp-tab[aria-selected="true"], .tp-tab.tp-on { color: var(--fg-inverse); }
+.tp-tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tp-count {
+  display: inline-flex; justify-content: center; overflow: hidden; height: 16px; min-width: 0; max-width: 0; margin-left: 0; padding: 0;
+  border-radius: 999px; background: var(--accent); color: var(--fg-inverse); font-size: 10.5px; font-weight: 700;
+  font-variant-numeric: tabular-nums; opacity: 0; transform: scale(.6);
+  transition: max-width .2s ease, margin .2s ease, padding .2s ease, min-width .2s ease, opacity .2s ease, transform .2s ease;
+}
+.tp-count.on { max-width: 40px; min-width: 16px; margin-left: 6px; padding: 0 5px; opacity: 1; transform: none; }
+.tp-count .roll { height: 16px; line-height: 16px; }
+body.no-ui-anim :is(.tp-tab, .tp-count, .tp-pill) { transition: none; }
+@media (prefers-reduced-motion: reduce) { :is(.tp-tab, .tp-count, .tp-pill) { transition: none; } }
+
+/* Лента (src/chat-feed.ts) */
+.cf { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.cf-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; outline: none; }
+.cf-scroll[hidden] { display: none; }
+.cf-list { display: flex; flex-direction: column; padding: 4px 14px 14px; }
+.cf-empty { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px; }
+.cf-empty[hidden] { display: none; }
+.cf-day { display: flex; justify-content: center; margin: 14px 0 4px; }
+.cf-day-label {
+  padding: 2px 10px; border-radius: 999px; background: var(--surface-sunken);
+  font-size: 11.5px; font-weight: 600; color: var(--fg-tertiary);
+}
+.cf-new { display: flex; align-items: center; gap: 8px; margin: 12px 0 2px; color: var(--accent); font-size: 11.5px; font-weight: 700; }
+.cf-new::before, .cf-new::after { content: ''; flex: 1; height: 1px; background: currentColor; opacity: .45; }
+.cf-group { display: flex; align-items: flex-start; gap: 8px; margin-top: 12px; transform-origin: 0 100%; }
+.cf-group.cf-mine { justify-content: flex-end; transform-origin: 100% 100%; }
+.cf-avatar { --ua-size: 28px; flex: none; margin-top: 18px; cursor: default; pointer-events: none; }
+.cf-avatar .ua-cursor, .cf-ev-avatar .ua-cursor { display: none; }
+.cf-col { min-width: 0; max-width: calc(100% - 44px); display: flex; flex-direction: column; align-items: flex-start; }
+.cf-mine .cf-col { align-items: flex-end; max-width: 82%; }
+.cf-meta { display: flex; align-items: baseline; gap: 6px; max-width: 100%; height: 18px; padding: 0 4px; font-size: 12px; }
+.cf-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 650; }
+.cf-time { flex: none; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.cf-msgs { display: flex; flex-direction: column; align-items: inherit; gap: 2px; max-width: 100%; }
+.cf-msg { display: flex; flex-direction: column; align-items: inherit; gap: 4px; max-width: 100%; transform-origin: inherit; }
+.cf-bubble {
+  max-width: 100%; padding: 7px 12px; border-radius: 16px; background: var(--surface-sunken); color: var(--fg);
+  font-size: 13.5px; line-height: 1.42; white-space: pre-wrap; overflow-wrap: anywhere; box-shadow: inset 0 0 0 1px var(--hairline);
+}
+/* угол к аватару — 6; внутри группы стыки со стороны аватара тоже 6 */
+.cf-group:not(.cf-mine) .cf-bubble { border-top-left-radius: 6px; }
+.cf-group:not(.cf-mine) .cf-msg:not(:last-child) .cf-bubble { border-bottom-left-radius: 6px; }
+.cf-mine .cf-bubble { background: var(--accent); color: var(--fg-inverse); box-shadow: none; border-top-right-radius: 6px; }
+.cf-mine .cf-msg:not(:last-child) .cf-bubble { border-bottom-right-radius: 6px; }
+.cf-bubble a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; text-decoration-thickness: 1px; }
+.cf-mine .cf-bubble a { color: inherit; }
+.cf-emoji { font-size: 34px; line-height: 1.15; letter-spacing: 2px; padding: 0 2px; font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif; }
+.cf-msg.cf-flash .cf-bubble, .cf-msg.cf-flash .cf-emoji { animation: cf-flash 1.6s ease-out; }
+@keyframes cf-flash { 0%, 30% { box-shadow: 0 0 0 3px var(--accent-ring); } 100% { box-shadow: 0 0 0 3px transparent; } }
+body.no-ui-anim .cf-msg.cf-flash .cf-bubble { animation: none; box-shadow: 0 0 0 3px var(--accent-ring); }
+/* вложение: плашка-заглушка (src/chat-attach-view.ts) */
+.cf-att {
+  display: inline-flex; align-items: center; gap: 8px; max-width: 100%; padding: 8px 12px; border-radius: 14px;
+  border: 1px dashed var(--border-dashed); background: var(--panel); color: var(--fg-secondary); font-size: 12.5px;
+}
+.cf-att-icon { display: inline-flex; flex: none; color: var(--icon-secondary); }
+.cf-att-icon svg { width: 16px; height: 16px; }
+.cf-att-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cf-att-gone, .cf-att-hidden { color: var(--muted); font-style: italic; }
+/* системное событие в «Все» */
+.cf-event {
+  align-self: center; display: flex; align-items: center; gap: 6px; max-width: 92%; margin-top: 10px; padding: 3px 10px 3px 4px;
+  border-radius: 13px; background: var(--surface-sunken); font-size: 12px; line-height: 1.35; color: var(--fg-secondary);
+  transform-origin: 50% 100%;
+}
+.cf-ev-media { flex: none; width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; }
+.cf-ev-icon { border-radius: 50%; background: var(--panel); color: var(--icon-secondary); }
+.cf-ev-icon svg { width: 12px; height: 12px; }
+.cf-ev-avatar { --ua-size: 20px; cursor: default; pointer-events: none; }
+.cf-ev-body { min-width: 0; overflow-wrap: anywhere; }
+.cf-ev-time { margin-left: 6px; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cf-ev-action { margin-left: 6px; padding: 0 2px; border: 0; background: none; color: var(--accent); font: inherit; font-weight: 600; cursor: pointer; }
+.cf-ev-action:hover { text-decoration: underline; }
+.cf-event.cf-warn { background: var(--warn-soft); color: var(--warn-ink); }
+.cf-event.cf-warn .cf-ev-icon { color: var(--warn); }
+.cf-event.cf-ok .cf-ev-icon { color: var(--success); }
+/* «Обычные»: новое сообщение — CSS 180 мс */
+.cf-in { animation: cf-in .18s cubic-bezier(.23, 1, .32, 1); }
+@keyframes cf-in { from { opacity: 0; transform: translateY(8px) scale(.96); } to { opacity: 1; transform: none; } }
+/* «↓ Новые сообщения» */
+.cf-jump {
+  position: absolute; left: 50%; bottom: 10px; z-index: 4; transform: translateX(-50%); height: 30px; padding: 0 14px;
+  border: 0; border-radius: 999px; background: var(--fg); color: var(--fg-inverse); box-shadow: var(--shadow-card);
+  font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; white-space: nowrap; animation: cf-jump .2s ease-out;
+}
+.cf-jump[hidden] { display: none; }
+.cf-jump:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@keyframes cf-jump { from { opacity: 0; transform: translate(-50%, 6px); } to { opacity: 1; transform: translateX(-50%); } }
+body.no-ui-anim :is(.cf-in, .cf-jump) { animation: none; }
+@media (prefers-reduced-motion: reduce) { :is(.cf-in, .cf-jump, .cf-msg.cf-flash .cf-bubble) { animation: none; } }
+
+/* пустые состояния */
+.np-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; max-width: 260px; margin: auto; padding: 24px 12px; text-align: center; }
+.np-empty[hidden] { display: none; }
+.np-empty-icon { width: 52px; height: 52px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--surface-muted); color: var(--icon-secondary); }
+.np-empty-icon svg { width: 24px; height: 24px; }
+.np-empty-text { font-size: 13px; line-height: 1.45; color: var(--fg-secondary); }
+.np-empty-compact { flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 8px 10px; max-width: none; padding: 6px 0 2px; text-align: left; }
+.np-empty-compact .np-empty-icon { width: 32px; height: 32px; }
+.np-empty-compact .np-empty-icon svg { width: 17px; height: 17px; }
+.np-empty-compact .np-empty-text { flex: 1; min-width: 160px; font-size: 12.5px; }
+.np-share {
+  height: 32px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--accent); color: var(--fg-inverse);
+  font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; transition: background-color .15s ease;
+}
+.np-share:hover { background: var(--accent-strong); }
+.np-share:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* «Уведомления»: карточки по дням */
+.np-notices-bar { flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 14px 4px 16px; }
+.np-notices-bar[hidden] { display: none; }
+.np-notices-title { font-size: 12px; color: var(--muted); }
+.np-clear { height: 26px; padding: 0 10px; border: 0; border-radius: 8px; background: none; color: var(--accent); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.np-clear:hover { background: var(--accent-soft); }
+.np-clear:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.np-notices-frame { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.np-notices-frame[hidden] { display: none; }
+.np-notices { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 8px; padding: 2px 12px 14px; }
+.np-day { margin: 8px 4px 0; font-size: 11.5px; font-weight: 700; letter-spacing: .02em; color: var(--fg-tertiary); }
+.np-day:first-child { margin-top: 0; }
+.np-card { position: relative; flex: none; border-radius: 14px; background: var(--panel); box-shadow: 0 0 0 1px var(--border); }
+.np-card.np-clickable { cursor: pointer; }
+.np-card.np-clickable:hover { background: var(--surface-sunken); }
+.np-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.np-card .ns-content { padding: 11px 26px 11px 11px; }
+.np-card .ns-body { display: block; -webkit-line-clamp: unset; overflow: visible; }
+.np-card .ns-title.ns-wrap { display: block; -webkit-line-clamp: unset; }
+.np-card.np-unread { box-shadow: 0 0 0 1px var(--accent-ring); }
+.np-dot { position: absolute; top: 16px; right: 12px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.np-card.np-unread .ns-time { margin-right: 4px; }
+
+/* Поле ввода (src/chat-composer.ts) */
+.composer { display: flex; flex-direction: column; gap: 6px; }
+.composer-chip[hidden] { display: none; }
+.composer-row {
+  display: flex; align-items: flex-end; gap: 6px; padding: 4px 4px 4px 8px; border: 1px solid var(--border-input); border-radius: 20px;
+  background: var(--panel); transition: border-color .15s ease, box-shadow .15s ease;
+}
+.composer-row:focus-within { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+.composer-tools { display: flex; align-items: center; gap: 2px; align-self: flex-end; }
+.composer-tools:empty { display: none; }
+.composer-input {
+  flex: 1; min-width: 0; height: 30px; padding: 5px 4px; border: 0; outline: none; resize: none;
+  background: transparent; color: var(--fg); font: inherit; font-size: 13.5px; line-height: 20px; overflow-y: hidden;
+}
+.composer-input::placeholder { color: var(--fg-placeholder); }
+.composer-send {
+  flex: none; width: 30px; height: 30px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 50%; background: var(--accent); color: var(--fg-inverse); cursor: pointer;
+  transition: background-color .15s ease, transform .15s ease;
+}
+.composer-send svg { width: 16px; height: 16px; }
+.composer-send:hover:not(:disabled) { background: var(--accent-strong); }
+.composer-send:active:not(:disabled) { transform: scale(.94); }
+.composer-send:disabled { background: var(--surface-muted); color: var(--fg-disabled); cursor: default; }
+.composer-send:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.composer-foot { display: none; justify-content: space-between; gap: 8px; padding: 0 10px; font-size: 11.5px; color: var(--muted); }
+.composer-foot.on { display: flex; }
+.composer-hint { color: var(--danger); }
+.composer-count { margin-left: auto; font-variant-numeric: tabular-nums; }
+body.no-ui-anim :is(.composer-row, .composer-send, .np-moon svg) { transition: none; }

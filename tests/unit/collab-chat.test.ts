@@ -1,27 +1,33 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  CHAT_PANEL_EVENT, CHAT_PREVIEW_LEN, chatAvailable, chatMessages, chatOpen, chatPreviewBody, chatPreviewText, chatReceive, chatReset,
-  chatUnread, closeChat, formatUnread, openChat, setChatAvailable, setChatAvatarLookup, setChatSender,
+  CHAT_PANEL_EVENT, CHAT_PREVIEW_LEN, chatAvailable, chatCanWrite, chatMessages, chatMyId, chatOpen, chatPreviewBody, chatPreviewText,
+  chatReceive, chatReset, chatUnread, formatUnread, onChat, openChat, sendChatMessage, setChatAvailable, setChatAvatarLookup,
+  setChatCanWrite, setChatOpenHandler, setChatSender, setChatVisible, type ChatEvent,
 } from '../../src/collab-chat';
 import { clearNotices, notices, noticeText, unreadCount } from '../../src/notify-center';
 
 const msg = (id: string, by: number, text: string, extra: Record<string, unknown> = {}) => ({ id, by, name: `У${by}`, text, ts: Date.UTC(2026, 10, 17, 12, 5), ...extra });
-const panel = () => document.getElementById('chat-panel')!;
-const input = () => panel().querySelector('.chat-input') as HTMLTextAreaElement;
 const chatNotices = () => notices().filter(n => n.kind === 'chat');
-const key = (k: string, shift = false) => input().dispatchEvent(new KeyboardEvent('keydown', { key: k, shiftKey: shift, bubbles: true, cancelable: true }));
 
-describe('чат комнаты', () => {
+describe('чат комнаты: слой данных', () => {
   beforeEach(() => {
     document.body.textContent = '';
-    document.body.className = 'no-motion';
     setChatAvailable(true);
   });
   afterEach(() => {
+    setChatVisible(false);
     setChatAvailable(false);
+    setChatCanWrite(true);
     setChatSender(null);
     setChatAvatarLookup(null);
+    setChatOpenHandler(null);
     clearNotices();
+  });
+
+  it('старой панели #chat-panel больше нет', () => {
+    chatReset([msg('1', 2, 'привет')], 1);
+    openChat();
+    expect(document.getElementById('chat-panel')).toBeNull();
   });
 
   it('чат доступен только при совместной работе', () => {
@@ -30,39 +36,36 @@ describe('чат комнаты', () => {
     expect(chatAvailable()).toBe(false);
   });
 
-  it('история из init — в ленте, непрочитанных нет', () => {
-    chatReset([msg('1', 2, 'привет'), { bad: true }, msg('2', 1, 'и тебе')], 1);
-    expect(chatMessages()).toHaveLength(2);
+  it('история из init: проверка формы, непрочитанных нет, мой id запомнен', () => {
+    chatReset([
+      msg('1', 2, 'привет'), { bad: true }, msg('2', 1, 'и тебе'),
+      msg('3', 2, '<script>'.repeat(100)), // длиннее 500 символов
+      msg('4', 2, '', { att: { kind: 'gone', was: 'image' } }), // только вложение — можно
+      msg('5', 2, ''), // пусто без вложения — нельзя
+      msg('6', 2, 'x', { att: { kind: 'evil' } }),
+      msg('7', 2, 'x', { att: 'строка' }),
+      msg('8', 2, 'x', { cursorId: 5 }),
+    ], 1);
+    expect(chatMessages().map(m => m.id)).toEqual(['1', '2', '4']);
     expect(chatUnread()).toBe(0);
-    openChat();
-    const rows = panel().querySelectorAll('.chat-msg');
-    expect(rows).toHaveLength(2);
-    expect(rows[1].classList.contains('mine')).toBe(true);
-    expect(rows[0].querySelector('.chat-name')!.textContent).toBe('У2');
-    expect(rows[0].querySelector('.chat-time')!.textContent).toMatch(/^\d\d:\d\d$/);
-    expect(panel().querySelector('.chat-empty')!.hasAttribute('hidden')).toBe(true);
+    expect(chatMyId()).toBe(1);
   });
 
-  it('ссылки — с target и rel, разметка — текстом', () => {
-    chatReset([msg('1', 2, '<img src=x onerror="alert(1)"> https://abax.app/a')], 1);
-    openChat();
-    const text = panel().querySelector('.chat-text')!;
-    expect(text.querySelector('img')).toBeNull();
-    const a = text.querySelector('a')!;
-    expect(a.getAttribute('href')).toBe('https://abax.app/a');
-    expect(a.target).toBe('_blank');
-    expect(a.rel).toBe('noopener noreferrer');
-    expect(text.textContent).toBe('<img src=x onerror="alert(1)"> https://abax.app/a');
+  it('onChat: сброс, новое сообщение, состояние; отписка', () => {
+    const got: ChatEvent['type'][] = [];
+    const off = onChat(ev => got.push(ev.type));
+    chatReset([], 1);
+    chatReceive(msg('a', 2, 'привет'));
+    chatReceive(msg('a', 2, 'привет')); // повтор — без события
+    chatReceive({ id: 'b' }); // неверная форма — без события
+    setChatCanWrite(false);
+    setChatAvailable(false);
+    off();
+    chatReceive(msg('c', 2, 'после отписки'));
+    expect(got).toEqual(['reset', 'message', 'state', 'state']);
   });
 
-  it('имя участника с разметкой — текст', () => {
-    chatReset([msg('1', 2, 'x', { name: '<b onclick="x">Лемур</b>' })], 1);
-    openChat();
-    expect(panel().querySelector('.chat-name b')).toBeNull();
-    expect(panel().querySelector('.chat-name')!.textContent).toBe('<b onclick="x">Лемур</b>');
-  });
-
-  it('закрытая панель: чужое сообщение — уведомление чата, своё — нет', () => {
+  it('чат не виден: чужое сообщение — уведомление чата, своё — нет', () => {
     setChatAvatarLookup(uid => (uid === 2 ? '🦊' : null));
     chatReset([], 1);
     chatReceive(msg('a', 1, 'моё'));
@@ -73,28 +76,60 @@ describe('чат комнаты', () => {
     const n = chatNotices()[0];
     expect(n).toMatchObject({ kind: 'chat', title: 'У2', body: 'привет всем', chatId: 'b', read: false, user: { userId: 2, name: 'У2', cursorId: 'mint', avatar: '🦊' } });
     expect(noticeText(n)).toBe('У2: привет всем');
-    // повтор того же id не считается
     chatReceive(msg('b', 2, 'привет всем'));
     expect(chatUnread()).toBe(1);
-    // щелчок по уведомлению открывает чат, непрочитанных нет
-    n.onClick!();
-    expect(chatOpen()).toBe(true);
-    expect(chatUnread()).toBe(0);
-    expect(unreadCount()).toBe(0);
   });
 
-  it('панель сообщает об открытии и закрытии (кнопка ЧУ обновляет aria-expanded)', () => {
+  it('сообщение только с вложением — в уведомлении подпись вложения', () => {
+    chatReset([], 1);
+    chatReceive(msg('i', 2, '', { att: { kind: 'image', src: 'data:image/png;base64,AA==', w: 1, h: 1 } }));
+    expect(chatNotices()[0].body).toBe('Изображение');
+  });
+
+  it('чат виден (вид показывает «Все» или «Чат»): сообщение сразу прочитано, без уведомления', () => {
+    chatReset([], 1);
+    chatReceive(msg('a', 2, 'до показа'));
+    expect(chatUnread()).toBe(1);
+    setChatVisible(true);
+    expect(chatOpen()).toBe(true);
+    expect(chatUnread()).toBe(0);
+    chatReceive(msg('b', 2, 'при показе'));
+    expect(chatNotices().filter(n => !n.read)).toHaveLength(0);
+    expect(chatMessages()).toHaveLength(2);
+  });
+
+  it('видимость сообщается событием на document (кнопка ЧУ до интеграции панели)', () => {
     const got: boolean[] = [];
     const on = (e: Event) => got.push((e as CustomEvent<{ open: boolean }>).detail.open);
     document.addEventListener(CHAT_PANEL_EVENT, on);
-    openChat();
-    closeChat();
-    closeChat(); // уже закрыта — без события
+    setChatVisible(true);
+    setChatVisible(true); // без изменений — без события
+    setChatVisible(false);
     document.removeEventListener(CHAT_PANEL_EVENT, on);
     expect(got).toEqual([true, false]);
   });
 
-  it('много непрочитанных: счётчик 99+', () => {
+  it('openChat вызывает обработчик интегратора с вкладкой «chat»; без обработчика или без чата — ничего', () => {
+    const fn = vi.fn();
+    openChat(); // обработчика нет
+    setChatOpenHandler(fn);
+    openChat();
+    expect(fn).toHaveBeenCalledWith('chat');
+    setChatAvailable(false);
+    openChat();
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('щелчок по уведомлению о сообщении — openChat', () => {
+    const fn = vi.fn();
+    setChatOpenHandler(fn);
+    chatReset([], 1);
+    chatReceive(msg('b', 2, 'привет'));
+    chatNotices()[0].onClick!();
+    expect(fn).toHaveBeenCalledWith('chat');
+  });
+
+  it('много непрочитанных: счётчик 99+, лента — последние 100', () => {
     chatReset([], 1);
     for (let i = 0; i < 120; i++) chatReceive(msg(`m${i}`, 2, 'x'));
     expect(chatUnread()).toBe(120);
@@ -102,74 +137,29 @@ describe('чат комнаты', () => {
     expect(chatMessages()).toHaveLength(100);
     expect(formatUnread(0)).toBe('');
     expect(formatUnread(99)).toBe('99');
-    expect(formatUnread(100)).toBe('99+');
   });
 
-  it('открытая панель: сообщение сразу в ленте, без бейджа', () => {
-    chatReset([], 1);
-    openChat();
-    chatReceive(msg('b', 2, 'привет'));
-    expect(chatUnread()).toBe(0);
-    expect(panel().querySelectorAll('.chat-msg')).toHaveLength(1);
-    expect(chatNotices()).toHaveLength(0);
-  });
-
-  it('Enter отправляет, Shift+Enter — нет; пустое не уходит', () => {
+  it('отправка: пусто, флуд (6-е за 3 с), нет соединения, читатель', () => {
     const sent: string[] = [];
     setChatSender(t => { sent.push(t); return true; });
-    chatReset([], 1);
-    openChat();
-    input().value = '   ';
-    key('Enter');
-    expect(sent).toEqual([]);
-    input().value = 'строка';
-    key('Enter', true);
-    expect(sent).toEqual([]);
-    key('Enter');
-    expect(sent).toEqual(['строка']);
-    expect(input().value).toBe('');
-  });
-
-  it('флуд: шестое сообщение за 3 с — подсказка', () => {
-    const sent: string[] = [];
-    setChatSender(t => { sent.push(t); return true; });
-    chatReset([], 1);
-    openChat();
-    for (let i = 0; i < 6; i++) { input().value = `m${i}`; key('Enter'); }
-    expect(sent).toHaveLength(5);
-    expect(panel().querySelector('.chat-hint')!.textContent).toMatch(/Не так быстро/);
-    expect(input().value).toBe('m5');
-  });
-
-  it('нет соединения — подсказка, текст остаётся', () => {
+    expect(sendChatMessage('   ')).toBe('empty');
+    expect(sendChatMessage('я'.repeat(501))).toBe('empty');
+    for (let i = 0; i < 5; i++) expect(sendChatMessage(` m${i} `)).toBe('ok');
+    expect(sendChatMessage('m5')).toBe('rate');
+    expect(sent).toEqual(['m0', 'm1', 'm2', 'm3', 'm4']);
+    setChatAvailable(false);
+    setChatAvailable(true); // ограничитель сброшен вместе с чатом
     setChatSender(() => false);
-    chatReset([], 1);
-    openChat();
-    input().value = 'привет';
-    key('Enter');
-    expect(panel().querySelector('.chat-hint')!.textContent).toBe('Нет соединения с доской');
-    expect(input().value).toBe('привет');
+    expect(sendChatMessage('привет')).toBe('offline');
+    setChatSender(null);
+    expect(sendChatMessage('привет')).toBe('offline');
+    setChatSender(() => true);
+    setChatCanWrite(false);
+    expect(chatCanWrite()).toBe(false);
+    expect(sendChatMessage('привет')).toBe('readonly');
   });
 
-  it('счётчик символов после 400, maxlength 500', () => {
-    chatReset([], 1);
-    openChat();
-    expect(input().maxLength).toBe(500);
-    input().value = 'я'.repeat(401);
-    input().dispatchEvent(new Event('input'));
-    expect(panel().querySelector('.chat-count')!.textContent).toBe('401/500');
-  });
-
-  it('Esc закрывает панель', () => {
-    chatReset([], 1);
-    openChat();
-    key('Escape');
-    expect(chatOpen()).toBe(false);
-    expect(panel().hidden).toBe(true);
-    closeChat();
-  });
-
-  it('выключение чата сбрасывает ленту', () => {
+  it('выключение чата сбрасывает ленту и непрочитанные', () => {
     chatReset([msg('1', 2, 'x')], 1);
     chatReceive(msg('2', 2, 'y'));
     expect(chatNotices()).toHaveLength(1);
@@ -177,8 +167,6 @@ describe('чат комнаты', () => {
     expect(chatMessages()).toHaveLength(0);
     expect(chatUnread()).toBe(0);
     expect(chatNotices()).toHaveLength(0);
-    openChat(); // недоступен — не открывается
-    expect(chatOpen()).toBe(false);
   });
 
   it('превью обрезается до 80 символов', () => {

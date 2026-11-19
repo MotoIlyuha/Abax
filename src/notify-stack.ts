@@ -20,10 +20,9 @@
 
 import { S, clamp, register, step, tune, wake, type Spring } from './motion';
 import { menuMotion, type MenuMotion } from './menu-motion';
-import { createUserAvatar } from './avatar';
-import { DEFAULT_CURSOR_ID, cursorPreset, isCursorId } from './cursors';
-import { CLOSE_ICON, NOTICE_ICONS } from './icons';
-import { doNotDisturb, markNoticeRead, noticeText, noticeTimeLabel, onNotices, type Notice, type NoticeEvent } from './notify-center';
+import { CLOSE_ICON } from './icons';
+import { noticeContent, noticeMedia, paintNoticeTime } from './notice-card';
+import { doNotDisturb, markNoticeRead, noticeText, onNotices, type Notice, type NoticeEvent } from './notify-center';
 import { notifyAbsorb, notifyButton, setNotifyPending } from './notify-button';
 import { onSidePanel, openSidePanel, sidePanelMode, sidePanelOpen } from './side-panel';
 import { revealChatMessage, setNotifyTab } from './notify-panel';
@@ -203,70 +202,19 @@ function ensureRoot(): HTMLElement {
   return r;
 }
 
-/** Значок события: только ключи каталога (неизвестный — колокольчик). */
-function iconOf(n: Notice): string {
-  const key = n.icon && Object.prototype.hasOwnProperty.call(NOTICE_ICONS, n.icon) ? n.icon : 'bell';
-  return NOTICE_ICONS[key];
-}
-
-/** Аватар участника (с его курсором и значком события) или цветной квадрат с иконкой события. */
-function buildMedia(n: Notice): HTMLElement {
-  const box = el('span', 'ns-media');
-  box.setAttribute('aria-hidden', 'true');
-  if (n.user) {
-    const id = n.user.cursorId && isCursorId(n.user.cursorId) ? n.user.cursorId : DEFAULT_CURSOR_ID;
-    const preset = cursorPreset(id);
-    const av = createUserAvatar({
-      name: String(n.user.name ?? '') || n.title, bg: preset.badgeBg, fg: preset.badgeText, cursorId: id,
-      avatar: n.user.avatar ?? null, status: 'online',
-    }, 'ns-avatar');
-    av.tabIndex = -1;
-    av.removeAttribute('title');
-    av.removeAttribute('aria-label');
-    box.append(av);
-    if (n.icon) {
-      const ev = el('span', 'ns-ev');
-      ev.innerHTML = iconOf(n); // константа каталога иконок
-      box.append(ev);
-    }
-  } else {
-    box.classList.add('ns-square');
-    box.innerHTML = iconOf(n); // константа каталога иконок
-  }
-  return box;
-}
-
 function buildCard(n: Notice): Card {
   const card = el('div', `ns-card ns-${n.level}${n.kind === 'chat' ? ' ns-chat' : ''}`);
   card.dataset.id = n.id;
   card.tabIndex = 0;
   card.setAttribute('role', 'article');
   card.setAttribute('aria-label', noticeText(n));
-  const content = el('div', 'ns-content');
-  const title = el('div', 'ns-title', n.title || 'Участник');
-  const body = (n.body ?? '').trim();
-  if (!body) title.classList.add('ns-wrap');
-  const time = el('time', 'ns-time');
-  // слева — аватар или значок, справа — сетка: заголовок и время, под ними текст и кнопка действия
-  const main = el('div', 'ns-main');
-  content.append(buildMedia(n), main);
-  main.append(title);
-  // пробел в начале текста не виден (схлопывается), но textContent карточки читается одной фразой:
-  // «Капибара присоединился к доске»
-  if (body) main.append(el('div', 'ns-body', ` ${body}`));
-  main.append(time);
+  // содержимое — общая карточка (src/notice-card.ts); действие сначала убирает карточку
+  const { content, time } = noticeContent(n, () => dismiss(c, 'fade'));
   const c: Card = {
     n, el: card, time, h: 0,
     y: S(0), s: S(1), o: S(0), x: S(0), dragO: 1,
     shown: false, fresh: false, quietUntil: 0, hold: 0, fly: null, dragging: false,
   };
-  if (n.action) {
-    const act = el('button', 'ns-action', n.action.label);
-    act.type = 'button';
-    const run = n.action.run;
-    act.addEventListener('click', ev => { ev.stopPropagation(); dismiss(c, 'fade'); run(); });
-    main.append(act);
-  }
   const close = el('button', 'ns-close');
   close.type = 'button';
   close.title = 'Убрать';
@@ -284,13 +232,7 @@ function buildCard(n: Notice): Card {
 }
 
 function updateTime(c: Card): void {
-  const label = noticeTimeLabel(c.n.ts);
-  if (c.time.textContent !== label) c.time.textContent = label;
-  if (!c.time.dateTime) {
-    const d = new Date(c.n.ts);
-    c.time.dateTime = d.toISOString();
-    c.time.title = d.toLocaleString('ru-RU');
-  }
+  paintNoticeTime(c.time, c.n.ts);
 }
 
 function announce(n: Notice): void {
@@ -772,7 +714,7 @@ function spawnGhost(c: Card): void {
   if (!b || !r || !r.width) return;
   const g = el('div', 'ns-ghost');
   g.setAttribute('aria-hidden', 'true');
-  g.append(buildMedia(c.n), el('span', 'ns-ghost-text', c.n.title || 'Участник'));
+  g.append(noticeMedia(c.n), el('span', 'ns-ghost-text', c.n.title || 'Участник'));
   const w = 150;
   const h = 36;
   const left = clamp(r.left + r.width / 2 - w / 2, 8, window.innerWidth - w - 8);

@@ -1323,12 +1323,11 @@ describe('интерфейс гостя по возможностям (Ночь 
     expect(collab.myCollabCaps()).toMatchObject({ comment: false, chat: false, pointer: false });
     expect(canAnnotate()).toBe(false);
     expect(noticeTexts()).toContain('Автор изменил вашу роль: Читатель');
-    chat.openChat();
-    expect(document.querySelector<HTMLTextAreaElement>('.chat-input')!.hidden).toBe(true);
-    expect(document.querySelector('.chat-hint')!.textContent).toBe('Читатели не пишут в чат');
+    expect(chat.chatCanWrite()).toBe(false);
+    expect(chat.sendChatMessage('привет')).toBe('readonly');
     server.setRights(collab.myCollabId(), { role: 'editor' });
     await until(() => collab.myCollabRole() === 'editor');
     expect(st.canCopyCurrentBoard()).toBe(true); // редактор копирует всегда
-    expect(document.querySelector<HTMLTextAreaElement>('.chat-input')!.hidden).toBe(false);
+    expect(chat.chatCanWrite()).toBe(true);
   });
 });
