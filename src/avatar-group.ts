@@ -175,7 +175,10 @@ export function createAvatarGroup(opts: AvatarGroupOptions = {}): AvatarGroup {
   function layout(entering: Set<Slot> = new Set(), opening = false): void {
     const list = present();
     const gap = interactive() && list.length > 1 ? openGap : tight;
-    const width = list.length ? (list.length - 1) * (size + gap) + size + CURSOR_OUT : 0;
+    const widthAt = (gp: number): number => (list.length ? (list.length - 1) * (size + gp) + size + CURSOR_OUT : 0);
+    const width = widthAt(gap);
+    // ширина свёрнутой стопки: по ней шапка (src/topbar-fit.ts) решает, что убрать, — раскрытие ничего не прячет
+    root.dataset.restWidth = String(widthAt(tight));
     root.classList.toggle('open', interactive());
     root.dataset.open = interactive() ? '1' : '0';
     root.classList.toggle('single', list.length <= 1);

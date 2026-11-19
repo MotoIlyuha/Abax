@@ -199,14 +199,31 @@ describe('меню аватара', () => {
     const me = user({ userId: 1, name: 'Я' });
     const others = Array.from({ length: 7 }, (_, i) => user({ userId: 10 + i, name: `У${i}` }));
     const list = groupItems([me, ...others], me);
-    expect(list.map(i => i.key)).toEqual(['u1', 'u10', 'u11', 'u12', 'u13', 'u14', 'more']);
+    expect(list.map(i => i.key)).toEqual(['me', 'u10', 'u11', 'u12', 'u13', 'u14', 'more']);
     expect(list[0].data!.self).toBe(true);
     expect(list.at(-1)!.more).toEqual({ count: 2, title: 'У5, У6' });
   });
 
-  it('свой аватар: профиль и «Скрыть курсоры других»; без права звать — без «Позвать всех»', () => {
+  it('свой аватар без совместной работы: только профиль (звать некого, чужих курсоров нет)', () => {
     const ids = selfMenuEntries(document.body).map(e => (e.kind === 'sep' ? '-' : e.id));
-    expect(ids).toEqual(['profile', 'hide-cursors']);
+    expect(ids).toEqual(['profile']);
+  });
+
+  it('группа без комнаты: один мой аватар по профилю, сразу доступен', async () => {
+    const { initCollabPresence } = await import('../../src/collab-presence');
+    const { setProfile } = await import('../../src/profile');
+    document.body.insertAdjacentHTML('beforeend', '<div id="collab-presence" hidden></div>');
+    setProfile({ name: 'Анна Петрова' });
+    initCollabPresence();
+    const strip = document.getElementById('collab-presence')!;
+    expect(strip.hidden).toBe(false);
+    const avatars = strip.querySelectorAll<HTMLElement>('.user-avatar');
+    expect(avatars).toHaveLength(1);
+    expect(avatars[0].classList.contains('self')).toBe(true);
+    expect(avatars[0].querySelector('.ua-circle')!.textContent).toBe('АП');
+    expect(strip.querySelector('.avatar-group')!.getAttribute('data-open')).toBe('1');
+    setProfile({ name: 'Капибара' });
+    expect(strip.querySelector('.ua-circle')!.textContent).toBe('К');
   });
 
   it('чужой аватар без прав автора: перейти, скрыть курсор, следить (скоро); убрать и позвать — нет', () => {

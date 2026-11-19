@@ -15,7 +15,7 @@ import { STATUS_TEXT, type AvatarData, type AvatarStatus } from './avatar';
 import { createAvatarGroup, type AvatarGroup, type AvatarGroupItem } from './avatar-group';
 import { closeAvatarMenu, openAvatarMenu, type AvatarMenuEntry } from './avatar-menu';
 import { cursorShown, othersCursorsHidden, setOthersCursorsHidden, setUserCursorHidden, userCursorHidden } from './cursor-visibility';
-import { myCursorId, profileName } from './profile';
+import { myCursorId, onProfileChange, profileName } from './profile';
 
 // Присутствие участников (SPEC_NIGHT5 §8): краевые курсоры у границы экрана, аватары в шапке и у страниц,
 // кнопки автора «Позвать всех сюда» и «Автопереход участников за мной». Имена и цвета приходят от других
@@ -180,7 +180,8 @@ export function selfMenuEntries(anchor: HTMLElement): AvatarMenuEntry[] {
       },
     });
   }
-  out.push({ kind: 'switch', id: 'hide-cursors', label: 'Скрыть курсоры других', icon: ICONS.eyeOff, checked: othersCursorsHidden(), onChange: setOthersCursorsHidden, title: 'Только у вас: другие участники ничего не заметят' });
+  // чужие курсоры бывают только в совместной работе
+  if (collabActive()) out.push({ kind: 'switch', id: 'hide-cursors', label: 'Скрыть курсоры других', icon: ICONS.eyeOff, checked: othersCursorsHidden(), onChange: setOthersCursorsHidden, title: 'Только у вас: другие участники ничего не заметят' });
   return out;
 }
 
@@ -249,12 +250,12 @@ function openMenuFor(uid: number, anchor: HTMLElement): void {
   });
 }
 
-/** Состав группы: я первым, затем другие (до STRIP_MAX) и «+N». */
+/** Состав группы: я первым (ключ 'me' — мой аватар не пересоздаётся при входе в комнату), затем другие (до STRIP_MAX) и «+N». */
 export function groupItems(users: readonly CollabUser[], me: CollabUser): AvatarGroupItem[] {
   const others = users.filter(u => u.userId !== me.userId);
   const shown = others.slice(0, STRIP_MAX);
   const items: AvatarGroupItem[] = [
-    { key: `u${me.userId}`, data: avatarData(me, true), onActivate: b => openMenuFor(me.userId, b) },
+    { key: 'me', data: avatarData(me, true), onActivate: b => openMenuFor(me.userId, b) },
     ...shown.map(u => ({ key: `u${u.userId}`, data: avatarData(u), onActivate: (b: HTMLElement) => openMenuFor(u.userId, b) })),
   ];
   const rest = others.slice(STRIP_MAX);
@@ -268,20 +269,12 @@ function renderStrip(): void {
   const me = myCollabId();
   const users = collabActive() ? collabUsers() : [];
   const others = users.filter(u => u.userId !== me);
-  // группа видна, когда на доске есть кто-то кроме меня
-  const visible = others.length > 0;
-  const key = visible
-    ? users.map(u => `${u.userId}:${u.name}:${u.cursorId ?? ''}:${u.away ? 1 : 0}:${u.hiddenPage ? 'h' : u.pageId ?? ''}:${cursorShown(u.userId) ? 1 : 0}`).join(',')
-      + `|${me}|${state.project.pages.map(p => p.name).join('/')}`
-    : '';
-  if (strip.dataset.key === key && (!visible || group)) return;
+  const self = meUser();
+  // мой аватар виден всегда, даже если на доске больше никого нет
+  const key = users.map(u => `${u.userId}:${u.name}:${u.cursorId ?? ''}:${u.away ? 1 : 0}:${u.hiddenPage ? 'h' : u.pageId ?? ''}:${cursorShown(u.userId) ? 1 : 0}`).join(',')
+    + `|${me}|${self.name}:${self.cursorId ?? ''}|${state.project.pages.map(p => p.name).join('/')}`;
+  if (strip.dataset.key === key && group) return;
   strip.dataset.key = key;
-  if (!visible) {
-    if (menuFor !== null) closeAvatarMenu(true);
-    strip.hidden = true;
-    group?.set([]);
-    return;
-  }
   if (!group) {
     group = createAvatarGroup({ label: 'Участники' });
     strip.textContent = '';
@@ -290,7 +283,7 @@ function renderStrip(): void {
   // участник ушёл — его меню закрывается
   if (menuFor !== null && menuFor !== me && !others.some(u => u.userId === menuFor)) closeAvatarMenu();
   strip.hidden = false;
-  group.set(groupItems(users, meUser()));
+  group.set(groupItems(users, self));
 }
 
 // ----- Краевые курсоры -----
@@ -532,6 +525,9 @@ export function initCollabPresence(onPageAvatars?: () => void, opts: { openProfi
     follow.innerHTML = FOLLOW_ICON; // константа модуля
     follow.addEventListener('click', toggleFollow);
   }
+  // мой аватар без комнаты строится по профилю: имя и курсор меняются в настройках
+  onProfileChange(() => renderStrip());
+  renderStrip();
   document.addEventListener(PRESENCE_EVENT, () => {
     renderEdgePointers();
     renderStrip();

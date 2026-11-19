@@ -21,6 +21,13 @@ test('группа аватаров: раскрытие, меню, скрыть 
   const { base } = env.get();
   const A = await device(browser, base, { name: 'Лемур' });
   const a = await openAt(A, `${base}/`, env.errors);
+  // один на доске — свой аватар всё равно виден, слева от «Поделиться»
+  const strip = a.locator('#collab-presence');
+  await expect(strip.locator('.user-avatar.self')).toHaveCount(1);
+  const shareBox = (await a.locator('#btn-share').boundingBox())!;
+  const stripBox = (await strip.boundingBox())!;
+  expect(stripBox.x + stripBox.width).toBeLessThanOrEqual(shareBox.x);
+  await shot(a, 'alone');
   const boardA = new Board(a);
   await boardA.rect(400, 300, 520, 380);
   await boardA.addPage();

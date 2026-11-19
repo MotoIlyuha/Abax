@@ -3509,7 +3509,8 @@ body.no-motion .activity-pill, body.no-ui-anim .activity-pill { animation: none;
   line-height: 12px;
   pointer-events: none;
 }
-#collab-presence { display: inline-flex; align-items: center; gap: 2px; margin: 0 2px 0 4px; }
+/* группа аватаров — слева от «Поделиться», без плашки (index.html); шапка сама не ловит указатель */
+#collab-presence { display: flex; align-items: center; flex: none; pointer-events: auto; }
 #collab-presence[hidden] { display: none; }
 
 /* ----- Аватар пользователя (src/avatar.ts): круг с инициалами, курсор справа внизу, статус справа вверху ----- */
