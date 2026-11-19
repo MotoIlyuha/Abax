@@ -178,7 +178,7 @@ function restoreSettings(): void {
       state.settings = {
         toolbarPos: v.toolbarPos as ToolbarPos,
         snapToGrid: typeof v.snapToGrid === 'boolean' ? v.snapToGrid : false,
-        wheelMode: v.wheelMode === 'zoom' ? 'zoom' : 'scroll',
+        wheelMode: v.wheelMode === 'scroll' ? 'scroll' : 'zoom',
         pageTransition: PAGE_TRANSITIONS.some(t => t.mode === v.pageTransition) ? v.pageTransition : 'slide',
         pageKeyMod: v.pageKeyMod === 'ctrl' ? 'ctrl' : 'alt',
         mouseMode: v.mouseMode === 'history' || v.mouseMode === 'custom' ? v.mouseMode : 'pages',
