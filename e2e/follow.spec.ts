@@ -53,11 +53,9 @@ test('следить за участником: камера, страницы, 
   await menuA.locator('.avatar-access-row').nth(2).locator('.avatar-access-select').click();
   await a.locator('.ss-menu .ss-opt', { hasText: 'Скрыта' }).click();
   await expect.poll(() => stateOf(g, s => s.project.pages.length as number), { timeout: 10000 }).toBe(2);
-  // Esc после выбора в списке прав иногда не срабатывает с первого раза (известная проблема avatar-group.spec)
-  await expect(async () => {
-    await a.keyboard.press('Escape');
-    await expect(menuA).toHaveCount(0, { timeout: 300 });
-  }).toPass({ timeout: 5000 });
+  await a.keyboard.press('Escape');
+  await a.keyboard.press('Escape');
+  await expect(menuA).toHaveCount(0);
 
   // Капибара следит за автором
   const groupG = g.locator('#collab-presence .avatar-group');

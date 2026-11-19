@@ -69,6 +69,13 @@ describe('выпадающий список (Spring dropdown)', () => {
     expect(changes).toEqual(['reader']);
     expect(s.value).toBe('reader');
     expect(s.el.dataset.value).toBe('reader');
+    // выбор сделан — список уже не открыт, хотя ещё складывается: Esc достаётся окну вокруг
+    expect(s.el.getAttribute('aria-expanded')).toBe('false');
+    expect(menu()).not.toBeNull();
+    const outer = vi.fn();
+    s.el.parentElement!.addEventListener('keydown', outer);
+    s.el.dispatchEvent(key('Escape'));
+    expect(outer).toHaveBeenCalledTimes(1);
     // меню складывается через 0.24 с и уходит из документа
     for (let i = 0; i < 120 && menu(); i++) await frame();
     expect(menu()).toBeNull();
