@@ -69,20 +69,33 @@ async function fileToIcon(file: File): Promise<string | null> {
   }
 }
 
+export interface IconPickerOptions {
+  /** Подпись окна для чтения с экрана (по умолчанию «Иконка проекта»). */
+  label?: string;
+  /** Кнопка «Загрузить» своей картинки (по умолчанию есть). */
+  upload?: boolean;
+  /** Подсказка кнопки «Убрать». */
+  removeTitle?: string;
+  /** Окно открыто из модального окна (настройки, знакомство): поверх него. */
+  overDialog?: boolean;
+}
+
 /**
  * Окно выбора иконки у anchor. onPick — эмодзи или картинка (data:image/png); null — убрать иконку.
  * Повторный вызов с тем же anchor закрывает окно.
  */
-export function openIconPicker(anchor: HTMLElement, current: string | null, onPick: (icon: string | null) => void): void {
+export function openIconPicker(anchor: HTMLElement, current: string | null, onPick: (icon: string | null) => void, opts: IconPickerOptions = {}): void {
   if (open?.anchor === anchor) { closeIconPicker(); return; }
   closeIconPicker(true);
   // прошлое окно ещё втягивается в свою кнопку — убираем его, чтобы id не повторялся
   for (const old of document.querySelectorAll<HTMLElement>('#icon-picker')) settleMenu(old);
   const el = document.createElement('div');
   el.id = 'icon-picker';
-  el.className = 'popup-menu';
+  el.className = opts.overDialog ? 'popup-menu ip-over-dialog' : 'popup-menu';
   el.setAttribute('role', 'dialog');
-  el.setAttribute('aria-label', 'Иконка проекта');
+  el.setAttribute('aria-label', opts.label ?? 'Иконка проекта');
+  // клавиши поля поиска — окну, а не модальному окну под ним (src/settings-dialog.ts, src/onboarding.ts)
+  el.dataset.ownKeys = '';
 
   const head = document.createElement('div');
   head.className = 'ip-head';
@@ -97,7 +110,7 @@ export function openIconPicker(anchor: HTMLElement, current: string | null, onPi
     const remove = document.createElement('button');
     remove.className = 'ip-remove';
     remove.textContent = 'Убрать';
-    remove.title = 'Убрать иконку';
+    remove.title = opts.removeTitle ?? 'Убрать иконку';
     remove.addEventListener('click', () => { closeIconPicker(); onPick(null); });
     head.appendChild(remove);
   }
@@ -134,10 +147,11 @@ export function openIconPicker(anchor: HTMLElement, current: string | null, onPi
     });
   });
   foot.append(upload, file);
-  el.append(head, tabs, body, foot);
+  const withUpload = opts.upload !== false;
+  el.append(head, tabs, body, ...(withUpload ? [foot] : []));
   document.body.appendChild(el);
   claimMenu('icon', () => closeIconPicker());
-  openMenu(el, { from: anchor, place: () => place(el, anchor), remove: true, items: () => [head, tabs, body, foot] });
+  openMenu(el, { from: anchor, place: () => place(el, anchor), remove: true, items: () => (withUpload ? [head, tabs, body, foot] : [head, tabs, body]) });
 
   const pick = (emoji: string) => { closeIconPicker(); onPick(emoji); };
   const emojiButton = ([emoji, words]: [string, string]): HTMLButtonElement => {

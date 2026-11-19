@@ -10,6 +10,7 @@ import { sanitizeElement } from './file';
 import { CLOSE_FREE_LIMIT, CLOSE_REMOVED, CLOSE_ROOM_FULL, PROTO } from './collab-transport';
 import { CHAT_HISTORY, createRateLimiter, normalizeChatText, type ChatMessage } from './room-chat';
 import { cleanCursorId } from './cursors';
+import { avatarKey, cleanAvatar, isAvatarPhoto } from './avatar-value';
 import { guardPageReplace, guardPatch, type GuardWho } from './element-guard';
 import { addCommentReply, createCommentThread, resolveCommentThread, toggleElementReaction } from './comments';
 import { mergeGuestTask, mergeHostTask, projectTaskForRole, submitTaskAttempt, updateStudentDraft } from './task-element';
@@ -152,6 +153,10 @@ interface Client {
   patches: boolean;
   cursorId?: string;
   allowProCursor: boolean;
+  /** Аватар: смайл, фото (data:image) или null — буквы; undefined — участник о нём ещё не сообщал (старая версия). */
+  avatar?: string | null;
+  /** Версия фото: растёт при каждой смене, по ней получатели отличают новое фото от прежнего. */
+  avatarRev: number;
   /** Центр экрана участника в мировых координатах и его зум (пакет view). */
   view: ParticipantView | null;
   /** Ограничитель частоты сообщений чата. */
@@ -177,6 +182,11 @@ export interface UserSnapshot {
   cursorId?: string;
   /** Камера участника (нет поля — участник её не присылал). */
   view?: ParticipantView | null;
+  /**
+   * Аватар: смайл, «photo:<версия>» (само фото — в init.photos и сообщении { t: 'avatar' }) или null — буквы.
+   * Нет поля — участник об аватаре ещё не сообщал: первое сообщение не считается сменой аватара.
+   */
+  avatar?: string | null;
   /** Участник на странице, скрытой для получателя: страница, курсор, камера и выделение не передаются. */
   hiddenPage?: true;
   /** Роль и откуда доступ — только получателям-авторам (SPEC_NIGHT6 §3.2). */
@@ -494,6 +504,7 @@ export class Room {
         rights: this.snapshotRights(c),
         ...(c.cursorId ? { cursorId: c.cursorId } : {}),
         ...(c.view ? { view: c.view } : {}),
+        ...(c.avatar !== undefined ? { avatar: avatarKey(c.avatar, c.avatarRev) } : {}),
         access: c.host ? { role: 'owner' as const, source: 'owner' as const }
           : { role: a?.role ?? 'commenter', source: a?.source ?? 'p2p', ...(a?.inviteId ? { inviteId: a.inviteId } : {}) },
       };
@@ -609,10 +620,17 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
     return {
       t: 'init', proto: PROTO, userId: info.uid, color: info.color, name: info.name,
       project: projectFor(info), ...accessFor(info), users: usersFor(info),
-      patches: true, chat: room.chat, followHost: room.followHost,
+      patches: true, chat: room.chat, followHost: room.followHost, photos: photosNow(),
       ...(principal ? { principal } : {}), ...(resume ? { resume } : {}),
     };
   };
+
+  /** Фото аватаров участников (по номеру): в снимке участников только их версии. */
+  function photosNow(): Record<number, string> {
+    const out: Record<number, string> = {};
+    for (const c of room.clients.values()) if (c.avatar && isAvatarPhoto(c.avatar)) out[c.uid] = c.avatar;
+    return out;
+  }
 
   /** Участник предъявил секрет возобновления (SPEC_NIGHT6 §4.3): до первой правки, автор свободен — он снова его. */
   function acceptResume(info: Client, m: Rec): void {
@@ -675,7 +693,7 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
       name: normalizeName(name) || (isHost ? 'Автор' : `Гость ${uid}`),
       color: isHost ? '#e03131' : COLORS[uid % COLORS.length],
       last: now(), cursor: null, pageId: null, selection: [], patches,
-      cursorId: cleanCursorId(cursorId, allowProCursor), allowProCursor,
+      cursorId: cleanCursorId(cursorId, allowProCursor), allowProCursor, avatarRev: 0,
       view: null, chatOk: createRateLimiter(), edited: false,
     };
     room.clients.set(sock, info);
@@ -717,12 +735,24 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
         return;
       }
       if (m.t === 'profile') {
-        // смена имени и курсора на лету: имя — как при входе, курсор — по белому списку (и тарифу)
+        // смена имени, курсора и аватара на лету: имя — как при входе, курсор — по белому списку (и тарифу),
+        // аватар — смайл или фото (src/avatar-value.ts); неподходящее значение не принимается
         const nextName = m.name === undefined ? info.name : normalizeName(m.name);
         const nextCursor = m.cursorId === undefined ? info.cursorId : cleanCursorId(m.cursorId, info.allowProCursor) ?? info.cursorId;
-        if (!nextName || (nextName === info.name && nextCursor === info.cursorId)) return;
+        const cleaned = m.avatar === undefined ? undefined : cleanAvatar(m.avatar);
+        const nextAvatar = cleaned === undefined ? info.avatar : cleaned;
+        if (!nextName || (nextName === info.name && nextCursor === info.cursorId && nextAvatar === info.avatar)) return;
         info.name = nextName;
         info.cursorId = nextCursor;
+        if (nextAvatar !== info.avatar) {
+          info.avatar = nextAvatar;
+          if (nextAvatar && isAvatarPhoto(nextAvatar)) {
+            // фото — отдельным сообщением и до снимка: снимок участников рассылается на каждое движение курсора
+            info.avatarRev++;
+            const msg = JSON.stringify({ t: 'avatar', userId: info.uid, photo: nextAvatar });
+            for (const c of room.clients.values()) if (c.sock.readyState === 1) try { c.sock.send(msg); } catch { /* канал закрывается */ }
+          }
+        }
         broadcastUsers();
         return;
       }

@@ -7,6 +7,7 @@
 // переносят и меняют ручками параметров тела (размеры, верхнее основание).
 // Разметка курсоров — из каталога (только константы), имя пользователя — только textContent.
 // Все анимации — на общем цикле пружин (src/motion.ts): кадры идут, только пока что-то движется.
+// В правом верхнем углу — аватар пользователя с курсором, как в шапке (src/avatar.ts): буквы, смайл или фото.
 
 import { CURSOR_CSS_SIZE, CURSOR_PRESETS, cursorCss, cursorPreset, cursorSvg } from './cursors';
 import { aabbIntersects, applyHandle, elementAABB, elementHandles, hitTest, translateElement, type AABB } from './geom';
@@ -16,6 +17,7 @@ import { drawSelectionPreview, renderScene } from './renderer';
 import { fitSolid } from './solid';
 import type { Camera, Handle, SolidEl } from './types';
 import { CHEVRON_UP_ICON } from './icons';
+import { createUserAvatar, updateUserAvatar, type AvatarData } from './avatar';
 
 export interface CursorPickerOptions {
   choice: CursorChoice;
@@ -23,6 +25,8 @@ export interface CursorPickerOptions {
   entitled: boolean;
   /** Имя в бейдже превью. */
   name: string;
+  /** Аватар в углу превью: смайл, фото или null — буквы имени. */
+  avatar?: string | null;
   onChange(choice: CursorChoice): void;
 }
 
@@ -30,6 +34,8 @@ export interface CursorPicker {
   el: HTMLElement;
   /** Обновить имя в бейдже превью. */
   setName(name: string): void;
+  /** Обновить аватар в углу превью. */
+  setAvatar(avatar: string | null): void;
   choice(): CursorChoice;
   /** Снять наблюдатели и анимации (окно закрыли). */
   dispose(): void;
@@ -138,6 +144,7 @@ interface Tween { dx: number; dy: number; rot: number; scale: number; t: number;
 export function createCursorPicker(o: CursorPickerOptions): CursorPicker {
   let choice = o.choice;
   let name = o.name;
+  let avatar = o.avatar ?? null;
   const root = el('div', 'cp');
 
   // ----- холст -----
@@ -199,6 +206,16 @@ export function createCursorPicker(o: CursorPickerOptions): CursorPicker {
   back.type = 'button';
   back.addEventListener('click', () => set(revertChoice(choice)));
   lock.append(lockText, back);
+
+  // мой аватар с курсором — как в шапке, на самом холсте (мышь над ним не уходит с холста);
+  // курсор и цвета — того, что сейчас примеряется
+  const faceData = (): AvatarData => {
+    const p = cursorPreset(displayed());
+    return { name, bg: p.badgeBg, fg: p.badgeText, cursorId: p.id, avatar, status: 'online', title: 'Это ваш аватар' };
+  };
+  const face = createUserAvatar({ name, bg: '#868e96', fg: '#ffffff', status: 'online', title: 'Это ваш аватар' }, 'cp-face');
+  face.tabIndex = -1;
+  preview.insertBefore(face, pointer);
 
   root.append(preview, lock);
 
@@ -340,6 +357,7 @@ export function createCursorPicker(o: CursorPickerOptions): CursorPicker {
     }
     preview.dataset.selected = selected ? 'true' : 'false';
     wear(displayed());
+    updateUserAvatar(face, faceData());
   }
 
   function wear(id: string): void {
@@ -745,7 +763,13 @@ export function createCursorPicker(o: CursorPickerOptions): CursorPicker {
       if (n === name) return;
       name = n;
       badge.textContent = n;
+      updateUserAvatar(face, faceData());
       if (W) measureBadge();
+    },
+    setAvatar(a: string | null) {
+      if (a === avatar) return;
+      avatar = a;
+      updateUserAvatar(face, faceData());
     },
     choice: () => choice,
     dispose() {

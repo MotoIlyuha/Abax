@@ -1,7 +1,7 @@
 // Профиль на устройстве: имя, курсор, право на Pro-курсоры, смешные имена и логика поля имени.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  PROFILE_KEY, cursorEntitled, getProfile, myCursorId, mySelectionColor, notifyProfileChanged, onProfileChange, profileName,
+  PROFILE_KEY, cursorEntitled, getProfile, myAvatar, myCursorId, mySelectionColor, notifyProfileChanged, onProfileChange, profileName,
   resetProfileForTests, setProfile,
 } from '../../src/profile';
 import { DEV_MODE_KEY, PLAN_KEY, applyServerPlan, clearServerPlan } from '../../src/plan';
@@ -18,7 +18,7 @@ beforeEach(() => {
 
 describe('профиль', () => {
   it('по умолчанию: без имени, классический курсор, знакомство не пройдено', () => {
-    expect(getProfile()).toEqual({ name: '', cursorId: 'default', onboarded: false, updatedAt: 0 });
+    expect(getProfile()).toEqual({ name: '', cursorId: 'default', avatar: null, onboarded: false, updatedAt: 0 });
     expect(profileName()).toBe('');
   });
 
@@ -30,6 +30,21 @@ describe('профиль', () => {
     expect(getProfile().cursorId).toBe('mint');
     setProfile({ name: 'x'.repeat(100) });
     expect(getProfile().name).toHaveLength(32);
+  });
+
+  it('аватар: смайл и фото сохраняются, неподходящее игнорируется, null — буквы', () => {
+    setProfile({ avatar: '🐼' });
+    expect(getProfile().avatar).toBe('🐼');
+    expect(myAvatar()).toBe('🐼');
+    setProfile({ avatar: 'не смайл' });
+    expect(getProfile().avatar).toBe('🐼');
+    const photo = 'data:image/jpeg;base64,/9j/AAAA';
+    setProfile({ avatar: photo });
+    expect(JSON.parse(localStorage.getItem(PROFILE_KEY)!).avatar).toBe(photo);
+    setProfile({ avatar: null });
+    expect(getProfile().avatar).toBeNull();
+    localStorage.setItem(PROFILE_KEY, JSON.stringify({ name: 'А', avatar: '<b>x</b>' }));
+    expect(getProfile().avatar).toBeNull();
   });
 
   it('испорченная запись — значения по умолчанию', () => {

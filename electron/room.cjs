@@ -6,6 +6,7 @@ const tasks = require('./room-tasks.cjs');
 const notes = require('./room-comments.cjs');
 const access = require('./room-access.cjs');
 const guard = require('./room-guard.cjs');
+const avatars = require('./room-avatar.cjs');
 const crypto = require('crypto');
 
 /** Версия протокола сообщений. Поднимать при несовместимых изменениях формата. */
@@ -208,6 +209,7 @@ class Room {
         selection: c.selection || [], rights: this.snapshotRights(c),
         ...(c.cursorId ? { cursorId: c.cursorId } : {}),
         ...(c.view ? { view: c.view } : {}),
+        ...(c.avatar !== undefined ? { avatar: avatars.avatarKey(c.avatar, c.avatarRev) } : {}),
         access: c.host ? { role: 'owner', source: 'owner' } : { role: (a && a.role) || 'commenter', source: (a && a.source) || 'p2p' },
       };
     });
@@ -461,10 +463,17 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
     const resume = resumeOf(info);
     return {
       t: 'init', proto: PROTO, userId: info.uid, color: info.color, name: info.name, project: projectFor(info), ...accessFor(info),
-      users: usersFor(info), patches: true, chat: room.chat, followHost: room.followHost,
+      users: usersFor(info), patches: true, chat: room.chat, followHost: room.followHost, photos: photosNow(),
       ...(principal ? { principal } : {}), ...(resume ? { resume } : {}),
     };
   };
+
+  /** Фото аватаров участников (зеркало photosNow): в снимке участников только их версии. */
+  function photosNow() {
+    const out = {};
+    for (const c of room.clients.values()) if (c.avatar && avatars.isAvatarPhoto(c.avatar)) out[c.uid] = c.avatar;
+    return out;
+  }
 
   /** Секрет возобновления (зеркало acceptResume): до первой правки, автор свободен — он снова этого участника. */
   function acceptResume(info, m) {
@@ -574,7 +583,7 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
       name: normalizeName(name) || (isHost ? 'Автор' : `Гость ${uid}`),
       color: isHost ? '#e03131' : COLORS[uid % COLORS.length],
       last: Date.now(), cursor: null, pageId: null, selection: [], patches,
-      cursorId: cleanCursorId(cursorId),
+      cursorId: cleanCursorId(cursorId), avatar: undefined, avatarRev: 0,
       view: null, chatOk: createRateLimiter(), edited: false,
     };
     room.clients.set(sock, info);
@@ -605,11 +614,23 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
       }
       if (m.t === 'caps') { info.patches = m.patches === true; return; }
       if (m.t === 'profile') {
-        // смена имени и курсора на лету (зеркало src/room-host.ts)
+        // смена имени, курсора и аватара на лету (зеркало src/room-host.ts)
         const nextName = m.name === undefined ? info.name : normalizeName(m.name);
         const nextCursor = m.cursorId === undefined ? info.cursorId : cleanCursorId(m.cursorId) ?? info.cursorId;
-        if (!nextName || (nextName === info.name && nextCursor === info.cursorId)) return;
-        info.name = nextName; info.cursorId = nextCursor; broadcastUsers(); return;
+        const cleaned = m.avatar === undefined ? undefined : avatars.cleanAvatar(m.avatar);
+        const nextAvatar = cleaned === undefined ? info.avatar : cleaned;
+        if (!nextName || (nextName === info.name && nextCursor === info.cursorId && nextAvatar === info.avatar)) return;
+        info.name = nextName; info.cursorId = nextCursor;
+        if (nextAvatar !== info.avatar) {
+          info.avatar = nextAvatar;
+          if (nextAvatar && avatars.isAvatarPhoto(nextAvatar)) {
+            // фото — отдельным сообщением и до снимка участников
+            info.avatarRev++;
+            const msg = JSON.stringify({ t: 'avatar', userId: info.uid, photo: nextAvatar });
+            for (const c of room.clients.values()) if (c.sock.readyState === 1) try { c.sock.send(msg); } catch { /* канал закрывается */ }
+          }
+        }
+        broadcastUsers(); return;
       }
       if (m.t === 'patch') { if (validPatch(m)) { acceptPatch(info, m); info.edited = true; } return; }
       if (m.t === 'resume') { acceptResume(info, m); return; }

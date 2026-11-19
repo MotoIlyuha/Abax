@@ -112,13 +112,18 @@ export function pillCount(): number {
 
 // ----- События из смены состава участников -----
 
-export interface PillUser { userId: number; name: string; cursorId?: string }
+export interface PillUser {
+  userId: number; name: string; cursorId?: string;
+  /** Ключ аватара из снимка (смайл, «photo:<версия>», null — буквы); нет поля — участник о нём ещё не сообщал. */
+  avatar?: string | null;
+}
 
 export type UserEvent =
   | { kind: 'join'; user: PillUser }
   | { kind: 'leave'; user: PillUser }
   | { kind: 'rename'; user: PillUser; from: string }
-  | { kind: 'cursor'; user: PillUser };
+  | { kind: 'cursor'; user: PillUser }
+  | { kind: 'avatar'; user: PillUser };
 
 /** Что изменилось в составе комнаты между двумя снимками {t:'users'} (себя не считаем). */
 export function diffUsers(prev: readonly PillUser[], next: readonly PillUser[], myId: number): UserEvent[] {
@@ -131,6 +136,8 @@ export function diffUsers(prev: readonly PillUser[], next: readonly PillUser[], 
     if (!was) { out.push({ kind: 'join', user: u }); continue; }
     if (was.name !== u.name) out.push({ kind: 'rename', user: u, from: was.name });
     else if ((was.cursorId ?? DEFAULT_CURSOR_ID) !== (u.cursorId ?? DEFAULT_CURSOR_ID)) out.push({ kind: 'cursor', user: u });
+    // первое сообщение об аватаре (сразу после входа) — не смена
+    else if (was.avatar !== undefined && u.avatar !== undefined && was.avatar !== u.avatar) out.push({ kind: 'avatar', user: u });
   }
   for (const u of prev) if (u.userId !== myId && !after.has(u.userId)) out.push({ kind: 'leave', user: u });
   return out;
@@ -144,6 +151,7 @@ export function userEventText(ev: UserEvent): string {
     case 'leave': return `${name} покинул доску`;
     case 'rename': return `${ev.from || 'Участник'} теперь ${name}`;
     case 'cursor': return `${name} сменил курсор`;
+    case 'avatar': return `${name} сменил аватар`;
   }
 }
 

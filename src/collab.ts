@@ -7,7 +7,8 @@ import { sanitizeComments } from './file';
 import { clientId } from './identity';
 import { DEFAULT_CURSOR_ID, cursorPreset, cursorSvg, isCursorId } from './cursors';
 import { fxForget, fxMove } from './cursor-fx';
-import { myCursorId, onProfileChange, profileName } from './profile';
+import { myAvatar, myCursorId, onProfileChange, profileName } from './profile';
+import { PHOTO_KEY, isAvatarEmoji, isAvatarPhoto } from './avatar-value';
 import { setStorage, storage, type BoardsStorage } from './storage';
 import { getApi } from './api-client';
 import { hydrateFromCloud } from './cloud-assets';
@@ -52,6 +53,8 @@ export interface CollabUser {
   cursorId?: string;
   /** Центр экрана участника в мировых координатах и зум (SPEC_NIGHT5 §8). */
   view?: { pageId: string; vx: number; vy: number; vz: number } | null;
+  /** Аватар: смайл, «photo:<версия>» (фото — collabAvatar) или null — буквы; нет поля — участник о нём не сообщал. */
+  avatar?: string | null;
   /** Участник на странице, скрытой от меня: где он, не сообщается (SPEC_NIGHT5 §3.1). */
   hiddenPage?: boolean;
   /** Роль и откуда доступ — приходит только автору (SPEC_NIGHT6 §3.2). */
@@ -91,6 +94,8 @@ let roleChangedPill = false;
 let transport: CollabTransport | null = null;
 let myUserId = -1;
 let users: CollabUser[] = [];
+/** Фото аватаров участников по номеру: приходят в init.photos и сообщениями { t: 'avatar' }. */
+const photos = new Map<number, string>();
 let myRights: { default: string; pages: Record<string, string> } = { default: 'view', pages: {} };
 let connected = false;
 let role: 'host' | 'guest' = 'guest';
@@ -203,6 +208,24 @@ export function collabUsers(): readonly CollabUser[] { return users; }
 /** Мой номер участника в комнате (-1 — не подключён). */
 export function myCollabId(): number { return myUserId; }
 
+/** Аватар участника для показа: смайл, фото (data:image) или null — буквы (фото ещё не пришло — тоже буквы). */
+export function collabAvatar(u: Pick<CollabUser, 'userId' | 'avatar'>): string | null {
+  const a = u.avatar;
+  if (typeof a !== 'string') return null;
+  if (PHOTO_KEY.test(a)) return photos.get(u.userId) ?? null;
+  return isAvatarEmoji(a) ? a : null;
+}
+
+/** Фото аватаров из init: прежние (другого подключения) забываются. */
+function resetPhotos(raw: unknown): void {
+  photos.clear();
+  if (!raw || typeof raw !== 'object') return;
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    const uid = Number(k);
+    if (Number.isInteger(uid) && isAvatarPhoto(v)) photos.set(uid, v);
+  }
+}
+
 /** Звать участников к себе можно: автор или редактор, если доска это разрешает (возможность summon; проверяет хаб). */
 export function canSummon(): boolean {
   return connected && (role === 'host' || myCaps?.summon === true);
@@ -312,6 +335,7 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
       handleResume(m);
       usersKnown = Array.isArray(m.users);
       if (Array.isArray(m.users)) users = m.users as CollabUser[];
+      resetPhotos(m.photos);
       followHost = m.followHost === true;
       setChatSender(sendChat);
       setChatAvailable(true);
@@ -326,6 +350,9 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
       renderRemoteCursors();
       settleReady(true);
       noteView(true);
+      // аватар в hello не передаётся — сообщаем его сразу (хаб не считает первое сообщение сменой аватара)
+      sentAvatar = undefined;
+      sendProfile(false);
     } else if (m.t === 'users') {
       const next = Array.isArray(m.users) ? m.users as CollabUser[] : users;
       if (usersKnown) showUserEvents(diffUsers(users, next, myUserId));
@@ -333,6 +360,9 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
       users = next;
       followHostPages(next);
       renderRemoteCursors();
+    } else if (m.t === 'avatar') {
+      // фото приходит до снимка участников с его новой версией
+      if (typeof m.userId === 'number' && isAvatarPhoto(m.photo)) photos.set(m.userId, m.photo);
     } else if (m.t === 'rights') {
       const nextRights = (m.rights as typeof myRights) || myRights;
       roleChangedPill = false;
@@ -1198,11 +1228,16 @@ export function foreignSelections(): { color: string; ids: string[] }[] {
     .map(u => ({ color: u.away ? '#9aa0ab' : userColors(u).selection, ids: u.selection }));
 }
 
-/** Свой профиль поменялся (имя или курсор) — сообщить комнате (хаб разошлёт всем). */
-function sendProfile(): void {
+/** Аватар, уже отправленный в эту комнату (фото тяжёлое — повторно не шлём); undefined — ещё не отправляли. */
+let sentAvatar: string | null | undefined;
+
+/** Свой профиль поменялся (имя, курсор или аватар) — сообщить комнате (хаб разошлёт всем); withName — и имя. */
+function sendProfile(withName = true): void {
   if (!connected) return;
-  const name = profileName();
-  send({ t: 'profile', ...(name ? { name } : {}), cursorId: myCursorId() });
+  const name = withName ? profileName() : '';
+  const avatar = myAvatar();
+  send({ t: 'profile', ...(name ? { name } : {}), cursorId: myCursorId(), ...(avatar !== sentAvatar ? { avatar } : {}) });
+  sentAvatar = avatar;
 }
 onProfileChange(() => sendProfile());
 
@@ -1261,6 +1296,7 @@ export function stopCollab(): void {
   clearTimeout(syncThrottle.timer);
   syncThrottle.timer = 0;
   users = [];
+  photos.clear();
   usersKnown = false;
   followHost = false;
   myUserId = -1;

@@ -1,7 +1,7 @@
 import { state, onChange, onDraft, update } from './state';
 import type { PageRight } from './types';
 import {
-  PRESENCE_EVENT, canSummon, collabActive, collabUsers, hostFollowEnabled, isHost, myCollabId, sendFollowHost, sendProjectNow, sendRemove,
+  PRESENCE_EVENT, canSummon, collabActive, collabAvatar, collabUsers, hostFollowEnabled, isHost, myCollabId, sendFollowHost, sendProjectNow, sendRemove,
   sendSummon, type CollabGotoDetail, type CollabUser,
 } from './collab';
 import { DEFAULT_CURSOR_ID, cursorPreset, cursorSvg, isCursorId } from './cursors';
@@ -15,7 +15,7 @@ import { STATUS_TEXT, type AvatarData, type AvatarStatus } from './avatar';
 import { createAvatarGroup, type AvatarGroup, type AvatarGroupItem } from './avatar-group';
 import { closeAvatarMenu, openAvatarMenu, type AvatarMenuEntry } from './avatar-menu';
 import { cursorShown, othersCursorsHidden, setOthersCursorsHidden, setUserCursorHidden, userCursorHidden } from './cursor-visibility';
-import { myCursorId, onProfileChange, profileName } from './profile';
+import { myAvatar, myCursorId, onProfileChange, profileName } from './profile';
 
 // Присутствие участников (SPEC_NIGHT5 §8): краевые курсоры у границы экрана, аватары в шапке и у страниц,
 // кнопки автора «Позвать всех сюда» и «Автопереход участников за мной». Имена и цвета приходят от других
@@ -98,7 +98,7 @@ const pageGroups = new WeakMap<HTMLElement, AvatarGroup>();
 export function fillPageAvatars(box: HTMLElement, pageId: string): void {
   const users = collabActive() ? collabUsers() : [];
   const { shown, more } = pageAvatars(users, pageId, myCollabId());
-  const key = shown.map(u => `${u.userId}:${u.name}:${u.cursorId ?? ''}:${u.away ? 1 : 0}:${cursorShown(u.userId) ? 1 : 0}`).join(',')
+  const key = shown.map(u => `${u.userId}:${u.name}:${u.cursorId ?? ''}:${u.avatar ?? ''}:${u.away ? 1 : 0}:${cursorShown(u.userId) ? 1 : 0}`).join(',')
     + `+${more}|${state.project.pages.map(p => p.name).join('/')}`;
   if (box.dataset.key === key) return;
   box.dataset.key = key;
@@ -140,6 +140,8 @@ export function avatarData(u: CollabUser, self = false): AvatarData {
     name: String(u.name ?? ''),
     bg, fg,
     cursorId: u.cursorId ?? null,
+    // мой аватар — из профиля: меняется сразу, не дожидаясь хаба
+    avatar: self ? myAvatar() : collabAvatar(u),
     status: avatarStatus(u),
     self,
     cursorHidden: !self && !cursorShown(u.userId),
@@ -263,6 +265,11 @@ export function groupItems(users: readonly CollabUser[], me: CollabUser): Avatar
   return items;
 }
 
+/** Короткая подпись аватара для ключей перерисовки (фото — длина и хвост, а не вся строка). */
+function avatarSig(a: string | null): string {
+  return a ? `${a.length}:${a.slice(-24)}` : '';
+}
+
 function renderStrip(): void {
   const strip = document.getElementById('collab-presence');
   if (!strip) return;
@@ -271,8 +278,9 @@ function renderStrip(): void {
   const others = users.filter(u => u.userId !== me);
   const self = meUser();
   // мой аватар виден всегда, даже если на доске больше никого нет
-  const key = users.map(u => `${u.userId}:${u.name}:${u.cursorId ?? ''}:${u.away ? 1 : 0}:${u.hiddenPage ? 'h' : u.pageId ?? ''}:${cursorShown(u.userId) ? 1 : 0}`).join(',')
-    + `|${me}|${self.name}:${self.cursorId ?? ''}|${state.project.pages.map(p => p.name).join('/')}`;
+  // фото: в ключе — версия (photo:N) и, пока фото не пришло, признак его отсутствия
+  const key = users.map(u => `${u.userId}:${u.name}:${u.cursorId ?? ''}:${u.avatar ?? ''}${collabAvatar(u) ? '' : '-'}:${u.away ? 1 : 0}:${u.hiddenPage ? 'h' : u.pageId ?? ''}:${cursorShown(u.userId) ? 1 : 0}`).join(',')
+    + `|${me}|${self.name}:${self.cursorId ?? ''}:${avatarSig(myAvatar())}|${state.project.pages.map(p => p.name).join('/')}`;
   if (strip.dataset.key === key && group) return;
   strip.dataset.key = key;
   if (!group) {

@@ -1,10 +1,12 @@
-// Аватар пользователя: круг с инициалами, у правого нижнего края — его курсор из каталога, у правого верхнего —
-// значок статуса («Отошёл», «На скрытой странице»). Имя и цвета приходят от других участников — только
-// textContent, setAttribute и свойства style; SVG курсора и значков — константы кода.
+// Аватар пользователя: круг с инициалами, смайлом или фото, у правого нижнего края — его курсор из каталога,
+// у правого верхнего — значок статуса («Отошёл», «На скрытой странице»). Имя, смайл, фото и цвета приходят
+// от других участников — только textContent, setAttribute и свойства (фото — проверенный data:image,
+// src/avatar-value.ts); SVG курсора и значков — константы кода.
 
 import { DEFAULT_CURSOR_ID, cursorSvg, isCursorId } from './cursors';
 import { getParticipantInitials } from './presence';
 import { svg } from './icons';
+import { isAvatarEmoji, isAvatarPhoto } from './avatar-value';
 
 export type AvatarStatus = 'online' | 'away' | 'hidden-page';
 
@@ -15,6 +17,8 @@ export interface AvatarData {
   fg: string;
   /** Курсор каталога; неизвестный — стандартный. */
   cursorId?: string | null;
+  /** Смайл или фото (data:image) вместо инициалов; нет — инициалы имени. */
+  avatar?: string | null;
   status: AvatarStatus;
   /** Мой аватар. */
   self?: boolean;
@@ -42,12 +46,33 @@ const STATUS_ICON: Record<Exclude<AvatarStatus, 'online'>, string> = {
 const AWAY_BG = '#9aa0ab';
 
 interface Parts { circle: HTMLElement; cursor: HTMLElement; status: HTMLElement }
-const parts = new WeakMap<HTMLElement, Parts & { cursorId: string; statusId: AvatarStatus | null }>();
+const parts = new WeakMap<HTMLElement, Parts & { cursorId: string; statusId: AvatarStatus | null; face: string }>();
 
 function span(cls: string): HTMLSpanElement {
   const n = document.createElement('span');
   n.className = cls;
   return n;
+}
+
+/** Содержимое круга: фото, смайл или инициалы (перерисовывается, только если сменилось). */
+function paintAvatarFace(p: { circle: HTMLElement; face: string }, d: AvatarData): void {
+  const photo = isAvatarPhoto(d.avatar) ? d.avatar : null;
+  const emoji = !photo && isAvatarEmoji(d.avatar) ? d.avatar : null;
+  const face = photo ? `p:${photo}` : emoji ? `e:${emoji}` : `i:${getParticipantInitials(d.name)}`;
+  if (p.face === face) return;
+  p.face = face;
+  p.circle.classList.toggle('ua-photo', !!photo);
+  p.circle.classList.toggle('ua-emoji', !!emoji);
+  p.circle.textContent = '';
+  if (photo) {
+    const img = document.createElement('img');
+    img.alt = '';
+    img.draggable = false;
+    img.src = photo;
+    p.circle.appendChild(img);
+  } else {
+    p.circle.textContent = emoji ?? getParticipantInitials(d.name);
+  }
 }
 
 /** Аватар-кнопка; cls — дополнительные классы (например, 'presence-avatar'). */
@@ -60,7 +85,7 @@ export function createUserAvatar(d: AvatarData, cls = ''): HTMLButtonElement {
   const status = span('ua-status');
   status.setAttribute('aria-hidden', 'true');
   b.append(circle, cursor, status);
-  parts.set(b, { circle, cursor, status, cursorId: '', statusId: null });
+  parts.set(b, { circle, cursor, status, cursorId: '', statusId: null, face: '' });
   b.dataset.extraClass = cls;
   updateUserAvatar(b, d);
   return b;
@@ -76,7 +101,7 @@ export function updateUserAvatar(b: HTMLElement, d: AvatarData): void {
   // классы анимации группы (ag-*) живут своей жизнью
   const keep = [...b.classList].filter(c => c.startsWith('ag-'));
   b.className = [cls, ...keep].join(' ');
-  p.circle.textContent = getParticipantInitials(d.name);
+  paintAvatarFace(p, d);
   p.circle.style.background = d.status === 'away' ? AWAY_BG : d.bg;
   p.circle.style.color = d.status === 'away' ? '#ffffff' : d.fg;
   const id = d.cursorId && isCursorId(d.cursorId) ? d.cursorId : DEFAULT_CURSOR_ID;

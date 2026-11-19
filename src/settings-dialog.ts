@@ -179,6 +179,8 @@ function trapFocus(e: KeyboardEvent, win: HTMLElement): void {
 function onKey(e: KeyboardEvent): void {
   const d = dialog;
   if (!d) return;
+  // окно поверх настроек (выбор смайла, обрезка фото) разбирает свои клавиши само
+  if (e.target instanceof Element && e.target.closest('[data-own-keys]')) return;
   if (d.view?.onKey?.(e)) {
     e.preventDefault();
     e.stopPropagation();

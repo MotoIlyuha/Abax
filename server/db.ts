@@ -26,6 +26,8 @@ export interface UserRow {
   google_sub: string | null;
   /** Подтверждённый адрес Google (миграция V3): по нему находятся приглашения по почте. */
   google_email: string | null;
+  /** Свой аватар (миграция V6): смайл или фото data:image (src/avatar-value.ts); null — буквы. */
+  avatar: string | null;
 }
 
 /** Код входа по почте (хранится только хеш). */
@@ -272,8 +274,13 @@ ALTER TABLE public_aliases ADD COLUMN blocked_reason TEXT;
 CREATE INDEX idx_aliases_created ON public_aliases(created_at);
 `;
 
+/** Свой аватар пользователя: смайл или фото, обрезанное под круг (null — буквы имени). */
+const SCHEMA_V6 = `
+ALTER TABLE users ADD COLUMN avatar TEXT;
+`;
+
 /** Миграции по порядку; номер версии хранится в PRAGMA user_version. */
-const MIGRATIONS: string[] = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5];
+const MIGRATIONS: string[] = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6];
 
 /** target — до какой версии (по умолчанию — до последней; меньше — только в тестах миграций). */
 export function migrate(db: Db, target = MIGRATIONS.length): void {

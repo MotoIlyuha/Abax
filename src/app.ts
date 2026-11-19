@@ -56,7 +56,8 @@ import { renderToolbarEditor } from './toolbar-editor';
 import { renderHotkeysSettings } from './hotkeys-settings';
 import { DEFAULT_NEW_PAGE_KEY, DRAFT_KEY, comboLabel, macKeys, newPageKeyProblem } from './hotkeys';
 import { renderAbout, showToast } from './about';
-import { closeIconPicker, openIconPicker } from './icon-picker';
+import { closeIconPicker } from './icon-picker';
+import { createIconButton, type IconButton } from './icon-button';
 import { capitalize, dayLabel, pagesLabel } from './format';
 import { buildCustomColorPicker } from './color-picker';
 import { copySelection, duplicateSelection as duplicateInPlace, pasteFromMemory, pasteFromSystem } from './clipboard';
@@ -3447,9 +3448,7 @@ function renderPages(): void {
   if (reordering()) return;
   try {
     document.getElementById('project-name')!.textContent = state.project.name;
-    const icon = document.getElementById('project-icon')!;
-    paintProjectIcon(icon, state.project.icon);
-    icon.title = state.project.icon ? 'Сменить иконку проекта' : 'Добавить иконку проекта';
+    topProjectIcon?.set(state.project.icon ?? null);
     const list = document.getElementById('pages-list')!;
     const pages = state.project.pages;
     const seen = new Set<string>();
@@ -3955,35 +3954,18 @@ async function setProjectIconHandler(id: string, icon: string | null): Promise<v
   renderPages();
 }
 
-/** Иконка в кнопке: эмодзи, загруженная картинка или (нет иконки) приглашение её поставить. */
-function paintProjectIcon(host: HTMLElement, icon: string | undefined): void {
-  host.textContent = '';
-  host.classList.toggle('empty', !icon);
-  if (!icon) {
-    host.innerHTML = ICONS.addIcon;
-  } else if (icon.startsWith('data:image/')) {
-    const img = document.createElement('img');
-    img.src = icon;
-    img.alt = '';
-    host.appendChild(img);
-  } else {
-    const glyph = document.createElement('span');
-    glyph.textContent = icon;
-    host.appendChild(glyph);
-  }
-}
+/** Кнопка иконки открытого проекта в шапке (из index.html; создаётся при запуске). */
+let topProjectIcon: IconButton | null = null;
 
-/** Кнопка-иконка проекта: клик — окно выбора иконки, как в Miro. */
+/** Кнопка-иконка проекта на домашней: клик — окно выбора иконки, как в Miro (src/icon-button.ts). */
 function projectIconButton(meta: ProjectMeta, variant: 'badge' | 'row'): HTMLButtonElement {
-  const b = document.createElement('button');
-  b.className = `project-icon ${variant}`;
-  b.title = meta.icon ? 'Сменить иконку' : 'Добавить иконку';
-  paintProjectIcon(b, meta.icon);
-  b.addEventListener('click', e => {
-    e.stopPropagation();
-    openIconPicker(b, meta.icon ?? null, icon => { void setProjectIconHandler(meta.id, icon); });
-  });
-  return b;
+  return createIconButton({
+    className: `project-icon ${variant}`,
+    value: meta.icon ?? null,
+    title: v => (v ? 'Сменить иконку' : 'Добавить иконку'),
+    stopPropagation: true,
+    onPick: icon => { void setProjectIconHandler(meta.id, icon); },
+  }).el;
 }
 
 // ----- Последнее открытие: на этом устройстве, по проектам -----
@@ -4726,10 +4708,12 @@ function wireTopbar(): void {
   document.querySelector<HTMLElement>('#btn-share .share-icon')!.innerHTML = ICONS.share;
   document.getElementById('btn-share')!.addEventListener('click', () => { void openShareDialog(); });
   initChatButton();
-  const iconBtn = document.getElementById('project-icon') as HTMLButtonElement;
-  iconBtn.addEventListener('click', () => {
-    if (state.linkMode) return;
-    openIconPicker(iconBtn, state.project.icon ?? null, icon => { void setProjectIconHandler(state.project.id, icon); });
+  topProjectIcon = createIconButton({
+    el: document.getElementById('project-icon') as HTMLButtonElement,
+    value: state.project.icon ?? null,
+    title: v => (v ? 'Сменить иконку проекта' : 'Добавить иконку проекта'),
+    enabled: () => !state.linkMode,
+    onPick: icon => { void setProjectIconHandler(state.project.id, icon); },
   });
   // guest-режим: скрываем недоступные функции
   if (collabActive() && !isHost()) {
@@ -4739,7 +4723,7 @@ function wireTopbar(): void {
     // группа импорта скрывается целиком: иначе в шапке остаётся пустой контейнер с отступами
     document.querySelector<HTMLElement>('.import-group')!.style.display = 'none';
     // иконку проекта меняет только автор
-    iconBtn.disabled = true;
+    topProjectIcon.el.disabled = true;
   }
   // сервер совместной работы живёт в main-процессе Electron: в браузере и на Android раздавать нечем
   if (!doskaApi && isNativeApp()) document.getElementById('btn-share')!.style.display = 'none';

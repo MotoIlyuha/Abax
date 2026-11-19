@@ -15,7 +15,7 @@ function tgPayload(now: number, over: Record<string, string | number> = {}) {
 describe('миграция V2', () => {
   it('колонки профиля и таблицы входа; повторное открытие не ломает базу', () => {
     const db = openDb(':memory:');
-    expect(db.pragma('user_version', { simple: true })).toBe(5); // V5 — модерация именных адресов
+    expect(db.pragma('user_version', { simple: true })).toBe(6); // V6 — свой аватар
     const cols = (db.prepare('PRAGMA table_info(users)').all() as { name: string }[]).map(c => c.name);
     expect(cols).toEqual(expect.arrayContaining(['cursor_id', 'name_custom', 'email', 'google_sub']));
     const tables = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]).map(t => t.name);
@@ -86,11 +86,24 @@ describe('миграция V5 (модерация именных адресов)
     db.prepare("INSERT INTO projects (id, owner_id, title, rev, data_json, created_at, updated_at) VALUES ('p1', 'u1', 'Доска', 1, '{}', 1, 1)").run();
     db.prepare("INSERT INTO public_aliases (alias, project_id, owner_id, created_at, updated_at) VALUES ('geo', 'p1', 'u1', 2, 2)").run();
     migrate(db);
-    expect(db.pragma('user_version', { simple: true })).toBe(5);
+    expect(db.pragma('user_version', { simple: true })).toBe(6);
     expect(db.prepare('SELECT alias, owner_id, state, created_at, blocked_at, blocked_reason FROM public_aliases').get())
       .toEqual({ alias: 'geo', owner_id: 'u1', state: 'active', created_at: 2, blocked_at: null, blocked_reason: null });
     const idx = (db.prepare('PRAGMA index_list(public_aliases)').all() as { name: string }[]).map(i => i.name);
     expect(idx).toContain('idx_aliases_created');
+    db.close();
+  });
+});
+
+describe('миграция V6 (свой аватар)', () => {
+  it('поверх базы V5: пользователи целы, аватар пустой', () => {
+    const db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    migrate(db, 5);
+    db.prepare("INSERT INTO users (id, display_name, plan, created_at, updated_at) VALUES ('u1', 'Анна', 'free', 1, 1)").run();
+    migrate(db);
+    expect(db.pragma('user_version', { simple: true })).toBe(6);
+    expect(db.prepare('SELECT display_name, avatar FROM users').get()).toEqual({ display_name: 'Анна', avatar: null });
     db.close();
   });
 });
@@ -142,6 +155,22 @@ describe('GET/PATCH /api/me', () => {
     const app = await makeApp({ devAuth: true });
     const a = await anon(app);
     expect((await call(app, 'PATCH', '/api/me', { cursorId: 'gold' }, { token: a.token })).body.user.cursorId).toBe('gold');
+  });
+
+  it('аватар: смайл и фото сохраняются, null возвращает буквы, чужое отклоняется', async () => {
+    const app = await makeApp();
+    const a = await anon(app);
+    expect(a.body.user.avatar).toBeNull();
+    const smile = await call(app, 'PATCH', '/api/me', { avatar: '🦊' }, { token: a.token });
+    expect(smile.status).toBe(200);
+    expect(smile.body.user.avatar).toBe('🦊');
+    const photo = `data:image/jpeg;base64,${'A'.repeat(20000)}`;
+    expect((await call(app, 'PATCH', '/api/me', { avatar: photo }, { token: a.token })).body.user.avatar).toBe(photo);
+    expect((await call(app, 'GET', '/api/me', undefined, { token: a.token })).body.user.avatar).toBe(photo);
+    for (const bad of ['привет', '<img>', 'data:image/svg+xml;base64,PHN2Zz4=', 'javascript:alert(1)', 5]) {
+      expect((await call(app, 'PATCH', '/api/me', { avatar: bad }, { token: a.token })).body.error).toBe('bad-avatar');
+    }
+    expect((await call(app, 'PATCH', '/api/me', { avatar: null }, { token: a.token })).body.user.avatar).toBeNull();
   });
 
   it('CORS разрешает PATCH', async () => {

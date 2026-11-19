@@ -1,8 +1,9 @@
-// Профиль пользователя на этом устройстве: имя, выбранный курсор и признак пройденного знакомства.
+// Профиль пользователя на этом устройстве: имя, выбранный курсор, аватар и признак пройденного знакомства.
 // Источник для подписи в совместной работе, курсора над холстом и цвета выделения.
 // Без DOM (только localStorage), поэтому его можно проверять юнит-тестами.
 
 import { DEFAULT_CURSOR_ID, cursorPreset, isCursorId } from './cursors';
+import { cleanAvatar } from './avatar-value';
 import { devModeEnabled, userPlan } from './plan';
 import { normalizeName } from './room-host';
 
@@ -13,12 +14,14 @@ export interface Profile {
   name: string;
   /** Выбранный курсор (может быть Pro и без права — тогда действует классический). */
   cursorId: string;
+  /** Аватар: смайл или фото (data:image, обрезано под круг); null — буквы имени (по умолчанию). */
+  avatar: string | null;
   /** Окно первого входа пройдено. */
   onboarded: boolean;
   updatedAt: number;
 }
 
-const DEFAULT_PROFILE: Profile = { name: '', cursorId: DEFAULT_CURSOR_ID, onboarded: false, updatedAt: 0 };
+const DEFAULT_PROFILE: Profile = { name: '', cursorId: DEFAULT_CURSOR_ID, avatar: null, onboarded: false, updatedAt: 0 };
 
 let memory: Profile | null = null;
 const listeners = new Set<(p: Profile) => void>();
@@ -29,6 +32,7 @@ function clean(raw: unknown): Profile {
   return {
     name: normalizeName(r.name),
     cursorId: isCursorId(r.cursorId) ? r.cursorId : DEFAULT_CURSOR_ID,
+    avatar: cleanAvatar(r.avatar ?? null) ?? null,
     onboarded: r.onboarded === true,
     updatedAt: typeof r.updatedAt === 'number' && Number.isFinite(r.updatedAt) ? r.updatedAt : 0,
   };
@@ -43,12 +47,20 @@ export function getProfile(): Profile {
   return memory ? { ...memory } : { ...DEFAULT_PROFILE };
 }
 
-/** Изменить профиль: имя нормализуется, неизвестный курсор игнорируется. */
+/** Новый аватар: не задан или неподходящий — прежний; null — буквы. */
+function nextAvatar(patch: string | null | undefined, cur: string | null): string | null {
+  if (patch === undefined) return cur;
+  const v = cleanAvatar(patch);
+  return v === undefined ? cur : v;
+}
+
+/** Изменить профиль: имя нормализуется, неизвестный курсор и неподходящий аватар игнорируются. */
 export function setProfile(patch: Partial<Omit<Profile, 'updatedAt'>>): Profile {
   const cur = getProfile();
   const next: Profile = {
     name: patch.name !== undefined ? normalizeName(patch.name) : cur.name,
     cursorId: patch.cursorId !== undefined && isCursorId(patch.cursorId) ? patch.cursorId : cur.cursorId,
+    avatar: nextAvatar(patch.avatar, cur.avatar),
     onboarded: patch.onboarded ?? cur.onboarded,
     updatedAt: Date.now(),
   };
@@ -76,6 +88,11 @@ export function notifyProfileChanged(): void {
 
 export function profileName(): string {
   return getProfile().name;
+}
+
+/** Мой аватар: смайл, фото или null — буквы. */
+export function myAvatar(): string | null {
+  return getProfile().avatar;
 }
 
 /** Право на Pro-курсоры: тариф pro/tutor или режим разработки. */

@@ -1,12 +1,13 @@
 // Аккаунт на сервере и синхронизация профиля (SPEC_NIGHT4 §8).
-// Вошёл и у аккаунта своё имя — имя и курсор аккаунта переходят на устройство (сервер главнее);
-// иначе имя и курсор устройства уходят на сервер. Дальше каждое изменение профиля — PATCH /api/me.
+// Вошёл и у аккаунта своё имя — имя, курсор и аватар аккаунта переходят на устройство (сервер главнее);
+// иначе имя, курсор и аватар устройства уходят на сервер. Дальше каждое изменение профиля — PATCH /api/me.
 // Без облака ничего не делает; ошибки сети тихие.
 
 import { ApiError, getApi, type ApiClient, type MeResponse } from './api-client';
 import { applyServerPlan } from './plan';
 import { getProfile, notifyProfileChanged, onProfileChange, setProfile } from './profile';
 import { isCursorId } from './cursors';
+import { cleanAvatar } from './avatar-value';
 
 let current: MeResponse | null = null;
 const listeners = new Set<(me: MeResponse | null) => void>();
@@ -34,10 +35,14 @@ export function setAccount(me: MeResponse | null, api: ApiClient | null = getApi
   if (me) {
     applyServerPlan({ plan: me.plan, limitsEnforced: me.limitsEnforced });
     if (!me.user.isAnonymous && me.user.nameCustom) {
-      // сервер главнее: имя и курсор аккаунта — на устройство
+      // сервер главнее: имя, курсор и аватар аккаунта — на устройство (старый сервер аватар не присылает — свой остаётся)
       applying = true;
       try {
-        setProfile({ name: me.user.displayName, ...(isCursorId(me.user.cursorId) ? { cursorId: me.user.cursorId } : {}) });
+        setProfile({
+          name: me.user.displayName,
+          ...(isCursorId(me.user.cursorId) ? { cursorId: me.user.cursorId } : {}),
+          ...(me.user.avatar !== undefined ? { avatar: cleanAvatar(me.user.avatar) ?? null } : {}),
+        });
       } finally { applying = false; }
     } else if (getProfile().onboarded) {
       void pushProfile(api);
@@ -59,20 +64,20 @@ export async function syncAccount(api: ApiClient | null = getApi()): Promise<boo
   } catch { return false; }
 }
 
-/** Отправить имя и курсор устройства на сервер; Pro-курсор без тарифа остаётся только на устройстве. */
+/** Отправить имя, курсор и аватар устройства на сервер; Pro-курсор без тарифа остаётся только на устройстве. */
 export async function pushProfile(api: ApiClient | null = getApi()): Promise<void> {
   if (!api) return;
   const p = getProfile();
-  const body: { displayName?: string; cursorId?: string } = { cursorId: p.cursorId };
+  const body: { displayName?: string; cursorId?: string; avatar?: string | null } = { cursorId: p.cursorId, avatar: p.avatar };
   if (p.name) body.displayName = p.name;
   const same = current && (!body.displayName || (current.user.nameCustom && current.user.displayName === body.displayName))
-    && current.user.cursorId === body.cursorId;
+    && current.user.cursorId === body.cursorId && (current.user.avatar ?? null) === body.avatar;
   if (same) return;
   try {
     current = await api.request<MeResponse>('PATCH', '/api/me', body);
   } catch (e) {
     if (e instanceof ApiError && e.code === 'plan-cursor' && body.displayName) {
-      try { current = await api.request<MeResponse>('PATCH', '/api/me', { displayName: body.displayName }); } catch { /* тихо */ }
+      try { current = await api.request<MeResponse>('PATCH', '/api/me', { displayName: body.displayName, avatar: body.avatar }); } catch { /* тихо */ }
     }
   }
 }

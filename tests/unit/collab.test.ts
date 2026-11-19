@@ -863,6 +863,34 @@ describe('персональные курсоры (Ночь №4)', () => {
   });
 });
 
+describe('аватары участников', () => {
+  const PHOTO = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ==';
+  const pillTexts = () => [...document.querySelectorAll('#activity-pills .ap-text')].map(n => n.textContent);
+
+  it('свой аватар уходит сразу после входа и при смене; чужое фото приходит отдельно, смена — пилюля', async () => {
+    localStorage.setItem('doska.profile', JSON.stringify({ name: 'Ученик', cursorId: 'default', avatar: '🦊', onboarded: true, updatedAt: 1 }));
+    const other = await peer(`${base}&name=Аня`);
+    peers.push(other);
+    await collab.startCollab(base, false, 'Ученик');
+    await until(() => st.state.project.id === 'proj');
+    const me = collab.myCollabId();
+    // первое сообщение об аватаре — без пилюли у остальных (хаб не считает его сменой)
+    await until(() => last(other, 'users')?.users.some((u: Msg) => u.userId === me && u.avatar === '🦊'));
+    const profile = await import('../../src/profile');
+    profile.setProfile({ avatar: PHOTO });
+    await until(() => last(other, 'avatar')?.photo === PHOTO);
+    await until(() => last(other, 'users')?.users.some((u: Msg) => u.userId === me && u.avatar === 'photo:1'));
+    // чужой аватар: фото, затем смайл — пилюли «сменил аватар» (первое сообщение — без пилюли)
+    const otherId = (last(other, 'init') as Msg).userId as number;
+    other.ws.send(JSON.stringify({ t: 'profile', avatar: PHOTO }));
+    await until(() => collab.collabAvatar(collab.collabUsers().find(u => u.userId === otherId)!) === PHOTO);
+    expect(pillTexts()).not.toContain('Аня сменил аватар');
+    other.ws.send(JSON.stringify({ t: 'profile', avatar: '🐼' }));
+    await until(() => pillTexts().includes('Аня сменил аватар'));
+    expect(collab.collabAvatar(collab.collabUsers().find(u => u.userId === otherId)!)).toBe('🐼');
+  });
+});
+
 describe('уведомления и чат комнаты (Ночь №5)', () => {
   const pillTexts = () => [...document.querySelectorAll('#activity-pills .ap-text')].map(n => n.textContent);
 

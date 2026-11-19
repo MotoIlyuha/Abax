@@ -22,6 +22,8 @@ export interface AuthResume {
   name?: string;
   cursorId?: string;
   placeholder?: string;
+  /** Выбранный до перехода аватар (смайл или фото; null — буквы). */
+  avatar?: string | null;
 }
 
 export const PENDING_KEY = 'doska.authPending';

@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { PlanTier } from '../src/types';
 import { PLAN_LIMITS, isPlanTier } from '../src/limits';
 import { DEFAULT_CURSOR_ID, isCursorId } from '../src/cursors';
+import { cleanAvatar } from '../src/avatar-value';
 import type { Db, UserRow } from './db';
 
 export const sha256Hex = (s: string): string => createHash('sha256').update(s).digest('hex');
@@ -40,6 +41,7 @@ export function userInfo(user: UserRow, now: number) {
     isAnonymous: isAnonymousUser(user),
     plan: effectivePlan(user, now),
     cursorId: isCursorId(user.cursor_id) ? user.cursor_id : DEFAULT_CURSOR_ID,
+    avatar: cleanAvatar(user.avatar ?? null) ?? null,
     nameCustom: user.name_custom === 1,
     email: user.email,
     telegram: user.tg_id !== null,
