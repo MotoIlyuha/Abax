@@ -2749,7 +2749,7 @@ body.link-view #project-icon { pointer-events: none; }
 .grid-switch .switch-input:checked + .switch-track { background: var(--accent); }
 .grid-switch .switch-input:checked + .switch-track .switch-knob { transform: translateX(14px); }
 .grid-switch .switch-input:focus-visible + .switch-track { outline: 2px solid var(--accent); outline-offset: 2px; }
-/* «Привязка к сетке» в меню «Масштаб и вид»: строка как у пунктов меню, справа переключатель */
+/* Строка-переключатель в меню «Масштаб и вид»: строка как у пунктов меню, справа переключатель */
 #view-menu .view-switch { border-top: 0; margin-top: 0; gap: 10px; border-radius: 7px; justify-content: flex-start; }
 #view-menu .view-switch:hover, #view-menu .view-switch:has(.switch-input:focus-visible) { background: var(--accent-soft); }
 .grid-switch .switch-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -3961,6 +3961,17 @@ body.no-ui-anim .share-toggle :is(.switch-track, .switch-knob) { transition: non
 .share-alias-problem { padding-bottom: 4px; }
 .share-alias-problem.is-error { color: var(--danger); }
 .share-alias .share-cloud-error { padding: 0 10px 4px; }
+/* Свободные похожие адреса под «адрес занят» */
+.share-alias-suggest { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 6px; padding: 0 10px 6px; font-size: 12px; }
+.share-alias-suggest-label { color: var(--muted); }
+.share-alias-suggest-list { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.share-alias-chip {
+  max-width: 100%; height: 24px; padding: 0 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  border: 1px solid var(--border-input); border-radius: 999px; background: var(--panel); color: var(--accent);
+  font: 12px ui-monospace, Consolas, monospace; cursor: pointer;
+}
+.share-alias-chip:hover { border-color: var(--accent); background: var(--accent-soft); }
+.share-alias-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .share-former-title { padding: 4px 10px 0; }
 .share-former { padding: 0 4px 0 10px; }
 .share-former .share-person { min-height: 32px; justify-content: space-between; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; }

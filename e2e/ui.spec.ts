@@ -319,17 +319,21 @@ test.describe('настройки доски', () => {
     }
   });
 
-  test('привязка к сетке — переключатель в меню «Масштаб и вид»', async ({ board, page }) => {
-    await page.locator('#zoom-label').click();
-    const sw = page.locator('#view-menu .view-switch', { hasText: 'Привязка к сетке' });
-    await expect(sw.locator('.view-icon svg')).toHaveCount(1);
+  test('привязка к сетке — переключатель в главном меню Abax', async ({ board, page }) => {
+    await page.locator('#btn-home').click();
+    const sw = page.locator('#main-menu .main-switch', { hasText: 'Привязка к сетке' });
+    await expect(sw.locator('.main-menu-icon svg, svg')).not.toHaveCount(0);
     const cb = sw.locator('input[role="switch"]');
     await expect(cb).not.toBeChecked();
     await sw.click();
     await expect(cb).toBeChecked();
     // меню не закрывается: можно сразу переключить обратно
-    await expect(page.locator('#view-menu')).toBeVisible();
+    await expect(page.locator('#main-menu')).toBeVisible();
     expect((await board.state()).settings.snapToGrid).toBe(true);
+    // в «Масштаб и вид» пункта больше нет
+    await page.keyboard.press('Escape');
+    await page.locator('#zoom-label').click();
+    await expect(page.locator('#view-menu', { hasText: 'Привязка к сетке' })).toHaveCount(0);
     // та же настройка, что в меню настроек
     await page.keyboard.press('Escape');
     await page.locator('#btn-settings').dispatchEvent('click');

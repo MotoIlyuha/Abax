@@ -4799,6 +4799,16 @@ function wireTopbar(): void {
       setTopbarGroupHidden(document.querySelector<HTMLElement>('.export-group')!, on, hidden => document.body.classList.toggle('hide-export-button', hidden));
     },
   });
+  // «Привязка к сетке» — та же настройка, что в настройках доски; меню при щелчке не закрывается
+  const snapSwitch = createToggleSwitch({
+    className: 'grid-switch main-switch',
+    label: 'Привязка к сетке',
+    icon: SNAP_ICON,
+    title: 'Точки, фигуры и рамки при перемещении встают на узлы сетки',
+    checked: state.settings.snapToGrid,
+    onChange: on => { setSettings({ snapToGrid: on }); persistSettings(); },
+  });
+  menu.querySelector('[data-action="settings"]')!.before(snapSwitch);
   const switchInput = (row: HTMLElement) => row.querySelector<HTMLInputElement>('input')!;
   // data-action — на самом переключателе: по нему пункт находят тесты и проверяют доступность
   switchInput(hideUndoSwitch).dataset.action = 'undo';
@@ -4811,6 +4821,7 @@ function wireTopbar(): void {
   const syncMenuChecks = () => {
     // настройку могли поменять и в другом месте (окно настроек)
     switchInput(hideUndoSwitch).checked = state.settings.hideUndoRedo;
+    switchInput(snapSwitch).checked = state.settings.snapToGrid;
     switchInput(hideImportsSwitch).checked = localStorage.getItem('abax.hideImports') === 'true';
     switchInput(hideExportSwitch).checked = localStorage.getItem('abax.hideExport') === 'true';
     // элемент, которому в шапке не хватает места, показать нельзя: пункт недоступен
@@ -5077,16 +5088,7 @@ function wireZoomInput(): void {
       <div class="view-zoom-scroll"><div class="view-zoom-pills">${[50, 70, 100, 200, 400, 800].map(n => `<button data-zoom="${n}">${n}%</button>`).join('')}<button data-view="custom">Другой…</button></div></div>`);
     // колесо мыши прокручивает ряд по горизонтали; полоса прокрутки — своя, поверх pills (src/overlay-scroll.ts)
     attachOverlayScroll(p.querySelector<HTMLElement>('.view-zoom-pills')!, { axis: 'x', wheel: true });
-    // «Привязка к сетке» — та же настройка, что во всплывающем меню настроек (в просмотре по ссылке пункта нет)
-    const snapSwitch = createToggleSwitch({
-      className: 'grid-switch view-switch',
-      label: 'Привязка к сетке',
-      icon: SNAP_ICON,
-      title: 'Точки, фигуры и рамки при перемещении встают на узлы сетки',
-      checked: state.settings.snapToGrid,
-      onChange: on => { setSettings({ snapToGrid: on }); persistSettings(); },
-    });
-    p.querySelector('[data-view="background"]')?.after(snapSwitch, smoothPanSwitch('grid-switch view-switch', true));
+    p.querySelector('[data-view="background"]')?.after(smoothPanSwitch('grid-switch view-switch', true));
     return p;
   };
   const check = (on: boolean) => (on ? '<span class="view-check" aria-hidden="true">✓</span>' : '');
