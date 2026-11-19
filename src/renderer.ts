@@ -738,7 +738,7 @@ function drawPageLink(ctx: CanvasRenderingContext2D, el: ImageEl): void {
     ctx.fillStyle = '#eef0f3';
     ctx.fillRect(el.x, el.y, el.w, el.h);
   } else {
-    ctx.fillStyle = '#ffffff';
+    ctx.fillStyle = page.backgroundColor ?? '#ffffff';
     ctx.fillRect(el.x, el.y, el.w, el.h);
     const view = linkView(page, el.w / el.h);
     const s = el.w / (view.x1 - view.x0);
@@ -783,7 +783,7 @@ function linkStamp(els: readonly Element[]): unknown[] {
   const out: unknown[] = [];
   for (const l of pageLinksIn(els)) {
     const p = linkedPage(l.page!);
-    out.push(p?.elements, p?.grid, p?.coordLabels);
+    out.push(p?.elements, p?.grid, p?.coordLabels, p?.backgroundColor);
   }
   return out;
 }
