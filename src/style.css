@@ -3772,6 +3772,40 @@ body.no-ui-anim .collab-edge-pointer, body.no-ui-anim .collab-edge-pointer .ep-l
 }
 #follow-hidden-badge[hidden] { display: none; }
 
+/* «Следим за …» (src/follow.ts): сверху посередине, пока мой экран повторяет экран участника */
+#follow-banner {
+  position: absolute;
+  top: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  max-width: calc(100% - 32px);
+  padding: 5px 6px 5px 14px;
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  background: var(--panel);
+  color: var(--fg);
+  font-size: 13px;
+  box-shadow: var(--shadow);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#follow-banner[hidden] { display: none; }
+#follow-banner .follow-name {
+  display: inline-block;
+  max-width: 220px;
+  margin-left: 2px;
+  padding: 1px 8px;
+  border-radius: 99px;
+  font-weight: 600;
+  vertical-align: bottom;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#follow-banner .follow-wait { color: var(--muted); padding-right: 8px; }
+body.following #follow-hidden-badge { top: 112px; }
+
 /* ----- Ночь №5, TASK-07: «Комната заполнена», все страницы скрыты, входящие приглашения ----- */
 /* все страницы скрыты автором: холст закрыт баннером, панели нет */
 #all-pages-hidden-banner {

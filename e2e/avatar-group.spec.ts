@@ -101,8 +101,8 @@ test('группа аватаров: раскрытие, меню, скрыть 
   await capy.click();
   await expect(menu).toBeVisible();
   await expect(menu.locator('.avatar-menu-name')).toHaveText('Капибара');
-  await expect(menu.locator('[data-action="follow"]')).toBeDisabled();
-  await expect(menu.locator('[data-action="follow"]')).toHaveCSS('opacity', '0.5');
+  await expect(menu.locator('[data-action="follow"]')).toBeEnabled();
+  await expect(menu.locator('[data-action="follow"]')).toContainText('Следить за участником');
   if (shots) { await a.waitForTimeout(300); await a.screenshot({ path: `${shots}/other-menu.png`, clip: { x: 900, y: 0, width: 540, height: 420 } }); }
   await menu.locator('[data-action="hide-cursor"]').click();
   await expect(capyCursor).toHaveCount(0);

@@ -226,11 +226,12 @@ describe('меню аватара', () => {
     expect(strip.querySelector('.ua-circle')!.textContent).toBe('К');
   });
 
-  it('чужой аватар без прав автора: перейти, скрыть курсор, следить (скоро); убрать и позвать — нет', () => {
+  it('чужой аватар без прав автора: перейти, скрыть курсор, следить; убрать и позвать — нет', () => {
     const entries = participantMenuEntries(user());
     expect(entries.map(e => (e.kind === 'sep' ? '-' : e.id))).toEqual(['goto', 'hide-cursor', 'follow']);
     const follow = entries.find(e => e.kind !== 'sep' && e.id === 'follow');
-    expect(follow).toMatchObject({ disabled: true, badge: 'Скоро' });
+    expect(follow).toMatchObject({ label: 'Следить за участником' });
+    expect(follow).not.toHaveProperty('disabled', true);
     // все курсоры скрыты — свой переключатель недоступен и включён
     setOthersCursorsHidden(true);
     expect(participantMenuEntries(user()).find(e => e.kind === 'switch')).toMatchObject({ checked: true, disabled: true });

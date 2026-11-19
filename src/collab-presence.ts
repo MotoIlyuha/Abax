@@ -18,6 +18,7 @@ import { attachOverlayScroll } from './overlay-scroll';
 import { createSpringSelect, type SelectOption, type SpringSelect } from './spring-select';
 import { cursorShown, othersCursorsHidden, setOthersCursorsHidden, setUserCursorHidden, userCursorHidden } from './cursor-visibility';
 import { myAvatar, myCursorId, onProfileChange, profileName } from './profile';
+import { followWaiting, followingUid, initFollow, onFollowChange, startFollow, stopFollow } from './follow';
 
 // Присутствие участников (SPEC_NIGHT5 §8): краевые курсоры у границы экрана, аватары в шапке и у страниц,
 // кнопки автора «Позвать всех сюда» и «Автопереход участников за мной». Имена и цвета приходят от других
@@ -233,7 +234,7 @@ export function accessSubmenu(u: CollabUser): AvatarSubmenu {
   return { el: box, close: () => { for (const s of selects) s.close(true); } };
 }
 
-/** Пункты меню чужого аватара: перейти, скрыть курсор, позвать к себе, следить (позже), доступ, исключить. */
+/** Пункты меню чужого аватара: перейти, скрыть курсор, позвать к себе, следить, доступ, исключить. */
 export function participantMenuEntries(u: CollabUser): AvatarMenuEntry[] {
   const name = String(u.name ?? '') || 'Участник';
   const out: AvatarMenuEntry[] = [
@@ -258,7 +259,12 @@ export function participantMenuEntries(u: CollabUser): AvatarMenuEntry[] {
       run: () => { if (sendSummon(state.pageId, u.userId)) showPill({ kind: 'ok', text: `Вы позвали к себе: ${name}` }); },
     });
   }
-  out.push({ kind: 'action', id: 'follow', label: 'Следить за участником', icon: FOLLOW_ICON, disabled: true, badge: 'Скоро', title: 'Скоро: ваш экран будет следовать за участником', run: () => {} });
+  const following = followingUid() === u.userId;
+  out.push({
+    kind: 'action', id: 'follow', label: following ? 'Перестать следить' : 'Следить за участником', icon: FOLLOW_ICON,
+    title: following ? undefined : 'Ваш экран будет повторять страницу и камеру участника. Чтобы выйти — сдвиньте холст. Участник ничего не заметит',
+    run: () => { if (following) stopFollow(); else startFollow(u.userId); },
+  });
   if (isHost() && !u.host) {
     out.push({ kind: 'sep' });
     out.push({
@@ -491,6 +497,32 @@ function refreshHostControls(force = false): void {
   if (!host) closeSummonPopover();
 }
 
+// ----- «Следим за …»: плашка сверху посередине, пока включено слежение -----
+
+let followBannerKey = '';
+
+/** Плашка слежения: имя участника — цветом его бейджа; на скрытой от меня странице — пометка. */
+function renderFollowBanner(): void {
+  const banner = document.getElementById('follow-banner');
+  if (!banner) return;
+  const uid = followingUid();
+  const u = uid === null ? undefined : collabUsers().find(x => x.userId === uid);
+  const key = u ? `${u.userId}|${u.name}|${u.cursorId ?? ''}|${u.color}|${followWaiting() ? 1 : 0}` : '';
+  if (key === followBannerKey) return;
+  followBannerKey = key;
+  document.body.classList.toggle('following', !!u);
+  banner.hidden = !u;
+  banner.textContent = '';
+  if (!u) return;
+  const { bg, fg } = avatarColors(u);
+  const name = el('span', 'follow-name', String(u.name ?? '') || 'Участник');
+  name.style.background = bg;
+  name.style.color = fg;
+  banner.append('Следим за ', name);
+  if (followWaiting()) banner.append(el('span', 'follow-wait', ' · на скрытой странице'));
+  banner.title = 'Чтобы перестать следить, сдвиньте холст';
+}
+
 let popover: HTMLElement | null = null;
 
 function closeSummonPopover(): void {
@@ -600,6 +632,9 @@ export function initCollabPresence(onPageAvatars?: () => void, opts: { openProfi
   });
   // смена страницы или прав без сообщений комнаты (например, автор открыл скрытую страницу)
   onChange(() => refreshHostControls());
+  initFollow();
+  onFollowChange(renderFollowBanner);
+  document.addEventListener(PRESENCE_EVENT, renderFollowBanner);
   window.addEventListener('resize', () => renderEdgePointers());
   refreshHostControls(true);
 }

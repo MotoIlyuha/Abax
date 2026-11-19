@@ -40,6 +40,7 @@ import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker&inline';
 import { initChatButton } from './collab-chat';
 import { collabActive, isHost, myCollabCaps, myColor, noteSelection, readOnly, startHostConnection, stopCollab, type CollabGotoDetail, type CollabSummonDetail } from './collab';
 import { animateCameraTo, cameraAnimating, clampZoom } from './camera-anim';
+import { stopFollowByUser } from './follow';
 import { fillPageAvatars, initCollabPresence } from './collab-presence';
 import { closePresent, openPresent, presentOpen } from './present';
 import { renderProfileSettings } from './profile-settings';
@@ -2847,6 +2848,7 @@ function glideView(cx: number, cy: number, zoom: number): void {
 
 /** Плавный масштаб относительно центра холста: кнопки «+»/«−», пункты 50…800 %, «Другой масштаб». */
 function zoomCenterSmooth(zoom: number): void {
+  stopFollowByUser();
   const r = canvas.getBoundingClientRect();
   const goal = cameraAnimating() ? viewGoal : null;
   const cam = state.camera;
@@ -3072,7 +3074,7 @@ async function goToCollabPoint(d: CollabGotoDetail): Promise<void> {
   if (state.view !== 'board' || !state.project.pages.some(p => p.id === d.pageId)) return;
   if (d.pageId !== state.pageId) await switchPageHandler(d.pageId);
   if (state.pageId !== d.pageId) return;
-  if (d.x !== undefined && d.y !== undefined) animateCameraTo(d.x, d.y, d.zoom);
+  if (d.x !== undefined && d.y !== undefined) animateCameraTo(d.x, d.y, d.zoom, d.ms);
 }
 
 /** Аватары участников у карточек страниц (состав комнаты изменился). */
@@ -4891,7 +4893,7 @@ function wireTopbar(): void {
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && menuShown(menu)) { setMenuOpen(false); menuButton.focus(); } });
   document.getElementById('btn-undo')!.addEventListener('click', () => undo());
   document.getElementById('btn-redo')!.addEventListener('click', () => redo());
-  document.getElementById('btn-fit')!.addEventListener('click', () => fitContent(true));
+  document.getElementById('btn-fit')!.addEventListener('click', () => { stopFollowByUser(); fitContent(true); });
   const exportButton = document.getElementById('btn-export')!;
   exportButton.title = 'Экспорт';
   exportButton.setAttribute('aria-expanded', 'false');
@@ -5208,7 +5210,7 @@ function wireZoomInput(): void {
       state.board.backgroundColor = b.dataset.bg; state.board.elements = [...state.board.elements]; update(true); void saveNow(); close(); return;
     }
     if (view === 'fullscreen') { if (document.fullscreenElement) void document.exitFullscreen(); else void document.documentElement.requestFullscreen(); }
-    if (view === 'fit') fitContent(true);
+    if (view === 'fit') { stopFollowByUser(); fitContent(true); }
     if (b.dataset.zoom) zoomCenterSmooth(Number(b.dataset.zoom) / 100);
     close();
   });

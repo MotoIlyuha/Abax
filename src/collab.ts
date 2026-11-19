@@ -68,7 +68,7 @@ export interface CollabSummonDetail { pageId: string; vx: number; vy: number; vz
  * Событие на document 'doska:collab-goto': перейти к участнику (клик по краевому курсору или аватару, автопереход
  * за автором). Приложение переключает страницу и плавно наводит камеру на (x, y); zoom — нет: текущий масштаб.
  */
-export interface CollabGotoDetail { pageId: string; x?: number; y?: number; zoom?: number; reason: 'pointer' | 'avatar' | 'follow' }
+export interface CollabGotoDetail { pageId: string; x?: number; y?: number; zoom?: number; reason: 'pointer' | 'avatar' | 'follow'; /** длительность перелёта камеры, мс */ ms?: number }
 
 /** Событие на document 'doska:collab-presence': участники, их страницы или моя камера изменились (перерисовать присутствие). */
 export const PRESENCE_EVENT = 'doska:collab-presence';
@@ -734,7 +734,7 @@ function flushCursor(): void {
 
 // ----- Камера и страница участника (SPEC_NIGHT5 §8) -----
 
-/** Пока камера двигается, {t:'view'} не уходит: отправка через столько после остановки. Смена страницы — сразу. */
+/** Пока камера двигается, {t:'view'} уходит не чаще, чем раз в столько (и последний вид — после остановки). Смена страницы — сразу. */
 export const VIEW_SEND_MS = 250;
 let viewSent: { pageId: string; vx: number; vy: number; vz: number } | null = null;
 let viewTimer = 0;
@@ -762,8 +762,8 @@ function noteView(now = false): void {
   if (!v) return;
   if (viewSent && viewSent.pageId === v.pageId && viewSent.vx === v.vx && viewSent.vy === v.vy && viewSent.vz === v.vz) return;
   if (now || !viewSent || viewSent.pageId !== v.pageId) { flushView(); return; }
-  clearTimeout(viewTimer);
-  viewTimer = window.setTimeout(flushView, VIEW_SEND_MS);
+  // не откладываем отправку на каждом кадре: за участником могут следить — его вид нужен и во время движения
+  if (!viewTimer) viewTimer = window.setTimeout(flushView, VIEW_SEND_MS);
 }
 
 /** Камера или страница с прошлой перерисовки присутствия. */
