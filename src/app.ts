@@ -74,6 +74,9 @@ import { CONFLICT_TEXT, cloudStorage, openFresh, type ConflictResolution } from 
 import { clearStarter, isPristineStarterProject, starterId } from './sync-state';
 import { parseProject } from './file';
 import { setPanelActions } from './panel-actions';
+import { setChatAttachActions } from './chat-attach-view';
+import { attachSelection, selectionAttachBlock } from './chat-attach';
+import { chatAvailable, chatCanWrite, openChat } from './collab-chat';
 import { registerPanelModes } from './panel-modes';
 import { closeSidePanel, onSidePanel, sidePanelMode, sidePanelOpen, toggleSidePanel } from './side-panel';
 import { initSyncIndicator } from './sync-indicator';
@@ -1741,6 +1744,20 @@ function copyImageButton(): HTMLButtonElement {
   return copyImage;
 }
 
+/** «Отправить в чат»: выделенное — вложением в поле ввода чата (панель ЧУ, вкладка «Чат»). */
+function sendToChatButton(): HTMLButtonElement | null {
+  if (!collabActive() || !chatAvailable() || !chatCanWrite() || selectionAttachBlock()) return null;
+  const b = document.createElement('button');
+  b.className = 'qm-btn qm-send-chat';
+  b.title = 'Отправить в чат';
+  b.setAttribute('aria-label', b.title);
+  b.innerHTML = ICONS.sendChat;
+  b.addEventListener('click', () => {
+    void attachSelection().then(err => { if (err) showToast(err); else openChat(); });
+  });
+  return b;
+}
+
 function updateQuickMenu(): void {
   const qm = quickMenuEl();
   // кегль набирают в поле меню — меню не пересобираем, иначе поле пропадёт из-под курсора
@@ -1759,6 +1776,8 @@ function updateQuickMenu(): void {
   if (!canEditBoard()) {
     for (const b of annotationButtons()) qm.appendChild(b);
     if (canCopyCurrentBoard()) qm.appendChild(copyImageButton());
+    const toChat = sendToChatButton();
+    if (toChat) qm.appendChild(toChat);
     if (!qm.hasChildNodes()) { qm.hidden = true; return; }
     positionQuickMenu();
     return;
@@ -1875,6 +1894,8 @@ function updateQuickMenu(): void {
   }
   for (const b of annotationButtons()) qm.appendChild(b);
   qm.appendChild(copyImageButton());
+  const toChat = sendToChatButton();
+  if (toChat) qm.appendChild(toChat);
   // ссылка на выделенные объекты: открывается с наведением на них
   if (currentBoardLink('focus')) {
     const linkBtn = document.createElement('button');
@@ -5089,6 +5110,16 @@ function openInDesktopApp(): void {
 
 /** Действия доски для режимов боковой панели «История», «Импорт», «Экспорт» (src/panel-actions.ts). */
 function registerPanelActions(): void {
+  // вложения чата у получателя: вставка картинки и копий, переход к объектам (SPEC_CHAT §7)
+  setChatAttachActions({
+    canEdit: canEditBoard,
+    insertImage: src => { if (canEditBoard()) insertImageFromDataUrl(src); },
+    goToPage: async pageId => {
+      if (state.view !== 'board' || !state.project.pages.some(p => p.id === pageId)) return false;
+      await switchPageHandler(pageId);
+      return state.pageId === pageId;
+    },
+  });
   setPanelActions({
     canEdit: canEditBoard,
     importDocument: () => { void importDocument(); },

@@ -15,6 +15,7 @@ import { hydrateFromCloud } from './cloud-assets';
 import { diffUsers, showUserEvents } from './activity-pills';
 import { clearNotifyStack } from './notify-stack';
 import { chatReceive, chatReset, setChatAvatarLookup, setChatAvailable, setChatCanWrite, setChatSender } from './collab-chat';
+import type { ChatAttachment } from './room-chat';
 import { clearNotices, pushNotice } from './notify-center';
 import { viewCenter, viewportSize } from './camera-anim';
 import { cancelActiveInteraction } from './interaction';
@@ -267,10 +268,10 @@ export function sendFollowHost(enabled: boolean): boolean {
   return transport.send(JSON.stringify({ t: 'follow-host', enabled })) !== false;
 }
 
-/** Сообщение в чат комнаты; false — нет соединения. */
-export function sendChat(text: string): boolean {
+/** Сообщение в чат комнаты (с вложением — SPEC_CHAT §7); false — нет соединения. */
+export function sendChat(text: string, att?: ChatAttachment): boolean {
   if (!connected || !transport) return false;
-  return transport.send(JSON.stringify({ t: 'chat', text })) !== false;
+  return transport.send(JSON.stringify(att ? { t: 'chat', text, att } : { t: 'chat', text })) !== false;
 }
 const cursorThrottle: { last: number; timer: number; pending: { x: number; y: number } | null } = { last: 0, timer: 0, pending: null };
 const projectThrottle: { timer: number } = { timer: 0 };

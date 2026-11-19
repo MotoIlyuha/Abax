@@ -76,6 +76,11 @@ const isSide = (v: unknown): v is number => Number.isInteger(v) && (v as number)
 const isAttId = (v: unknown): v is string => typeof v === 'string' && v.length > 0 && v.length <= CHAT_ATT_ID_MAX;
 const isDataUrl = (v: unknown, max: number): v is string => typeof v === 'string' && v.length <= max && CHAT_DATA_URL.test(v);
 
+/** Data URL картинки чата в допустимой форме (jpeg/png/webp, base64, не длиннее CHAT_IMAGE_MAX): только такое — в img.src. */
+export function isChatImageUrl(v: unknown): v is string {
+  return isDataUrl(v, CHAT_IMAGE_MAX);
+}
+
 /**
  * Копии элементов без поля by (автора ставит только хаб); undefined — копий нет или их JSON больше предела
  * (вложение остаётся для просмотра), null — форма неверна или среди них задание (ответы не утекают).

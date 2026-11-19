@@ -20,6 +20,7 @@ import {
 import { createTabPill, type TabPill } from './tab-pill';
 import { createChatFeed, dayLabel, type ChatFeed, type FeedItem } from './chat-feed';
 import { createChatComposer, type ChatComposer } from './chat-composer';
+import { attachComposerTools, chatDraft, setChatDraft, type ComposerAttachTools } from './chat-attach';
 import { noticeContent, paintNoticeTime } from './notice-card';
 import { attachOverlayScroll, type OverlayScroll } from './overlay-scroll';
 import { S, register, step, tune, wake, type Spring } from './motion';
@@ -261,10 +262,21 @@ export function mountNotifyPanel(host: HTMLElement): PanelView {
   /** Непрочитанные на момент открытия вкладки и пришедшие при ней: точка держится, пока вкладка открыта. */
   const fresh = new Set<string>();
 
-  const composer: ChatComposer = createChatComposer({ submit: text => sendChatMessage(text) });
+  const composer: ChatComposer = createChatComposer({
+    submit: text => {
+      const r = sendChatMessage(text, chatDraft()?.att);
+      if (r === 'ok') setChatDraft(null);
+      return r;
+    },
+  });
+  // кнопки вложений, вставка картинки в поле и перетаскивание на панель (SPEC_CHAT §7)
+  const attach: ComposerAttachTools = attachComposerTools(composer);
+  unsubs.push(() => attach.dispose());
   const composeSlot = el('div', 'np-compose');
   root.append(tabsRow, views, composeSlot);
   host.append(root);
+  attach.dropZone(root, () => chatAvailable() && chatCanWrite());
+  root.addEventListener('drop', () => { if (tab === 'notices' && chatAvailable() && chatCanWrite()) setNotifyTab('chat'); });
 
   // действия режима для шапки панели
   const actions = el('div', 'np-actions');

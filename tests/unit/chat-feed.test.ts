@@ -52,7 +52,7 @@ describe('лента: чистые правила', () => {
     expect(nameColor(undefined)).toBe('#2160dd');
   });
 
-  it('вложения — плашки-заглушки', () => {
+  it('вложения: подписи и название страницы только текстом', () => {
     expect(renderAttachment({})).toBeNull();
     expect(attachmentLabel({ att: { kind: 'image', src: 'data:image/png;base64,AA==', w: 1, h: 1 } })).toBe('Изображение');
     expect(attachmentLabel({ att: { kind: 'board', pageId: 'p', pageName: '<b>Задачи</b>', ids: ['a'], count: 3, preview: 'data:image/png;base64,AA==', w: 1, h: 1 } }))
@@ -61,8 +61,9 @@ describe('лента: чистые правила', () => {
     expect(attachmentLabel({ att: { kind: 'hidden' } })).toBe('Объекты со страницы, которая вам недоступна');
     expect([1, 2, 5, 11, 21, 22, 25, 112].map(objectsLabel)).toEqual(['1 объект', '2 объекта', '5 объектов', '11 объектов', '21 объект', '22 объекта', '25 объектов', '112 объектов']);
     const box = renderAttachment({ att: { kind: 'board', pageId: 'p', pageName: '<img src=x onerror=alert(1)>', ids: ['a'], count: 1, preview: 'data:image/png;base64,AA==', w: 1, h: 1 } })!;
-    expect(box.querySelector('img')).toBeNull();
-    expect(box.querySelector('.cf-att-text')!.textContent).toBe('1 объект · «<img src=x onerror=alert(1)>»');
+    expect(box.querySelectorAll('img')).toHaveLength(1);
+    expect(box.querySelector('img')!.className).toBe('cf-att-img');
+    expect(box.querySelector('.cf-att-label')!.textContent).toBe('1 объект · «<img src=x onerror=alert(1)>»');
   });
 });
 

@@ -1,5 +1,8 @@
 import { DEFAULT_CURSOR_ID } from './cursors';
-import { CHAT_HISTORY, createRateLimiter, normalizeChatText, type ChatMessage } from './room-chat';
+import {
+  CHAT_HISTORY, cleanChatAttachment, createRateLimiter, normalizeChatText, type ChatAttachment, type ChatMessage,
+} from './room-chat';
+import { objectsLabel } from './format';
 import { clearNotices, markRead, pushNotice, unreadCount } from './notify-center';
 
 // Чат комнаты (SPEC_NIGHT5 §6, SPEC_CHAT §6): слой данных без своей панели. Ленту и поле ввода рисует режим
@@ -36,7 +39,7 @@ let myId = -1;
 let visible = false;
 let available = false;
 let canWrite = true;
-let sender: ((text: string) => boolean) | null = null;
+let sender: ((text: string, att?: ChatAttachment) => boolean) | null = null;
 let limiter = createRateLimiter();
 let openHandler: ((tab: 'chat') => void) | null = null;
 const subs = new Set<(ev: ChatEvent) => void>();
@@ -55,7 +58,7 @@ export function onChat(fn: (ev: ChatEvent) => void): () => void {
 }
 
 /** Кто отправляет сообщение в комнату (collab.ts); false — нет соединения. */
-export function setChatSender(fn: ((text: string) => boolean) | null): void {
+export function setChatSender(fn: ((text: string, att?: ChatAttachment) => boolean) | null): void {
   sender = fn;
 }
 
@@ -70,21 +73,32 @@ export function chatAvatarOf(userId: number): string | null {
   return avatarOf?.(userId) ?? null;
 }
 
-/** Лёгкая проверка вложения: известный вид; подробно его проверяет отрисовка (следующий шаг). */
-function isAttachmentShape(v: unknown): boolean {
-  if (v === undefined) return true;
-  if (!v || typeof v !== 'object' || Array.isArray(v)) return false;
-  const k = (v as Record<string, unknown>).kind;
-  return k === 'image' || k === 'board' || k === 'gone' || k === 'hidden';
+/**
+ * Вложение входящего сообщения: картинка и объекты — те же строгие правила формы, что у хаба (cleanChatAttachment:
+ * data URL, размеры, без заданий); gone и hidden — только известный вид. undefined — вложения нет, null — форма неверна.
+ */
+function incomingAttachment(v: unknown): ChatAttachment | undefined | null {
+  if (v === undefined) return undefined;
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+  const a = v as Record<string, unknown>;
+  if (a.kind === 'gone') return a.was === 'image' || a.was === 'board' ? { kind: 'gone', was: a.was } : null;
+  if (a.kind === 'hidden') return { kind: 'hidden' };
+  return cleanChatAttachment(v, { copy: true }) ?? null;
 }
 
-function isChatMessage(v: unknown): v is ChatMessage {
-  if (!v || typeof v !== 'object') return false;
+/** Сообщение из сети после проверки формы; null — негодное. */
+function incomingMessage(v: unknown): ChatMessage | null {
+  if (!v || typeof v !== 'object') return null;
   const m = v as Record<string, unknown>;
-  return typeof m.id === 'string' && typeof m.by === 'number' && typeof m.name === 'string'
-    && typeof m.text === 'string' && normalizeChatText(m.text, m.att !== undefined) !== null && typeof m.ts === 'number'
-    && Number.isFinite(m.ts) && (m.cursorId === undefined || typeof m.cursorId === 'string') && isAttachmentShape(m.att)
-    && (m.text.trim() !== '' || m.att !== undefined);
+  const att = incomingAttachment(m.att);
+  if (att === null) return null;
+  if (typeof m.id !== 'string' || typeof m.by !== 'number' || typeof m.name !== 'string' || typeof m.text !== 'string') return null;
+  if (typeof m.ts !== 'number' || !Number.isFinite(m.ts) || (m.cursorId !== undefined && typeof m.cursorId !== 'string')) return null;
+  if (normalizeChatText(m.text, att !== undefined) === null || (m.text.trim() === '' && !att)) return null;
+  const out: ChatMessage = { id: m.id, by: m.by, name: m.name, text: m.text, ts: m.ts };
+  if (m.cursorId !== undefined) out.cursorId = m.cursorId as string;
+  if (att) out.att = att;
+  return out;
 }
 
 /** Начало текста сообщения для уведомления: пробелы схлопнуты, длинное обрезано. */
@@ -102,7 +116,7 @@ export function chatPreviewText(m: Pick<ChatMessage, 'name' | 'text'>): string {
 function noticeBody(m: ChatMessage): string {
   const body = chatPreviewBody(m.text);
   if (body || !m.att) return body;
-  return m.att.kind === 'image' ? 'Изображение' : m.att.kind === 'board' ? 'Объекты доски' : 'Вложение';
+  return m.att.kind === 'image' ? 'Изображение' : m.att.kind === 'board' ? objectsLabel(m.att.count) : 'Вложение';
 }
 
 /** Обработчик «открыть чат»: интегратор открывает панель в режиме ЧУ на вкладке «Чат». */
@@ -163,14 +177,14 @@ export function chatMessages(): readonly ChatMessage[] {
 
 // ----- Отправка -----
 
-/** Отправить сообщение: проверка текста, ограничитель частоты, соединение. */
-export function sendChatMessage(raw: string): ChatSendResult {
+/** Отправить сообщение (с вложением текст может быть пустым): проверка текста, ограничитель частоты, соединение. */
+export function sendChatMessage(raw: string, att?: ChatAttachment | null): ChatSendResult {
   if (!available || !canWrite) return 'readonly';
-  const text = normalizeChatText(raw);
+  const text = normalizeChatText(raw, !!att);
   if (text === null) return 'empty';
   if (!sender) return 'offline';
   if (!limiter(Date.now())) return 'rate';
-  return sender(text) ? 'ok' : 'offline';
+  return (att ? sender(text, att) : sender(text)) ? 'ok' : 'offline';
 }
 
 // ----- Сообщения от комнаты -----
@@ -178,14 +192,16 @@ export function sendChatMessage(raw: string): ChatSendResult {
 /** История из init: заменяет ленту, непрочитанных нет. */
 export function chatReset(history: unknown, me: number): void {
   myId = me;
-  messages = Array.isArray(history) ? history.filter(isChatMessage).slice(-CHAT_HISTORY) : [];
+  messages = Array.isArray(history)
+    ? history.map(incomingMessage).filter((m): m is ChatMessage => m !== null).slice(-CHAT_HISTORY) : [];
   markRead('chat');
   emit({ type: 'reset' });
 }
 
 /** Новое сообщение {t:'chat'}. */
-export function chatReceive(raw: unknown): void {
-  if (!isChatMessage(raw)) return;
+export function chatReceive(input: unknown): void {
+  const raw = incomingMessage(input);
+  if (!raw) return;
   if (messages.some(m => m.id === raw.id)) return;
   messages.push(raw);
   if (messages.length > CHAT_HISTORY) messages.splice(0, messages.length - CHAT_HISTORY);
