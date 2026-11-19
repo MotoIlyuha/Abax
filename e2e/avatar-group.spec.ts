@@ -1,5 +1,6 @@
 // Группа аватаров в шапке: стопка раскрывается наведением, меню своего и чужого аватара — скрыть курсор,
-// позвать одного к себе, убрать из совместной работы (облачная комната настоящего сервера Abax).
+// позвать одного к себе, личные настройки доступа к страницам, исключить участника
+// (облачная комната настоящего сервера Abax).
 import { expect, test, type Page } from '@playwright/test';
 import { Board } from './fixtures';
 import { createInvite, device, openAt, stateOf, useNight5Server } from './night5-helpers';
@@ -17,7 +18,7 @@ async function closeShare(page: Page): Promise<void> {
   await expect(page.locator('#share-dialog')).toHaveCount(0);
 }
 
-test('группа аватаров: раскрытие, меню, скрыть курсор, позвать одного, убрать участника', async ({ browser }) => {
+test('группа аватаров: раскрытие, меню, скрыть курсор, позвать одного, доступ участника, исключить', async ({ browser }) => {
   const { base } = env.get();
   const A = await device(browser, base, { name: 'Лемур' });
   const a = await openAt(A, `${base}/`, env.errors);
@@ -133,12 +134,62 @@ test('группа аватаров: раскрытие, меню, скрыть 
   await a.keyboard.press('Escape');
   await expect(menu).toHaveCount(0);
 
-  // «Убрать из совместной работы»: с подтверждением; гость видит причину, у автора аватар исчезает
+  // «Настройки доступа» в меню Енота: подменю в этом же меню, страницы — как в «Поделиться»; правится только Енот
+  const guestPages = (p: Page) => stateOf(p, s => s.project.pages.length as number);
+  const menuShot = async (name: string, below = 0): Promise<void> => {
+    if (!shots) return;
+    await a.waitForTimeout(450);
+    const m = (await menu.boundingBox())!;
+    await a.screenshot({ path: `${shots}/${name}.png`, clip: { x: m.x - 24, y: 0, width: m.width + 48, height: m.y + m.height + 24 + below } });
+  };
   await group.hover();
   await group.locator('.user-avatar[aria-label^="Енот"]').click();
+  const accessItem = menu.locator('[data-action="access"]');
+  await expect(accessItem).toBeVisible();
+  // «Настройки доступа» — сразу над «Исключить»
+  expect(await menu.locator('.avatar-menu-page > *').evaluateAll(els => els.map(e => (e as HTMLElement).dataset.action ?? e.tagName))).toEqual(
+    ['goto', 'hide-cursor', 'summon', 'follow', 'HR', 'access', 'remove'],
+  );
+  await expect(menu.locator('[data-action="remove"]')).toContainText('Исключить');
+  await menuShot('other-menu-host');
+  await accessItem.click();
+  const rows = menu.locator('.avatar-access-row');
+  await expect(rows).toHaveCount(2);
+  await expect(menu.locator('[data-action="back"]')).toContainText('Настройки доступа');
+  await expect(menu.locator('[data-action="remove"]')).toHaveCount(0);
+  await expect(rows.nth(0).locator('.avatar-access-select')).toContainText('По роли');
+  await menuShot('access-submenu');
+  await rows.nth(1).locator('.avatar-access-select').click();
+  const listbox = a.locator('.ss-menu');
+  await expect(listbox).toBeVisible();
+  await expect(listbox.locator('.ss-opt')).toHaveText(['По роли', 'Только просмотр', 'Скрыта']);
+  await menuShot('access-select', 150);
+  await listbox.locator('.ss-opt', { hasText: 'Скрыта' }).click();
+  // нажатие в выпадающем списке меню не закрыло; Еноту страница пропала, Капибаре — нет
+  await expect(menu).toBeVisible();
+  await expect.poll(() => guestPages(g2), { timeout: 10000 }).toBe(1);
+  expect(await guestPages(g1)).toBe(2);
+  await expect(rows.nth(1).locator('.avatar-access-select')).toContainText('Скрыта');
+  await menuShot('access-hidden');
+  // назад — Esc возвращает в меню, ещё раз — закрывает; при новом открытии видно сохранённое право
+  await a.keyboard.press('Escape');
+  await expect(accessItem).toBeVisible();
+  await a.keyboard.press('Escape');
+  await expect(menu).toHaveCount(0);
+  await group.hover();
+  await group.locator('.user-avatar[aria-label^="Енот"]').click();
+  await accessItem.click();
+  await expect(rows.nth(1).locator('.avatar-access-select')).toContainText('Скрыта');
+  await rows.nth(1).locator('.avatar-access-select').click();
+  await listbox.locator('.ss-opt', { hasText: 'По роли' }).click();
+  await expect.poll(() => guestPages(g2), { timeout: 10000 }).toBe(2);
+  await menu.locator('[data-action="back"]').click();
+  await expect(accessItem).toBeVisible();
+
+  // «Исключить»: с подтверждением; гость видит причину, у автора аватар исчезает
   const remove = menu.locator('[data-action="remove"]');
   await remove.click();
-  await expect(remove).toContainText('Нажмите ещё раз');
+  await expect(remove).toContainText('Нажмите ещё раз, чтобы исключить');
   await remove.click();
   await expect(g2.locator('#collab-notice')).toContainText('Вас отключили от доски', { timeout: 10000 });
   await expect(group.locator('.user-avatar')).toHaveCount(2, { timeout: 10000 });

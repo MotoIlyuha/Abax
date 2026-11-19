@@ -233,7 +233,7 @@ describe('src/room-host.ts: доступ из параметров подклю�
     const g = join('Аня', { access: { role: 'view', personal: { pg2: 'hidden' }, inviteAllowCopy: false, source: 'email', inviteId: 'inv1', principal: 'u:anna' } });
     const init = g.s.last('init')!;
     expect(init).toMatchObject({ role: 'commenter', allowCopy: false, rights: { pages: { pg1: 'view', pg2: 'hidden' } } });
-    expect(host.last('users')!.users.find((u: Msg) => u.userId === g.uid).access).toEqual({ role: 'commenter', source: 'email', inviteId: 'inv1' });
+    expect(host.last('users')!.users.find((u: Msg) => u.userId === g.uid).access).toEqual({ role: 'commenter', source: 'email', inviteId: 'inv1', personal: { pg2: 'hidden' } });
     expect(hub.setAccess(g.uid!, { role: 'editor', personal: {}, source: 'email', inviteId: 'inv1' })).toBe(true);
     expect(g.s.last('rights')).toMatchObject({ role: 'editor', allowCopy: true, rights: { pages: { pg1: 'edit', pg2: 'edit' } } });
     expect(hub.room.access.get(g.uid!)!.principal).toBe('u:anna'); // автор элементов при смене доступа не меняется

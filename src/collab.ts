@@ -1,4 +1,4 @@
-import type { Element, FadeStroke, GridMode, Page, Project, ProjectMeta, Pt } from './types';
+import type { Element, FadeStroke, GridMode, Page, PageRight, Project, ProjectMeta, Pt } from './types';
 import { roleLabel, type AccessRole, type ParticipantCaps } from './access';
 import { state, openProject, setSelection, setCopyGuard, setTouchGuard, isDraftId, onDraft, onChange, touchProject, update } from './state';
 import { MAX_PATCH_OPS, applyBoardPatch, diffElements, isBoardPatch, type BoardPatch } from './delta';
@@ -57,8 +57,8 @@ export interface CollabUser {
   avatar?: string | null;
   /** Участник на странице, скрытой от меня: где он, не сообщается (SPEC_NIGHT5 §3.1). */
   hiddenPage?: boolean;
-  /** Роль и откуда доступ — приходит только автору (SPEC_NIGHT6 §3.2). */
-  access?: { role: AccessRole | 'owner'; source: 'owner' | 'link' | 'alias' | 'email' | 'p2p'; inviteId?: string };
+  /** Роль, откуда доступ и личные права страниц (pageId → право) — приходит только автору (SPEC_NIGHT6 §3.2). */
+  access?: { role: AccessRole | 'owner'; source: 'owner' | 'link' | 'alias' | 'email' | 'p2p'; inviteId?: string; personal?: Record<string, PageRight> };
 }
 
 /** Событие на document: автор позвал всех на страницу (SPEC_NIGHT5 §8); камеру наводит приложение. */
@@ -242,10 +242,19 @@ export function sendSummon(pageId: string = state.pageId, to?: number): boolean 
   return transport.send(JSON.stringify({ t: 'summon', pageId, vx: v.vx, vy: v.vy, vz: v.vz, ...(to !== undefined ? { to } : {}) })) !== false;
 }
 
-/** «Убрать из совместной работы» (только автор): хаб закрывает соединение участника (код 4411). */
+/** «Исключить» из меню аватара (только автор): хаб закрывает соединение участника (код 4411). */
 export function sendRemove(uid: number): boolean {
   if (!connected || role !== 'host' || !transport || uid === myUserId) return false;
   return transport.send(JSON.stringify({ t: 'remove', uid })) !== false;
+}
+
+/**
+ * «Настройки доступа» из меню аватара (только автор): личные права участника uid на страницы —
+ * 'view' («Только просмотр»), 'hidden' («Скрыта») или null («По роли»). Проверяет и применяет хаб.
+ */
+export function sendPageRights(uid: number, pages: Record<string, Extract<PageRight, 'view' | 'hidden'> | null>): boolean {
+  if (!connected || role !== 'host' || !transport || uid === myUserId) return false;
+  return transport.send(JSON.stringify({ t: 'set-rights', uid, pages })) !== false;
 }
 
 /** Тумблер «Автопереход участников за мной» (только автор; тариф проверяет хаб). */
@@ -396,6 +405,9 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
       document.dispatchEvent(new CustomEvent(PRESENCE_EVENT));
     } else if (m.t === 'summon') {
       receiveSummon(m);
+    } else if (m.t === 'set-rights') {
+      // хаб отклонил «Настройки доступа» из меню аватара (например, лимит редакторов)
+      if (role === 'host' && m.ok === false) showPill({ kind: 'warn', text: typeof m.error === 'string' && m.error ? m.error : 'Не удалось изменить доступ участника' });
     } else if (m.t === 'denied') {
       lastDenied = {
         reason: typeof m.reason === 'string' ? m.reason : '',

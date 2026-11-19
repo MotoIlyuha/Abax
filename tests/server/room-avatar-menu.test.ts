@@ -1,4 +1,5 @@
-// Меню аватаров: «Позвать к себе» одного участника (summon с to) и «Убрать из совместной работы» (remove).
+// Меню аватаров: «Позвать к себе» одного участника (summon с to), «Настройки доступа» (set-rights)
+// и «Исключить» (remove).
 // Одинаковые сценарии для src/room-host.ts и его зеркала electron/room.cjs.
 import { createRequire } from 'node:module';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -101,7 +102,52 @@ describe.each(kinds)('$name', kind => {
     });
   });
 
-  describe('«Убрать из совместной работы» (remove)', () => {
+  describe('«Настройки доступа» одного участника (set-rights)', () => {
+    it('автор скрывает страницу только от одного гостя: ему — права и проект без страницы, автору — личные права в снимке', () => {
+      const { hub, host, join } = room(kind.make());
+      const a = join('Аня');
+      const b = join('Боря');
+      host.recv({ t: 'set-rights', uid: a.uid, pages: { pg2: 'hidden' } });
+      expect(a.s.last('rights')!.rights.pages.pg2).toBe('hidden');
+      expect(a.s.last('project')!.project.pages.map((p: Msg) => p.id)).toEqual(['pg1']);
+      expect(b.s.last('rights')).toBeUndefined();
+      const snap = (sock: FakeSock, uid: number | null) => sock.last('users')!.users.find((u: Msg) => u.userId === uid);
+      expect(snap(host, a.uid).access.personal).toEqual({ pg2: 'hidden' });
+      expect(snap(host, b.uid).access.personal).toBeUndefined();
+      // гостям личные права других не приходят
+      expect(snap(b.s, a.uid).access).toBeUndefined();
+      expect(hub.users().find((u: Msg) => u.userId === a.uid).rights.pages.pg2).toBe('hidden');
+      // «Только просмотр», затем «По роли» (null) — личное право снимается
+      host.recv({ t: 'set-rights', uid: a.uid, pages: { pg1: 'view', pg2: null } });
+      expect(snap(host, a.uid).access.personal).toEqual({ pg1: 'view' });
+      expect(a.s.last('project')!.project.pages.map((p: Msg) => p.id)).toEqual(['pg1', 'pg2']);
+      host.recv({ t: 'set-rights', uid: a.uid, pages: { pg1: null } });
+      expect(snap(host, a.uid).access.personal).toBeUndefined();
+    });
+
+    it('гость не меняет права; автору нельзя; чужие страницы, «edit» и мусор — пропускаются', () => {
+      const hub = kind.make({ multiHost: true });
+      const { host, join } = room(hub);
+      const tablet = new FakeSock();
+      const tabletUid = hub.attach(tablet, { isHost: true, name: 'Учитель' });
+      const a = join();
+      const b = join();
+      const before = a.s.all('rights').length;
+      b.s.recv({ t: 'set-rights', uid: a.uid, pages: { pg2: 'hidden' } });
+      a.s.recv({ t: 'set-rights', uid: a.uid, pages: { pg2: 'view' } });
+      host.recv({ t: 'set-rights', uid: tabletUid, pages: { pg2: 'hidden' } });
+      host.recv({ t: 'set-rights', uid: 0, pages: { pg2: 'hidden' } });
+      host.recv({ t: 'set-rights', uid: String(a.uid), pages: { pg2: 'hidden' } });
+      host.recv({ t: 'set-rights', uid: a.uid, pages: { pg2: 'edit', nope: 'hidden' } });
+      host.recv({ t: 'set-rights', uid: a.uid, pages: ['hidden'] });
+      host.recv({ t: 'set-rights', uid: a.uid });
+      expect(a.s.all('rights')).toHaveLength(before);
+      expect(hub.users().find((u: Msg) => u.userId === a.uid).access.personal).toBeUndefined();
+      expect(tablet.last('rights')).toBeUndefined();
+    });
+  });
+
+  describe('«Исключить» (remove)', () => {
     it('автор убирает гостя: соединение закрыто кодом 4411, остальные видят обновлённый состав', () => {
       const { hub, host, join } = room(kind.make());
       const a = join('Аня');

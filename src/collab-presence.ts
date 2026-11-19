@@ -1,8 +1,8 @@
 import { state, onChange, onDraft, update } from './state';
 import type { PageRight } from './types';
 import {
-  PRESENCE_EVENT, canSummon, collabActive, collabAvatar, collabUsers, hostFollowEnabled, isHost, myCollabId, sendFollowHost, sendProjectNow, sendRemove,
-  sendSummon, type CollabGotoDetail, type CollabUser,
+  PRESENCE_EVENT, canSummon, collabActive, collabAvatar, collabUsers, hostFollowEnabled, isHost, myCollabId, sendFollowHost, sendPageRights, sendProjectNow,
+  sendRemove, sendSummon, type CollabGotoDetail, type CollabUser,
 } from './collab';
 import { DEFAULT_CURSOR_ID, cursorPreset, cursorSvg, isCursorId } from './cursors';
 import { computeEdgePointer, type SafeInsets } from './edge-pointer';
@@ -10,10 +10,12 @@ import { pageAvatars } from './presence';
 import { showPill } from './activity-pills';
 import { PLAN_LIMITS } from './limits';
 import { limitsEnforced, userPlan } from './plan';
-import { FOLLOW_ICON, ICON_ARROW, ICONS, PROFILE_ICON, SUMMON_ICON } from './icons';
+import { ACCESS_ICON, FOLLOW_ICON, ICON_ARROW, ICONS, PROFILE_ICON, SUMMON_ICON } from './icons';
 import { STATUS_TEXT, type AvatarData, type AvatarStatus } from './avatar';
 import { createAvatarGroup, type AvatarGroup, type AvatarGroupItem } from './avatar-group';
-import { closeAvatarMenu, openAvatarMenu, type AvatarMenuEntry } from './avatar-menu';
+import { closeAvatarMenu, openAvatarMenu, type AvatarMenuEntry, type AvatarSubmenu } from './avatar-menu';
+import { attachOverlayScroll } from './overlay-scroll';
+import { createSpringSelect, type SelectOption, type SpringSelect } from './spring-select';
 import { cursorShown, othersCursorsHidden, setOthersCursorsHidden, setUserCursorHidden, userCursorHidden } from './cursor-visibility';
 import { myAvatar, myCursorId, onProfileChange, profileName } from './profile';
 
@@ -184,7 +186,54 @@ export function selfMenuEntries(anchor: HTMLElement): AvatarMenuEntry[] {
   return out;
 }
 
-/** Пункты меню чужого аватара: перейти, скрыть курсор, позвать к себе, следить (позже), убрать. */
+/**
+ * Личное право участника на страницу — те же варианты, что «Страницы» в «Поделиться» → «Настройки доступа»,
+ * но только для одного участника. «По роли» снимает личное право: действует его роль и настройка страницы.
+ */
+const PERSONAL_PAGE_OPTIONS: readonly SelectOption[] = [
+  { value: '', label: 'По роли', title: 'Как для всех: по роли участника и настройке страницы' },
+  { value: 'view', label: 'Только просмотр', title: 'Участник смотрит, но не меняет страницу' },
+  { value: 'hidden', label: 'Скрыта', title: 'Участник не видит страницу' },
+];
+
+/** Подменю «Настройки доступа»: страницы доски и личное право участника u на каждой. */
+export function accessSubmenu(u: CollabUser): AvatarSubmenu {
+  const name = String(u.name ?? '') || 'Участник';
+  const personal = u.access?.personal ?? {};
+  const box = el('div', 'avatar-access');
+  const list = el('div', 'avatar-access-list');
+  box.append(list);
+  const selects: SpringSelect[] = [];
+  for (const pg of state.project.pages) {
+    const pageName = pg.name || 'Без названия';
+    const row = el('div', 'avatar-access-row');
+    row.dataset.pageId = pg.id;
+    const label = el('span', 'avatar-access-name', pageName);
+    label.title = pageName;
+    const cur = personal[pg.id] ?? '';
+    // «Редактирование» могло прийти из таблицы участников P2P в «Поделиться» — показываем как есть
+    const options = cur === 'edit'
+      ? [PERSONAL_PAGE_OPTIONS[0], { value: 'edit', label: 'Редактирование', title: 'Участник меняет страницу' }, ...PERSONAL_PAGE_OPTIONS.slice(1)]
+      : PERSONAL_PAGE_OPTIONS;
+    const sel = createSpringSelect({
+      className: 'avatar-access-select', label: `${name}: доступ к странице «${pageName}»`, options, value: cur, align: 'end',
+      onChange: v => {
+        if (v === 'edit') return;
+        const right = v === 'view' || v === 'hidden' ? v : null;
+        if (!sendPageRights(u.userId, { [pg.id]: right })) showPill({ kind: 'warn', text: 'Нет связи с доской — доступ не изменён' });
+      },
+    });
+    sel.el.dataset.key = `access-${pg.id}`;
+    selects.push(sel);
+    row.append(label, sel.el);
+    list.append(row);
+  }
+  // длинный список страниц прокручивается внутри меню — своей тонкой полосой
+  attachOverlayScroll(list, { axis: 'y', host: box, edges: 'shadow' });
+  return { el: box, close: () => { for (const s of selects) s.close(true); } };
+}
+
+/** Пункты меню чужого аватара: перейти, скрыть курсор, позвать к себе, следить (позже), доступ, исключить. */
 export function participantMenuEntries(u: CollabUser): AvatarMenuEntry[] {
   const name = String(u.name ?? '') || 'Участник';
   const out: AvatarMenuEntry[] = [
@@ -213,7 +262,13 @@ export function participantMenuEntries(u: CollabUser): AvatarMenuEntry[] {
   if (isHost() && !u.host) {
     out.push({ kind: 'sep' });
     out.push({
-      kind: 'action', id: 'remove', label: 'Убрать из совместной работы', icon: ICONS.del, danger: true, confirm: 'Нажмите ещё раз, чтобы убрать',
+      kind: 'submenu', id: 'access', label: 'Настройки доступа', icon: ACCESS_ICON,
+      title: 'Права на страницы только для этого участника — действуют, пока он на доске',
+      // свежая запись участника: после смены права и возврата в подменю видно новое значение
+      content: () => accessSubmenu(collabUsers().find(x => x.userId === u.userId) ?? u),
+    });
+    out.push({
+      kind: 'action', id: 'remove', label: 'Исключить', icon: ICONS.del, danger: true, confirm: 'Нажмите ещё раз, чтобы исключить',
       title: 'Отключить участника от доски сейчас. Ссылка или приглашение продолжают действовать — их отзывают в окне «Поделиться»',
       run: () => { if (sendRemove(u.userId)) showPill({ kind: 'info', text: `${name} больше не участвует в совместной работе` }); },
     });

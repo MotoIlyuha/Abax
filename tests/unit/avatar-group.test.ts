@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createUserAvatar, updateUserAvatar, type AvatarData } from '../../src/avatar';
 import { createAvatarGroup, type AvatarGroupItem } from '../../src/avatar-group';
 import { avatarMenuOpen, closeAvatarMenu, openAvatarMenu } from '../../src/avatar-menu';
-import { avatarData, avatarStatus, groupItems, participantMenuEntries, selfMenuEntries } from '../../src/collab-presence';
+import { accessSubmenu, avatarData, avatarStatus, groupItems, participantMenuEntries, selfMenuEntries } from '../../src/collab-presence';
 import {
   cursorShown, onCursorVisibility, othersCursorsHidden, resetCursorVisibility, setOthersCursorsHidden, setUserCursorHidden, userCursorHidden,
 } from '../../src/cursor-visibility';
@@ -268,5 +268,50 @@ describe('меню аватара', () => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(avatarMenuOpen()).toBe(false);
     expect(closed).toHaveBeenCalledTimes(2);
+  });
+
+  it('подменю в этом же меню: пункт → заголовок «назад» и содержимое; Esc — назад, затем закрыть; список не закрывает меню', async () => {
+    const anchor = document.createElement('button');
+    document.body.append(anchor);
+    const close = vi.fn();
+    const menu = openAvatarMenu({
+      anchor, face: data(), name: 'Енот', sub: '',
+      entries: [
+        { kind: 'action', id: 'goto', label: 'Перейти', icon: '', run: () => {} },
+        { kind: 'sep' },
+        { kind: 'submenu', id: 'access', label: 'Настройки доступа', icon: '', content: () => ({ el: Object.assign(document.createElement('div'), { className: 'probe' }), close }) },
+        { kind: 'action', id: 'remove', label: 'Исключить', icon: '', run: () => {} },
+      ],
+    });
+    menu.querySelector<HTMLButtonElement>('[data-action="access"]')!.click();
+    expect(avatarMenuOpen()).toBe(true);
+    expect(menu.querySelector('.avatar-menu-subpage .probe')).not.toBeNull();
+    expect(menu.querySelector('[data-action="back"]')!.textContent).toContain('Настройки доступа');
+    expect(menu.querySelector('[data-action="remove"]')).toBeNull();
+    // выпадающий список подменю стоит в body: нажатие в нём меню не закрывает
+    const list = Object.assign(document.createElement('div'), { className: 'ss-menu' });
+    document.body.append(list);
+    // подписка на нажатие вне меню — после текущего события
+    await new Promise(r => setTimeout(r, 0));
+    list.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    expect(avatarMenuOpen()).toBe(true);
+    list.remove();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(avatarMenuOpen()).toBe(true);
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(menu.querySelector('.probe')).toBeNull();
+    expect(menu.querySelector('[data-action="remove"]')).not.toBeNull();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(avatarMenuOpen()).toBe(false);
+  });
+
+  it('«Настройки доступа»: строка на каждую страницу, значение — личное право участника, имя страницы — текстом', () => {
+    state.project.pages.push({ id: 'p2', name: '<i>Геометрия</i>', grid: 'square', elements: [] });
+    const sub = accessSubmenu(user({ access: { role: 'editor', source: 'link', personal: { p2: 'hidden' } } }));
+    const rows = [...sub.el.querySelectorAll<HTMLElement>('.avatar-access-row')];
+    expect(rows.map(r => r.dataset.pageId)).toEqual(['p1', 'p2']);
+    expect(rows[1].querySelector('.avatar-access-name')!.textContent).toBe('<i>Геометрия</i>');
+    expect(rows[1].querySelector('i')).toBeNull();
+    expect(rows.map(r => r.querySelector<HTMLElement>('.avatar-access-select')!.dataset.value)).toEqual(['', 'hidden']);
   });
 });

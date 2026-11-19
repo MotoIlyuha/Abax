@@ -189,8 +189,11 @@ export interface UserSnapshot {
   avatar?: string | null;
   /** Участник на странице, скрытой для получателя: страница, курсор, камера и выделение не передаются. */
   hiddenPage?: true;
-  /** Роль и откуда доступ — только получателям-авторам (SPEC_NIGHT6 §3.2). */
-  access?: { role: AccessRole | 'owner'; source: AccessSource; inviteId?: string };
+  /**
+   * Роль, откуда доступ и личные права страниц (меню аватара «Настройки доступа») — только получателям-авторам
+   * (SPEC_NIGHT6 §3.2).
+   */
+  access?: { role: AccessRole | 'owner'; source: AccessSource; inviteId?: string; personal?: Record<string, PageRight> };
 }
 
 /**
@@ -493,6 +496,19 @@ export class Room {
     }
     return { default: def, pages };
   }
+  /**
+   * Личные права гостя по страницам проекта (старое «скрыть всё» — на каждой странице без своего права);
+   * нет личных прав — нет и поля (снимок уходит на каждое движение курсора).
+   */
+  personalSnapshot(a: ParticipantAccess | undefined): { personal?: Record<string, PageRight> } {
+    const out: Record<string, PageRight> = {};
+    if (!a || !this.project) return {};
+    for (const pg of this.project.pages) {
+      const r = a.personal[pg.id] ?? a.personalAll;
+      if (r) out[pg.id] = r;
+    }
+    return Object.keys(out).length ? { personal: out } : {};
+  }
   usersSnapshot(): UserSnapshot[] {
     const now = this.opts.now();
     return [...this.clients.values()].map(c => {
@@ -506,7 +522,7 @@ export class Room {
         ...(c.view ? { view: c.view } : {}),
         ...(c.avatar !== undefined ? { avatar: avatarKey(c.avatar, c.avatarRev) } : {}),
         access: c.host ? { role: 'owner' as const, source: 'owner' as const }
-          : { role: a?.role ?? 'commenter', source: a?.source ?? 'p2p', ...(a?.inviteId ? { inviteId: a.inviteId } : {}) },
+          : { role: a?.role ?? 'commenter', source: a?.source ?? 'p2p', ...(a?.inviteId ? { inviteId: a.inviteId } : {}), ...this.personalSnapshot(a) },
       };
     });
   }
@@ -765,6 +781,7 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
       if (m.t === 'view') { acceptView(info, m); return; }
       if (m.t === 'summon') { acceptSummon(info, m); return; }
       if (m.t === 'remove') { acceptRemove(info, m); return; }
+      if (m.t === 'set-rights') { acceptSetRights(info, m); return; }
       if (m.t === 'follow-host') { acceptFollowHost(info, m); return; }
       if (m.t === 'patch') {
         if (isBoardPatch(m)) { acceptPatch(info, m); info.edited = true; }
@@ -919,13 +936,34 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
     }
   }
 
-  /** «Убрать из совместной работы»: только автор и только гостя (не устройство автора) — соединение закрывается. */
+  /** «Исключить» (меню аватара): только автор и только гостя (не устройство автора) — соединение закрывается. */
   function acceptRemove(info: Client, m: Rec): void {
     if (!info.host || !Number.isInteger(m.uid)) return;
     for (const c of room.clients.values()) {
       if (c.uid !== m.uid || c.host) continue;
       try { c.sock.close(CLOSE_REMOVED, REMOVED_REASON); } catch { /* уже закрыт */ }
     }
+  }
+
+  /**
+   * «Настройки доступа» из меню аватара: личные права гостя на страницы проекта — «Только просмотр», «Скрыта»
+   * или null («По роли»: личное право снимается). Только автор и только гостю; отказ (лимит редакторов) — автору.
+   */
+  function acceptSetRights(info: Client, m: Rec): void {
+    if (!info.host || !Number.isInteger(m.uid) || !room.project) return;
+    const target = room.clientOf(m.uid as number);
+    const raw = m.pages;
+    if (!target || target.host || !raw || typeof raw !== 'object' || Array.isArray(raw)) return;
+    const pages: Record<string, PageRight | null> = {};
+    for (const [pid, v] of Object.entries(raw as Rec)) {
+      if (!room.project.pages.some(p => p.id === pid)) continue;
+      if (v === null || v === 'view' || v === 'hidden') pages[pid] = v;
+    }
+    if (Object.keys(pages).length === 0) return;
+    const r = room.setRights(target.uid, { pages });
+    if (!r.ok) { sendTo(info.sock, { t: 'set-rights', uid: target.uid, ok: false, error: r.error ?? '' }); return; }
+    broadcastUsers();
+    pushRights(target.uid);
   }
 
   /** «Автопереход участников за мной»: только автор и только на тарифе, где это есть. */

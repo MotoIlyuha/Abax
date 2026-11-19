@@ -2559,12 +2559,13 @@ body.no-ui-anim :is(.home-logo-image, .home-logo-back) { transition: none; }
 #view-menu .view-check { color: var(--accent); font-weight: 600; }
 #view-menu .view-swatch { width: 18px; height: 18px; border: 1px solid var(--border-control); border-radius: 50%; }
 /* заголовок подменю: тот же пункт, что в меню, но со стрелкой «назад»; пункты подменю выходят из-под него */
-#view-menu .view-back { position: relative; z-index: 2; background: var(--panel); font-weight: 600; }
-#view-menu .view-back:hover, #view-menu .view-back:focus-visible { background: var(--accent-soft); }
-#view-menu .view-back .view-icon { position: relative; }
-#view-menu .view-back .view-icon > span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
-#view-menu .view-back .vb-ghost { opacity: 0; }
-#view-menu .view-back .view-arrow.vb-ghost { position: static; }
+/* (то же — подменю «Настройки доступа» в меню аватара) */
+:is(#view-menu, .avatar-menu) .view-back { position: relative; z-index: 2; background: var(--panel); font-weight: 600; }
+:is(#view-menu, .avatar-menu) .view-back:hover, :is(#view-menu, .avatar-menu) .view-back:focus-visible { background: var(--accent-soft); }
+:is(#view-menu, .avatar-menu) .view-back :is(.view-icon, .main-menu-icon) { position: relative; }
+:is(#view-menu, .avatar-menu) .view-back :is(.view-icon, .main-menu-icon) > span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; }
+:is(#view-menu, .avatar-menu) .view-back .vb-ghost { opacity: 0; }
+:is(#view-menu, .avatar-menu) .view-back .view-arrow.vb-ghost { position: static; }
 
 #toolbar[data-pos="right"] { transition: transform .2s ease; }
 body.settings-popover-open #toolbar[data-pos="right"] { transform: translateX(calc(100% + 20px)); pointer-events: none; }
@@ -3646,6 +3647,18 @@ body.no-ui-anim .avatar-group.open .user-avatar .ua-circle { transform: none; }
 .avatar-menu .avatar-menu-switch .view-icon { width: 18px; height: 18px; flex: none; display: inline-flex; align-items: center; justify-content: center; color: var(--icon-menu); }
 .avatar-menu .avatar-menu-switch .view-icon svg { width: 18px; height: 18px; }
 .avatar-menu .avatar-menu-switch .switch-text { flex: 1; }
+/* подменю «Настройки доступа»: страницы и личное право участника на каждой */
+.avatar-menu .view-arrow { color: var(--muted); font-size: 20px; line-height: 16px; }
+.avatar-menu-page .main-menu-icon svg { width: 18px; height: 18px; }
+.avatar-access { position: relative; }
+.avatar-access-list { max-height: min(264px, 45vh); overflow-y: auto; }
+.avatar-access-row { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 0 2px 0 10px; border-radius: 7px; }
+.avatar-access-row:hover { background: var(--hover); }
+.avatar-access-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* выпадающий список — не пункт меню: общие правила .menu-list button для него не действуют */
+.avatar-menu .avatar-access-select.ss-trigger { width: auto; flex: none; gap: 2px; height: 28px; padding: 0 4px 0 8px; color: var(--fg-secondary); font-size: 13px; }
+.avatar-menu .avatar-access-select.ss-trigger:hover, .avatar-menu .avatar-access-select.ss-trigger[aria-expanded="true"] { background: var(--hover-strong); color: var(--fg); }
+.avatar-menu .avatar-access-select.ss-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 .page-avatars {
   position: absolute;

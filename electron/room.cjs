@@ -199,6 +199,16 @@ class Room {
     }
     return { default: def, pages };
   }
+  /** Личные права гостя по страницам проекта (зеркало personalSnapshot из src/room-host.ts). */
+  personalSnapshot(a) {
+    const out = {};
+    if (!a || !this.project) return {};
+    for (const pg of this.project.pages) {
+      const r = (a.personal && a.personal[pg.id]) || a.personalAll;
+      if (r) out[pg.id] = r;
+    }
+    return Object.keys(out).length ? { personal: out } : {};
+  }
   usersSnapshot() {
     return [...this.clients.values()].map(c => {
       const a = this.access.get(c.uid);
@@ -210,7 +220,7 @@ class Room {
         ...(c.cursorId ? { cursorId: c.cursorId } : {}),
         ...(c.view ? { view: c.view } : {}),
         ...(c.avatar !== undefined ? { avatar: avatars.avatarKey(c.avatar, c.avatarRev) } : {}),
-        access: c.host ? { role: 'owner', source: 'owner' } : { role: (a && a.role) || 'commenter', source: (a && a.source) || 'p2p' },
+        access: c.host ? { role: 'owner', source: 'owner' } : { role: (a && a.role) || 'commenter', source: (a && a.source) || 'p2p', ...this.personalSnapshot(a) },
       };
     });
   }
@@ -544,13 +554,31 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
     }
   }
 
-  // «Убрать из совместной работы»: только автор и только гостя
+  // «Исключить» (меню аватара): только автор и только гостя
   function acceptRemove(info, m) {
     if (!info.host || !Number.isInteger(m.uid)) return;
     for (const c of room.clients.values()) {
       if (c.uid !== m.uid || c.host) continue;
       try { c.sock.close(CLOSE_REMOVED, REMOVED_REASON); } catch { /* уже закрыт */ }
     }
+  }
+
+  /** «Настройки доступа» из меню аватара: личные права гостя на страницы (зеркало acceptSetRights из src/room-host.ts). */
+  function acceptSetRights(info, m) {
+    if (!info.host || !Number.isInteger(m.uid) || !room.project) return;
+    const target = room.clientOf(m.uid);
+    const raw = m.pages;
+    if (!target || target.host || !raw || typeof raw !== 'object' || Array.isArray(raw)) return;
+    const pages = {};
+    for (const [pid, v] of Object.entries(raw)) {
+      if (!room.project.pages.some(p => p.id === pid)) continue;
+      if (v === null || v === 'view' || v === 'hidden') pages[pid] = v;
+    }
+    if (Object.keys(pages).length === 0) return;
+    const r = room.setRights(target.uid, { pages });
+    if (!r.ok) { sendTo(info.sock, { t: 'set-rights', uid: target.uid, ok: false, error: r.error || '' }); return; }
+    broadcastUsers();
+    pushRights(target.uid);
   }
 
   function acceptFollowHost(info, m) {
@@ -645,6 +673,7 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
       if (m.t === 'view') { acceptView(info, m); return; }
       if (m.t === 'summon') { acceptSummon(info, m); return; }
       if (m.t === 'remove') { acceptRemove(info, m); return; }
+      if (m.t === 'set-rights') { acceptSetRights(info, m); return; }
       if (m.t === 'follow-host') { acceptFollowHost(info, m); return; }
       if (m.t === 'project' && validProject(m.project)) {
         info.edited = true;
