@@ -38,6 +38,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 // ?worker&inline: воркер инлайнится в бандл и работает из file:// (Electron)
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker&inline';
 import { initNotifyButton } from './notify-button';
+import { initNotifyStack } from './notify-stack';
 import { collabActive, isHost, myCollabCaps, myColor, noteSelection, readOnly, startHostConnection, stopCollab, type CollabGotoDetail, type CollabSummonDetail } from './collab';
 import { animateCameraTo, cameraAnimating, clampZoom } from './camera-anim';
 import { stopFollowByUser } from './follow';
@@ -4715,6 +4716,7 @@ function wireTopbar(): void {
   document.querySelector<HTMLElement>('#btn-share .share-icon')!.innerHTML = ICONS.share;
   document.getElementById('btn-share')!.addEventListener('click', () => { void openShareDialog(); });
   initNotifyButton();
+  initNotifyStack();
   topProjectIcon = createIconButton({
     el: document.getElementById('project-icon') as HTMLButtonElement,
     value: state.project.icon ?? null,

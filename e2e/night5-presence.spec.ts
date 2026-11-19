@@ -84,7 +84,7 @@ test.describe('присутствие', () => {
     expect(await pageIdOf(g)).toBe(pages[0]);
     await a.locator('#btn-summon').click();
     await expect.poll(() => pageIdOf(g), { timeout: 10000 }).toBe(pages[2]);
-    await expect(g.locator('#activity-pills .activity-pill', { hasText: 'Автор позвал всех на страницу' })).toBeVisible();
+    await expect(g.locator('#notify-stack .ns-card', { hasText: 'Автор позвал всех на страницу' })).toBeVisible();
     // аватар гостя — у карточки третьей страницы в доке автора
     await boardA.openPages();
     await expect(a.locator('#pages-list .page-item').nth(2).locator('.page-avatar')).toHaveCount(1, { timeout: 10000 });

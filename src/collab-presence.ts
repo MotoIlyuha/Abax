@@ -381,7 +381,7 @@ export function safeInsets(wrap: DOMRect, obstacles: readonly DOMRect[], pad = E
 
 function obstacleRects(): DOMRect[] {
   const out: DOMRect[] = [];
-  for (const sel of ['#topbar', '#bottombar', '#toolbar', '#btn-pages', '#pages-dock.open #pages-tray', '#activity-pills']) {
+  for (const sel of ['#topbar', '#bottombar', '#toolbar', '#btn-pages', '#pages-dock.open #pages-tray', '#notify-stack']) {
     const n = document.querySelector<HTMLElement>(sel);
     if (n && !n.hidden) out.push(n.getBoundingClientRect());
   }
@@ -575,7 +575,7 @@ export function summonHere(anchor?: HTMLElement | null): void {
   const r = anchor?.getBoundingClientRect();
   if (r) {
     box.style.top = `${Math.round(r.bottom + 8)}px`;
-    // левее колонки пилюль справа, чтобы уведомления не закрывали выбор
+    // левее стопки уведомлений справа, чтобы она не закрывала выбор
     box.style.left = `${Math.round(Math.max(8, Math.min(r.left - 140, window.innerWidth - 600)))}px`;
   }
   edit.focus();

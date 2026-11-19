@@ -12,7 +12,8 @@ import { PHOTO_KEY, isAvatarEmoji, isAvatarPhoto } from './avatar-value';
 import { setStorage, storage, type BoardsStorage } from './storage';
 import { getApi } from './api-client';
 import { hydrateFromCloud } from './cloud-assets';
-import { clearPills, diffUsers, showUserEvents } from './activity-pills';
+import { diffUsers, showUserEvents } from './activity-pills';
+import { clearNotifyStack } from './notify-stack';
 import { chatReceive, chatReset, setChatAvatarLookup, setChatAvailable, setChatCanWrite, setChatSender } from './collab-chat';
 import { clearNotices, pushNotice } from './notify-center';
 import { viewCenter, viewportSize } from './camera-anim';
@@ -1336,8 +1337,8 @@ export function stopCollab(): void {
   setChatAvatarLookup(null);
   setChatAvailable(false);
   // уведомления — о комнате: с концом совместной работы счётчик и стопка пустеют
+  clearNotifyStack();
   clearNotices();
-  clearPills();
   if (allHidden) { allHidden = false; setAllHiddenBanner(false); }
   state.collabRole = null;
   renderRemoteCursors();

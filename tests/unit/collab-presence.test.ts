@@ -3,6 +3,7 @@ import { avatarColors, goToParticipant, gotoTarget, participantPoint, participan
 import { cursorPreset } from '../../src/cursors';
 import type { CollabUser } from '../../src/collab';
 import { state } from '../../src/state';
+import { clearNotices, noticeText, notices } from '../../src/notify-center';
 
 const user = (extra: Partial<CollabUser> = {}): CollabUser => ({
   userId: 2, name: 'Капибара', color: '#e03131', host: false, away: false, cursor: null, pageId: 'p1', selection: [],
@@ -60,8 +61,8 @@ describe('аватар участника', () => {
     expect(participantTitle(user({ away: true, pageId: null }))).toBe('Капибара · Отошёл');
   });
 
-  it('переход к участнику; на скрытой странице — пилюля', () => {
-    document.body.innerHTML = '<div id="activity-pills"></div>';
+  it('переход к участнику; на скрытой странице — тихое уведомление', () => {
+    clearNotices();
     const got: unknown[] = [];
     const on = (e: Event) => got.push((e as CustomEvent).detail);
     document.addEventListener('doska:collab-goto', on);
@@ -69,7 +70,10 @@ describe('аватар участника', () => {
     expect(got).toEqual([{ pageId: 'p1', x: 1, y: 2, zoom: 2, reason: 'avatar' }]);
     goToParticipant(user({ host: true, hiddenPage: true, pageId: null }), 'avatar');
     expect(got).toHaveLength(1);
-    expect([...document.querySelectorAll('#activity-pills .ap-text')].map(n => n.textContent)).toContain('Автор сейчас на скрытой странице');
+    expect(notices().map(noticeText)).toContain('Автор сейчас на скрытой странице');
+    // отклик на мой щелчок — тихий: прочитан сразу
+    expect(notices().at(-1)).toMatchObject({ quiet: true, read: true, icon: 'hidden' });
+    clearNotices();
     document.removeEventListener('doska:collab-goto', on);
   });
 });

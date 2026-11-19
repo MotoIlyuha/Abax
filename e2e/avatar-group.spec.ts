@@ -117,7 +117,7 @@ test('группа аватаров: раскрытие, меню, скрыть 
   await capy.click();
   await menu.locator('[data-action="summon"]').click();
   await expect.poll(() => pageIdOf(g1), { timeout: 10000 }).toBe(pages[1]);
-  await expect(g1.locator('#activity-pills .activity-pill', { hasText: 'позвал вас на страницу' })).toBeVisible();
+  await expect(g1.locator('#notify-stack .ns-card', { hasText: 'позвал вас на страницу' })).toBeVisible();
   expect(await pageIdOf(g2)).toBe(pages[0]);
 
   // у карточки страницы в доке — те же аватары: Капибара на второй, Енот на первой; нажатие — то же меню

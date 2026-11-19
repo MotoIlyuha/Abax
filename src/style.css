@@ -3399,47 +3399,217 @@ body.no-motion #sync-indicator[data-status="syncing"] svg .sync-arrows { animati
   #sync-indicator[data-status="syncing"] svg .sync-arrows { animation: none; }
 }
 
-/* ----- Уведомления комнаты (Activity Pills, SPEC_NIGHT5 §5) ----- */
-#activity-pills {
+/* ----- Стопка уведомлений (src/notify-stack.ts, SPEC_CHAT §4): под кнопкой «Чат и уведомления» ----- */
+#notify-stack {
   position: fixed;
-  top: 58px;
-  right: 16px;
+  top: 68px;
+  right: 12px;
   z-index: 74;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
-  max-width: calc(100vw - 32px);
-  pointer-events: none;
+  width: 340px;
+  max-width: calc(100vw - 24px);
+  pointer-events: auto;
 }
-.activity-pill {
+#notify-stack[hidden] { display: none; }
+/* уходит в кнопку и поднимается из неё — под плашками шапки */
+#notify-stack.ns-under { z-index: 9; pointer-events: none; }
+/* «Обычные»: CSS-переходы вместо пружин */
+#notify-stack.ns-css, #notify-stack.ns-css .ns-card { transition: transform .3s cubic-bezier(.23, 1, .32, 1), opacity .3s cubic-bezier(.23, 1, .32, 1); }
+#notify-stack.ns-instant, #notify-stack .ns-card.ns-instant, #notify-stack .ns-card.ns-drag { transition: none; }
+/* заголовок раскрытой стопки: «Новые · N» и «Скрыть» — плашками поверх холста */
+.ns-head {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 30px;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
-  max-width: 360px;
-  padding: 7px 12px;
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition: opacity .2s ease, transform .2s ease;
+}
+#notify-stack.expanded .ns-head { opacity: 1; transform: none; pointer-events: auto; }
+.ns-head-title, .ns-hide {
+  height: 28px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--panel);
-  color: var(--fg);
-  box-shadow: var(--shadow-card);
-  font-size: 13px;
-  line-height: 1.3;
-  animation: ap-in 0.2s cubic-bezier(0.22, 0.8, 0.24, 1);
-  transition: opacity 0.2s, transform 0.2s;
+  box-shadow: var(--shadow);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
 }
-.activity-pill.warn { background: #fff8e1; border-color: #f2c94c; color: #6b4e00; }
-.activity-pill.ok { background: #ebfbee; border-color: #8ce99a; color: #1b5e20; }
-.activity-pill.leaving { opacity: 0; transform: translateY(-6px); }
-.activity-pill.clickable, .activity-pill .ap-action { pointer-events: auto; cursor: pointer; }
-.activity-pill.clickable:hover { box-shadow: var(--shadow-lift); }
-.ap-cursor { flex: none; display: inline-flex; width: 14px; height: 14px; }
-.ap-cursor svg { width: 14px; height: 14px; }
-.ap-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ap-action { flex: none; border: none; background: none; padding: 0 2px; color: var(--accent); font: inherit; font-weight: 600; }
-@keyframes ap-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
-body.no-motion .activity-pill, body.no-ui-anim .activity-pill { animation: none; transition: none; }
-@media (prefers-reduced-motion: reduce) { .activity-pill { animation: none; transition: none; } }
+.ns-head-title { color: var(--fg-secondary); font-variant-numeric: tabular-nums; }
+.ns-hide { color: var(--accent); cursor: pointer; transition: background-color .15s ease; }
+.ns-hide:hover { background: var(--accent-soft); }
+.ns-hide:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* карточка: белая, тень карточки-уведомления; передняя — сверху */
+.ns-card {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  border-radius: 16px;
+  background: var(--panel);
+  box-shadow: 0 0 0 1px var(--hairline), var(--shadow-card);
+  transform-origin: 50% 0;
+  will-change: transform, opacity;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: pan-y;
+  outline: none;
+}
+.ns-card:focus-visible { box-shadow: 0 0 0 2px var(--accent), var(--shadow-card); }
+.ns-card.ns-back, .ns-card.ns-leaving { pointer-events: none; }
+/* задние — с тенью полегче: под стопкой не копится тёмное пятно */
+.ns-card.ns-back { box-shadow: 0 0 0 1px var(--hairline), var(--shadow); }
+.ns-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px 12px 12px;
+  transition: opacity .2s ease;
+}
+.ns-main {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "title time" "body body" "action action";
+}
+/* у задних карточек свёрнутой стопки содержимое гаснет: видны только края */
+.ns-card.ns-back .ns-content { opacity: 0; }
+.ns-card.ns-back { overflow: hidden; }
+.ns-media { position: relative; flex: none; width: 32px; height: 32px; }
+.ns-media.ns-square { display: flex; align-items: center; justify-content: center; border-radius: 10px; background: var(--accent-soft); color: var(--accent); }
+.ns-media.ns-square svg { width: 18px; height: 18px; }
+.ns-ok .ns-media.ns-square { background: var(--success-soft); color: var(--success); }
+.ns-warn .ns-media.ns-square { background: var(--warn-soft); color: var(--warn); }
+.ns-media .user-avatar { --ua-size: 32px; display: block; cursor: inherit; pointer-events: none; }
+/* значок события на аватаре участника — справа сверху, как статус */
+.ns-ev {
+  position: absolute;
+  top: -4px;
+  right: -5px;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--fg-inverse);
+  box-shadow: 0 0 0 2px var(--panel);
+}
+.ns-ev svg { width: 10px; height: 10px; stroke-width: 2.4; }
+.ns-ok .ns-ev { background: var(--success); }
+.ns-warn .ns-ev { background: var(--warn); }
+.ns-title {
+  grid-area: title;
+  min-width: 0;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 18px;
+  letter-spacing: -0.005em;
+  color: var(--fg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* без текста заголовок — само сообщение: до двух строк */
+.ns-title.ns-wrap { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.ns-time { grid-area: time; align-self: start; margin-left: 10px; font-size: 11.5px; line-height: 18px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ns-body {
+  grid-area: body;
+  margin-top: 1px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--fg-secondary);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.ns-action {
+  grid-area: action;
+  justify-self: start;
+  margin-top: 8px;
+  height: 28px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ns-action:hover { background: var(--accent); color: var(--fg-inverse); }
+.ns-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* × — слева сверху, видно при наведении и фокусе */
+.ns-close {
+  position: absolute;
+  top: -7px;
+  left: -7px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--panel);
+  color: var(--fg-secondary);
+  box-shadow: var(--shadow-button);
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(.8);
+  transition: opacity .15s ease, transform .15s ease, background-color .15s ease;
+}
+.ns-close svg { width: 11px; height: 11px; }
+.ns-card:hover .ns-close, .ns-card:focus-within .ns-close { opacity: 1; transform: none; }
+.ns-close:hover { background: var(--hover); color: var(--fg); }
+.ns-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.ns-card.ns-back .ns-close { display: none; }
+@media (hover: none) { .ns-close { opacity: 1; transform: none; } }
+/* «не беспокоить» («Улучшенные»): призрак карточки под кнопкой «падает» в неё */
+.ns-ghost {
+  position: fixed;
+  z-index: 9;
+  width: 150px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px 0 8px;
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: 0 0 0 1px var(--hairline), var(--shadow-card);
+  pointer-events: none;
+  transform-origin: 50% 50%;
+  will-change: transform, opacity;
+}
+.ns-ghost .ns-media { width: 20px; height: 20px; flex: none; }
+.ns-ghost .ns-media .user-avatar { --ua-size: 20px; }
+.ns-ghost .ns-media.ns-square { border-radius: 6px; }
+.ns-ghost .ns-media.ns-square svg { width: 12px; height: 12px; }
+.ns-ghost :is(.ns-ev, .ua-cursor) { display: none; }
+.ns-ghost-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 600; color: var(--fg); }
+/* живая область для чтения с экрана */
+.ns-live { position: fixed; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+body.no-ui-anim :is(.ns-head, .ns-content, .ns-close, .ns-hide) { transition: none; }
+@media (prefers-reduced-motion: reduce) { :is(.ns-head, .ns-content, .ns-close) { transition: none; } }
 
 /* ----- Кнопка «Чат и уведомления» (src/notify-button.ts, SPEC_CHAT §3): плашка 48×48 крайняя справа в шапке ----- */
 .notify-btn {
