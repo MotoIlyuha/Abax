@@ -74,6 +74,8 @@ import { CONFLICT_TEXT, cloudStorage, openFresh, type ConflictResolution } from 
 import { clearStarter, isPristineStarterProject, starterId } from './sync-state';
 import { parseProject } from './file';
 import { setPanelActions } from './panel-actions';
+import { registerPanelModes } from './panel-modes';
+import { closeSidePanel, onSidePanel, sidePanelMode, sidePanelOpen, toggleSidePanel } from './side-panel';
 import { initSyncIndicator } from './sync-indicator';
 import { openShareDialog as openShareDialogUi, type ShareApi } from './share-dialog';
 import { onCancelInteraction } from './interaction';
@@ -5015,7 +5017,8 @@ function wireTopbar(): void {
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && menuShown(exportMenu)) { closeExportMenu(); exportButton.focus(); } });
   document.getElementById('btn-present')!.addEventListener('click', togglePresent);
   registerPanelActions();
-  wireHelpMenu();
+  registerPanelModes();
+  wireHelpButton();
   initTopbarFit();
   // список страниц внизу не должен заходить под правый нижний угол
   const bottombar = document.getElementById('bottombar')!;
@@ -5103,53 +5106,19 @@ function registerPanelActions(): void {
 
 // ----- «Помощь и советы»: кнопка в правом нижнем углу и F1 -----
 
-/** Меню помощи. Пока заготовка: пункты появятся позже, кнопка и F1 уже открывают и закрывают его. */
-function wireHelpMenu(): void {
+/** Кнопка «Помощь» и F1 открывают и закрывают боковую панель в режиме «Справка» (SPEC_CHAT §5). */
+function wireHelpButton(): void {
   const button = document.getElementById('btn-help') as HTMLButtonElement;
   button.innerHTML = ICONS.help;
-  const menu = document.createElement('div');
-  menu.id = 'help-menu';
-  menu.className = 'popup-menu menu-list';
-  menu.setAttribute('role', 'menu');
-  menu.setAttribute('aria-label', 'Помощь и советы');
-  menu.hidden = true;
-  const title = document.createElement('div');
-  title.className = 'help-menu-title';
-  title.textContent = 'Помощь и советы';
-  const note = document.createElement('div');
-  note.className = 'help-menu-note';
-  note.textContent = 'Скоро здесь появятся справка и советы по работе с доской.';
-  menu.append(title, note);
-  document.body.append(menu);
-  const close = () => {
-    button.setAttribute('aria-expanded', 'false');
-    if (!menuShown(menu)) return;
-    closeMenu(menu);
-    releaseMenu('help');
-  };
-  const open = () => {
-    claimMenu('help', close);
-    openMenu(menu, {
-      from: button,
-      reverse: true,
-      // над плашкой помощи, по её правому краю
-      place: () => {
-        const r = button.closest('.topbar-group')!.getBoundingClientRect();
-        menu.style.left = `${Math.max(8, r.right - menu.offsetWidth)}px`;
-        menu.style.bottom = `${window.innerHeight - r.top + 6}px`;
-      },
-    });
-    button.setAttribute('aria-expanded', 'true');
-  };
-  const toggle = () => { if (menuShown(menu)) close(); else open(); };
-  button.addEventListener('click', toggle);
-  document.addEventListener('pointerdown', e => { if (menuShown(menu) && !menu.contains(e.target as Node) && !button.contains(e.target as Node)) close(); });
+  const sync = () => button.setAttribute('aria-expanded', sidePanelOpen() && sidePanelMode() === 'help' ? 'true' : 'false');
+  onSidePanel(sync);
+  sync();
+  button.addEventListener('click', () => toggleSidePanel('help'));
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && menuShown(menu)) { close(); button.focus(); return; }
     // F1 — и на доске, и в полях ввода; браузер свою справку не открывает
     if (e.code === 'F1' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && state.view === 'board' && !settingsDialogOpen()) {
       e.preventDefault();
-      if (!e.repeat) toggle();
+      if (!e.repeat) toggleSidePanel('help');
     }
   });
 }
@@ -5546,7 +5515,7 @@ function refresh(): void {
   if (home.hidden === isHome) {
     home.hidden = !isHome;
     // на домашнюю пришли заново: карусели — снова с последней открытой страницы
-    if (isHome) { carouselPos.clear(); lastHomeKey = ''; }
+    if (isHome) { carouselPos.clear(); lastHomeKey = ''; closeSidePanel(true); }
     closeIconPicker();
   }
   noteOpened();

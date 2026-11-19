@@ -3,6 +3,7 @@ import {
   STACK_IDLE_MS, STACK_LEAVE_MS, STACK_MAX, STACK_QUIET_MS, clearNotifyStack, initNotifyStack, stackCount, stackShown,
 } from '../../src/notify-stack';
 import { initNotifyButton, notifyShownCount } from '../../src/notify-button';
+import { openSidePanel, registerPanelMode, resetSidePanelForTests, sidePanelMode, sidePanelOpen } from '../../src/side-panel';
 import { clearNotices, markRead, notices, pushNotice, setDoNotDisturb, unreadCount, type NoticeIcon } from '../../src/notify-center';
 
 const stack = () => document.getElementById('notify-stack') as HTMLElement;
@@ -258,18 +259,26 @@ describe('стопка уведомлений («Выкл»: всё сразу)'
     expect(stackCount()).toBe(1);
   });
 
-  it('щелчок по кнопке без чата раскрывает стопку и держит её; повторный — убирает в кнопку', () => {
+  it('панель ЧУ открыта — стопка спрятана, новые не показываются, наведение на кнопку её не поднимает', () => {
+    registerPanelMode({ id: 'notify', label: 'Чат и уведомления', icon: '<svg></svg>', mount: () => ({}) });
     pushNotice({ title: 'а' });
-    pushNotice({ title: 'б' });
-    vi.advanceTimersByTime(STACK_IDLE_MS);
-    btn().click();
     expect(stackShown()).toBe(true);
-    expect(stack().classList.contains('expanded')).toBe(true);
-    vi.advanceTimersByTime(STACK_IDLE_MS * 2);
-    expect(stackShown()).toBe(true);
-    btn().click();
+    openSidePanel('notify');
     expect(stackShown()).toBe(false);
-    expect(unreadCount()).toBe(2);
+    pushNotice({ title: 'б' });
+    expect(stackShown()).toBe(false);
+    enter(btn());
+    expect(stackShown()).toBe(false);
+    resetSidePanelForTests();
+  });
+
+  it('щелчок по карточке без своего действия — панель ЧУ', () => {
+    registerPanelMode({ id: 'notify', label: 'Чат и уведомления', icon: '<svg></svg>', mount: () => ({}) });
+    pushNotice({ kind: 'chat', title: 'Лемур', body: 'привет', chatId: 'm1' });
+    fire(front(), 'click');
+    expect(sidePanelOpen()).toBe(true);
+    expect(sidePanelMode()).toBe('notify');
+    resetSidePanelForTests();
   });
 
   it('«Скрыть» и Esc убирают раскрытую стопку в кнопку', () => {

@@ -1,7 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { initNotifyButton, notifyLabel, notifyShownCount, setNotifyFallback, setNotifyPending } from '../../src/notify-button';
-import { clearNotices, pushNotice, setDoNotDisturb, unreadCount } from '../../src/notify-center';
-import { chatOpen, closeChat, setChatAvailable } from '../../src/collab-chat';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { initNotifyButton, notifyLabel, notifyShownCount, setNotifyPending } from '../../src/notify-button';
+import { clearNotices, pushNotice, setDoNotDisturb } from '../../src/notify-center';
+import { openSidePanel, registerPanelMode, resetSidePanelForTests, sidePanelMode, sidePanelOpen } from '../../src/side-panel';
 
 const btn = () => document.getElementById('btn-notify') as HTMLButtonElement;
 const badge = () => btn().querySelector('.nb-badge') as HTMLElement;
@@ -15,9 +15,8 @@ describe('кнопка «Чат и уведомления»', () => {
     initNotifyButton();
   });
   afterEach(() => {
-    setNotifyFallback(null);
+    resetSidePanelForTests();
     setNotifyPending(new Set());
-    setChatAvailable(false);
     clearNotices();
     setDoNotDisturb(false);
     localStorage.clear();
@@ -73,31 +72,21 @@ describe('кнопка «Чат и уведомления»', () => {
     expect(badgeText()).toBe('2');
   });
 
-  it('щелчок при совместной работе — панель чата и всё прочитано; повторный — закрывает', () => {
-    setChatAvailable(true);
-    pushNotice({ title: 'событие' });
-    pushNotice({ kind: 'chat', title: 'Лемур', body: 'привет' });
+  it('щелчок — боковая панель в режиме ЧУ (aria-expanded), повторный — закрывает; в другом режиме — переключает на ЧУ', () => {
+    registerPanelMode({ id: 'notify', label: 'Чат и уведомления', icon: '<svg></svg>', mount: () => ({}) });
+    registerPanelMode({ id: 'help', label: 'Справка', icon: '<svg></svg>', mount: () => ({}) });
     btn().click();
-    expect(chatOpen()).toBe(true);
-    expect(unreadCount()).toBe(0);
+    expect(sidePanelOpen()).toBe(true);
+    expect(sidePanelMode()).toBe('notify');
     expect(btn().getAttribute('aria-expanded')).toBe('true');
-    expect(badge().classList.contains('on')).toBe(false);
     btn().click();
-    expect(chatOpen()).toBe(false);
+    expect(sidePanelOpen()).toBe(false);
     expect(btn().getAttribute('aria-expanded')).toBe('false');
-    closeChat();
-  });
-
-  it('щелчок без чата — раскрывает стопку; если стопке нечего показать — всё прочитано', () => {
-    pushNotice({ title: 'событие' });
-    const fallback = vi.fn(() => true);
-    setNotifyFallback(fallback);
+    openSidePanel('help');
+    expect(btn().getAttribute('aria-expanded')).toBe('false');
     btn().click();
-    expect(fallback).toHaveBeenCalledOnce();
-    expect(unreadCount()).toBe(1);
-    setNotifyFallback(() => false);
-    btn().click();
-    expect(unreadCount()).toBe(0);
+    expect(sidePanelMode()).toBe('notify');
+    expect(sidePanelOpen()).toBe(true);
   });
 
   it('повторная настройка той же кнопки не дублирует счётчик', () => {

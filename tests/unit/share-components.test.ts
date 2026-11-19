@@ -40,6 +40,32 @@ function select(onChange = (_v: string) => {}) {
 }
 
 describe('выпадающий список (Spring dropdown)', () => {
+  it('иконки и счётчики пунктов: иконка выбранного на кнопке, setBadge без пересоздания меню, счётчик невыбранного — на кнопке', () => {
+    document.body.className = 'no-ui-anim';
+    const host = dialogHost();
+    const s = createSpringSelect({
+      className: 'mode', label: 'Режим', value: 'a', onChange: () => {},
+      options: [{ value: 'a', label: 'А', icon: '<svg class="ia"></svg>' }, { value: 'b', label: 'Б', icon: '<svg class="ib"></svg>', badge: '3' }],
+    });
+    host.append(s.el);
+    expect(s.el.textContent).toBe('А3'); // подпись и счётчик невыбранного «Б»
+    expect(s.el.querySelector('.roll-icon .ia')).not.toBeNull();
+    expect(s.el.querySelector('.ss-badge')!.classList.contains('on')).toBe(true);
+    s.el.click();
+    const row = host.querySelector<HTMLElement>('[data-value="b"]')!;
+    expect(row.querySelector('.ss-opt-icon .ib')).not.toBeNull();
+    expect(row.querySelector('.ss-opt-badge')!.textContent).toBe('3');
+    s.setBadge('b', '4');
+    expect(host.querySelector('[data-value="b"]')).toBe(row);
+    expect(row.querySelector('.ss-opt-badge')!.textContent).toBe('4');
+    s.setValue('b');
+    expect(s.el.querySelector('.ss-badge')!.classList.contains('on')).toBe(false); // счётчик выбранного на кнопке не нужен
+    expect(s.el.querySelector('.roll-icon .ib')).not.toBeNull();
+    s.setBadge('b', '');
+    s.setValue('a');
+    expect(s.el.querySelector('.ss-badge')!.classList.contains('on')).toBe(false);
+  });
+
   it('разметка: кнопка listbox с подписью значения; меню — внутри окна, с выбранной строкой', () => {
     document.body.className = 'no-ui-anim';
     const { s, menu } = select();

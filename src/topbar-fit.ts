@@ -1,6 +1,8 @@
 // Адаптивная шапка: когда места не хватает, элементы уходят по одному в постоянном порядке —
 // экспорт, импорт, затем «Отменить / Повторить» переезжают под панель инструментов
 // (вертикальной плашкой), и последней «Поделиться» сжимается до иконки.
+// Открытая боковая панель (src/side-panel.ts) сдвигает правую сторону влево: её место (setTopbarReserve)
+// вычитается из доступной ширины.
 // Кнопка «Чат и уведомления» (#btn-notify) стоит в правой стороне шапки, не сжимается и не уходит:
 // её ширина всегда входит в правую сторону (right), а счётчик на ней не меняет её размер.
 // Чистая часть (fitLevel, fitState) не трогает DOM и проверяется unit-тестами.
@@ -83,6 +85,16 @@ const USER_HIDE: Partial<Record<FitStep, string>> = {
 };
 
 let current: FitState = { level: 0, noRoom: new Set() };
+/** Сколько пикселей справа занимает открытая боковая панель (src/side-panel.ts): правая сторона шапки уехала влево. */
+let reserve = 0;
+
+/** Место справа под боковую панель: шапка ужимается так, будто она на столько уже. Пересчёт — сразу. */
+export function setTopbarReserve(px: number): void {
+  const next = Math.max(0, Math.round(px) || 0);
+  if (next === reserve) return;
+  reserve = next;
+  refitTopbar();
+}
 let scheduled = 0;
 let observer: MutationObserver | null = null;
 
@@ -133,7 +145,7 @@ function measure(): FitInput | null {
   const sideGap = parseFloat(getComputedStyle(bar).columnGap) || 0;
   body.classList.add(...levelBefore);
   for (const [step, on] of userBefore) if (on) body.classList.add(USER_HIDE[step]!);
-  return { available: bar.clientWidth, gap, sideGap, items, right: rightFull, shareShrink };
+  return { available: Math.max(0, bar.clientWidth - reserve), gap, sideGap, items, right: rightFull, shareShrink };
 }
 
 /** Плашка «Отменить / Повторить» под панелью инструментов (для любой стороны панели). */

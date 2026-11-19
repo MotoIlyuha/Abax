@@ -634,15 +634,17 @@ test.describe('вёрстка шапки', () => {
     const exp = (await page.locator('.export-group').boundingBox())!;
     expect(exp.x).toBeGreaterThan(imp.x + imp.width);
 
+    // F1 и «Помощь» — боковая панель в режиме «Справка» (SPEC_CHAT §5)
     await page.keyboard.press('F1');
-    await expect(page.locator('#help-menu')).toBeVisible();
+    await expect(page.locator('#side-panel')).toBeVisible();
+    await expect(page.locator('#side-panel .sp-mode')).toHaveAttribute('data-value', 'help');
     await expect(page.locator('#btn-help')).toHaveAttribute('aria-expanded', 'true');
     await page.keyboard.press('F1');
-    await expect(page.locator('#help-menu')).toBeHidden();
+    await expect(page.locator('#side-panel')).toBeHidden();
     await page.locator('#btn-help').click();
-    await expect(page.locator('#help-menu')).toBeVisible();
+    await expect(page.locator('#side-panel')).toBeVisible();
     await page.keyboard.press('Escape');
-    await expect(page.locator('#help-menu')).toBeHidden();
+    await expect(page.locator('#side-panel')).toBeHidden();
 
     await page.locator('#btn-home').click();
     await page.locator('#main-menu [data-section="hide"]').click();
@@ -659,12 +661,14 @@ test.describe('вёрстка шапки', () => {
 
 test.describe('всплывающие меню', () => {
   test('открыто одно меню: новое закрывает прежнее, и с клавиатуры тоже', async ({ board, page }) => {
-    const shown = () => page.evaluate(() => ['main-menu', 'export-menu', 'help-menu', 'view-menu', 'icon-picker', 'share-dialog']
+    const shown = () => page.evaluate(() => ['main-menu', 'export-menu', 'view-menu', 'icon-picker', 'share-dialog']
       .filter(id => { const e = document.getElementById(id); return !!e && !e.hidden; }).join(','));
     await page.locator('#btn-home').click();
     await expect.poll(shown).toBe('main-menu');
+    // F1 открывает боковую панель «Справка»: открытое меню закрывается, панель — не всплывающее меню
     await page.keyboard.press('F1');
-    await expect.poll(shown).toBe('help-menu');
+    await expect.poll(shown).toBe('');
+    await expect(page.locator('#side-panel')).toBeVisible();
     await page.locator('#btn-export').focus();
     await page.keyboard.press('Enter');
     await expect.poll(shown).toBe('export-menu');

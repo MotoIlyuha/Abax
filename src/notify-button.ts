@@ -7,15 +7,16 @@
 //   и исчезает пружиной; кнопка «принимает» уведомления коротким провалом масштаба (notifyAbsorb);
 // - «Обычные» — те же состояния CSS-переходами;
 // - «Выкл» и «уменьшить движение» — сразу.
-// Пока нет боковой панели (SPEC_CHAT, шаг 4), щелчок открывает старую панель чата, если чат доступен,
-// и помечает всё прочитанным; без чата — раскрывает стопку (setNotifyFallback).
+// Щелчок — боковая панель в режиме ЧУ (src/side-panel.ts): закрыта или в другом режиме — открывается на ЧУ,
+// открыта на ЧУ — закрывается. aria-expanded — панель открыта в режиме ЧУ. Когда панель закрывается и кнопка
+// закрытия «возвращается» в ЧУ, кнопка принимает её тем же провалом масштаба (событие doska:side-panel-absorb).
 
 import { DND_ICON, NOTIFY_ICON } from './icons';
 import { createRoll, type Roll } from './roll-text';
 import { S, clamp, register, step, tune, wake, type Spring } from './motion';
 import { menuMotion } from './menu-motion';
-import { doNotDisturb, formatUnread, markRead, notices, onNotices } from './notify-center';
-import { CHAT_PANEL_EVENT, chatAvailable, chatOpen, closeChat, openChat } from './collab-chat';
+import { doNotDisturb, formatUnread, notices, onNotices } from './notify-center';
+import { onSidePanel, sidePanelMode, sidePanelOpen, toggleSidePanel } from './side-panel';
 
 export const NOTIFY_LABEL = 'Чат и уведомления';
 export const NOTIFY_DND_HINT = 'Не беспокоить включено';
@@ -41,7 +42,6 @@ let ui: Ui | null = null;
 let pending: ReadonlySet<string> = new Set();
 /** Число на счётчике сейчас (-1 — ещё не рисовали). */
 let shown = -1;
-let fallback: (() => boolean) | null = null;
 let subscribed = false;
 
 // ----- Пружины («Улучшенные») -----
@@ -123,7 +123,7 @@ function render(): void {
   const label = notifyLabel(n, dnd);
   btn.title = label;
   btn.setAttribute('aria-label', label);
-  btn.setAttribute('aria-expanded', chatOpen() ? 'true' : 'false');
+  btn.setAttribute('aria-expanded', sidePanelOpen() && sidePanelMode() === 'notify' ? 'true' : 'false');
   if (n === shown) return;
   const first = shown < 0;
   const prev = Math.max(0, shown);
@@ -151,7 +151,8 @@ export function initNotifyButton(): void {
   if (!subscribed) {
     subscribed = true;
     onNotices(() => render());
-    document.addEventListener(CHAT_PANEL_EVENT, () => render());
+    onSidePanel(() => render());
+    document.addEventListener('doska:side-panel-absorb', () => notifyAbsorb());
   }
   if (!btn) return;
   if (ui?.btn === btn) { render(); return; }
@@ -177,13 +178,7 @@ export function initNotifyButton(): void {
 }
 
 function onClick(): void {
-  if (chatAvailable()) {
-    if (chatOpen()) closeChat();
-    else { openChat(); markRead(); }
-    return;
-  }
-  if (fallback?.()) return;
-  markRead();
+  toggleSidePanel('notify');
 }
 
 /** Кнопка ЧУ (для стопки: откуда подниматься и куда уходить). */
@@ -195,11 +190,6 @@ export function notifyButton(): HTMLButtonElement | null {
 export function setNotifyPending(ids: ReadonlySet<string>): void {
   pending = new Set(ids);
   render();
-}
-
-/** Что делает щелчок, когда чат недоступен (стопка раскрывается); true — щелчок обработан. */
-export function setNotifyFallback(fn: (() => boolean) | null): void {
-  fallback = fn;
 }
 
 /** Кнопка «принимает» стопку или призрак уведомления: короткий провал масштаба и пружина. */

@@ -13,6 +13,9 @@
 // показывается, уведомление «падает» в кнопку (в «Улучшенных» — короткий призрак карточки под кнопкой).
 // Три режима анимаций: «Улучшенные» — пружины общего цикла src/motion.ts; «Обычные» — CSS transform/opacity
 // 300 мс cubic-bezier(.23,1,.32,1); «Выкл» и «уменьшить движение» — сразу.
+// Пока боковая панель открыта в режиме ЧУ, стопка не показывается и наведение на кнопку её не поднимает
+// (уведомления сразу в ленте — вид панели сам помечает их прочитанными); открылась панель в другом режиме —
+// показанная стопка уходит в кнопку. Щелчок по карточке — её onClick или панель ЧУ на нужной вкладке.
 // Имена и тексты приходят от других участников — только textContent; SVG — константы каталога иконок.
 
 import { S, clamp, register, step, tune, wake, type Spring } from './motion';
@@ -21,8 +24,12 @@ import { createUserAvatar } from './avatar';
 import { DEFAULT_CURSOR_ID, cursorPreset, isCursorId } from './cursors';
 import { CLOSE_ICON, NOTICE_ICONS } from './icons';
 import { doNotDisturb, markNoticeRead, noticeText, noticeTimeLabel, onNotices, type Notice, type NoticeEvent } from './notify-center';
-import { notifyAbsorb, notifyButton, setNotifyFallback, setNotifyPending } from './notify-button';
-import { chatAvailable, openChat } from './collab-chat';
+import { notifyAbsorb, notifyButton, setNotifyPending } from './notify-button';
+import { onSidePanel, openSidePanel, sidePanelMode, sidePanelOpen } from './side-panel';
+import { revealChatMessage, setNotifyTab } from './notify-panel';
+
+/** Боковая панель открыта в режиме ЧУ: уведомления сразу в ленте, стопка не показывается. */
+const panelNotify = (): boolean => sidePanelOpen() && sidePanelMode() === 'notify';
 
 /** Сколько уведомлений держит стопка: новое вытесняет самое старое. */
 export const STACK_MAX = 5;
@@ -97,7 +104,7 @@ let hoverStack = false;
 let hoverButton = false;
 let focusInside = false;
 let dragging = false;
-/** Раскрыта щелчком по кнопке ЧУ (пока нет панели): держится до «Скрыть», Esc или щелчка мимо. */
+/** Раскрыта с клавиатуры (стрелка вниз на кнопке ЧУ): держится до «Скрыть», Esc или щелчка мимо. */
 let pinned = false;
 /** Показана наведением на кнопку ЧУ: уходит обратно через STACK_LEAVE_MS. */
 let byButton = false;
@@ -655,8 +662,19 @@ function dismiss(c: Card, how: 'fade' | 'fly', flyV = 0): void {
 function activate(c: Card): void {
   const n = c.n;
   dismiss(c, 'fade');
-  if (n.onClick) n.onClick();
-  else if (n.kind === 'chat' && chatAvailable()) openChat();
+  if (n.onClick) { n.onClick(); return; }
+  setNotifyTab(n.kind === 'chat' ? 'chat' : 'notices');
+  openSidePanel('notify');
+  if (n.kind === 'chat' && n.chatId) revealChatMessage(n.chatId);
+}
+
+/** Панель ЧУ открылась: стопка прячется сразу (ушедшее остаётся «в кнопке»), кнопку не дёргает. */
+function hideForPanel(): void {
+  if (phase === 'hidden') return;
+  for (const c of [...cards]) if (c.quietUntil) remove(c, 'instant');
+  absorbed = true;
+  simTimers = [];
+  finishTuck();
 }
 
 /** После изменения состава: раскладка, счётчик, таймеры; стопка без видимых карточек прячется
@@ -1021,6 +1039,7 @@ function render(): void {
 function onEvent(ev: NoticeEvent): void {
   if (ev.type === 'push') {
     for (const d of ev.dropped) { const c = cards.find(x => x.n.id === d.id); if (c) remove(c, 'instant'); }
+    if (panelNotify()) { afterChange(); return; }
     arrive(ev.notice);
   } else if (ev.type === 'read' || ev.type === 'clear') {
     // прочитанное в другом месте (открыли чат) уходит из стопки; тихие живут своё время
@@ -1038,12 +1057,9 @@ export function initNotifyStack(): void {
   if (!subscribed) {
     subscribed = true;
     onNotices(onEvent);
-    setNotifyFallback(() => {
-      if (!cards.length) return false;
-      if (phase === 'shown' && pinned) { tuckNow(false); return true; }
-      pinned = true;
-      reveal();
-      return true;
+    onSidePanel(s => {
+      if (s.open && s.mode === 'notify') hideForPanel();
+      else if (s.open && phase === 'shown' && !blocked()) tuck();
     });
     // щелчок мимо раскрытой щелчком стопки — она уходит
     document.addEventListener('pointerdown', ev => {
@@ -1061,7 +1077,7 @@ export function initNotifyStack(): void {
   if (b && b !== boundButton) {
     boundButton = b;
     b.addEventListener('pointermove', ev => {
-      if (hoverButton || ev.pointerType === 'touch') return;
+      if (hoverButton || ev.pointerType === 'touch' || panelNotify()) return;
       hoverButton = true;
       if (cards.length) reveal();
       else schedule();
@@ -1072,7 +1088,7 @@ export function initNotifyStack(): void {
       update();
     });
     b.addEventListener('keydown', ev => {
-      if (ev.key !== 'ArrowDown' || !cards.length) return;
+      if (ev.key !== 'ArrowDown' || !cards.length || panelNotify()) return;
       ev.preventDefault();
       pinned = true;
       reveal();
@@ -1102,6 +1118,7 @@ export function clearNotifyStack(): void {
   hoverButton = false;
   focusInside = false;
   dragging = false;
+  suppressClick = false;
   idleUntil = 0;
   graceUntil = 0;
   P.x = 0; P.v = 0; P.t = 0;
