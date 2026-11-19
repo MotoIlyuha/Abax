@@ -8,7 +8,7 @@
 // Разметка курсоров — из каталога (только константы), имя пользователя — только textContent.
 // Все анимации — на общем цикле пружин (src/motion.ts): кадры идут, только пока что-то движется.
 
-import { CURSOR_PRESETS, cursorCss, cursorPreset, cursorSvg } from './cursors';
+import { CURSOR_CSS_SIZE, CURSOR_PRESETS, cursorCss, cursorPreset, cursorSvg } from './cursors';
 import { aabbIntersects, applyHandle, elementAABB, elementHandles, hitTest, translateElement, type AABB } from './geom';
 import { atRest, register, reduceMotion, S, snap, step, uiAnimOff, unregister, wake, type MotionComponent, type Spring } from './motion';
 import { pickCursor, previewLocked, revertChoice, type CursorChoice } from './onboarding-logic';
@@ -38,8 +38,8 @@ export interface CursorPicker {
 // ----- геометрия (чистые функции — проверяются юнит-тестами) -----
 
 /** Размер иконки курсора в карточке и самого курсора, px. */
-export const ICON_SIZE = 28;
-const ARROW_SIZE = 32;
+export const ICON_SIZE = 24;
+const ARROW_SIZE = CURSOR_CSS_SIZE;
 /** Центр поворота иконки (≈ центр масс стрелки) и кончик — в долях стороны. */
 const ORIGIN_K = 12 / 32;
 const TIP_K = 3 / 32;

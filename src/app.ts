@@ -2106,7 +2106,7 @@ function profileButton(): HTMLButtonElement {
   b.title = 'Профиль: имя, курсор и вход';
   const icon = document.createElement('span');
   icon.className = 'home-profile-cursor';
-  icon.innerHTML = cursorSvg(myCursorId(), { size: 22 });
+  icon.innerHTML = cursorSvg(myCursorId(), { size: 19 });
   const name = document.createElement('span');
   name.className = 'home-profile-name';
   name.textContent = profileName() || 'Профиль';
