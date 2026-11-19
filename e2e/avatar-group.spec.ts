@@ -27,6 +27,23 @@ test('группа аватаров: раскрытие, меню, скрыть 
   const shareBox = (await a.locator('#btn-share').boundingBox())!;
   const stripBox = (await strip.boundingBox())!;
   expect(stripBox.x + stripBox.width).toBeLessThanOrEqual(shareBox.x);
+  // инициалы — на базовой линии текста «Поделиться» (когда появление аватара закончилось)
+  await a.waitForTimeout(800);
+  const baselines = await a.evaluate(() => {
+    const base = (host: Element): number => {
+      const probe = document.createElement('span');
+      probe.style.cssText = 'display:inline-block;width:0;height:0;vertical-align:baseline';
+      const wrap = document.createElement('span');
+      wrap.append(...Array.from(host.childNodes), probe);
+      host.append(wrap);
+      const y = probe.getBoundingClientRect().top;
+      host.append(...Array.from(wrap.childNodes).filter(n => n !== probe));
+      wrap.remove();
+      return y;
+    };
+    return [base(document.querySelector('#btn-share .share-text')!), base(document.querySelector('#collab-presence .ua-circle')!)];
+  });
+  expect(Math.abs(baselines[0] - baselines[1])).toBeLessThan(0.75);
   await shot(a, 'alone');
   const boardA = new Board(a);
   await boardA.rect(400, 300, 520, 380);

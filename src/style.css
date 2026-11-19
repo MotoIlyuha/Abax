@@ -3511,6 +3511,9 @@ body.no-motion .activity-pill, body.no-ui-anim .activity-pill { animation: none;
 }
 /* группа аватаров — слева от «Поделиться», без плашки (index.html); шапка сама не ловит указатель */
 #collab-presence { display: flex; align-items: center; flex: none; pointer-events: auto; }
+/* инициалы — на одной базовой линии с текстом «Поделиться»: по центру они на 2.4 px выше (замер в e2e/avatar-group.spec.ts);
+   сдвиг без влияния на раскладку шапки */
+#collab-presence .avatar-group { top: 2.4px; }
 #collab-presence[hidden] { display: none; }
 
 /* ----- Аватар пользователя (src/avatar.ts): круг с инициалами, курсор справа внизу, статус справа вверху ----- */
