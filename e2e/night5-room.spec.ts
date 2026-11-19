@@ -41,13 +41,17 @@ test.describe('живая комната', () => {
     await expect(a.locator('#btn-notify')).toBeVisible();
     await expect(g.locator('#btn-notify')).toBeVisible();
 
+    // кнопка ЧУ открывает правую панель в режиме «Чат и уведомления»; вкладка «Чат» — лента и поле ввода
     await g.locator('#btn-notify').click();
-    const gPanel = g.locator('#chat-panel');
+    const gPanel = g.locator('#side-panel');
     await expect(gPanel).toBeVisible();
-    const input = gPanel.locator('.chat-input');
+    await expect(gPanel.locator('.sp-mode')).toHaveAttribute('data-value', 'notify');
+    await gPanel.locator('#np-tab-chat').click();
+    const gFeed = gPanel.locator('#np-view-chat');
+    const input = gPanel.locator('.composer-input');
     await input.fill('Смотрите https://abax.example/doc?x=1, <b>жирный</b> <img src=x onerror=alert(1)>');
     await input.press('Enter');
-    await expect(gPanel.locator('.chat-msg.mine')).toHaveCount(1);
+    await expect(gFeed.locator('.cf-mine .cf-msg')).toHaveCount(1);
     await expect(input).toHaveValue('');
 
     // у автора панель закрыта: превью в стопке, затем стопка уходит в кнопку ЧУ и счётчик досчитывает
@@ -55,27 +59,31 @@ test.describe('живая комната', () => {
     await expect(a.locator('#notify-stack')).toBeHidden({ timeout: 10000 });
     await expect(a.locator('#btn-notify')).toHaveAttribute('aria-label', /непрочитанных/);
     await a.locator('#btn-notify').click();
-    const aPanel = a.locator('#chat-panel');
+    const aPanel = a.locator('#side-panel');
     await expect(aPanel).toBeVisible();
+    await aPanel.locator('#np-tab-chat').click();
     await expect(a.locator('#btn-notify')).toHaveAttribute('aria-label', 'Чат и уведомления');
-    const msg = aPanel.locator('.chat-msg').last();
-    await expect(msg.locator('.chat-name')).toHaveText('Капибара');
-    const link = msg.locator('.chat-text a');
+    const aFeed = aPanel.locator('#np-view-chat');
+    const group = aFeed.locator('.cf-group').last();
+    await expect(group.locator('.cf-name')).toHaveText('Капибара');
+    const bubble = group.locator('.cf-bubble').last();
+    const link = bubble.locator('a');
     await expect(link).toHaveCount(1);
     await expect(link).toHaveAttribute('href', 'https://abax.example/doc?x=1');
     await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
     await expect(link).toHaveAttribute('target', '_blank');
     // HTML из сообщения — просто текст
-    await expect(msg.locator('.chat-text')).toContainText('<b>жирный</b> <img src=x onerror=alert(1)>');
-    await expect(msg.locator('.chat-text b, .chat-text img')).toHaveCount(0);
+    await expect(bubble).toContainText('<b>жирный</b> <img src=x onerror=alert(1)>');
+    await expect(bubble.locator('b, img')).toHaveCount(0);
 
     // ответ автора доходит до гостя; Shift+Enter — перенос строки, а не отправка
-    const aInput = aPanel.locator('.chat-input');
+    const aInput = aPanel.locator('.composer-input');
     await aInput.fill('Привет');
     await aInput.press('Shift+Enter');
+    await expect(aFeed.locator('.cf-msg')).toHaveCount(1);
     await aInput.press('Enter');
-    await expect(gPanel.locator('.chat-msg').last().locator('.chat-text')).toHaveText('Привет', { timeout: 10000 });
-    await expect(gPanel.locator('.chat-msg')).toHaveCount(2);
+    await expect(gFeed.locator('.cf-msg').last().locator('.cf-bubble')).toHaveText('Привет', { timeout: 10000 });
+    await expect(gFeed.locator('.cf-msg')).toHaveCount(2);
 
     // история переживает переподключение: новый гость видит оба сообщения
     await G.close();
@@ -83,7 +91,8 @@ test.describe('живая комната', () => {
     const G2 = await device(browser, base, { name: 'Вомбат' });
     const g2 = await openAt(G2, g.url(), env.errors, 'guest');
     await g2.locator('#btn-notify').click();
-    await expect(g2.locator('#chat-panel .chat-msg')).toHaveCount(2);
+    await g2.locator('#side-panel #np-tab-chat').click();
+    await expect(g2.locator('#np-view-chat .cf-msg')).toHaveCount(2);
     await A.close();
     await G2.close();
   });

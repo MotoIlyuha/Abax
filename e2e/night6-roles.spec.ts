@@ -50,9 +50,12 @@ test.describe('роли', () => {
     await expect(p.locator('body')).toHaveClass(/readonly-mode/);
     await expect.poll(() => stateOf(p, st => st.board.elements.length), { timeout: 10000 }).toBe(2);
     await p.locator('#btn-notify').click();
-    await expect(p.locator('.chat-input')).toBeHidden();
-    await expect(p.locator('.chat-hint')).toHaveText('Читатели не пишут в чат');
-    await p.keyboard.press('Escape');
+    await p.locator('#side-panel #np-tab-chat').click();
+    await expect(p.locator('#side-panel .composer-input')).toHaveCount(0);
+    await expect(p.locator('#side-panel .composer-attach-image')).toHaveCount(0);
+    await expect(p.locator('#side-panel .np-reader')).toHaveText('Читатели не пишут в чат');
+    await p.locator('#side-panel-close').click();
+    await expect(p.locator('#side-panel')).toBeHidden();
     // выделить можно (копирование не запрещено), но реакций и «Комментировать» у читателя нет
     await new Board(p).click({ x: 460, y: 340 });
     await expect.poll(() => stateOf(p, st => st.selection.size)).toBe(1);
@@ -86,11 +89,14 @@ test.describe('роли', () => {
     await expect(g.locator('body')).toHaveClass(/readonly-mode/);
     await expect.poll(() => stateOf(g, st => st.board.elements.length), { timeout: 10000 }).toBe(1);
     await g.locator('#btn-notify').click();
-    await expect(g.locator('.chat-input')).toBeVisible();
-    await g.locator('.chat-input').fill('можно вопрос?');
-    await g.locator('.chat-input').press('Enter');
+    await g.locator('#side-panel #np-tab-chat').click();
+    const input = g.locator('#side-panel .composer-input');
+    await expect(input).toBeVisible();
+    await input.fill('можно вопрос?');
+    await input.press('Enter');
     await expect(a.locator('#notify-stack .ns-card', { hasText: 'можно вопрос?' })).toBeVisible({ timeout: 10000 });
-    await g.keyboard.press('Escape');
+    await g.locator('#side-panel-close').click();
+    await expect(g.locator('#side-panel')).toBeHidden();
     await new Board(g).click({ x: 460, y: 340 });
     await expect(g.locator('.qm-react').first()).toBeVisible();
     await A.close();
