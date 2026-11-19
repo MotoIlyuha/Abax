@@ -1,11 +1,16 @@
 import { DEFAULT_CURSOR_ID, cursorPreset, isCursorId } from './cursors';
 import { CHAT_HISTORY, CHAT_MAX_LEN, createRateLimiter, normalizeChatText, tokenizeChat, type ChatMessage } from './room-chat';
-import { showPill } from './activity-pills';
-import { CHAT_ICON } from './icons';
+import { clearNotices, markRead, pushNotice, unreadCount } from './notify-center';
 
-// Чат комнаты (SPEC_NIGHT5 §6): кнопка «Чат» с бейджем непрочитанных, панель с лентой и полем ввода.
+// Чат комнаты (SPEC_NIGHT5 §6): панель с лентой и полем ввода. Непрочитанные сообщения — уведомления вида 'chat'
+// в центре уведомлений (src/notify-center.ts): их считает кнопка «Чат и уведомления» (src/notify-button.ts).
 // История приходит в init, новые сообщения — {t:'chat'} от хаба (и свои тоже: хаб возвращает их отправителю).
 // Всё, что написали участники, выводится только через textContent; ссылки — <a> с textContent и rel.
+
+export { formatUnread } from './notify-center';
+
+/** Событие на document: панель чата открылась или закрылась (кнопка ЧУ обновляет aria-expanded). */
+export const CHAT_PANEL_EVENT = 'doska:chat-panel';
 
 /** С какой длины показывается счётчик символов. */
 export const CHAT_COUNTER_FROM = 400;
@@ -17,7 +22,6 @@ const OFFLINE_HINT = 'Нет соединения с доской';
 
 let messages: ChatMessage[] = [];
 let myId = -1;
-let unread = 0;
 let open = false;
 let available = false;
 let sender: ((text: string) => boolean) | null = null;
@@ -31,6 +35,12 @@ export function setChatSender(fn: ((text: string) => boolean) | null): void {
   sender = fn;
 }
 
+/** Аватар автора сообщения для уведомления (collab.ts: смайл или фото из снимка участников). */
+let avatarOf: ((userId: number) => string | null) | null = null;
+export function setChatAvatarLookup(fn: ((userId: number) => string | null) | null): void {
+  avatarOf = fn;
+}
+
 function isChatMessage(v: unknown): v is ChatMessage {
   if (!v || typeof v !== 'object') return false;
   const m = v as Record<string, unknown>;
@@ -39,17 +49,15 @@ function isChatMessage(v: unknown): v is ChatMessage {
     && (m.cursorId === undefined || typeof m.cursorId === 'string');
 }
 
-/** Текст бейджа непрочитанных: пусто, 1..99 или 99+. */
-export function formatUnread(n: number): string {
-  if (n <= 0) return '';
-  return n > 99 ? '99+' : String(n);
+/** Начало текста сообщения для уведомления: пробелы схлопнуты, длинное обрезано. */
+export function chatPreviewBody(text: string): string {
+  const flat = text.replace(/\s+/g, ' ').trim();
+  return flat.length > CHAT_PREVIEW_LEN ? `${flat.slice(0, CHAT_PREVIEW_LEN)}…` : flat;
 }
 
-/** Превью сообщения для пилюли: имя и начало текста. */
+/** Превью сообщения одной строкой: имя и начало текста. */
 export function chatPreviewText(m: Pick<ChatMessage, 'name' | 'text'>): string {
-  const text = m.text.replace(/\s+/g, ' ');
-  const cut = text.length > CHAT_PREVIEW_LEN ? `${text.slice(0, CHAT_PREVIEW_LEN)}…` : text;
-  return `${m.name || 'Участник'}: ${cut}`;
+  return `${m.name || 'Участник'}: ${chatPreviewBody(m.text)}`;
 }
 
 function timeOf(ts: number): string {
@@ -57,41 +65,9 @@ function timeOf(ts: number): string {
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-// ----- Кнопка -----
-
-function button(): HTMLButtonElement | null {
-  const btn = document.getElementById('btn-chat') as HTMLButtonElement | null;
-  if (btn && !btn.dataset.ready) {
-    btn.dataset.ready = '1';
-    btn.innerHTML = CHAT_ICON; // константа модуля, без пользовательских данных
-    const badge = document.createElement('span');
-    badge.className = 'chat-badge';
-    badge.hidden = true;
-    btn.appendChild(badge);
-    btn.addEventListener('click', () => toggleChat());
-  }
-  return btn;
-}
-
-/** Иконка и обработчик кнопки «Чат» в шапке (кнопка скрыта, пока нет совместной работы). */
-export function initChatButton(): void {
-  button();
-  renderBadge();
-}
-
-function renderBadge(): void {
-  const btn = button();
-  if (!btn) return;
-  const badge = btn.querySelector<HTMLElement>('.chat-badge');
-  const text = formatUnread(unread);
-  if (badge) {
-    badge.textContent = text;
-    badge.hidden = text === '';
-  }
-  const label = text ? `Чат: непрочитанных — ${text}` : 'Чат';
-  btn.title = label;
-  btn.setAttribute('aria-label', label);
-  btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+/** Панель открылась или закрылась: кнопка ЧУ обновляет aria-expanded. */
+function announcePanel(): void {
+  document.dispatchEvent(new CustomEvent(CHAT_PANEL_EVENT, { detail: { open } }));
 }
 
 // ----- Панель -----
@@ -213,19 +189,20 @@ export function openChat(): void {
   if (!available) return;
   if (!ui || !ui.panel.isConnected) ui = buildUi(); // панель могли убрать из документа вместе с интерфейсом
   open = true;
-  unread = 0;
+  markRead('chat');
   ui.panel.hidden = false;
   renderList();
-  renderBadge();
+  announcePanel();
   renderWrite();
   if (canWrite) ui.input.focus();
   else ui.panel.querySelector<HTMLButtonElement>('.chat-close')?.focus();
 }
 
 export function closeChat(): void {
+  const was = open;
   open = false;
   if (ui) ui.panel.hidden = true;
-  renderBadge();
+  if (was) announcePanel();
 }
 
 export function toggleChat(): void {
@@ -237,8 +214,14 @@ export function chatOpen(): boolean {
   return open;
 }
 
+/** Непрочитанные сообщения чата (уведомления вида 'chat' в центре уведомлений). */
 export function chatUnread(): number {
-  return unread;
+  return unreadCount('chat');
+}
+
+/** Чат доступен: идёт совместная работа. */
+export function chatAvailable(): boolean {
+  return available;
 }
 
 export function chatMessages(): readonly ChatMessage[] {
@@ -251,9 +234,8 @@ export function chatMessages(): readonly ChatMessage[] {
 export function chatReset(history: unknown, me: number): void {
   myId = me;
   messages = Array.isArray(history) ? history.filter(isChatMessage).slice(-CHAT_HISTORY) : [];
-  unread = 0;
+  markRead('chat');
   if (open) renderList();
-  renderBadge();
 }
 
 /** Новое сообщение {t:'chat'}. */
@@ -270,9 +252,16 @@ export function chatReceive(raw: unknown): void {
     return;
   }
   if (raw.by === myId) return;
-  unread++;
-  renderBadge();
-  showPill({ kind: 'info', text: chatPreviewText(raw), cursorId: raw.cursorId ?? DEFAULT_CURSOR_ID, onClick: () => openChat() });
+  const name = raw.name || 'Участник';
+  pushNotice({
+    kind: 'chat',
+    title: name,
+    body: chatPreviewBody(raw.text),
+    chatId: raw.id,
+    ts: raw.ts,
+    user: { userId: raw.by, name, cursorId: raw.cursorId ?? DEFAULT_CURSOR_ID, avatar: avatarOf?.(raw.by) ?? null },
+    onClick: () => openChat(),
+  });
 }
 
 /** Чат доступен, пока идёт совместная работа; выключение сбрасывает ленту и закрывает панель. */
@@ -292,14 +281,11 @@ function renderWrite(): void {
 
 export function setChatAvailable(on: boolean): void {
   available = on;
-  const btn = button();
-  if (btn) btn.hidden = !on;
   if (!on) {
     closeChat();
     messages = [];
-    unread = 0;
+    clearNotices('chat');
     limiter = createRateLimiter();
     if (ui) { ui.input.value = ''; ui.hint.textContent = ''; renderCount(); renderList(); }
-    renderBadge();
   }
 }

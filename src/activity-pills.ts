@@ -1,8 +1,13 @@
 import { DEFAULT_CURSOR_ID, cursorSvg, isCursorId } from './cursors';
+import {
+  doNotDisturb, markNoticeRead, noticeText, onNotices, pushNotice,
+  type Notice, type NoticeIcon, type NoticeInput, type NoticeUser,
+} from './notify-center';
 
-// Всплывающие уведомления комнаты (Activity Pills, SPEC_NIGHT5 §5): справа сверху под шапкой, не больше трёх,
-// каждое исчезает само. Имена и тексты приходят от других участников — только textContent; мини-курсор —
-// разметка из каталога курсоров (только его константы, как у курсоров участников в collab.ts).
+// Всплывающие уведомления комнаты (Activity Pills, SPEC_NIGHT5 §5) — теперь только вид уведомлений центра
+// (src/notify-center.ts, SPEC_CHAT §2): showPill() — обёртка совместимости, превращает старые опции в NoticeInput.
+// Пилюли справа сверху под шапкой, не больше трёх, каждая исчезает сама. Имена и тексты приходят от других
+// участников — только textContent; мини-курсор — разметка из каталога курсоров (только его константы).
 
 export type PillKind = 'info' | 'warn' | 'ok';
 
@@ -17,6 +22,9 @@ export interface PillOptions {
   action?: PillAction;
   /** Клик по всей пилюле (например, открыть чат). */
   onClick?: () => void;
+  /** Отклик на моё действие: показывается, но сразу прочитано. */
+  quiet?: boolean;
+  icon?: NoticeIcon;
 }
 
 /** Не больше стольких пилюль одновременно: новая вытесняет самую старую. */
@@ -26,7 +34,20 @@ export const PILL_MS = 3500;
 /** Длительность исчезновения (CSS); без анимации — сразу. */
 const LEAVE_MS = 200;
 
-interface Live { el: HTMLElement; timer: number }
+/** Старые опции пилюли → уведомление центра (kind → level, text → title, cursorId → user). */
+export function pillToNotice(opts: PillOptions): NoticeInput {
+  return {
+    level: opts.kind ?? 'info',
+    title: opts.text,
+    ...(opts.icon ? { icon: opts.icon } : {}),
+    ...(opts.cursorId !== undefined ? { user: { name: '', cursorId: opts.cursorId } } : {}),
+    ...(opts.action ? { action: opts.action } : {}),
+    ...(opts.onClick ? { onClick: opts.onClick } : {}),
+    ...(opts.quiet ? { quiet: true } : {}),
+  };
+}
+
+interface Live { id: string; el: HTMLElement; timer: number }
 const live: Live[] = [];
 
 function container(): HTMLElement {
@@ -56,44 +77,57 @@ function dismiss(item: Live): void {
   window.setTimeout(() => item.el.remove(), LEAVE_MS);
 }
 
-/** Показать пилюлю; возвращает функцию, скрывающую её раньше времени. */
-export function showPill(opts: PillOptions): () => void {
+/** Пилюля для нового уведомления центра. */
+function render(n: Notice): void {
+  // «не беспокоить»: показываются только отклики на мои действия
+  if (doNotDisturb() && !n.quiet) return;
   const root = container();
   while (live.length >= PILL_MAX) dismiss(live[0]);
   const el = document.createElement('div');
-  el.className = `activity-pill ${opts.kind ?? 'info'}`;
-  if (opts.cursorId !== undefined) {
+  el.className = `activity-pill ${n.level}`;
+  if (n.user) {
     const icon = document.createElement('i');
     icon.className = 'ap-cursor';
-    const id = isCursorId(opts.cursorId) ? opts.cursorId : DEFAULT_CURSOR_ID;
-    icon.innerHTML = cursorSvg(id, { size: 14 });
+    const id = n.user.cursorId && isCursorId(n.user.cursorId) ? n.user.cursorId : DEFAULT_CURSOR_ID;
+    icon.innerHTML = cursorSvg(id, { size: 14 }); // разметка каталога курсоров — только константы
     el.appendChild(icon);
   }
   const text = document.createElement('span');
   text.className = 'ap-text';
-  text.textContent = opts.text;
+  text.textContent = noticeText(n);
   el.appendChild(text);
-  const item: Live = { el, timer: 0 };
-  if (opts.action) {
+  const item: Live = { id: n.id, el, timer: 0 };
+  if (n.action) {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'ap-action';
-    btn.textContent = opts.action.label;
-    const run = opts.action.run;
-    btn.addEventListener('click', ev => { ev.stopPropagation(); dismiss(item); run(); });
+    btn.textContent = n.action.label;
+    const run = n.action.run;
+    btn.addEventListener('click', ev => { ev.stopPropagation(); markNoticeRead(n.id); dismiss(item); run(); });
     el.appendChild(btn);
   }
-  if (opts.onClick) {
-    const onClick = opts.onClick;
+  if (n.onClick) {
+    const onClick = n.onClick;
+    const go = () => { markNoticeRead(n.id); dismiss(item); onClick(); };
     el.classList.add('clickable');
     el.tabIndex = 0;
-    el.addEventListener('click', () => { dismiss(item); onClick(); });
-    el.addEventListener('keydown', ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); dismiss(item); onClick(); } });
+    el.addEventListener('click', go);
+    el.addEventListener('keydown', ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); go(); } });
   }
   root.appendChild(el);
   item.timer = window.setTimeout(() => dismiss(item), PILL_MS);
   live.push(item);
-  return () => dismiss(item);
+}
+
+onNotices(ev => {
+  if (ev.type === 'push') render(ev.notice);
+  else if (ev.type === 'clear') for (const item of live.filter(x => ev.ids.includes(x.id))) dismiss(item);
+});
+
+/** Показать пилюлю (обёртка совместимости: уведомление центра); возвращает функцию, скрывающую её раньше времени. */
+export function showPill(opts: PillOptions): () => void {
+  const n = pushNotice(pillToNotice(opts));
+  return () => { const item = live.find(x => x.id === n.id); if (item) dismiss(item); };
 }
 
 /** Убрать все пилюли (конец совместной работы). */
@@ -143,7 +177,7 @@ export function diffUsers(prev: readonly PillUser[], next: readonly PillUser[], 
   return out;
 }
 
-/** Текст пилюли для события состава. */
+/** Текст события состава одной строкой. */
 export function userEventText(ev: UserEvent): string {
   const name = ev.user.name || 'Участник';
   switch (ev.kind) {
@@ -155,7 +189,23 @@ export function userEventText(ev: UserEvent): string {
   }
 }
 
-/** Показать пилюли для событий состава. */
-export function showUserEvents(events: readonly UserEvent[]): void {
-  for (const ev of events) showPill({ kind: 'info', text: userEventText(ev), cursorId: ev.user.cursorId ?? DEFAULT_CURSOR_ID });
+/**
+ * Событие состава — структурное уведомление: заголовок — имя, текст — что случилось, значок события,
+ * участник для аватара (avatarOf — его смайл или фото, collab.ts). Смена имени: заголовок — прежнее имя.
+ */
+export function userEventNotice(ev: UserEvent, avatarOf?: (u: PillUser) => string | null): NoticeInput {
+  const name = ev.user.name || 'Участник';
+  const user: NoticeUser = { userId: ev.user.userId, name, cursorId: ev.user.cursorId ?? DEFAULT_CURSOR_ID, avatar: avatarOf ? avatarOf(ev.user) : null };
+  switch (ev.kind) {
+    case 'join': return { title: name, body: 'присоединился к доске', icon: 'join', level: 'ok', user };
+    case 'leave': return { title: name, body: 'покинул доску', icon: 'leave', user };
+    case 'rename': return { title: ev.from || 'Участник', body: `теперь ${name}`, icon: 'rename', user };
+    case 'cursor': return { title: name, body: 'сменил курсор', icon: 'cursor', user };
+    case 'avatar': return { title: name, body: 'сменил аватар', icon: 'avatar', user };
+  }
+}
+
+/** Уведомления для событий состава. */
+export function showUserEvents(events: readonly UserEvent[], avatarOf?: (u: PillUser) => string | null): void {
+  for (const ev of events) pushNotice(userEventNotice(ev, avatarOf));
 }

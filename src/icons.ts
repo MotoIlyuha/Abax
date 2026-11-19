@@ -2,6 +2,7 @@
 // в разметке нет, поэтому их безопасно вставлять через innerHTML.
 
 import type { GridMode, TextAlign, TextVAlign } from './types';
+import type { NoticeIcon } from './notify-center';
 
 /** Обёртка контурной иконки 24×24: пути — константы каталога. */
 export const svg = (paths: string) =>
@@ -169,7 +170,33 @@ export const BACK_ARROW_ICON = svg('<path d="M19 12H5"/><path d="M11 6l-6 6 6 6"
 /** Дорожка ползунка: «клин» от тонкого к толстому. */
 export const SLIDER_TRACK_ICON = `<svg viewBox="0 0 120 24" preserveAspectRatio="none"><path d="M3 12a2.4 2.4 0 0 1 2.4-2.4C40 7.5 70 3.5 103 3.5a8.5 8.5 0 0 1 0 17C70 20.5 40 16.5 5.4 14.4A2.4 2.4 0 0 1 3 12Z"/></svg>`;
 
-export const CHAT_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12.5a7.5 7.5 0 0 1-11.2 6.5L4 20l1.1-4.3A7.5 7.5 0 1 1 20 12.5z"/></svg>';
+/** Кнопка «Чат и уведомления» (ЧУ): облачко с точками. */
+export const NOTIFY_ICON = svg('<path d="M20 12.5a7.5 7.5 0 0 1-11.2 6.5L4 20l1.1-4.3A7.5 7.5 0 1 1 20 12.5z"/><path d="M9.2 12.5h.01M12.5 12.5h.01M15.8 12.5h.01" stroke-width="2.6"/>');
+
+/** «Не беспокоить»: залитый полумесяц (значок у кнопки ЧУ). */
+export const DND_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z" fill="currentColor"/></svg>';
+
+/** Значки событий в уведомлениях (src/notify-stack.ts): ключи — NoticeIcon центра уведомлений. */
+export const NOTICE_ICONS: Record<NoticeIcon, string> = {
+  bell: svg('<path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>'),
+  join: svg('<circle cx="10" cy="8" r="3.5"/><path d="M3.5 20c.7-3.4 3.3-5.5 6.5-5.5 1.4 0 2.6.4 3.6 1"/><path d="M18 14v6M15 17h6"/>'),
+  leave: svg('<path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4"/><path d="M15 16l4-4-4-4"/><path d="M19 12H9"/>'),
+  rename: svg('<path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17z"/><path d="M13.5 20H20"/>'),
+  cursor: svg('<path d="M5 4l5.5 15 2.2-6.3L19 10.5z"/>'),
+  avatar: svg('<circle cx="12" cy="12" r="8.5"/><path d="M8.5 14a4.5 4.5 0 0 0 7 0"/><path d="M9.5 9.5h.01M14.5 9.5h.01"/>'),
+  role: svg('<path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/><path d="M9 12l2 2 4-4"/>'),
+  rights: svg('<rect x="5" y="10.5" width="14" height="10" rx="2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/><path d="M12 14.5v2"/>'),
+  summon: svg('<circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M16 11h6M19 8l3 3-3 3"/>'),
+  follow: svg('<path d="M4 4l7 17 2.5-7.5L21 11z"/><path d="M15 15l5 5"/>'),
+  link: svg('<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>'),
+  offline: svg('<path d="M2 8.8a15 15 0 0 1 4.2-2.7M22 8.8A15 15 0 0 0 10.7 5"/><path d="M5.5 12.4a10 10 0 0 1 3.4-2M18.5 12.4a10 10 0 0 0-2.3-1.6"/><path d="M9 15.9a5 5 0 0 1 6 0"/><path d="M12 19.5h.01"/><path d="M3 3l18 18"/>'),
+  online: svg('<path d="M2 8.8a15 15 0 0 1 20 0"/><path d="M5.5 12.4a10 10 0 0 1 13 0"/><path d="M9 15.9a5 5 0 0 1 6 0"/><path d="M12 19.5h.01"/>'),
+  hidden: svg('<path d="M10.6 5.1A10.4 10.4 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-2.6 3.5M6.6 6.6C3.7 8.4 2 12 2 12s3.5 7 10 7a9.8 9.8 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><path d="M3 3l18 18"/>'),
+  draft: svg('<path d="M4 20l1-4L16.5 4.5a2.1 2.1 0 0 1 3 3L8 19z"/><path d="M14.5 6.5l3 3"/>'),
+  remove: svg('<circle cx="10" cy="8" r="3.5"/><path d="M3.5 20c.7-3.4 3.3-5.5 6.5-5.5 1.4 0 2.6.4 3.6 1"/><path d="M15 17h6"/>'),
+  image: svg('<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.5"/><path d="M21 15l-5-5L5 19"/>'),
+  board: svg('<path d="M4 8V5.5A1.5 1.5 0 0 1 5.5 4H8M16 4h2.5A1.5 1.5 0 0 1 20 5.5V8M20 16v2.5a1.5 1.5 0 0 1-1.5 1.5H16M8 20H5.5A1.5 1.5 0 0 1 4 18.5V16"/><rect x="8" y="8" width="8" height="8" rx="1.5"/>'),
+};
 
 export const SUMMON_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M16 11h6M19 8l3 3-3 3"/></svg>';
 

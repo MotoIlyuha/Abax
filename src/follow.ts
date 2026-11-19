@@ -1,6 +1,6 @@
 import { state, onChange } from './state';
 import { PRESENCE_EVENT, VIEW_SEND_MS, collabActive, collabUsers, myCollabId, type CollabGotoDetail, type CollabUser } from './collab';
-import { showPill } from './activity-pills';
+import { pushNotice } from './notify-center';
 
 // «Следить за участником»: мой экран повторяет страницу и камеру выбранного участника. Режим только у меня —
 // участник ничего не замечает, хабы о нём не знают. Выход — любое своё перемещение по холсту (панорама, колесо,
@@ -72,14 +72,14 @@ export function startFollow(uid: number): void {
   syncFollow();
 }
 
-/** Перестать следить (pill — пояснение пилюлей). */
+/** Перестать следить (pill — пояснение уведомлением: слежение остановилось само, не по моему действию). */
 export function stopFollow(pill?: string): void {
   if (followUid === null) return;
   followUid = null;
   lastKey = '';
   targetPage = '';
   waiting = false;
-  if (pill) showPill({ kind: 'info', text: pill });
+  if (pill) pushNotice({ title: pill, icon: 'follow' });
   notify();
 }
 

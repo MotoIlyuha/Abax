@@ -1,6 +1,8 @@
 // Адаптивная шапка: когда места не хватает, элементы уходят по одному в постоянном порядке —
 // экспорт, импорт, затем «Отменить / Повторить» переезжают под панель инструментов
 // (вертикальной плашкой), и последней «Поделиться» сжимается до иконки.
+// Кнопка «Чат и уведомления» (#btn-notify) стоит в правой стороне шапки, не сжимается и не уходит:
+// её ширина всегда входит в правую сторону (right), а счётчик на ней не меняет её размер.
 // Чистая часть (fitLevel, fitState) не трогает DOM и проверяется unit-тестами.
 
 /** Шаги ужатия шапки по порядку. */
@@ -186,9 +188,17 @@ export function initTopbarFit(): void {
   for (const el of bar.querySelectorAll<HTMLElement>('.topbar-side, .topbar-side > *')) ro.observe(el);
   const toolbar = document.getElementById('toolbar');
   if (toolbar) ro.observe(toolbar);
-  // движение аватаров в группе (стили кадров пружин) — не повод пересчитывать шапку; состав группы — повод
+  // движение аватаров в группе (стили кадров пружин) — не повод пересчитывать шапку; состав группы — повод.
+  // Кнопка ЧУ — постоянной ширины: перекат и пружины её счётчика шапку не меняют
+  const ignored = (r: MutationRecord): boolean => {
+    const t = r.target instanceof Element ? r.target : r.target.parentElement;
+    if (!t) return false;
+    if (t.closest('#btn-notify') && t.id !== 'btn-notify') return true;
+    if (t.id === 'btn-notify' && r.type === 'attributes' && r.attributeName !== 'hidden') return true;
+    return r.type === 'attributes' && r.attributeName !== 'hidden' && !!t.closest('.avatar-group');
+  };
   const mo = observer = new MutationObserver(records => {
-    if (records.some(r => !(r.type === 'attributes' && r.attributeName !== 'hidden' && r.target instanceof Element && r.target.closest('.avatar-group')))) scheduleTopbarFit();
+    if (records.some(r => !ignored(r))) scheduleTopbarFit();
   });
   mo.observe(bar, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['hidden', 'style', 'class'] });
   mo.observe(document.body, { attributes: true, attributeFilter: ['class'] });

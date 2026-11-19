@@ -1,37 +1,33 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-  CHAT_PREVIEW_LEN, chatMessages, chatOpen, chatPreviewText, chatReceive, chatReset, chatUnread, closeChat, formatUnread,
-  openChat, setChatAvailable, setChatSender,
+  CHAT_PANEL_EVENT, CHAT_PREVIEW_LEN, chatAvailable, chatMessages, chatOpen, chatPreviewBody, chatPreviewText, chatReceive, chatReset,
+  chatUnread, closeChat, formatUnread, openChat, setChatAvailable, setChatAvatarLookup, setChatSender,
 } from '../../src/collab-chat';
-import { clearPills } from '../../src/activity-pills';
+import { clearNotices, notices, noticeText, unreadCount } from '../../src/notify-center';
 
 const msg = (id: string, by: number, text: string, extra: Record<string, unknown> = {}) => ({ id, by, name: `У${by}`, text, ts: Date.UTC(2026, 10, 17, 12, 5), ...extra });
 const panel = () => document.getElementById('chat-panel')!;
 const input = () => panel().querySelector('.chat-input') as HTMLTextAreaElement;
-const badge = () => document.querySelector('#btn-chat .chat-badge') as HTMLElement;
+const chatNotices = () => notices().filter(n => n.kind === 'chat');
 const key = (k: string, shift = false) => input().dispatchEvent(new KeyboardEvent('keydown', { key: k, shiftKey: shift, bubbles: true, cancelable: true }));
 
 describe('чат комнаты', () => {
   beforeEach(() => {
     document.body.textContent = '';
     document.body.className = 'no-motion';
-    const btn = document.createElement('button');
-    btn.id = 'btn-chat';
-    btn.hidden = true;
-    document.body.appendChild(btn);
     setChatAvailable(true);
   });
   afterEach(() => {
     setChatAvailable(false);
     setChatSender(null);
-    clearPills();
+    setChatAvatarLookup(null);
+    clearNotices();
   });
 
-  it('кнопка видна только при совместной работе', () => {
-    const btn = document.getElementById('btn-chat') as HTMLButtonElement;
-    expect(btn.hidden).toBe(false);
+  it('чат доступен только при совместной работе', () => {
+    expect(chatAvailable()).toBe(true);
     setChatAvailable(false);
-    expect(btn.hidden).toBe(true);
+    expect(chatAvailable()).toBe(false);
   });
 
   it('история из init — в ленте, непрочитанных нет', () => {
@@ -66,30 +62,43 @@ describe('чат комнаты', () => {
     expect(panel().querySelector('.chat-name')!.textContent).toBe('<b onclick="x">Лемур</b>');
   });
 
-  it('закрытая панель: чужое сообщение — бейдж и превью, своё — нет', () => {
+  it('закрытая панель: чужое сообщение — уведомление чата, своё — нет', () => {
+    setChatAvatarLookup(uid => (uid === 2 ? '🦊' : null));
     chatReset([], 1);
     chatReceive(msg('a', 1, 'моё'));
     expect(chatUnread()).toBe(0);
-    chatReceive(msg('b', 2, 'привет всем'));
+    chatReceive(msg('b', 2, 'привет   всем', { cursorId: 'mint' }));
     expect(chatUnread()).toBe(1);
-    expect(badge().textContent).toBe('1');
-    expect(badge().hidden).toBe(false);
-    const pill = document.querySelector('.activity-pill.clickable') as HTMLElement;
-    expect(pill.querySelector('.ap-text')!.textContent).toBe('У2: привет всем');
+    expect(unreadCount()).toBe(1);
+    const n = chatNotices()[0];
+    expect(n).toMatchObject({ kind: 'chat', title: 'У2', body: 'привет всем', chatId: 'b', read: false, user: { userId: 2, name: 'У2', cursorId: 'mint', avatar: '🦊' } });
+    expect(noticeText(n)).toBe('У2: привет всем');
     // повтор того же id не считается
     chatReceive(msg('b', 2, 'привет всем'));
     expect(chatUnread()).toBe(1);
-    pill.click();
+    // щелчок по уведомлению открывает чат, непрочитанных нет
+    n.onClick!();
     expect(chatOpen()).toBe(true);
     expect(chatUnread()).toBe(0);
-    expect(badge().hidden).toBe(true);
+    expect(unreadCount()).toBe(0);
   });
 
-  it('бейдж 99+', () => {
+  it('панель сообщает об открытии и закрытии (кнопка ЧУ обновляет aria-expanded)', () => {
+    const got: boolean[] = [];
+    const on = (e: Event) => got.push((e as CustomEvent<{ open: boolean }>).detail.open);
+    document.addEventListener(CHAT_PANEL_EVENT, on);
+    openChat();
+    closeChat();
+    closeChat(); // уже закрыта — без события
+    document.removeEventListener(CHAT_PANEL_EVENT, on);
+    expect(got).toEqual([true, false]);
+  });
+
+  it('много непрочитанных: счётчик 99+', () => {
     chatReset([], 1);
     for (let i = 0; i < 120; i++) chatReceive(msg(`m${i}`, 2, 'x'));
     expect(chatUnread()).toBe(120);
-    expect(badge().textContent).toBe('99+');
+    expect(formatUnread(chatUnread())).toBe('99+');
     expect(chatMessages()).toHaveLength(100);
     expect(formatUnread(0)).toBe('');
     expect(formatUnread(99)).toBe('99');
@@ -102,7 +111,7 @@ describe('чат комнаты', () => {
     chatReceive(msg('b', 2, 'привет'));
     expect(chatUnread()).toBe(0);
     expect(panel().querySelectorAll('.chat-msg')).toHaveLength(1);
-    expect(document.querySelector('.activity-pill')).toBeNull();
+    expect(chatNotices()).toHaveLength(0);
   });
 
   it('Enter отправляет, Shift+Enter — нет; пустое не уходит', () => {
@@ -163,9 +172,11 @@ describe('чат комнаты', () => {
   it('выключение чата сбрасывает ленту', () => {
     chatReset([msg('1', 2, 'x')], 1);
     chatReceive(msg('2', 2, 'y'));
+    expect(chatNotices()).toHaveLength(1);
     setChatAvailable(false);
     expect(chatMessages()).toHaveLength(0);
     expect(chatUnread()).toBe(0);
+    expect(chatNotices()).toHaveLength(0);
     openChat(); // недоступен — не открывается
     expect(chatOpen()).toBe(false);
   });
@@ -174,5 +185,6 @@ describe('чат комнаты', () => {
     const long = 'а'.repeat(CHAT_PREVIEW_LEN + 10);
     expect(chatPreviewText({ name: 'Лемур', text: long })).toBe(`Лемур: ${'а'.repeat(CHAT_PREVIEW_LEN)}…`);
     expect(chatPreviewText({ name: '', text: 'раз\nдва' })).toBe('Участник: раз два');
+    expect(chatPreviewBody(`  ${long}  `)).toBe(`${'а'.repeat(CHAT_PREVIEW_LEN)}…`);
   });
 });

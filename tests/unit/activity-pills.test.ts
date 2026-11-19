@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { PILL_MAX, PILL_MS, clearPills, diffUsers, pillCount, showPill, showUserEvents, userEventText } from '../../src/activity-pills';
+import { PILL_MAX, PILL_MS, clearPills, diffUsers, pillCount, pillToNotice, showPill, showUserEvents, userEventNotice, userEventText } from '../../src/activity-pills';
+import { clearNotices, notices, unreadCount } from '../../src/notify-center';
 
 const root = () => document.getElementById('activity-pills')!;
 const texts = () => [...root().querySelectorAll('.ap-text')].map(n => n.textContent);
@@ -12,6 +13,7 @@ describe('пилюли комнаты', () => {
   });
   afterEach(() => {
     clearPills();
+    clearNotices();
     vi.useRealTimers();
     document.body.className = '';
   });
@@ -84,6 +86,27 @@ describe('пилюли комнаты', () => {
   it('события состава становятся пилюлями', () => {
     showUserEvents([{ kind: 'join', user: { userId: 2, name: 'Капибара', cursorId: 'mint' } }]);
     expect(texts()).toEqual(['Капибара присоединился к доске']);
+  });
+
+  it('showPill — обёртка: уведомление центра (kind → level, text → title, cursorId → user)', () => {
+    showPill({ kind: 'warn', text: 'Соединение прервано', icon: 'offline' });
+    showPill({ text: 'Вы позвали всех', quiet: true });
+    expect(notices().map(n => [n.level, n.title, n.icon, n.read])).toEqual([['warn', 'Соединение прервано', 'offline', false], ['info', 'Вы позвали всех', undefined, true]]);
+    expect(unreadCount()).toBe(1);
+    expect(pillToNotice({ text: 'x', cursorId: 'mint' }).user).toEqual({ name: '', cursorId: 'mint' });
+  });
+
+  it('события состава — структурные: имя, что случилось, значок, участник с аватаром', () => {
+    const user = { userId: 2, name: 'Капибара', cursorId: 'mint', avatar: 'photo:3' };
+    const photo = 'data:image/png;base64,AAAA';
+    expect(userEventNotice({ kind: 'join', user }, () => photo)).toEqual({
+      title: 'Капибара', body: 'присоединился к доске', icon: 'join', level: 'ok',
+      user: { userId: 2, name: 'Капибара', cursorId: 'mint', avatar: photo },
+    });
+    expect(userEventNotice({ kind: 'leave', user: { userId: 3, name: '' } })).toMatchObject({ title: 'Участник', body: 'покинул доску', icon: 'leave', user: { cursorId: 'default', avatar: null } });
+    expect(userEventNotice({ kind: 'rename', user, from: 'Лемур' })).toMatchObject({ title: 'Лемур', body: 'теперь Капибара', icon: 'rename' });
+    expect(userEventNotice({ kind: 'cursor', user })).toMatchObject({ body: 'сменил курсор', icon: 'cursor' });
+    expect(userEventNotice({ kind: 'avatar', user })).toMatchObject({ body: 'сменил аватар', icon: 'avatar' });
   });
 });
 
