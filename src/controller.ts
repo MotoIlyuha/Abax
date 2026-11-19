@@ -1049,7 +1049,7 @@ export function initController(canvas: HTMLCanvasElement): void {
         }
         // картинки по настройке всегда пропорциональны: Shift и Ctrl не нужны
         const proportional = e.shiftKey || e.ctrlKey || e.metaKey || (a.el.type === 'image' && state.settings.keepImageAspect);
-        const next = applyHandle(a.el, a.h, snapped, { proportional, fromCenter: e.altKey }, rotateAngle);
+        const next = applyHandle(a.el, a.h, snapped, { proportional, fromCenter: e.altKey, rotateStep: e.shiftKey }, rotateAngle);
         if (guided) {
           const pt = { x0: snapped.x, y0: snapped.y, x1: snapped.x, y1: snapped.y };
           const box = h.kind === 'resize' ? elementAABB(next) : pt;
