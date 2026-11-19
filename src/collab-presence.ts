@@ -221,7 +221,7 @@ export function renderEdgePointers(): void {
       n.user = u;
       const id = validCursor(u);
       if (n.cursorId !== id) {
-        n.arrow.innerHTML = cursorSvg(id, { size: 24 }); // разметка каталога курсоров — только константы
+        n.arrow.innerHTML = cursorSvg(id, { size: 20 }); // разметка каталога курсоров — только константы
         n.cursorId = id;
       }
       n.el.style.left = `${p.x}px`;

@@ -85,6 +85,8 @@ export function cleanCursorId(raw: unknown, allowPro: boolean): string | undefin
 /** Скруглённая стрелка 32×32 (единая форма всех курсоров), кончик в (3, 3) — горячая точка курсора. */
 export const ARROW_PATH = 'M20.54 14.32C23.29 12.84 24.67 12.1 25.01 11.21C25.32 10.44 25.23 9.57 24.79 8.87C24.27 8.06 22.78 7.6 19.79 6.68L8.51 3.21C5.99 2.43 4.73 2.04 3.9 2.36C3.17 2.63 2.61 3.21 2.35 3.95C2.07 4.79 2.49 6.04 3.35 8.53L7.13 19.58C8.18 22.64 8.71 24.18 9.55 24.66C10.27 25.09 11.16 25.13 11.93 24.79C12.81 24.39 13.49 22.91 14.85 19.97L15.85 17.79C16.06 17.32 16.17 17.09 16.32 16.89C16.45 16.7 16.61 16.54 16.78 16.4C16.97 16.24 17.2 16.12 17.66 15.87L20.54 14.32Z';
 export const CURSOR_HOTSPOT = { x: 3, y: 3 } as const;
+/** Размер аппаратного курсора на холсте, px (форма — та же 32×32, уменьшена). */
+export const CURSOR_CSS_SIZE = 27;
 
 /** Узор внутри стрелки: определения (defs), заливка и декор поверх заливки (обрезается по стрелке). */
 function patternParts(p: CursorPreset, pre: string): { defs: string; fill: string; decor: string } {
@@ -172,7 +174,7 @@ export function cursorSvg(id: string | null | undefined, opts: CursorSvgOptions 
 
 /** Значение CSS cursor: аппаратный курсор из SVG (data URL), запасной — системная стрелка. */
 export function cursorCss(id: string | null | undefined): string {
-  return `url("data:image/svg+xml,${encodeURIComponent(cursorSvg(id))}") ${CURSOR_HOTSPOT.x} ${CURSOR_HOTSPOT.y}, default`;
+  return `url("data:image/svg+xml,${encodeURIComponent(cursorSvg(id, { size: CURSOR_CSS_SIZE }))}") ${CURSOR_HOTSPOT.x} ${CURSOR_HOTSPOT.y}, default`;
 }
 
 // ----- контраст (WCAG 2.x) -----

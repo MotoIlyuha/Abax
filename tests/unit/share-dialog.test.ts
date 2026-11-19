@@ -424,6 +424,55 @@ describe('страница «Настройки доступа»', () => {
     expect(field('protectElements').disabled).toBe(false); // защита элементов — на всех тарифах
   });
 
+  it('именной адрес: свободные похожие — сразу при вводе, без «Сохранить»; ответ на устаревший ввод не показывается', async () => {
+    setSyncedRev('p1', 3);
+    const api = fakeApi((m, p) => {
+      if (m === 'GET' && p.startsWith('/api/invites?')) return { invite: null };
+      if (m === 'GET' && p.endsWith('/email-invites')) return { invites: [] };
+      if (m === 'GET' && p === '/api/projects/p1/alias') return { alias: null, former: [] };
+      if (m === 'GET' && p.startsWith('/api/projects/p1/alias/check?')) {
+        const v = new URLSearchParams(p.split('?')[1]).get('alias');
+        if (v === 'fizika') return { alias: v, status: 'short', suggestions: ['fizika-uroki', 'fizika-31847', '<b>'] };
+        if (v === 'fizika-shkola') return { alias: v, status: 'taken', suggestions: ['fizika-shkola-2026'] };
+        return { alias: v, status: 'free', suggestions: [] };
+      }
+      return new ApiError(404, 'not-found');
+    });
+    setApiForTests(api);
+    await openShareDialog(deps());
+    toSettings();
+    await flush(6);
+    const input = () => q<HTMLInputElement>('.share-alias-input');
+    const type = (v: string) => { input().value = v; input().dispatchEvent(new Event('input')); };
+    const chips = () => [...dlg().querySelectorAll('.share-alias-suggest .share-alias-chip')].map(c => c.textContent);
+    const settle = async () => { await new Promise(r => setTimeout(r, 350)); await flush(4); };
+    const checks = () => api.calls.filter(c => c[1].includes('/alias/check')).length;
+    // неправильная форма — на сервер не ходим
+    type('ф');
+    await settle();
+    expect(checks()).toBe(0);
+    // короткий: подсказка длины и свободные варианты нужной длины
+    type('fizika');
+    await settle();
+    expect(q('.share-alias-problem').textContent).toBe('Не короче 12 символов');
+    expect(chips()).toEqual(['fizika-uroki', 'fizika-31847']);
+    // занятый: «уже занят» и похожие — до нажатия «Сохранить»
+    type('fizika-shkola');
+    expect(chips()).toEqual([]); // старые подсказки уходят сразу
+    await settle();
+    expect(q('.share-alias .share-cloud-error').textContent).toBe('Этот адрес уже занят');
+    expect(chips()).toEqual(['fizika-shkola-2026']);
+    expect(api.calls.some(c => c[0] === 'PUT')).toBe(false);
+    // быстрый ввод: проверяется только последнее значение
+    const before = checks();
+    type('algebra-ur');
+    type('algebra-uroki');
+    await settle();
+    expect(checks()).toBe(before + 1);
+    expect(dlg().querySelector('.share-alias .share-cloud-error')).toBeNull();
+    expect(chips()).toEqual([]);
+  });
+
   it('именной адрес: подсказка на лету, сохранение, занятый адрес, бывшие адреса и освобождение с подтверждением', async () => {
     setSyncedRev('p1', 3);
     let alias: string | null = null;
@@ -433,7 +482,7 @@ describe('страница «Настройки доступа»', () => {
       if (m === 'GET' && p.endsWith('/email-invites')) return { invites: [] };
       if (m === 'GET' && p === '/api/projects/p1/alias') return { alias, former };
       if (m === 'PUT' && p === '/api/projects/p1/alias') {
-        if (body.alias === 'taken-one') return new ApiError(409, 'alias-taken');
+        if (body.alias === 'taken-alias-one') return new ApiError(409, 'alias-taken', { error: 'alias-taken', suggestions: ['taken-alias-one-2026', 'taken-alias-one-47', '<i>'] });
         if (alias) former = [alias, ...former];
         alias = body.alias;
         return { alias, former, prettyUrl: `https://abax.example/j/${alias}` };
@@ -450,32 +499,42 @@ describe('страница «Настройки доступа»', () => {
     input().value = 'Ab';
     input().dispatchEvent(new Event('input'));
     expect(input().value).toBe('ab');
-    expect(q('.share-alias-problem').textContent).toBe('Не короче 3 символов');
+    expect(q('.share-alias-problem').textContent).toBe('Не короче 12 символов');
     // сохранить с той же ошибкой: подсказка краснеет, второй строкой не повторяется
     q<HTMLButtonElement>('.share-alias-save').click();
     expect(q('.share-alias-problem').classList.contains('is-error')).toBe(true);
     expect(dlg().querySelector('.share-alias .share-cloud-error')).toBeNull();
     expect(api.calls.some(c => c[0] === 'PUT')).toBe(false);
-    input().value = 'taken-one';
+    input().value = 'taken-alias-one';
     input().dispatchEvent(new Event('input'));
     q<HTMLButtonElement>('.share-alias-save').click();
     await flush(6);
     expect(q('.share-alias .share-cloud-error').textContent).toBe('Этот адрес уже занят');
-    input().value = 'physics-9a';
+    // свободные похожие адреса: кнопки (только правильной формы), нажатие подставляет адрес в поле, но не сохраняет
+    const chips = () => [...dlg().querySelectorAll<HTMLButtonElement>('.share-alias-suggest .share-alias-chip')];
+    expect(chips().map(c => c.textContent)).toEqual(['taken-alias-one-2026', 'taken-alias-one-47']);
+    const puts = api.calls.filter(c => c[0] === 'PUT').length;
+    chips()[1].click();
+    expect(input().value).toBe('taken-alias-one-47');
+    expect(document.activeElement).toBe(input());
+    expect(dlg().querySelector('.share-alias-suggest')).toBeNull();
+    expect(dlg().querySelector('.share-alias .share-cloud-error')).toBeNull();
+    expect(api.calls.filter(c => c[0] === 'PUT').length).toBe(puts);
+    input().value = 'physics-9a-2026';
     input().dispatchEvent(new Event('input'));
     q<HTMLButtonElement>('.share-alias-save').click();
     await flush(6);
     expect(q('.share-alias-save').textContent).toBe('Изменить');
-    input().value = 'fizika-9a';
+    input().value = 'fizika-9a-2026';
     input().dispatchEvent(new Event('input'));
     q<HTMLButtonElement>('.share-alias-save').click();
     await flush(6);
-    expect(q('.share-alias .share-person-name').textContent).toBe('/j/physics-9a');
-    q<HTMLButtonElement>('[data-key="release-physics-9a"]').click();
+    expect(q('.share-alias .share-person-name').textContent).toBe('/j/physics-9a-2026');
+    q<HTMLButtonElement>('[data-key="release-physics-9a-2026"]').click();
     expect(q('.share-alias .share-confirm').textContent).toContain('больше никому не достанется');
-    q<HTMLButtonElement>('[data-key="release-yes-physics-9a"]').click();
+    q<HTMLButtonElement>('[data-key="release-yes-physics-9a-2026"]').click();
     await flush(6);
-    expect(api.calls.some(c => c[0] === 'DELETE' && c[1] === '/api/projects/p1/alias/physics-9a')).toBe(true);
+    expect(api.calls.some(c => c[0] === 'DELETE' && c[1] === '/api/projects/p1/alias/physics-9a-2026')).toBe(true);
     expect(dlg().querySelector('.share-alias .share-person')).toBeNull();
     expect(q('.share-former').hidden).toBe(true);
   });

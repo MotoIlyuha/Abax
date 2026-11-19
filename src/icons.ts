@@ -140,7 +140,7 @@ export const SMOOTH_PAN_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="cur
 export const SNAP_ICON = svg('<path d="M6 4h4v9a2 2 0 0 0 4 0V4h4v9a6 6 0 0 1-12 0z"/><path d="M6 8h4M14 8h4"/>');
 
 /** Иконка координатной плоскости с нулём в начале координат — когда деления включены. */
-export const COORD_ICON_ZERO = svg('<path d="M5 19V5M5 19h14"/><path d="M5 5l-2 3M5 5l2 3M19 19l-3-2M19 19l-3 2"/><circle cx="12" cy="12" r="1"/><ellipse class="coord-zero" cx="2.6" cy="20.8" rx="1.3" ry="1.9" stroke-width="1.3"/>');
+export const COORD_ICON_ZERO = svg('<path d="M5 19V5M5 19h14"/><path d="M5 5l-2 3M5 5l2 3M19 19l-3-2M19 19l-3 2"/><circle cx="12" cy="12" r="1"/><ellipse class="coord-zero" cx="1.9" cy="21.55" rx="1.3" ry="1.9" stroke-width="1.3"/>');
 
 export const WIDTH_ICON = svg('<path d="M4 6h16" stroke-width="1.2"/><path d="M4 12h16" stroke-width="2.4"/><path d="M4 18.5h16" stroke-width="4"/>');
 

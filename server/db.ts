@@ -93,8 +93,13 @@ export interface AliasRow {
   owner_id: string | null;
   /** 'active' — адрес доски, 'former' — бывший (ведёт туда же), 'released' — освобождён (никуда не ведёт). */
   state: string;
+  /** Когда адрес занят впервые (переезд на другую доску владельца и повторное занятие дату не меняют). */
   created_at: number;
   updated_at: number;
+  /** Блокировка модератором (миграция V5): не NULL — адрес никуда не ведёт и его не может занять никто, даже владелец. */
+  blocked_at: number | null;
+  /** Причина блокировки — для модератора, пользователям не показывается. */
+  blocked_reason: string | null;
 }
 
 /** Приглашение по почте (миграция V3); доступ — по токену своей строки invites. */
@@ -257,8 +262,18 @@ CREATE INDEX idx_aliases_project ON public_aliases(project_id, state);
 CREATE INDEX idx_aliases_owner ON public_aliases(owner_id);
 `;
 
+/**
+ * Модерация именных адресов: блокировка (с сохранением состояния — снятие возвращает как было) и очередь
+ * свежих адресов по дате создания. Кто занял — owner_id, когда — created_at (см. listAliasesForModeration).
+ */
+const SCHEMA_V5 = `
+ALTER TABLE public_aliases ADD COLUMN blocked_at INTEGER;
+ALTER TABLE public_aliases ADD COLUMN blocked_reason TEXT;
+CREATE INDEX idx_aliases_created ON public_aliases(created_at);
+`;
+
 /** Миграции по порядку; номер версии хранится в PRAGMA user_version. */
-const MIGRATIONS: string[] = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4];
+const MIGRATIONS: string[] = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5];
 
 /** target — до какой версии (по умолчанию — до последней; меньше — только в тестах миграций). */
 export function migrate(db: Db, target = MIGRATIONS.length): void {

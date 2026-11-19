@@ -811,7 +811,7 @@ body:not(.no-motion) .ctx-panel[data-kind="shapes"] { animation: none; }
 .tool.active { background: var(--accent-soft); color: var(--accent); }
 .tool svg { width: 19px; height: 19px; }
 /* персональный курсор на кнопке «Выделение»: цветной, чуть крупнее контурных иконок, кончик — в левый верхний угол */
-.tool svg.cursor-icon, svg.cursor-icon { width: 22px; height: 22px; transform: translate(2px, 1px); }
+.tool svg.cursor-icon, svg.cursor-icon { width: 19px; height: 19px; transform: translate(2px, 1px); }
 /* индикатор «цвет + толщина»: кружок с точкой текущего цвета, размер точки — толщина */
 .style-ind {
   display: flex;
@@ -898,21 +898,7 @@ body:not(.no-motion) .ctx-panel[data-kind="shapes"] { animation: none; }
 }
 .ctx-pin:hover { background: var(--accent-strong); }
 .ctx-pin svg { width: 13px; height: 13px; }
-.ctx-close {
-  display: none;
-  width: 22px;
-  height: 22px;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--icon-faint);
-  cursor: pointer;
-}
-.ctx-close:hover { background: var(--hover); color: var(--fg); }
-.ctx-close svg { width: 12px; height: 12px; }
-.ctx-panel.detached .ctx-pin, .ctx-panel.detached .ctx-close { display: flex; }
+.ctx-panel.detached .ctx-pin { display: flex; }
 .ctx-scroll {
   flex: 0 1 auto;
   min-height: 0;
@@ -2244,13 +2230,13 @@ body.tbe-grabbing, body.tbe-grabbing * { cursor: grabbing !important; }
   pointer-events: none;
   transition: left 40ms linear, top 40ms linear;
 }
-/* стрелка 24×24 из каталога курсоров: кончик (3, 3 в сетке 32) — в точке курсора */
+/* стрелка 20×20 из каталога курсоров: кончик (3, 3 в сетке 32) — в точке курсора */
 .remote-cursor .rc-arrow {
   position: absolute;
-  left: -2.25px;
-  top: -2.25px;
-  width: 24px;
-  height: 24px;
+  left: -1.9px;
+  top: -1.9px;
+  width: 20px;
+  height: 20px;
   line-height: 0;
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.25));
 }
@@ -2749,7 +2735,7 @@ body.link-view #project-icon { pointer-events: none; }
 .grid-switch .switch-input:checked + .switch-track { background: var(--accent); }
 .grid-switch .switch-input:checked + .switch-track .switch-knob { transform: translateX(14px); }
 .grid-switch .switch-input:focus-visible + .switch-track { outline: 2px solid var(--accent); outline-offset: 2px; }
-/* «Привязка к сетке» в меню «Масштаб и вид»: строка как у пунктов меню, справа переключатель */
+/* Строка-переключатель в меню «Масштаб и вид»: строка как у пунктов меню, справа переключатель */
 #view-menu .view-switch { border-top: 0; margin-top: 0; gap: 10px; border-radius: 7px; justify-content: flex-start; }
 #view-menu .view-switch:hover, #view-menu .view-switch:has(.switch-input:focus-visible) { background: var(--accent-soft); }
 .grid-switch .switch-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -3178,15 +3164,15 @@ form.ob-email { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin
 .cp-item-icon {
   display: block;
   flex: none;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   line-height: 0;
   transform-origin: 37.5% 37.5%;
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.2));
   transition: opacity 0.08s;
   will-change: transform;
 }
-.cp-item-icon svg { width: 28px; height: 28px; }
+.cp-item-icon svg { width: 24px; height: 24px; }
 .cp-item-icon.worn { opacity: 0; }
 .cp-preview .cp-item:focus-visible { outline-offset: -3px; border-radius: 12px; z-index: 1; }
 .cp-item-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 16px; }
@@ -3194,7 +3180,7 @@ form.ob-email { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin
 
 /* курсор с именем: стоит у фигуры, на холсте — надет на мышь */
 .cp-pointer { position: absolute; left: 0; top: 0; z-index: 2; pointer-events: none; will-change: transform; }
-.cp-arrow { position: absolute; left: -3px; top: -3px; width: 32px; height: 32px; line-height: 0; transform-origin: 3px 3px; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.25)); }
+.cp-arrow { position: absolute; left: -2.5px; top: -2.5px; width: 27px; height: 27px; line-height: 0; transform-origin: 2.5px 2.5px; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.25)); }
 .cp-arrow-ghost { opacity: 0; }
 .cp-pointer.hw .cp-arrow { visibility: hidden; }
 .cp-preview[data-effect="glow"] .cp-arrow { filter: drop-shadow(0 0 6px var(--cp-sel)); }
@@ -3246,7 +3232,7 @@ form.ob-email { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin
   cursor: pointer;
 }
 .home-profile:hover { border-color: var(--border-strong); background: var(--hover); }
-.home-profile-cursor { display: grid; width: 22px; height: 22px; line-height: 0; }
+.home-profile-cursor { display: grid; width: 19px; height: 19px; line-height: 0; }
 .home-profile-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ps { display: grid; gap: 22px; max-width: 560px; }
 .ps-field { display: grid; gap: 6px; }
@@ -3436,8 +3422,8 @@ body.no-motion #sync-indicator[data-status="syncing"] svg .sync-arrows { animati
 .activity-pill.leaving { opacity: 0; transform: translateY(-6px); }
 .activity-pill.clickable, .activity-pill .ap-action { pointer-events: auto; cursor: pointer; }
 .activity-pill.clickable:hover { box-shadow: var(--shadow-lift); }
-.ap-cursor { flex: none; display: inline-flex; width: 16px; height: 16px; }
-.ap-cursor svg { width: 16px; height: 16px; }
+.ap-cursor { flex: none; display: inline-flex; width: 14px; height: 14px; }
+.ap-cursor svg { width: 14px; height: 14px; }
 .ap-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ap-action { flex: none; border: none; background: none; padding: 0 2px; color: var(--accent); font: inherit; font-weight: 600; }
 @keyframes ap-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
@@ -3573,12 +3559,12 @@ body.no-motion .activity-pill, body.no-ui-anim .activity-pill { animation: none;
 /* остриё стрелки (3, 3 в сетке 32 → 2.25 px при 24 px) — в центре кнопки; поворот вокруг острия */
 .collab-edge-pointer .ep-arrow {
   position: absolute;
-  left: 11.75px;
-  top: 11.75px;
-  width: 24px;
-  height: 24px;
+  left: 12.1px;
+  top: 12.1px;
+  width: 20px;
+  height: 20px;
   line-height: 0;
-  transform-origin: 2.25px 2.25px;
+  transform-origin: 1.9px 1.9px;
   filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.3));
 }
 .collab-edge-pointer .ep-label {
@@ -3961,6 +3947,17 @@ body.no-ui-anim .share-toggle :is(.switch-track, .switch-knob) { transition: non
 .share-alias-problem { padding-bottom: 4px; }
 .share-alias-problem.is-error { color: var(--danger); }
 .share-alias .share-cloud-error { padding: 0 10px 4px; }
+/* Свободные похожие адреса под «адрес занят» */
+.share-alias-suggest { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 6px; padding: 0 10px 6px; font-size: 12px; }
+.share-alias-suggest-label { color: var(--muted); }
+.share-alias-suggest-list { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.share-alias-chip {
+  max-width: 100%; height: 24px; padding: 0 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  border: 1px solid var(--border-input); border-radius: 999px; background: var(--panel); color: var(--accent);
+  font: 12px ui-monospace, Consolas, monospace; cursor: pointer;
+}
+.share-alias-chip:hover { border-color: var(--accent); background: var(--accent-soft); }
+.share-alias-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .share-former-title { padding: 4px 10px 0; }
 .share-former { padding: 0 4px 0 10px; }
 .share-former .share-person { min-height: 32px; justify-content: space-between; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; }

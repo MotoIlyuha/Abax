@@ -75,13 +75,13 @@ describe('слой эффектов курсора', () => {
 
 describe('иконка «Выделения» на панели', () => {
   it('показывает выбранный курсор и меняется вместе с профилем', () => {
-    expect(toolDef('select').icon).toBe(cursorSvg('default', { size: 24, className: 'cursor-icon' }));
+    expect(toolDef('select').icon).toBe(cursorSvg('default', { size: 20, className: 'cursor-icon' }));
     setProfile({ cursorId: 'mint' });
     expect(toolDef('select').icon).toContain('#0b4f3c');
     expect(TOOL_DEFS.find(t => t.id === 'select')!.icon).toContain('#96f2d7');
     // Pro-курсор без права — на панели классический
     setProfile({ cursorId: 'gold' });
-    expect(toolDef('select').icon).toBe(cursorSvg('default', { size: 24, className: 'cursor-icon' }));
+    expect(toolDef('select').icon).toBe(cursorSvg('default', { size: 20, className: 'cursor-icon' }));
     expect(toolDef('select').title).toBe('Выделение и перемещение');
   });
 });

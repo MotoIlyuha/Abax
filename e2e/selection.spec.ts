@@ -229,6 +229,7 @@ test.describe('камера', () => {
     await page.keyboard.down('Control');
     await page.mouse.wheel(0, -120);
     await page.keyboard.up('Control');
+    await board.settleCamera(); // масштаб плавный — ждём конца движения
     const cam = (await board.state()).camera;
     expect(cam.zoom).toBeGreaterThan(1);
     // точка под курсором осталась на месте

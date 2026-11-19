@@ -1141,7 +1141,7 @@ export function renderRemoteCursors(): void {
     }
     const id = u.cursorId && isCursorId(u.cursorId) ? u.cursorId : DEFAULT_CURSOR_ID;
     if (n.cursorId !== id) {
-      n.arrow.innerHTML = cursorSvg(id, { size: 24 });
+      n.arrow.innerHTML = cursorSvg(id, { size: 20 });
       n.cursorId = id;
     }
     const colors = userColors(u);
