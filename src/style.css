@@ -2728,10 +2728,6 @@ body.link-view #project-icon { pointer-events: none; }
 .td-save:hover { background: var(--accent-strong); color: var(--fg-inverse); }
 
 /* ---- реакции и комментарии ---- */
-.qm-reactions { display: flex; align-items: center; gap: 1px; padding: 0 2px; }
-.qm-react { font-size: 15px; line-height: 1; }
-.qm-react.active { background: var(--accent-soft); }
-.qm-comment { font-size: 15px; line-height: 1; }
 .comment-pop {
   position: absolute; z-index: 20; width: 280px; box-sizing: border-box; padding: 10px 12px; pointer-events: auto;
   border: 1px solid var(--border); border-radius: 12px; background: var(--panel); box-shadow: var(--shadow); font-size: 13px;
@@ -2752,6 +2748,120 @@ body.link-view #project-icon { pointer-events: none; }
 .cp-send, .cp-resolve { padding: 4px 11px; border: 1px solid var(--border); border-radius: 99px; background: var(--panel); font: inherit; cursor: pointer; }
 .cp-send { border-color: var(--accent); background: var(--accent); color: var(--fg-inverse); font-weight: 600; }
 .cp-resolve:hover { border-color: var(--accent); color: var(--accent); }
+/* ----- Плашки объектов: реакции и комментарии (src/annot-layer.ts, SPEC_COMMENTS §1–4) ----- */
+#annot-layer { position: absolute; inset: 0; pointer-events: none; z-index: 8; overflow: hidden; }
+.an-row {
+  position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 4px; height: 26px;
+  pointer-events: none; will-change: transform; white-space: nowrap;
+}
+.an-row.selected { z-index: 2; }
+.an-pills { display: flex; align-items: center; gap: 4px; }
+.an-row button { pointer-events: auto; font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.an-pill {
+  position: relative; display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 9px 0 7px;
+  border: 0; border-radius: 13px; background: var(--an-bg, var(--accent)); color: var(--an-fg, #fff);
+  font-size: 12px; font-weight: 700; line-height: 1; box-shadow: 0 1px 2px rgba(16, 24, 40, .18), 0 2px 8px rgba(16, 24, 40, .12);
+  overflow: hidden; touch-action: manipulation; user-select: none; -webkit-user-select: none;
+  transition: transform .18s cubic-bezier(.34, 1.56, .64, 1), box-shadow .15s ease;
+}
+.an-pill:hover { transform: translateY(-1px) scale(1.06); box-shadow: 0 2px 4px rgba(16, 24, 40, .2), 0 6px 14px rgba(16, 24, 40, .16); }
+.an-pill:active { transform: scale(.94); }
+.an-pill:focus-visible, .an-more:focus-visible, .an-comment:focus-visible, .an-btn:focus-visible, .an-recent-btn:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+.an-emoji { font-size: 15px; line-height: 1; }
+.an-num { min-width: 7px; text-align: center; font-variant-numeric: tabular-nums; transition: opacity .12s ease, transform .12s ease; }
+/* своя реакция: при наведении вместо счётчика — крестик */
+.an-x {
+  position: absolute; right: 4px; top: 50%; width: 18px; height: 18px; margin-top: -9px; border-radius: 9px;
+  display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600;
+  background: rgba(0, 0, 0, .16); opacity: 0; transform: scale(.6); transition: opacity .12s ease, transform .15s cubic-bezier(.34, 1.56, .64, 1);
+}
+.an-pill.mine:hover .an-num, .an-pill.mine:focus-visible .an-num { opacity: 0; transform: scale(.6); }
+.an-pill.mine:hover .an-x, .an-pill.mine:focus-visible .an-x { opacity: 1; transform: none; }
+.an-x:hover { background: rgba(0, 0, 0, .3); }
+@media (hover: none) { .an-pill.mine:hover .an-num { opacity: 1; transform: none; } .an-pill.mine:hover .an-x { opacity: 0; } }
+/* удержание своей реакции: пилюля заливается тёмным слева направо */
+.an-pill::after {
+  content: ''; position: absolute; inset: 0; background: rgba(0, 0, 0, .22); transform: scaleX(0); transform-origin: 0 50%; pointer-events: none;
+}
+.an-pill.holding::after { transform: scaleX(1); transition: transform .5s linear; }
+.an-more, .an-comment, .an-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px; height: 26px; min-width: 26px; padding: 0 8px;
+  border: 1px solid var(--border); border-radius: 13px; background: var(--panel); color: var(--fg);
+  font-size: 12px; font-weight: 700; box-shadow: var(--shadow); transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+.an-more:hover, .an-comment:hover, .an-btn:hover { border-color: var(--accent); color: var(--accent); }
+.an-btn { width: 28px; padding: 0; }
+.an-btn svg { width: 17px; height: 17px; }
+.an-cicon { display: inline-flex; width: 16px; height: 16px; }
+.an-cicon svg { width: 16px; height: 16px; }
+.an-comment.empty .an-cnum { display: none; }
+.an-comment.empty { width: 28px; padding: 0; }
+.an-comment:not(.an-counter) { background: var(--accent); border-color: var(--accent); color: var(--fg-inverse); }
+.an-comment:not(.an-counter):hover { background: #2160dd; color: var(--fg-inverse); }
+.an-comment.an-counter { height: 22px; padding: 0 7px 0 5px; border-radius: 11px; font-size: 11px; }
+.an-comment.an-counter .an-cicon, .an-comment.an-counter .an-cicon svg { width: 14px; height: 14px; }
+.an-comment.an-counter.resolved { color: var(--muted); background: var(--surface-sunken); }
+.an-comment[hidden] { display: none; }
+/* недавние реакции выезжают из кнопки влево */
+.an-react-wrap { position: relative; display: flex; align-items: center; }
+.an-recent {
+  position: absolute; right: calc(100% + 4px); top: -3px; display: flex; flex-direction: row; gap: 2px; padding: 3px;
+  border: 1px solid var(--border); border-radius: 16px; background: var(--panel); box-shadow: var(--shadow-tip);
+  opacity: 0; pointer-events: none; transform: translateX(14px) scaleX(.6); transform-origin: 100% 50%;
+  transition: opacity .16s ease, transform .3s cubic-bezier(.34, 1.4, .64, 1);
+}
+.an-react-wrap:hover .an-recent, .an-react-wrap:focus-within .an-recent { opacity: 1; transform: none; pointer-events: auto; }
+.an-recent-btn {
+  width: 26px; height: 26px; padding: 0; border: 0; border-radius: 13px; background: transparent; font-size: 16px; line-height: 1;
+  opacity: 0; transform: translateX(10px) scale(.5);
+  transition: opacity .14s ease calc(var(--i) * 28ms), transform .32s cubic-bezier(.34, 1.56, .64, 1) calc(var(--i) * 28ms), background .12s ease;
+}
+.an-react-wrap:hover .an-recent-btn, .an-react-wrap:focus-within .an-recent-btn { opacity: 1; transform: none; }
+.an-recent-btn:hover { background: var(--accent-soft); transform: scale(1.18) !important; }
+/* появление кнопок у выделенного объекта */
+.an-row.an-enter .an-react-wrap, .an-row.an-enter .an-comment:not(.an-counter) { animation: an-pop .34s cubic-bezier(.34, 1.56, .64, 1) both; }
+.an-row.an-enter .an-comment:not(.an-counter) { animation-delay: 40ms; }
+@keyframes an-pop { from { opacity: 0; transform: scale(.4); } to { opacity: 1; transform: none; } }
+body.no-motion .an-row.an-enter :is(.an-react-wrap, .an-comment) { animation: an-fade .16s ease both; }
+@keyframes an-fade { from { opacity: 0; } to { opacity: 1; } }
+body.no-motion :is(.an-pill, .an-recent, .an-recent-btn, .an-x, .an-num) { transition-timing-function: ease; transition-duration: .15s; transition-delay: 0s; }
+body.no-motion .an-pill:hover { transform: none; }
+body.no-ui-anim :is(.an-pill, .an-recent, .an-recent-btn, .an-x, .an-num, .an-more, .an-comment, .an-btn) { transition: none; }
+body.no-ui-anim .an-row.an-enter :is(.an-react-wrap, .an-comment) { animation: none; }
+body.no-ui-anim .an-pill.holding::after { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  :is(.an-pill, .an-recent, .an-recent-btn, .an-x, .an-num) { transition: none; }
+  .an-row.an-enter :is(.an-react-wrap, .an-comment) { animation: none; }
+}
+/* меню «+n»: все реакции объекта и кто их поставил */
+.reactions-menu { position: fixed; z-index: 90; width: 280px; max-width: calc(100vw - 16px); max-height: min(360px, calc(100vh - 16px)); display: flex; flex-direction: column; padding: 6px; box-sizing: border-box; }
+.arm-head { padding: 6px 8px 8px; font-size: 12px; font-weight: 700; color: var(--muted); }
+.arm-list { overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.arm-row { display: flex; align-items: flex-start; gap: 8px; padding: 5px 6px; border-radius: 8px; }
+.arm-row:hover { background: var(--surface-sunken); }
+.arm-emoji { flex: none; width: 30px; height: 30px; border: 0; border-radius: 15px; background: var(--surface-sunken); font-size: 17px; line-height: 1; cursor: pointer; }
+.arm-emoji:hover { background: var(--accent-soft); transform: scale(1.08); }
+.arm-count { flex: none; min-width: 14px; padding-top: 7px; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.arm-who { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; gap: 4px; padding-top: 4px; }
+.arm-chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 8px; border-radius: 10px; background: var(--an-bg); color: var(--an-fg); font-size: 11px; font-weight: 700; }
+.arm-remove { flex: none; width: 26px; height: 26px; margin-top: 2px; border: 0; border-radius: 13px; background: transparent; color: var(--muted); font-size: 18px; line-height: 1; cursor: pointer; }
+.arm-remove:hover { background: #fde8e8; color: #d6336c; }
+/* частицы «Привлечь внимание» (src/reaction-burst.ts) */
+#burst-layer { position: absolute; inset: 0; pointer-events: none; z-index: 10; overflow: hidden; }
+.burst-p {
+  position: absolute; left: 0; top: 0; display: flex; align-items: center; justify-content: center; line-height: 1;
+  will-change: transform, opacity; user-select: none; filter: drop-shadow(0 2px 3px rgba(16, 24, 40, .18));
+}
+.burst-p.burst-css { animation: burst-fly .7s cubic-bezier(.2, .7, .3, 1) both; }
+@keyframes burst-fly {
+  0% { opacity: 0; transform: scale(.4); }
+  15% { opacity: 1; transform: scale(1.1); }
+  65% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--dx), var(--dy)) rotate(var(--rot)) scale(.85); }
+}
+
 .sd-exp-plan { display: flex; align-items: center; gap: 6px; margin: 4px 0 10px; }
 .sd-exp-plan-select { padding: 4px 8px; border: 1px solid var(--border); border-radius: 8px; font: inherit; background: var(--panel); }
 

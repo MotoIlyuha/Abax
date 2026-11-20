@@ -1,13 +1,14 @@
-// Реакции и комментарии: кнопки меню выделения, нажатия на пилюли и пины, поповер ветки.
+// Реакции и комментарии: постановка и снятие реакций, нажатия на пины, поповер ветки.
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
-  QUICK_REACTIONS, annotationButtons, annotationClick, annotationsAvailable, closeThread, initCommentsUi, openThread, reactToSelection,
+  addReaction, annotationClick, annotationsAvailable, closeThread, hasMyReaction, initCommentsUi, openThread, removeReaction,
   startComment, threadOpen, toggleReactionOn,
 } from '../../src/comments-ui';
-import { layoutPills, layoutPins } from '../../src/annotations';
+import { layoutPins } from '../../src/annotations';
+import { recentReactions } from '../../src/annot-prefs';
 import { clientId, resetClientId } from '../../src/identity';
 import { createCommentThread } from '../../src/comments';
-import { addElement, blankProject, canUndo, openProject, setSelection, state, update } from '../../src/state';
+import { addElement, blankProject, canUndo, openProject, state, update } from '../../src/state';
 import type { ShapeEl } from '../../src/types';
 
 const rect = (id: string, x = 100, y = 100): ShapeEl =>
@@ -33,32 +34,29 @@ beforeEach(() => {
 });
 
 describe('реакции у автора без комнаты', () => {
-  it('ставятся и снимаются мимо истории отмены; клик по пилюле переключает свою реакцию', () => {
+  it('ставятся и снимаются мимо истории отмены', () => {
     const history = canUndo();
     toggleReactionOn('a', '👍');
     expect(reactions('a')).toEqual({ '👍': [mine()] });
     expect(canUndo()).toBe(history && true);
-    // пилюля стоит под нижней границей элемента: x = 100, y = 150 + 6
-    expect(annotationClick(110, 167)).toBe(true);
+    toggleReactionOn('a', '👍');
     expect(reactions('a')).toBeUndefined();
-    expect(annotationClick(110, 167)).toBe(false); // пилюли больше нет
   });
 
-  it('реакция на всё выделенное; кнопка «✓» активна, когда она стоит у всех', () => {
-    setSelection(['a', 'b']);
-    reactToSelection('🔥');
+  it('«поставить» не снимает уже свою, «убрать» не ставит; можно несколько разных; недавние — свежая первой', () => {
+    addReaction('a', '🔥');
+    addReaction('a', '🔥');
     expect(reactions('a')).toEqual({ '🔥': [mine()] });
-    expect(reactions('b')).toEqual({ '🔥': [mine()] });
-    const box = annotationButtons()[0];
-    const fire = [...box.querySelectorAll('button')].find(b => b.textContent === '🔥')!;
-    expect(fire.classList.contains('active')).toBe(true);
-    expect([...box.querySelectorAll('button')].map(b => b.textContent)).toEqual(QUICK_REACTIONS);
-    // «Комментировать» — только для одного элемента
-    expect(annotationButtons()).toHaveLength(1);
-    setSelection(['a']);
-    expect(annotationButtons().map(b => b.className)).toEqual(['qm-reactions', 'qm-btn qm-comment']);
-    setSelection([]);
-    expect(annotationButtons()).toEqual([]);
+    addReaction('a', '🦄');
+    expect(reactions('a')).toEqual({ '🔥': [mine()], '🦄': [mine()] });
+    expect(hasMyReaction('a', '🦄')).toBe(true);
+    expect(recentReactions().slice(0, 2)).toEqual(['🦄', '🔥']);
+    removeReaction('a', '🔥');
+    removeReaction('a', '🔥');
+    expect(reactions('a')).toEqual({ '🦄': [mine()] });
+    // картинка из окна смайлов реакцией не бывает
+    addReaction('a', 'data:image/png;base64,AAAA');
+    expect(Object.keys(reactions('a')!)).toEqual(['🦄']);
   });
 
   it('по ссылке просмотра и на черновике их нет вовсе', () => {
@@ -66,8 +64,6 @@ describe('реакции у автора без комнаты', () => {
     expect(annotationsAvailable()).toBe(false);
     toggleReactionOn('a', '👍');
     expect(reactions('a')).toBeUndefined();
-    setSelection(['a']);
-    expect(annotationButtons()).toEqual([]);
     expect(annotationClick(110, 167)).toBe(false);
   });
 });
@@ -93,7 +89,7 @@ describe('комментарии у автора без комнаты', () => {
 
   it('пин открывает ветку: сообщения текстом, ответ, «Решено» и возврат; Esc закрывает', () => {
     state.board.comments = createCommentThread(state.board, { x: 50, y: 60, authorId: 'u1', authorName: '<b>Маша</b>', text: '<img src=x onerror=1>' }).comments;
-    const pin = layoutPins(state.board.comments, state.camera, 800, 600)[0];
+    const pin = layoutPins(state.board.comments, state.board.elements, state.camera, 800, 600)[0];
     expect(annotationClick(pin.x, pin.y)).toBe(true);
     expect(pop()).not.toBeNull();
     expect(pop()!.querySelector('.cp-author')!.textContent).toBe('<b>Маша</b>');
@@ -127,10 +123,5 @@ describe('комментарии у автора без комнаты', () => {
     openThread(state.board.comments![0].id);
     document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }));
     expect(threadOpen()).toBe(false);
-  });
-
-  it('пилюли и пины считаются теми же функциями, что рисует холст', () => {
-    toggleReactionOn('a', '👍');
-    expect(layoutPills(state.board.elements, state.camera, mine(), 800, 600)).toHaveLength(1);
   });
 });

@@ -100,3 +100,8 @@
   подпись объекта); оба хаба: `noteId` из `caps` (и из первой реакции/комментария старого клиента) в снимке
   участников, пакет `attention` с проверками и частотой 4/3 с; клиент шлёт `noteId` в `caps`.
   Тесты: `tests/unit/discussion.test.ts`, `tests/server/room-attention.test.ts` (одинаковые сценарии для обоих хабов).
+- **Шаг 2** — слой плашек `src/annot-layer.ts` (`#annot-layer` в `index.html`), раскладка `src/annotations.ts`
+  (`layoutAnnotRows`, `shownReactions`, пины только веток без объекта), «кто есть кто» `src/note-people.ts`, настройки
+  показа и недавние реакции `src/annot-prefs.ts`, частицы `src/reaction-burst.ts` и локальное «Привлечь внимание»
+  `src/attention.ts`. Кнопки реакций и «Комментировать» убраны из быстрого меню; холст больше не рисует пилюли
+  (кроме окна демонстрации); хуки кадра холста (`onBoardFrame`) изолированы от ошибок слоя.

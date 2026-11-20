@@ -5,13 +5,11 @@ import { elementAABB } from './geom';
 import { canEditPagesNote, noteName, sendComment, sendReaction, type CommentRequest } from './collab-notes';
 import { clientId } from './identity';
 import { myCollabCaps } from './collab';
-import { PIN_R, hitAnnotation, layoutPills, layoutPins } from './annotations';
+import { PIN_R, hitPin, layoutPins } from './annotations';
+import { noteRecentReaction, showComments } from './annot-prefs';
 
 // Интерфейс реакций и комментариев: быстрые реакции для выделенного, нажатия на пилюли и пины, поповер ветки.
 // Работает у автора, у участников комнаты (читатель тоже) и скрыт при просмотре по ссылке.
-
-/** Быстрые реакции. */
-export const QUICK_REACTIONS = ['👍', '❤️', '🔥', '❓', '✅'];
 
 /** Реакции и комментарии доступны: не просмотр по ссылке и не черновик (его не видит никто, кроме автора). */
 export function annotationsAvailable(): boolean {
@@ -26,11 +24,7 @@ export function canAnnotate(): boolean {
   return annotationsAvailable() && myCollabCaps()?.comment !== false;
 }
 
-function selected(): Element[] {
-  return state.board.elements.filter(e => state.selection.has(e.id));
-}
-
-/** Реакция на элемент: через хаб в комнате, у себя — вне её (мимо истории отмены). */
+/** Реакция на элемент: через хаб в комнате, у себя — вне её (мимо истории отмены). Ставит или снимает. */
 export function toggleReactionOn(elId: string, emoji: string): void {
   if (!canAnnotate()) return;
   if (sendReaction(state.pageId, elId, emoji)) return;
@@ -39,61 +33,39 @@ export function toggleReactionOn(elId: string, emoji: string): void {
   replaceElements(state.board.elements.map(e => (e.id === elId ? toggleElementReaction(e, emoji, clientId()) : e)));
 }
 
-/** Реакция на всё выделенное. */
-export function reactToSelection(emoji: string): void {
-  for (const el of selected()) toggleReactionOn(el.id, emoji);
+/** Стоит ли моя реакция emoji на элементе. */
+export function hasMyReaction(elId: string, emoji: string): boolean {
+  const el = state.board.elements.find(e => e.id === elId);
+  const users = el?.reactions && Object.prototype.hasOwnProperty.call(el.reactions, emoji) ? el.reactions[emoji] : null;
+  return !!users?.includes(clientId());
 }
 
-/** Кнопки для меню выделения: реакции и «Комментировать». */
-export function annotationButtons(): HTMLElement[] {
-  if (!canAnnotate() || selected().length === 0) return [];
-  const out: HTMLElement[] = [];
-  const box = document.createElement('div');
-  box.className = 'qm-reactions';
-  const mine = clientId();
-  const els = selected();
-  for (const emoji of QUICK_REACTIONS) {
-    const b = document.createElement('button');
-    b.className = 'qm-btn qm-react';
-    b.type = 'button';
-    b.title = `Реакция ${emoji}`;
-    b.setAttribute('aria-label', b.title);
-    b.textContent = emoji;
-    b.classList.toggle('active', els.every(e => e.reactions?.[emoji]?.includes(mine)));
-    b.addEventListener('mousedown', e => e.preventDefault());
-    b.addEventListener('click', () => reactToSelection(emoji));
-    box.appendChild(b);
-  }
-  out.push(box);
-  if (els.length === 1) {
-    const c = document.createElement('button');
-    c.className = 'qm-btn qm-comment';
-    c.type = 'button';
-    c.title = 'Комментировать';
-    c.setAttribute('aria-label', c.title);
-    c.textContent = '💬';
-    c.addEventListener('mousedown', e => e.preventDefault());
-    c.addEventListener('click', () => startComment(els[0]));
-    out.push(c);
-  }
-  return out;
+/** Поставить реакцию (из окна смайлов или ленты недавних): уже стоящая моя — не снимается. */
+export function addReaction(elId: string, emoji: string): void {
+  if (!emoji || emoji.startsWith('data:') || hasMyReaction(elId, emoji)) return;
+  toggleReactionOn(elId, emoji);
+  noteRecentReaction(emoji);
+}
+
+/** Снять свою реакцию (× на пилюле, удержание, меню «+n»). */
+export function removeReaction(elId: string, emoji: string): void {
+  if (hasMyReaction(elId, emoji)) toggleReactionOn(elId, emoji);
 }
 
 // ----- Нажатия на холсте -----
 
 /**
- * Нажатие по пилюле реакции или пину комментария (x, y — экранные координаты холста).
- * true — нажатие обработано, холст его дальше не разбирает.
+ * Нажатие по пину ветки без объекта (x, y — экранные координаты холста; пилюли и счётчики объектов — DOM-слой
+ * src/annot-layer.ts). true — нажатие обработано, холст его дальше не разбирает.
  */
 export function annotationClick(x: number, y: number): boolean {
-  if (!annotationsAvailable()) return false;
+  if (!annotationsAvailable() || !showComments()) return false;
   const r = host()?.getBoundingClientRect();
   const w = r && r.width > 0 ? r.width : window.innerWidth;
   const h = r && r.height > 0 ? r.height : window.innerHeight;
-  const hit = hitAnnotation(layoutPills(state.board.elements, state.camera, clientId(), w, h), layoutPins(state.board.comments, state.camera, w, h), x, y);
-  if (!hit) return false;
-  if (hit.kind === 'pill') toggleReactionOn(hit.pill.elId, hit.pill.emoji);
-  else openThread(hit.pin.threadId);
+  const pin = hitPin(layoutPins(state.board.comments, state.board.elements, state.camera, w, h), x, y);
+  if (!pin) return false;
+  openThread(pin.threadId);
   return true;
 }
 
@@ -138,6 +110,15 @@ export function startComment(el: Element): void {
   if (!canAnnotate()) return;
   const a = elementAABB(el);
   openPop({ kind: 'new', targetId: el.id, x: a.x1, y: a.y0 });
+}
+
+/** Обсуждение объекта: панель у кнопки «Комментировать» (from). */
+export function openDiscussion(elId: string, _from?: HTMLElement | null): void {
+  const el = state.board.elements.find(e => e.id === elId);
+  if (!el || !annotationsAvailable()) return;
+  const t = state.board.comments?.find(x => x.targetElementId === elId);
+  if (t && !canAnnotate()) openThread(t.id);
+  else startComment(el);
 }
 
 export function openThread(id: string): void {

@@ -91,7 +91,8 @@ import { onCancelInteraction } from './interaction';
 import { incomingInvites, incomingInvitesSection, onIncomingInvites, refreshIncomingInvites } from './incoming-invites';
 import { addGestureProbe } from './gesture';
 import { initTaskOverlay, isTeacher } from './task-overlay';
-import { annotationButtons, initCommentsUi } from './comments-ui';
+import { initCommentsUi } from './comments-ui';
+import { initAnnotLayer } from './annot-layer';
 import { openTaskDialog, taskDialogOpen, type TaskFormValues } from './task-dialog';
 import { TASK_H, TASK_W, createTaskElement } from './task-element';
 import { createToggleSwitch } from './toggle-switch';
@@ -1823,9 +1824,9 @@ function updateQuickMenu(): void {
   if (selectionKey !== layerPanelSelection) { layerPanelOpen = false; layerPanelSelection = selectionKey; }
   qm.hidden = false;
   qm.textContent = '';
-  // читатель (править доску не может): реакции, комментарий и, если автор разрешил, копия картинкой
+  // читатель (править доску не может): если автор разрешил — копия картинкой и в чат; реакции и комментарии —
+  // кнопками под объектом (src/annot-layer.ts)
   if (!canEditBoard()) {
-    for (const b of annotationButtons()) qm.appendChild(b);
     if (canCopyCurrentBoard()) qm.appendChild(copyImageButton());
     const toChat = sendToChatButton();
     if (toChat) qm.appendChild(toChat);
@@ -1943,7 +1944,6 @@ function updateQuickMenu(): void {
     ug.addEventListener('click', () => { ungroupSelected(); });
     qm.appendChild(ug);
   }
-  for (const b of annotationButtons()) qm.appendChild(b);
   qm.appendChild(copyImageButton());
   const toChat = sendToChatButton();
   if (toChat) qm.appendChild(toChat);
@@ -5808,6 +5808,7 @@ export function initApp(c: HTMLCanvasElement): void {
   addGestureProbe(() => editing !== null || fontEdit !== null || taskDialogOpen());
   initTaskOverlay(editTaskElement);
   initCommentsUi();
+  initAnnotLayer();
   restoreCamera();
   restoreStyle();
   restoreSettings();
