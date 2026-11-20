@@ -44,6 +44,10 @@ function normalizeChatText(raw, allowEmpty = false) {
   return (text.length === 0 && !allowEmpty) || text.length > CHAT_MAX_LEN ? null : text;
 }
 /** Ограничитель частоты: true — сообщение можно принять (и оно учтено). */
+/** «Привлечь внимание»: не чаще стольких раз за столько миллисекунд (зеркало src/room-host.ts). */
+const ATTENTION_RATE_COUNT = 4;
+const ATTENTION_RATE_MS = 3000;
+
 function createRateLimiter(count = CHAT_RATE_COUNT, windowMs = CHAT_RATE_MS) {
   const times = [];
   return now => {
@@ -226,6 +230,7 @@ class Room {
         ...(c.cursorId ? { cursorId: c.cursorId } : {}),
         ...(c.view ? { view: c.view } : {}),
         ...(c.avatar !== undefined ? { avatar: avatars.avatarKey(c.avatar, c.avatarRev) } : {}),
+        ...(c.noteId ? { noteId: c.noteId } : {}),
         access: c.host ? { role: 'owner', source: 'owner' } : { role: (a && a.role) || 'commenter', source: (a && a.source) || 'p2p', ...this.personalSnapshot(a) },
       };
     });
@@ -666,6 +671,7 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
       last: Date.now(), cursor: null, pageId: null, selection: [], patches,
       cursorId: cleanCursorId(cursorId), avatar: undefined, avatarRev: 0,
       view: null, chatOk: createRateLimiter(), edited: false,
+      attentionOk: createRateLimiter(ATTENTION_RATE_COUNT, ATTENTION_RATE_MS),
     };
     room.clients.set(sock, info);
     // доступ нового гостя: старая роль по умолчанию; права страниц проекта хаб читает сам (зеркало initialAccess)
@@ -693,7 +699,7 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
         if (!validSelection(m)) return;
         info.selection = m.ids ?? []; info.pageId = m.pageId ?? info.pageId; broadcastUsers(); return;
       }
-      if (m.t === 'caps') { info.patches = m.patches === true; return; }
+      if (m.t === 'caps') { info.patches = m.patches === true; noteIdOf(info, m.noteId); return; }
       if (m.t === 'profile') {
         // смена имени, курсора и аватара на лету (зеркало src/room-host.ts)
         const nextName = m.name === undefined ? info.name : normalizeName(m.name);
@@ -722,6 +728,7 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
       if (m.t === 'pointer') { relayPointer(info, m); return; }
       if (m.t === 'react') { acceptReaction(info, m); return; }
       if (m.t === 'comment') { acceptComment(info, m); return; }
+      if (m.t === 'attention') { acceptAttention(info, m); return; }
       if (m.t === 'chat') { acceptChat(info, m); return; }
       if (m.t === 'view') { acceptView(info, m); return; }
       if (m.t === 'summon') { acceptSummon(info, m); return; }
@@ -880,6 +887,30 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
     }
   }
 
+  /** Id подписи реакций и комментариев участника (зеркало noteIdOf из src/room-host.ts). */
+  function noteIdOf(info, raw) {
+    const id = notes.cleanUserId(raw);
+    if (!id || id === info.noteId) return;
+    info.noteId = id;
+    broadcastUsers();
+  }
+
+  /** «Привлечь внимание» (зеркало acceptAttention из src/room-host.ts). */
+  function acceptAttention(info, m) {
+    if (!isId(m.pageId) || !isId(m.elId) || typeof m.emoji !== 'string') return;
+    const page = room.project && room.project.pages.find(p => p.id === m.pageId);
+    if (!page || !capsOf(info).comment || room.userPageRight(info.uid, page.id) === 'hidden') return;
+    const el = page.elements.find(e => e.id === m.elId);
+    const users = el && el.reactions && Object.prototype.hasOwnProperty.call(el.reactions, m.emoji) ? el.reactions[m.emoji] : null;
+    if (!Array.isArray(users) || users.length === 0) return;
+    if (!info.attentionOk(Date.now())) return;
+    const msg = { t: 'attention', pageId: page.id, elId: el.id, emoji: m.emoji, by: info.uid };
+    for (const c of room.clients.values()) {
+      if (c === info || room.userPageRight(c.uid, page.id) === 'hidden') continue;
+      sendTo(c.sock, msg);
+    }
+  }
+
   /** Реакция участника на элемент: ставится или снимается; результат — правка элемента от хаба (её получают все). */
   function acceptReaction(info, m) {
     if (!isId(m.pageId) || !isId(m.elId) || typeof m.emoji !== 'string') return;
@@ -887,6 +918,7 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
     if (!page || !capsOf(info).comment || room.userPageRight(info.uid, page.id) === 'hidden') return;
     const el = page.elements.find(e => e.id === m.elId);
     if (!el) return;
+    if (!info.noteId) noteIdOf(info, m.userId);
     const next = notes.toggleElementReaction(el, m.emoji, notes.cleanUserId(m.userId) || `u${info.uid}`);
     if (next === el) return;
     commitPatch({ t: 'patch', pageId: page.id, rev: 0, ops: [{ op: 'put', el: next }] }, -1, null);
@@ -899,6 +931,7 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
     const page = project.pages.find(p => p.id === m.pageId);
     if (!page || !capsOf(info).comment || room.userPageRight(info.uid, page.id) === 'hidden') return;
     const author = { authorId: notes.cleanUserId(m.userId) || `u${info.uid}`, authorName: info.name };
+    if (!info.noteId) noteIdOf(info, m.userId);
     let next = page;
     if (m.op === 'create') {
       if (!isNum(m.x) || !isNum(m.y) || typeof m.text !== 'string') return;
@@ -964,5 +997,5 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
 
 module.exports = {
   createRoomHub, Room, defaultAccess, stripAccess, PROTO, MAX_EDITORS, MAX_ID, MAX_SELECTION, MAX_NAME, CURSOR_IDS, normalizeName, cleanPointer,
-  CHAT_MAX_LEN, CHAT_HISTORY, CHAT_RATE_COUNT, CHAT_RATE_MS, VIEW_ZOOM_MIN, VIEW_ZOOM_MAX, normalizeChatText, createRateLimiter, cleanView, maskUsersFor,
+  CHAT_MAX_LEN, CHAT_HISTORY, CHAT_RATE_COUNT, CHAT_RATE_MS, ATTENTION_RATE_COUNT, ATTENTION_RATE_MS, VIEW_ZOOM_MIN, VIEW_ZOOM_MAX, normalizeChatText, createRateLimiter, cleanView, maskUsersFor,
 };

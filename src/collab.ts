@@ -60,6 +60,8 @@ export interface CollabUser {
   avatar?: string | null;
   /** Участник на странице, скрытой от меня: где он, не сообщается (SPEC_NIGHT5 §3.1). */
   hiddenPage?: boolean;
+  /** Id подписи реакций и комментариев участника (SPEC_COMMENTS §4): по нему — цвет и имя у пилюль реакций. */
+  noteId?: string;
   /** Роль, откуда доступ и личные права страниц (pageId → право) — приходит только автору (SPEC_NIGHT6 §3.2). */
   access?: { role: AccessRole | 'owner'; source: 'owner' | 'link' | 'alias' | 'email' | 'p2p'; inviteId?: string; personal?: Record<string, PageRight> };
 }
@@ -358,7 +360,8 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
       lostAt = null;
       // хаб умеет патчи — сообщаем, что мы тоже: до ответа он шлёт полные проекты
       hubPatches = m.patches === true;
-      if (hubPatches) send({ t: 'caps', patches: true });
+      // noteId — чем я подписываю реакции и комментарии: по нему остальные красят мои реакции цветом моей плашки
+      if (hubPatches) send({ t: 'caps', patches: true, noteId: clientId() });
       if (m.project) applyRemoteProject(m.project as Project);
       followHostPages(users);
       renderRemoteCursors();
