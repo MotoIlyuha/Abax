@@ -1,3 +1,4 @@
+import { clearStickyTool, stickyTool } from './sticky-tool';
 import { clearRunField } from './text-runs';
 import { clearStarter, starterId } from './sync-state';
 import type {
@@ -589,6 +590,7 @@ export function pickTool(tool: ToolId): void {
 
 export function setTool(tool: ToolId): void {
   if (state.tool === tool) return;
+  clearStickyTool(); // режим массового добавления снимается выбором другого инструмента
   const kindChanged = presetKind(state.tool) !== presetKind(tool);
   state.tool = tool;
   if (tool === 'pen' || tool === 'highlighter') state.selection = new Set();
@@ -809,6 +811,7 @@ export function commitPoly(closed: boolean): void {
   if (pts.length < min) { update(); return; }
   const el: Element = { id: uid(), type: 'poly', closed, color: state.style.color, width: state.style.width * 1.1, ...opacityField(state.style.opacity), pts };
   addElement(el);
+  if (stickyTool() === state.tool) { update(); return; } // массовое добавление: инструмент остаётся
   selectInserted(el.id);
 }
 

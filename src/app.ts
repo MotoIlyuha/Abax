@@ -4,6 +4,7 @@ import type {
   AnimationMode, BoardSettings, Camera, Element, GridMode, ImageEl, NoteEl, Page, PageTransition, Project, ProjectMeta, ShapeEl, TaskEl, TextAlign, TextEl, TextVAlign,
   ToolId, ToolbarPos, WheelMode,
 } from './types';
+import { setStickyTool, stickyTool } from './sticky-tool';
 import { resolveAnimationMode } from './motion';
 import { setZoomCounter } from './zoom-counter';
 import { initZoomChevron } from './zoom-chevron';
@@ -4772,6 +4773,13 @@ function buildToolbar(): void {
       // панель стикеров открывается с этим инструментом и встаёт по центру его кнопки
       if (id === 'note') b.dataset.ctx = 'note';
       if (canDropTool(id)) {
+      // двойной щелчок — «залипающий» режим массового добавления (индикатор «+» на кнопке); снимается выбором другого инструмента
+      b.addEventListener('dblclick', () => {
+        selectShownTool();
+        if (state.tool === 'select' || state.tool === 'pan') return;
+        setStickyTool(state.tool);
+        update();
+      });
         b.classList.add('tool-drop');
         b.addEventListener('pointerdown', e => {
           if (e.button === 0 && e.isPrimary) startToolDrop(id, e);
@@ -5552,6 +5560,7 @@ function refresh(): void {
       btn.title = `${group.name}: ${toolDef(cur).title}`;
     }
   }
+    btn.classList.toggle('sticky', active && stickyTool() === state.tool);
   syncPresetButtons(tb);
   // панель стикеров открывается автоматически с инструментом (если стикер не скрыт с панели)
   const noteOnToolbar = !!tb.querySelector('[data-ctx="note"], [data-tools~="note"]');

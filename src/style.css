@@ -842,6 +842,13 @@ body:not(.no-motion) .ctx-panel[data-kind="shapes"] { animation: none; }
   border: 3px solid transparent; border-right-color: currentColor; border-bottom-color: currentColor;
   opacity: 0.55;
 }
+/* индикатор «массового добавления» (двойной щелчок): маленький плюс в левом верхнем углу */
+#toolbar .tool-shapes.sticky::before {
+  content: ''; position: absolute; left: 4px; top: 4px; width: 8px; height: 8px; pointer-events: none;
+  background:
+    linear-gradient(currentColor, currentColor) center / 100% 2px no-repeat,
+    linear-gradient(currentColor, currentColor) center / 2px 100% no-repeat;
+}
 .ctx-shapes { display: grid; grid-template-columns: repeat(3, auto); gap: 4px; justify-content: start; }
 .ctx-shapes .tool.gesture-hover { background: var(--accent-soft); color: var(--accent); outline: 2px solid var(--accent); outline-offset: -2px; }
 

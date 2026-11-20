@@ -1,3 +1,4 @@
+import { stickyTool } from './sticky-tool';
 import { geometricFoundationFor, rebindAttachment, reattachMoved, withAttached } from './attachment';
 import type { Camera, Element, FadeStroke, Handle, ImageEl, Pt, ShapeEl, ToolId } from './types';
 import {
@@ -445,7 +446,7 @@ export function initController(canvas: HTMLCanvasElement): void {
     if (changed) { a.changed = true; replaceElements(next); }
   }
 
-  function finishShape(keepTool = false): void {
+  function finishShape(): void {
     const ls = state.liveShape;
     state.liveShape = null;
     if (!ls) { update(); return; }
@@ -457,8 +458,8 @@ export function initController(canvas: HTMLCanvasElement): void {
       el = { ...el, x: Math.min(ls.x0, ls.x1), y: Math.min(ls.y0, ls.y1), w: Math.abs(w), h: Math.abs(h) };
     }
     addElement(el);
-    // с зажатым Shift инструмент «Фигура» остаётся включённым — можно рисовать следующую фигуру
-    if (keepTool) { update(); return; }
+    // двойной щелчок по кнопке группы — режим массового добавления: инструмент остаётся, фигура не выделяется
+    if (stickyTool() === state.tool) { update(); return; }
     // фигура сразу выделена: её двигают, а в прямоугольник, эллипс и треугольник сразу пишут текст
     selectInserted(el.id);
   }
@@ -477,6 +478,7 @@ export function initController(canvas: HTMLCanvasElement): void {
     }
     const el = { ...fitSolid(ls.solid, x0, y0, x1, y1, { id: uid(), color: ls.color, width: ls.width }), ...opacityField(ls.opacity) };
     addElement(el);
+    if (stickyTool() === state.tool) { update(); return; } // массовое добавление
     // тело сразу выделено: его параметры правятся ручками
     selectInserted(el.id);
   }
@@ -550,7 +552,7 @@ export function initController(canvas: HTMLCanvasElement): void {
     st.pts.push({ x: last.x + (pt.x - last.x) * 0.6, y: last.y + (pt.y - last.y) * 0.6, p: pt.p });
   }
 
-  function finishAction(keepTool = false): void {
+  function finishAction(): void {
     stopAutoPan();
     const a = action;
     action = null;
@@ -569,7 +571,7 @@ export function initController(canvas: HTMLCanvasElement): void {
         if (a.changed) pushHistory(a.pre);
         update();
         break;
-      case 'shape': finishShape(keepTool); break;
+      case 'shape': finishShape(); break;
       case 'solid': finishSolid(); break;
       case 'move':
         state.attachmentPreview = null;
@@ -1213,7 +1215,7 @@ export function initController(canvas: HTMLCanvasElement): void {
       clearTransfer(); action=null; state.liveEdit=false; state.guides=[]; update(true);
       return;
     }
-    finishAction(e.shiftKey);
+    finishAction();
     if (a?.kind === 'move' && !a.moved && a.link) openPageLink(a.link);
   }
 
