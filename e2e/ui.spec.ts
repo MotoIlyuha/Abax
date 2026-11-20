@@ -43,6 +43,26 @@ test.describe('панель цвета и толщины', () => {
     await expect(panel.locator(`.ctx-swatches.custom [data-c="${color}"]`)).toHaveCount(0);
   });
 
+  test('перетаскивание в «Мои цвета»: приёмник синеет над зоной, текст — только без своих цветов', async ({ page }) => {
+    await page.locator('#btn-style').click();
+    const panel = page.locator('.ctx-panel[data-kind="style"]');
+    const hint = panel.locator('.ctx-drop-hint');
+    await expect(hint).toContainText('Перетащите цвет сюда');
+    const src = (await panel.locator('.ctx-swatches:not(.custom) [data-c="#ff6464"]').boundingBox())!;
+    const dst = (await hint.boundingBox())!;
+    await page.mouse.move(src.x + 17, src.y + 17);
+    await page.mouse.down();
+    await page.mouse.move(dst.x + dst.width / 2, dst.y + dst.height / 2, { steps: 8 });
+    await page.mouse.move(dst.x + dst.width / 2 + 4, dst.y + dst.height / 2);
+    await expect(panel.locator('.ctx-my-colors')).toHaveClass(/drop-over/);
+    await page.mouse.up();
+    await expect(panel.locator('.ctx-swatches.custom [data-c="#ff6464"]')).toHaveCount(1);
+    await expect(panel.locator('.ctx-my-colors')).not.toHaveClass(/drop-over/);
+    // свои цвета есть — пустой приёмник без текста
+    await expect(hint).toHaveText('');
+    await expect(hint).toBeVisible();
+  });
+
   test('пипетка в «Добавить цвет»: превью следует за курсором, щелчок добавляет цвет, Esc отменяет', async ({ board, page }) => {
     await page.locator('#btn-style').click();
     const panel = page.locator('.ctx-panel[data-kind="style"]');

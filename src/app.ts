@@ -1022,7 +1022,7 @@ function makeSwatch(c: string, active: boolean, onPick: (c: string) => void, cus
   if (onPick === chooseColor) {
     b.draggable = true;
     b.addEventListener('dragstart', e => { draggedColor = { color: c, custom }; e.dataTransfer?.setData('text/plain', c); });
-    b.addEventListener('dragend', () => { draggedColor = null; });
+    b.addEventListener('dragend', () => { draggedColor = null; document.querySelector('.ctx-my-colors.drop-over')?.classList.remove('drop-over'); });
     b.addEventListener('contextmenu', e => {
       e.preventDefault(); e.stopPropagation();
       colorMenuController?.abort();
@@ -1052,17 +1052,21 @@ function renderCustomSwatches(): void {
   grid.textContent = '';
   const list = loadCustomColors();
   for (const c of list) grid.appendChild(makeSwatch(c, c === currentPanelColor(), chooseColor, true));
-  // подсказка-приёмник занимает остаток ряда за свотчами; если в ряду меньше трёх ячеек — целый следующий ряд
+  // приёмник перетаскивания занимает остаток ряда за свотчами; текст — только пока своих цветов нет
   const cols = 4;
-  const left = cols - (list.length % cols);
   const hint = document.createElement('div');
   hint.className = 'ctx-drop-hint';
-  hint.style.gridColumn = `span ${left >= 3 ? left : cols}`;
-  const strong = document.createElement('b');
-  strong.textContent = 'Мои цвета';
-  const text = document.createElement('span');
-  text.append('Перетащите цвет сюда, чтобы добавить его в ', strong);
-  hint.appendChild(text);
+  if (list.length === 0) {
+    hint.style.gridColumn = `span ${cols}`;
+    const strong = document.createElement('b');
+    strong.textContent = 'Мои цвета';
+    const text = document.createElement('span');
+    text.append('Перетащите цвет сюда, чтобы добавить его в ', strong);
+    hint.appendChild(text);
+  } else {
+    hint.style.gridColumn = `span ${cols - (list.length % cols)}`;
+    hint.title = 'Перетащите цвет сюда, чтобы добавить его в «Мои цвета»';
+  }
   grid.appendChild(hint);
 }
 
@@ -1235,8 +1239,11 @@ function buildStylePanel(cp: CtxPanel): void {
   if (allAutoCollapsed) { allAutoCollapsed = false; allColorsCollapsed = false; }
   allHeader.appendChild(toggle); updateCollapsed(false);
   const dropZone = (zone: HTMLElement, addFavorite: boolean) => {
-    zone.addEventListener('dragover', e => { if (draggedColor) { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'; } });
-    zone.addEventListener('drop', e => { if (!draggedColor) return; e.preventDefault(); e.stopPropagation(); changeFavorite(draggedColor.color, addFavorite); });
+    // «Мои цвета» подсвечивают приёмник синим, пока цвет над зоной
+    const over = (on: boolean) => { if (addFavorite) zone.classList.toggle('drop-over', on); };
+    zone.addEventListener('dragover', e => { if (draggedColor) { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'; over(true); } });
+    zone.addEventListener('dragleave', e => { if (!(e.relatedTarget instanceof Node && zone.contains(e.relatedTarget))) over(false); });
+    zone.addEventListener('drop', e => { over(false); if (!draggedColor) return; e.preventDefault(); e.stopPropagation(); changeFavorite(draggedColor.color, addFavorite); });
   };
   const mine = document.createElement('div'); mine.className = 'ctx-my-colors';
   mine.append(myHeader, pickerHost, custom); dropZone(mine, true);

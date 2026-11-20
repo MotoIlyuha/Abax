@@ -5159,6 +5159,9 @@ body.no-ui-anim :is(.chat-lightbox, .clb-img) { animation: none !important; }
   color: var(--muted);
 }
 .ctx-drop-hint b { font-weight: 600; color: var(--fg-label); white-space: nowrap; }
+.ctx-drop-hint { transition: background-color 0.15s, border-color 0.15s; }
+.ctx-my-colors.drop-over .ctx-drop-hint { background: var(--accent-soft); border-color: var(--accent); }
+body.no-ui-anim .ctx-drop-hint { transition: none; }
 
 /* Пипетка в пикере: квадратная кнопка справа от превью */
 .picker-eyedropper {
