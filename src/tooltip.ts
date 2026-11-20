@@ -169,7 +169,7 @@ export function initTooltips(): void {
     // (если «Motion анимации» выключены в настройках — обычный пузырь, как у остальных кнопок)
     // ручка откреплённой панели (.tb-grip) — обычный пузырь: подсветка кнопок легла бы поверх неё и спрятала
     if (!document.body.classList.contains('no-motion') && e.target instanceof Element && e.target.closest(MORPH_SCOPE)
-      && !e.target.closest('.tb-grip')) {
+      && !e.target.closest('.tb-grip, .qm-font')) { // поле кегля в меню выделения — со своим наведением, обычная подсказка
       // меню аватара и «Настройки доступа»: морфятся только свои строки; пункт без подсказки — только подсветка
       const row = e.target.closest<HTMLElement>(MORPH_MENU_ROW);
       if (row) {
