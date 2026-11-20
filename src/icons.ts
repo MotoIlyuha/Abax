@@ -263,4 +263,4 @@ export const PANEL_ICONS = {
 };
 
 /** «Свернуть вправо» — кнопка закрытия боковой панели (#side-panel-close): стрелка к черте справа. */
-export const PANEL_COLLAPSE_ICON = svg('<path d="M4 12h11"/><path d="M11 7l5 5-5 5"/><path d="M20 5v14"/>');
+export const PANEL_COLLAPSE_ICON = svg('<path d="M9 6l6 6-6 6"/>');

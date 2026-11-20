@@ -3,7 +3,7 @@
 // и действиями режима справа, ниже — виды режимов (монтируются при первом показе, src/panel-types.ts).
 //
 // Геометрия (широкий экран): панель 360 px у правого края (12 px от краёв окна), кнопка закрытия #side-panel-close —
-// язычок 32×40, прикреплённый к левому краю панели снаружи (без зазора и правого скругления). Правая сторона шапки (.topbar-left) и #bottombar уезжают влево
+// язычок 18×34, прикреплённый к левому краю панели снаружи (без зазора и правого скругления). Правая сторона шапки (.topbar-left) и #bottombar уезжают влево
 // (--side-panel-shift); в режиме ЧУ кнопка ЧУ «влилась» в кнопку закрытия: её место в шапке — ровно под
 // кнопкой закрытия (--side-panel-tuck), сама она скрыта. В других режимах ЧУ видна слева от кнопки закрытия:
 // [аватары][Поделиться][ЧУ][✕]|панель|. Узкий экран (< 760 px): панель — лист под шапкой, кнопка закрытия —
@@ -38,13 +38,15 @@ export const SIDE_PANEL_W = 360;
 const BTN = 48;      // кнопка ЧУ
 const BAR_GAP = 12;  // промежуток между кнопками шапки
 /** Язычок «Свернуть панель», прикреплённый к левому краю панели (как --sp-tab-* в style.css). */
-const TAB_W = 32;
-const TAB_H = 40;
-const TAB_TOP = 8;   // от верха панели (панель — 12 px от верха окна, кнопка ЧУ — тоже)
+const TAB_W = 18;
+const TAB_H = 34;
+const TAB_TOP = 14;  // от верха панели (панель — 12 px от верха окна, кнопка ЧУ — тоже)
 /** На сколько уезжает правая сторона шапки и нижняя панель: панель + язычок + промежуток. */
 export const SIDE_PANEL_SHIFT = SIDE_PANEL_W + TAB_W + BAR_GAP;
 /** В режиме ЧУ место кнопки ЧУ — под кнопкой закрытия: шапка уезжает на столько меньше. */
 const TUCK = BTN + BAR_GAP;
+/** Нижняя панель сдвигается без учёта язычка (он наверху): от неё до панели — тот же промежуток, что между кнопками. */
+const BOTTOM_K = (SIDE_PANEL_SHIFT - TAB_W) / SIDE_PANEL_SHIFT;
 const CSS_MS = 220;
 const FADE_DELAY = 0.08; // с: содержимое проявляется, когда панель уже начала расти
 
@@ -296,6 +298,7 @@ function render(): void {
 function paint(u: Ui): void {
   const root = document.documentElement.style;
   root.setProperty('--side-panel-shift', `${SH.x.toFixed(2)}px`);
+  root.setProperty('--side-panel-shift-b', `${(SH.x * BOTTOM_K).toFixed(2)}px`);
   root.setProperty('--side-panel-tuck', `${TK.x.toFixed(2)}px`);
   // кнопка закрытия — на месте кнопки ЧУ (с учётом сдвига шапки) или у панели
   // в полёте кнопка закрытия — кнопка ЧУ (48×48 на её месте), у панели — узкий язычок без правого скругления
@@ -385,6 +388,7 @@ function syncMerged(ready: boolean): void {
 function applyStatic(): void {
   const root = document.documentElement.style;
   root.setProperty('--side-panel-shift', `${targetShift()}px`);
+  root.setProperty('--side-panel-shift-b', `${(targetShift() * BOTTOM_K).toFixed(2).replace(/\.00$/, '')}px`);
   root.setProperty('--side-panel-tuck', `${targetTuck()}px`);
   document.body.classList.toggle('side-panel-open', isOpen);
   document.body.classList.toggle('side-panel-notify', isOpen && current === 'notify');
