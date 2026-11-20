@@ -1,3 +1,4 @@
+import { requestUpgrade } from './pro-badge';
 import { state, onChange, onDraft, update } from './state';
 import type { PageRight } from './types';
 import {
@@ -189,7 +190,7 @@ export function selfMenuEntries(anchor: HTMLElement): AvatarMenuEntry[] {
     const locked = followLocked();
     out.push({
       kind: 'switch', id: 'follow-me', label: 'Автопереход за мной', icon: FOLLOW_ICON,
-      checked: hostFollowEnabled() && !locked, disabled: locked, badge: locked ? 'Pro' : undefined,
+      checked: hostFollowEnabled() && !locked, disabled: locked, pro: 'follow',
       title: locked ? 'Автопереход участников за мной — доступно в подписке Pro' : 'Участники будут переходить за вами по страницам',
       onChange: setFollowMe,
     });
@@ -614,7 +615,7 @@ export function summonHere(anchor?: HTMLElement | null): void {
 function setFollowMe(next: boolean): void {
   if (!collabActive() || !isHost()) return;
   // отклики на мой переключатель — тихие
-  if (followLocked()) { pushNotice({ title: 'Автопереход участников — доступно в подписке Pro', icon: 'follow', quiet: true }); return; }
+  if (followLocked()) { requestUpgrade('follow'); return; }
   sendFollowHost(next);
   pushNotice({ title: next ? 'Участники следуют за вами по страницам' : 'Автопереход участников выключен', icon: 'follow', quiet: true });
   refreshHostControls(true);

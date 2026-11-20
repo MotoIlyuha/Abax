@@ -179,6 +179,8 @@ export function closeSettingsDialog(): void {
   window.removeEventListener('keydown', onKey, true);
   d.el.remove();
   if (d.prevFocus instanceof HTMLElement && d.prevFocus.isConnected) d.prevFocus.focus();
+  // то, что ждало закрытия окна (превращение тарифа в шапке), может начаться
+  document.dispatchEvent(new CustomEvent('doska:settings-closed'));
 }
 
 /** Tab не выпускает фокус из окна. */

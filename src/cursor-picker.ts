@@ -182,7 +182,8 @@ export function createCursorPicker(o: CursorPickerOptions): CursorPicker {
     icon.innerHTML = svgOf(p.id, ICON_SIZE);
     b.append(icon, el('span', 'cp-item-name', p.name));
     // бейдж — признак уровня курсора: виден и тем, у кого есть подписка
-    if (p.tier === 'pro') b.appendChild(el('span', 'cp-pro', 'Pro'));
+    // метка тарифа курсора — того же вида, что и бейдж Pro (src/pro-badge.ts), но это подпись каталога, а не замок
+    if (p.tier === 'pro') b.appendChild(el('span', 'pro-badge cp-pro', 'Pro'));
     b.addEventListener('click', () => set(pickCursor(choice, p.id, o.entitled)));
     list.appendChild(b);
     items.push({ id: p.id, btn: b, icon, ix: 0, iy: 0, ox: S(0, 320, 26), oy: S(0, 320, 26), rot: S(0, 220, 26), w: '' });

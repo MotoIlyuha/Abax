@@ -10,7 +10,7 @@ import type { PanelModeDef, PanelView } from './panel-types';
 import { el, iconEl, panelScaffold, setTip } from './panel-view';
 import { canRedo, canUndo, historyTimeline, jumpToHistory, onChange, redo, undo, type HistoryRecord } from './state';
 
-export const HISTORY_MODE: Omit<PanelModeDef, 'mount'> = { id: 'history', label: 'История изменений', icon: PANEL_ICONS.history };
+export const HISTORY_MODE: Omit<PanelModeDef, 'mount'> = { id: 'history', label: 'История изменений', icon: PANEL_ICONS.history, pro: 'history' };
 
 const EMPTY_TEXT = 'Изменений пока нет. Здесь появится всё, что вы сделаете на этой странице';
 const NO_EDIT_TEXT = 'Нет права на правку этой страницы';

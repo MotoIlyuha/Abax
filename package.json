@@ -24,9 +24,10 @@
     "test:e2e": "playwright test",
     "test:all": "npm run typecheck:tests && npm run test && npm run test:e2e",
     "typecheck:tests": "tsc --noEmit -p tsconfig.test.json",
-    "server:build": "esbuild server/index.ts server/plan-cli.ts --bundle --platform=node --format=esm --packages=external --target=node22 --outdir=dist-server --out-extension:.js=.mjs --log-level=warning",
+    "server:build": "esbuild server/index.ts server/plan-cli.ts server/promo-cli.ts --bundle --platform=node --format=esm --packages=external --target=node22 --outdir=dist-server --out-extension:.js=.mjs --log-level=warning",
     "server": "npm run server:build && node dist-server/index.mjs",
-    "server:plan": "npm run server:build && node dist-server/plan-cli.mjs"
+    "server:plan": "npm run server:build && node dist-server/plan-cli.mjs",
+    "server:promo": "npm run server:build && node dist-server/promo-cli.mjs"
   },
   "devDependencies": {
     "@capacitor/android": "^8.5.3",

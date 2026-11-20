@@ -8,6 +8,7 @@ import { registerEmailInviteRoutes } from './email-invites';
 import { registerProjectRoutes } from './projects';
 import { authenticate, registerAuthRoutes } from './auth';
 import { registerAuthFlowRoutes } from './auth-flows';
+import { registerBillingRoutes } from './billing';
 import type { Mailer } from './mailer';
 import type { AppContext, ResolvedOptions } from './context';
 import { openDb, type Db } from './db';
@@ -161,6 +162,7 @@ export function createAppServer(options: AppOptions, extraRoutes: RouteModule[] 
   registerProjectRoutes(router);
   registerInviteRoutes(router);
   registerEmailInviteRoutes(router);
+  registerBillingRoutes(router);
   for (const mod of extraRoutes) mod(router, app);
 
   const upgradeHandlers: Parameters<AppServer['onUpgrade']>[0][] = [];

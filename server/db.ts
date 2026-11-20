@@ -28,6 +28,42 @@ export interface UserRow {
   google_email: string | null;
   /** Свой аватар (миграция V6): смайл или фото data:image (src/avatar-value.ts); null — буквы. */
   avatar: string | null;
+  /** Действующий тариф — пробный период (миграция V8). */
+  plan_trial: number;
+  /** Когда взят пробный период; null — ещё не брали (один раз на аккаунт). */
+  trial_used_at: number | null;
+}
+
+/** Платёж за подписку или пробный период (server/billing.ts). */
+export interface PaymentRow {
+  id: string;
+  user_id: string;
+  plan: string;
+  period: string | null;
+  days: number;
+  amount: number;
+  status: string;
+  provider: string;
+  created_at: number;
+}
+
+/** Промокод: тариф на столько-то дней, не больше max_uses активаций (null — без ограничения). */
+export interface PromoCodeRow {
+  code: string;
+  plan: string;
+  days: number;
+  max_uses: number | null;
+  uses: number;
+  expires_at: number | null;
+  created_at: number;
+}
+
+export interface PromoRedemptionRow {
+  user_id: string;
+  code: string;
+  plan: string;
+  days: number;
+  redeemed_at: number;
 }
 
 /** Код входа по почте (хранится только хеш). */
@@ -293,8 +329,49 @@ CREATE TABLE member_page_rights (
 );
 `;
 
+/**
+ * Подписка: пробный период (один раз на аккаунт), история платежей, промокоды и их активации.
+ * Один промокод один аккаунт активирует один раз (PRIMARY KEY активации).
+ */
+const SCHEMA_V8 = `
+ALTER TABLE users ADD COLUMN plan_trial INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN trial_used_at INTEGER;
+
+CREATE TABLE payments (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  plan TEXT NOT NULL,
+  period TEXT,
+  days INTEGER NOT NULL,
+  amount INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX idx_payments_user ON payments(user_id, created_at);
+
+CREATE TABLE promo_codes (
+  code TEXT PRIMARY KEY,
+  plan TEXT NOT NULL,
+  days INTEGER NOT NULL,
+  max_uses INTEGER,
+  uses INTEGER NOT NULL DEFAULT 0,
+  expires_at INTEGER,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE promo_redemptions (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  code TEXT NOT NULL,
+  plan TEXT NOT NULL,
+  days INTEGER NOT NULL,
+  redeemed_at INTEGER NOT NULL,
+  PRIMARY KEY (user_id, code)
+);
+`;
+
 /** Миграции по порядку; номер версии хранится в PRAGMA user_version. */
-const MIGRATIONS: string[] = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7];
+const MIGRATIONS: string[] = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8];
 
 /** target — до какой версии (по умолчанию — до последней; меньше — только в тестах миграций). */
 export function migrate(db: Db, target = MIGRATIONS.length): void {

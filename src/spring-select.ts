@@ -16,6 +16,7 @@
 
 import { S, clamp, motionEnabled, reduceMotion, register, snap, step, tune, uiAnimOff, wake, type Spring } from './motion';
 import { createRoll, type Roll } from './roll-text';
+import { proBadge, type ProFeature } from './pro-badge';
 
 export interface SelectOption {
   value: string;
@@ -30,6 +31,8 @@ export interface SelectOption {
   icon?: string;
   /** Счётчик справа в строке (акцентная пилюля, например непрочитанные); пусто — нет. */
   badge?: string;
+  /** Пункт подписки: справа единый бейдж Pro (src/pro-badge.ts), видимость он ведёт сам. */
+  pro?: ProFeature;
 }
 
 export interface SpringSelectOptions {
@@ -253,6 +256,7 @@ function buildMenu(it: Inst): HTMLElement {
     badge.textContent = opt.badge ?? '';
     badge.hidden = !opt.badge;
     el.append(badge);
+    if (opt.pro) el.append(proBadge(opt.pro, { className: 'ss-opt-pro' }));
     if (!opt.action) el.insertAdjacentHTML('beforeend', TICK); // константа из кода
     el.addEventListener('pointermove', () => { if (it.isOpen) setHover(it, i); });
     el.addEventListener('click', () => { if (it.isOpen) choose(it, i); });

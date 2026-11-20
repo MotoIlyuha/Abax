@@ -72,9 +72,14 @@ import { stretchCancel, stretchClose, stretchOpen } from './stretch';
 import { morphLeave } from './morph-tooltip';
 import { initMorphPages, morphPagesOpen, morphPagesReset, morphPagesSync } from './morph-pages';
 import { hideHeldTooltip, showHeldTooltip } from './tooltip';
-import { LIMIT_PROJECTS_TEXT, copyBoardLink, currentBoardLink, registerLinkViewHooks } from './link-view-ui';
+import { copyBoardLink, currentBoardLink, registerLinkViewHooks } from './link-view-ui';
 import { canCreateProject, isOverPageLimit, isOverProjectLimit, PLAN_LIMITS } from './limits';
-import { limitsEnforced, userPlan } from './plan';
+import { limitsEnforced, onPlanChange, userPlan } from './plan';
+import { proBadge, refreshProBadges, requestUpgrade, setProBadgeNeeded, setUpgradeHandler, startProBadges } from './pro-badge';
+import { openPlansDialog, setPlansDialogHooks } from './plans-dialog';
+import { renderSubscriptionSettings } from './subscription-settings';
+import { mountTierButton, onTierHiddenChange, setTierHidden, tierHidden } from './tier-button';
+import { refreshBilling } from './subscription';
 import { openProjectDialog, type FirstProjectStep, type ProjectFormValues } from './project-dialog';
 import { wireTopName, type TopName } from './topbar-names';
 import { PAGE_NAME_MAX, PROJECT_NAME_MAX, defaultProjectName, planNote } from './project-names';
@@ -2251,6 +2256,9 @@ export function openProfileAfterAuth(outcome: AuthOutcome): void {
   openAllSettings('profile');
 }
 
+/** «Есть промокод?» в окне подписки: раздел «Подписка» откроется с фокусом в поле промокода. */
+let promoFocusNext = false;
+
 /** Окно «Все настройки»; section — раздел, с которого открыть (по умолчанию — последний открытый). */
 export function openAllSettings(section?: string): void {
   closeSettings();
@@ -2259,7 +2267,17 @@ export function openAllSettings(section?: string): void {
       id: 'profile',
       title: 'Профиль',
       icon: PROFILE_ICON,
-      render: (host, rerender) => renderProfileSettings(host, rerender, { notice: takeProfileNotice() }),
+      render: (host, rerender) => renderProfileSettings(host, rerender, { notice: takeProfileNotice(), openSubscription: () => openAllSettings('subscription') }),
+    },
+    {
+      id: 'subscription',
+      title: 'Подписка',
+      icon: ICONS.crown,
+      render: host => {
+        const focusPromo = promoFocusNext;
+        promoFocusNext = false;
+        return renderSubscriptionSettings(host, { openLogin: () => openAllSettings('profile'), focusPromo });
+      },
     },
     {
       id: 'general',
@@ -2956,7 +2974,7 @@ export async function importProjectFile(f: File): Promise<void> {
   let parsed: Project | null = null;
   try { parsed = parseProject(JSON.parse(await f.text())); } catch { parsed = null; }
   if (!parsed) { showToast('Это не файл проекта Abax'); return; }
-  if (limitsEnforced() && !canCreateProject(userPlan(), state.projects.length)) { showToast(LIMIT_PROJECTS_TEXT); return; }
+  if (limitsEnforced() && !canCreateProject(userPlan(), state.projects.length)) { requestUpgrade('projects'); return; }
   await saveNow();
   saveCamera();
   rememberOpenProject();
@@ -3427,7 +3445,7 @@ function newPageTip(): string {
 }
 
 async function newPageHandler(): Promise<void> {
-  if (!canAddPageTo(state.project)) { showToast(PAGE_LIMIT_TEXT); return; }
+  if (!canAddPageTo(state.project)) { requestUpgrade('pages'); return; }
   await saveNow();
   changePage(() => addPage());
 }
@@ -3599,6 +3617,8 @@ function makeAddPageTile(): HTMLButtonElement {
   b.innerHTML = `<span class="add-new">${ICONS.plus}</span>`
     + `<span class="add-draft">${ICONS.draft}<span>Создать черновик</span></span>`;
   wireCreate(b, () => canEditPages(), () => { void newPageHandler(); });
+  // четвёртая страница на бесплатном тарифе — бейдж Pro (src/pro-badge.ts)
+  b.appendChild(proBadge('pages', { className: 'page-add-pro', needed: false }));
   return b;
 }
 
@@ -3633,6 +3653,9 @@ function syncDraftMode(): void {
   const on = draftMode();
   if (addPageTile) {
     addPageTile.classList.toggle('draft-mode', on);
+    const pro = addPageTile.querySelector<HTMLElement>('.pro-badge');
+    // черновики лимитом не считаются: бейдж — только у «новой страницы», когда страниц уже столько, сколько даёт free
+    if (pro) setProBadgeNeeded(pro, !on && state.project.pages.length >= PLAN_LIMITS.free.maxPagesPerProject);
     const tip = on ? newDraftTip() : newPageTip();
     if ((addPageTile.getAttribute('title') ?? addPageTile.dataset.tip) !== tip) addPageTile.title = tip;
   }
@@ -4122,7 +4145,7 @@ export function applyCloudConflict(r: ConflictResolution): void {
 
 /** «Новый проект»: окно «Создать проект» (название, страница, смайл), затем — сам проект. */
 function newProjectHandler(): void {
-  if (limitsEnforced() && !canCreateProject(userPlan(), state.projects.length)) { showToast(LIMIT_PROJECTS_TEXT); return; }
+  if (limitsEnforced() && !canCreateProject(userPlan(), state.projects.length)) { requestUpgrade('projects'); return; }
   openProjectDialog({
     namePlaceholder: defaultProjectName(state.projects.map(m => m.name)),
     pagePlaceholder: 'Страница 1',
@@ -4133,7 +4156,7 @@ function newProjectHandler(): void {
 
 async function createProjectHandler(v: ProjectFormValues): Promise<void> {
   // пока окно было открыто, лимит мог исчерпаться (проект пришёл из облака)
-  if (limitsEnforced() && !canCreateProject(userPlan(), state.projects.length)) { showToast(LIMIT_PROJECTS_TEXT); return; }
+  if (limitsEnforced() && !canCreateProject(userPlan(), state.projects.length)) { requestUpgrade('projects'); return; }
   await saveNow();
   saveCamera();
   rememberOpenProject();
@@ -4437,6 +4460,8 @@ function renderHome(): void {
   newBtn.className = 'new-project';
   newBtn.innerHTML = ICONS.plus;
   newBtn.append('Новый проект');
+  // четвёртый проект на бесплатном тарифе — бейдж Pro
+  newBtn.appendChild(proBadge('projects', { className: 'new-project-pro', needed: state.projects.length >= PLAN_LIMITS.free.maxProjects }));
   newBtn.addEventListener('click', () => { newProjectHandler(); });
   tools.append(views, newBtn, profileButton());
   head.append(logo, h, tools);
@@ -5155,12 +5180,22 @@ function wireTopbar(): void {
       setTopbarGroupHidden(document.querySelector<HTMLElement>('.export-group')!, on, hidden => document.body.classList.toggle('hide-export-button', hidden));
     },
   });
+  const hideTierSwitch = createToggleSwitch({
+    className: 'grid-switch main-switch',
+    label: 'Текущий тариф',
+    icon: ICONS.crown,
+    checked: tierHidden(),
+    onChange: on => setTierHidden(on),
+  });
   const switchInput = (row: HTMLElement) => row.querySelector<HTMLInputElement>('input')!;
   // data-action — на самом переключателе: по нему пункт находят тесты и проверяют доступность
   switchInput(hideUndoSwitch).dataset.action = 'undo';
   switchInput(hideImportsSwitch).dataset.action = 'imports';
   switchInput(hideExportSwitch).dataset.action = 'hide-export';
-  menu.querySelector<HTMLElement>('#menu-hide')!.append(hideUndoSwitch, hideImportsSwitch, hideExportSwitch);
+  switchInput(hideTierSwitch).dataset.action = 'hide-tier';
+  menu.querySelector<HTMLElement>('#menu-hide')!.append(hideUndoSwitch, hideImportsSwitch, hideExportSwitch, hideTierSwitch);
+  // крестик на самом тарифе тоже прячет его — переключатель меню показывает это
+  onTierHiddenChange(on => { switchInput(hideTierSwitch).checked = on; });
   const submenus = () => [...menu.querySelectorAll<HTMLButtonElement>('[data-section]')]
     .map(button => ({ button, panel: document.getElementById(button.getAttribute('aria-controls')!)! }));
   /** Отметки «Скрыть» и недоступные пункты — по текущему состоянию шапки. */
@@ -5169,6 +5204,7 @@ function wireTopbar(): void {
     switchInput(hideUndoSwitch).checked = state.settings.hideUndoRedo;
     switchInput(hideImportsSwitch).checked = localStorage.getItem('abax.hideImports') === 'true';
     switchInput(hideExportSwitch).checked = localStorage.getItem('abax.hideExport') === 'true';
+    switchInput(hideTierSwitch).checked = tierHidden();
     // элемент, которому в шапке не хватает места, показать нельзя: пункт недоступен
     const { noRoom } = topbarFit();
     for (const [row, step] of [[hideImportsSwitch, 'import'], [hideExportSwitch, 'export']] as const) {
@@ -5847,6 +5883,29 @@ function syncSelectionToCollab(): void {
   noteSelection(ids);
 }
 
+/**
+ * Подписка: окно тарифов по нажатию на недоступное, тариф в шапке, бейджи Pro. Сменился тариф — свой проект
+ * живёт по тарифу владельца (то есть по моему), а бейджи «новая страница» и «новый проект» сверяются заново.
+ */
+function initSubscriptionUi(): void {
+  setUpgradeHandler(f => openPlansDialog(f));
+  setPlansDialogHooks({
+    openLogin: () => openAllSettings('profile'),
+    openPromo: () => { promoFocusNext = true; openAllSettings('subscription'); },
+  });
+  startProBadges();
+  mountTierButton();
+  onPlanChange(() => {
+    if (state.collabRole === null && !state.linkMode && state.project.ownerPlan !== userPlan()) {
+      state.project = { ...state.project, ownerPlan: userPlan() };
+    }
+    renderPages();
+    if (state.view === 'home') renderHome();
+    refreshProBadges();
+  });
+  void refreshBilling();
+}
+
 export function initApp(c: HTMLCanvasElement): void {
   // страницу скрыли под гостем: открытый редактор текста закрывается без сохранения (SPEC_NIGHT5 §7)
   onCancelInteraction(() => closeEditor(false));
@@ -5873,6 +5932,7 @@ export function initApp(c: HTMLCanvasElement): void {
   });
   initCollabPresence(refreshPageAvatars, { openProfile: () => openAllSettings('profile') });
   initSyncIndicator();
+  initSubscriptionUi();
   c.addEventListener('dragover', e => { if (draggedColor && canEditBoard()) e.preventDefault(); });
   c.addEventListener('drop', e => {
     if (!draggedColor || !canEditBoard()) return;

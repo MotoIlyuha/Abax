@@ -34,7 +34,8 @@ import {
   saveNow, selectedTextShape, switchToPage, switchPageForDrag, toggleTextFlag, togglePages,
 } from './app';
 import { DRAFT_KEY, comboFromEvent, pageNumberFromEvent } from './hotkeys';
-import { devModeEnabled, devPlanForCode, limitsEnforced, setLimitsEnforced, setUserPlan } from './plan';
+import { devModeEnabled, devPlanStep, limitsEnforced, setLimitsEnforced, setUserPlan, userPlan } from './plan';
+import { PLAN_TITLES } from './billing';
 import { showToast } from './about';
 import { ERASER_PATHS, ERASER_TIP } from './icons';
 import { TOOL_DEFS, toolByKey } from './toolbar';
@@ -1442,15 +1443,16 @@ export function initController(canvas: HTMLCanvasElement): void {
       }
       return;
     }
-    // режим разработки: «−» и «+» переключают тариф (Free / Pro) вместо масштаба
+    // режим разработки: «+» и «−» переключают тариф по лестнице Free → Pro → Tutor (и обратно) вместо масштаба;
+    // тариф в шапке показывает превращение, бейджи Pro раскалываются, когда их увидят
     if (!e.altKey && devModeEnabled()) {
-      const plan = devPlanForCode(e.code);
+      const plan = devPlanStep(e.code, userPlan());
       if (plan) {
         e.preventDefault();
-        setUserPlan(plan);
         // Free без лимитов ничем не отличается от Pro — поэтому на Free лимиты включаются
         if (plan === 'free') setLimitsEnforced(true);
-        showToast(`Тариф: ${plan === 'pro' ? 'Pro' : 'Free'} (режим разработки)`
+        setUserPlan(plan);
+        showToast(`Тариф: ${PLAN_TITLES[plan]} (режим разработки)`
           + (limitsEnforced() ? ' · лимиты включены' : ' · лимиты выключены'));
         return;
       }
