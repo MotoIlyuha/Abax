@@ -3697,10 +3697,9 @@ body.no-motion #sync-indicator[data-status="syncing"] svg .sync-arrows { animati
   overflow: hidden;
   overflow-wrap: anywhere;
 }
+.ns-actions { grid-area: action; justify-self: start; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .ns-action {
-  grid-area: action;
   justify-self: start;
-  margin-top: 8px;
   height: 28px;
   padding: 0 12px;
   border: 0;
@@ -3713,6 +3712,11 @@ body.no-motion #sync-indicator[data-status="syncing"] svg .sync-arrows { animati
   cursor: pointer;
 }
 .ns-action:hover { background: var(--accent); color: var(--fg-inverse); }
+.ns-action-alt { background: transparent; box-shadow: inset 0 0 0 1px var(--border); color: var(--fg); }
+.ns-action-alt:hover { background: var(--surface-sunken); color: var(--fg); }
+/* реакция вместо значка события: эмодзи в квадрате и в значке на аватаре */
+.ns-media.ns-emoji { background: var(--surface-sunken); font-size: 19px; line-height: 1; }
+.ns-ev.ns-ev-emoji { width: 18px; height: 18px; top: -5px; right: -6px; background: var(--panel); color: var(--fg); font-size: 12px; line-height: 1; box-shadow: 0 0 0 1.5px var(--panel), 0 1px 3px rgba(16, 24, 40, .25); }
 .ns-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 /* × — слева сверху, видно при наведении и фокусе */
 .ns-close {
@@ -5100,6 +5104,7 @@ body.no-ui-anim .cf-msg.cf-flash .cf-bubble { animation: none; box-shadow: 0 0 0
 .cf-ev-media { flex: none; width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; }
 .cf-ev-icon { border-radius: 50%; background: var(--panel); color: var(--icon-secondary); }
 .cf-ev-icon svg { width: 12px; height: 12px; }
+.cf-ev-icon.cf-ev-emoji { font-size: 13px; line-height: 1; }
 .cf-ev-avatar { --ua-size: 20px; cursor: default; pointer-events: none; }
 .cf-ev-body { min-width: 0; overflow-wrap: anywhere; }
 .cf-ev-time { margin-left: 6px; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }

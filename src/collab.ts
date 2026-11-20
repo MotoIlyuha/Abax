@@ -66,6 +66,10 @@ export interface CollabUser {
   access?: { role: AccessRole | 'owner'; source: 'owner' | 'link' | 'alias' | 'email' | 'p2p'; inviteId?: string; personal?: Record<string, PageRight> };
 }
 
+/** Событие на document: участник привлёк внимание к объекту реакцией (SPEC_COMMENTS §5). */
+export const ATTENTION_EVENT = 'doska:collab-attention';
+export interface CollabAttentionDetail { pageId: string; elId: string; emoji: string; by: number }
+
 /** Событие на document: автор позвал всех на страницу (SPEC_NIGHT5 §8); камеру наводит приложение. */
 export interface CollabSummonDetail { pageId: string; vx: number; vy: number; vz: number; by: number }
 
@@ -413,6 +417,12 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
       document.dispatchEvent(new CustomEvent(PRESENCE_EVENT));
     } else if (m.t === 'summon') {
       receiveSummon(m);
+    } else if (m.t === 'attention') {
+      // «Привлечь внимание» (SPEC_COMMENTS §5): частицы и уведомление — src/attention.ts
+      if (typeof m.pageId === 'string' && typeof m.elId === 'string' && typeof m.emoji === 'string' && typeof m.by === 'number' && m.by !== myUserId) {
+        const detail: CollabAttentionDetail = { pageId: m.pageId, elId: m.elId, emoji: m.emoji, by: m.by };
+        document.dispatchEvent(new CustomEvent<CollabAttentionDetail>(ATTENTION_EVENT, { detail }));
+      }
     } else if (m.t === 'set-rights') {
       // хаб отклонил «Настройки доступа» из меню аватара (например, лимит редакторов)
       // ответ на моё действие — тихое предупреждение
@@ -962,6 +972,13 @@ export function noteOnline(): boolean {
 export function sendReaction(pageId: string, elId: string, emoji: string): boolean {
   if (!noteOnline()) return false;
   send({ t: 'react', pageId, elId, emoji, userId: clientId() });
+  return true;
+}
+
+/** «Привлечь внимание» к объекту реакцией (хаб проверит право и частоту); false — не в комнате. */
+export function sendAttention(pageId: string, elId: string, emoji: string): boolean {
+  if (!noteOnline()) return false;
+  send({ t: 'attention', pageId, elId, emoji });
   return true;
 }
 

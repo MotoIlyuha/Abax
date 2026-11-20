@@ -9,6 +9,7 @@ export type NoticeLevel = 'info' | 'ok' | 'warn';
 /** Иконка системного события — ключ каталога иконок (SVG — константы кода, src/icons.ts). */
 export type NoticeIcon = 'bell' | 'join' | 'leave' | 'rename' | 'cursor' | 'avatar' | 'role' | 'rights' | 'summon'
   | 'follow' | 'link' | 'offline' | 'online' | 'hidden' | 'draft' | 'remove' | 'image' | 'board';
+export interface NoticeAction { label: string; run: () => void }
 export interface NoticeUser { userId?: number; name: string; cursorId?: string; avatar?: string | null }
 export interface NoticeInput {
   /** По умолчанию 'system'. */
@@ -22,7 +23,11 @@ export interface NoticeInput {
   icon?: NoticeIcon;
   /** Для аватара (событие участника, сообщение чата). */
   user?: NoticeUser;
-  action?: { label: string; run: () => void };
+  action?: NoticeAction;
+  /** Ещё действия после action (уведомление о комментарии: «Перейти» и «Посмотреть»). */
+  actions?: NoticeAction[];
+  /** Эмодзи вместо значка события (реакция, «Привлечь внимание»): только textContent. */
+  emoji?: string;
   onClick?: () => void;
   /** Отклик на моё действие: в стопке показывается, но сразу прочитано. */
   quiet?: boolean;
@@ -72,6 +77,11 @@ export function pushNotice(input: NoticeInput): Notice {
   const dropped = list.length > NOTICE_LIMIT ? list.splice(0, list.length - NOTICE_LIMIT) : [];
   emit({ type: 'push', notice: n, dropped });
   return n;
+}
+
+/** Все действия уведомления по порядку: action, затем actions. */
+export function noticeActions(n: Pick<NoticeInput, 'action' | 'actions'>): NoticeAction[] {
+  return [...(n.action ? [n.action] : []), ...(n.actions ?? [])];
 }
 
 /** Все уведомления по времени (старые первыми). */
