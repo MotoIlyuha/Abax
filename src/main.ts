@@ -20,7 +20,7 @@ import { myCursorId, profileName } from './profile';
 import { startProfileSync, syncAccount } from './profile-sync';
 import { completePendingAuth, type AuthOutcome } from './auth';
 import { needsOnboarding, openOnboarding } from './onboarding';
-import { applyCloudConflict, firstProjectStep, openProfileAfterAuth, replaceStarterWithCloud } from './app';
+import { applyCloudConflict, canCopyOnConflict, firstProjectStep, openProfileAfterAuth, replaceStarterWithCloud } from './app';
 import { STARTER_PROJECT_NAME, markStarter } from './sync-state';
 import { roomFullInfo, showRoomFullModal } from './room-full';
 import { refreshIncomingInvites } from './incoming-invites';
@@ -93,6 +93,8 @@ async function boot(): Promise<void> {
     onSynced: metas => { void replaceStarterWithCloud(metas).catch(() => {}); },
     // офлайн-правки поверх версии с другого устройства — в копию (SPEC_NIGHT5 §2.4)
     onConflict: applyCloudConflict,
+    // копия сверх лимита проектов не создаётся: правки — черновиком при проекте
+    canCopyOnConflict,
   });
 
   // вернулись от провайдера входа (#abaxAuth=…) — завершить вход до открытия доски

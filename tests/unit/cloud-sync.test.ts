@@ -7,6 +7,7 @@ import { blankProject, openProject, projectMeta, state } from '../../src/state';
 import type { BoardsStorage } from '../../src/storage';
 import { STARTER_PROJECT_NAME, clearStarter, getSyncBase, getSyncedRev, isDirty, markStarter, pendingDeletes, starterId } from '../../src/sync-state';
 import { contentSignature } from '../../src/sync-conflict';
+import { getConflictDraft, hasConflictDraft } from '../../src/conflict-draft';
 import type { Project, ProjectMeta } from '../../src/types';
 import { anon, call, closeApps, editStored, makeApp, proj, rectEl, taskEl, type TestApp } from '../server/helpers';
 
@@ -552,14 +553,65 @@ describe('офлайн-конфликт (SPEC_NIGHT5 §2.4)', () => {
     expect(base.data.get('a')!.name).toBe('Правка с планшета');
     expect(getSyncedRev('a')).toBe(serverRow('a')!.rev);
     expect(isDirty('a')).toBe(false);
-    const copy = base.data.get(r.copy.id)!;
+    const copy = base.data.get(r.copy!.id)!;
     expect(copy.name).toBe(`Проект a${CONFLICT_COPY_SUFFIX}`);
     expect(copy.pages[0].elements.map(e => e.id)).toEqual(['офлайн']);
     // копия уходит в облако обычным путём, сервер с основным не трогается повторно
     await c.flush();
-    await until(() => serverRow(r.copy.id));
+    await until(() => serverRow(r.copy!.id));
     expect(JSON.parse(serverRow('a')!.data_json).name).toBe('Правка с планшета');
     expect(conflicts).toHaveLength(1);
+  });
+
+  it('копию создать нельзя (лимит проектов) — правки в черновике при проекте, нового проекта нет', async () => {
+    const conflicts: ConflictResolution[] = [];
+    const { c, base } = make(memStorage(), { onConflict: r => conflicts.push(r), canCopyOnConflict: () => false });
+    await c.save(proj('a'));
+    await c.flush();
+    editStored(app, 'a', p => { p.name = 'Правка с планшета'; });
+    const mine = { ...base.data.get('a')!, pages: [{ id: 'a-p1', name: 'П', grid: 'square', elements: [rectEl('офлайн'), { id: 'img', type: 'image', x: 0, y: 0, w: 5, h: 5, src: PNG }] }] } as Project;
+    await c.save(mine);
+    await c.flush();
+    await until(() => conflicts.length === 1);
+    const r = conflicts[0];
+    expect(r).toMatchObject({ id: 'a', draft: true });
+    expect(r.copy).toBeUndefined();
+    // на устройстве и на сервере — по одному проекту: основной взят с сервера
+    expect([...base.data.keys()]).toEqual(['a']);
+    expect(base.data.get('a')!.name).toBe('Правка с планшета');
+    expect((app.db.prepare('SELECT COUNT(*) n FROM projects').get() as { n: number }).n).toBe(1);
+    // черновик — с тем же id, картинка вынесена ссылкой и возвращается при чтении
+    const stored = getConflictDraft('a')!;
+    expect(stored.project.pages[0].elements.map(e => e.id)).toEqual(['офлайн', 'img']);
+    expect((stored.project.pages[0].elements[1] as { src: string }).src).toMatch(/^asset:\/\//);
+    const draft = (await c.conflictDraft('a'))!;
+    expect((draft.pages[0].elements[1] as { src: string }).src).toBe(PNG);
+    expect(c.status(base.data.get('a')!)).toBe('draft');
+    // «Оставить мою версию»: черновик сохраняется поверх, отправка проходит без нового конфликта
+    await c.save({ ...draft, updatedAt: Date.now() });
+    c.discardConflictDraft('a');
+    await c.flush();
+    expect(conflicts).toHaveLength(1);
+    expect(hasConflictDraft('a')).toBe(false);
+    expect(JSON.parse(serverRow('a')!.data_json).pages[0].elements.map((e: { id: string }) => e.id)).toEqual(['офлайн', 'img']);
+    expect(c.status(base.data.get('a')!)).toBe('synced');
+  });
+
+  it('новый конфликт заменяет черновик, удаление проекта удаляет и черновик', async () => {
+    const conflicts: ConflictResolution[] = [];
+    const { c, base } = make(memStorage(), { onConflict: r => conflicts.push(r), canCopyOnConflict: () => false });
+    await c.save(proj('a'));
+    await c.flush();
+    for (const n of [1, 2]) {
+      editStored(app, 'a', p => { p.name = `Планшет ${n}`; });
+      await c.save({ ...base.data.get('a')!, pages: [{ id: 'a-p1', name: 'П', grid: 'square', elements: [rectEl(`офлайн${n}`)] }] } as Project);
+      await c.flush();
+      await until(() => conflicts.length === n);
+    }
+    expect([...base.data.keys()]).toEqual(['a']);
+    expect(getConflictDraft('a')!.project.pages[0].elements.map(e => e.id)).toEqual(['офлайн2']);
+    await c.remove('a');
+    expect(hasConflictDraft('a')).toBe(false);
   });
 
   it('на сервере менялись только живые поля — не конфликт, прежнее слияние', async () => {

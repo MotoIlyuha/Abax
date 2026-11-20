@@ -270,11 +270,13 @@ export const MOUSE_ACTION_ICONS: Record<string, string> = {
 /** Иконки — статичные константы (пути), пользовательских данных в разметке нет. */
 const SYNC_CLOUD = 'M7 18h10.5a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.6 9.2 4.5 4.5 0 0 0 7 18z';
 
-export const SYNC_ICONS: Record<'synced' | 'syncing' | 'offline' | 'limit', { d: string; cls?: string }[]> = {
+export const SYNC_ICONS: Record<'synced' | 'syncing' | 'offline' | 'limit' | 'draft', { d: string; cls?: string }[]> = {
   synced: [{ d: SYNC_CLOUD }, { d: 'M9.2 13.2l2 2 3.8-4' }],
   syncing: [{ d: SYNC_CLOUD }, { d: 'M9.5 12.5a2.6 2.6 0 0 1 4.6-1.3M14.5 13.5a2.6 2.6 0 0 1-4.6 1.3M14.3 10.2v1.3h-1.3M9.7 15.8v-1.3h1.3', cls: 'sync-arrows' }],
   offline: [{ d: SYNC_CLOUD }, { d: 'M5 5l14 14' }],
   limit: [{ d: SYNC_CLOUD }, { d: 'M12 10.5v3M12 15.8v.1' }],
+  /** Черновик офлайн-конфликта: облако со строками текста. */
+  draft: [{ d: SYNC_CLOUD }, { d: 'M9 12.5h6M9 15h4' }],
 };
 
 /** Режимы боковой панели «История», «Справка», «Импорт», «Экспорт» и их строки (SPEC_CHAT §8). */

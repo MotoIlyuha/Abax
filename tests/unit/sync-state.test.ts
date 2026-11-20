@@ -78,6 +78,12 @@ describe('статус синхронизации', () => {
     expect(syncStatusOf({ cloud: true, limit: true, networkError: true })).toBe('limit');
   });
 
+  it('черновик офлайн-конфликта главнее остального, но не показывается при подавлении', () => {
+    expect(syncStatusOf({ cloud: true, draft: true, busy: true, limit: true, room: 'open' })).toBe('draft');
+    expect(syncStatusOf({ cloud: true, draft: true, suppressed: true })).toBe('hidden');
+    expect(SYNC_STATUS_TEXT.draft).toBe('Есть офлайн-правки с этого устройства');
+  });
+
   it('облачная комната автора главнее отправок', () => {
     expect(syncStatusOf({ cloud: true, room: 'open', networkError: true })).toBe('synced');
     expect(syncStatusOf({ cloud: true, room: 'reconnecting' })).toBe('offline');

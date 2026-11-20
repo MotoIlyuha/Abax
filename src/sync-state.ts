@@ -111,7 +111,7 @@ export function isPristineStarterProject(project: StarterLike | null | undefined
 
 // ----- Статус синхронизации для индикатора в шапке (SPEC_NIGHT5 §2.2) -----
 
-export type SyncStatus = 'hidden' | 'synced' | 'syncing' | 'offline' | 'limit';
+export type SyncStatus = 'hidden' | 'synced' | 'syncing' | 'offline' | 'limit' | 'draft';
 
 export interface SyncStatusInput {
   /** Облако включено (есть адрес сервера и облачное хранилище). */
@@ -126,10 +126,13 @@ export interface SyncStatusInput {
   networkError?: boolean;
   /** Проект сохраняет облачная комната автора: её соединение. */
   room?: 'open' | 'reconnecting' | null;
+  /** При проекте лежит черновик офлайн-конфликта (src/conflict-draft.ts): решение за пользователем. */
+  draft?: boolean;
 }
 
 export function syncStatusOf(i: SyncStatusInput): SyncStatus {
   if (!i.cloud || i.suppressed) return 'hidden';
+  if (i.draft) return 'draft';
   if (i.room === 'open') return 'synced';
   if (i.room === 'reconnecting') return 'offline';
   if (i.limit) return 'limit';
@@ -143,6 +146,7 @@ export const SYNC_STATUS_TEXT: Record<Exclude<SyncStatus, 'hidden'>, string> = {
   syncing: 'Синхронизация…',
   offline: 'Сохранено на устройстве (офлайн)',
   limit: 'Только на устройстве (превышен лимит тарифа)',
+  draft: 'Есть офлайн-правки с этого устройства',
 };
 
 // ----- Подпись версии, совпавшей с сервером (SPEC_NIGHT5 §2.4) -----

@@ -10,6 +10,7 @@ import {
   pendingDeletes, removePendingDelete, setDirty, setSyncBase, setSyncedRev, starterId, syncStatusOf, type SyncStatus,
 } from './sync-state';
 import { contentSignature } from './sync-conflict';
+import { clearConflictDraft, getConflictDraft, hasConflictDraft, setConflictDraft } from './conflict-draft';
 
 // Облачная синхронизация проектов: обёртка над хранилищем устройства. Локальное хранилище остаётся главным и работает
 // как раньше (без сети и без адреса сервера — ровно так); облако получает копию: проект уходит на сервер через PUT
@@ -22,14 +23,20 @@ export type PushStatus = 'ok' | 'skipped' | 'network' | 'limit' | 'error' | 'con
 /** Суффикс имени копии при настоящем офлайн-конфликте (SPEC_NIGHT5 §2.4). */
 export const CONFLICT_COPY_SUFFIX = ' (копия с устройства)';
 export const CONFLICT_TEXT = 'Проект обновился с другого устройства. Ваши офлайн-правки сохранены в копию';
+export const CONFLICT_DRAFT_TEXT = 'Проект обновился с другого устройства. Ваши офлайн-правки сохранены черновиком';
 
-/** Итог офлайн-конфликта: основной проект — серверная версия, локальные правки — в копии. */
+/**
+ * Итог офлайн-конфликта: основной проект — серверная версия, локальные правки — в копии или (копию создать нельзя:
+ * лимит проектов тарифа) — в черновике при проекте (src/conflict-draft.ts).
+ */
 export interface ConflictResolution {
   id: string;
   /** Серверная версия основного проекта (с картинками), уже сохранённая на устройстве. */
   project: Project;
-  /** Копия с локальными правками. */
-  copy: ProjectMeta;
+  /** Копия с локальными правками; нет — правки в черновике. */
+  copy?: ProjectMeta;
+  /** Правки сохранены черновиком при проекте. */
+  draft?: boolean;
 }
 
 export interface CloudStorageOptions {
@@ -48,6 +55,11 @@ export interface CloudStorageOptions {
   onSynced?: (metas: ProjectMeta[]) => void;
   /** Настоящий офлайн-конфликт разрешён: основной проект взят с сервера, локальные правки — в копии. */
   onConflict?: (r: ConflictResolution) => void;
+  /**
+   * Можно ли сохранить офлайн-правки отдельным проектом-копией (по умолчанию — да). Нет (лимит проектов тарифа) —
+   * правки уходят в черновик при проекте: иначе конфликт создавал бы проекты в обход лимита.
+   */
+  canCopyOnConflict?: () => boolean;
 }
 
 export interface CloudStorage extends BoardsStorage {
@@ -69,6 +81,10 @@ export interface CloudStorage extends BoardsStorage {
   setCloudRoom(projectId: string | null): void;
   /** Проекты, найденные только на сервере. */
   remoteOnly(): ProjectMeta[];
+  /** Черновик офлайн-конфликта проекта с картинками; null — черновика нет. */
+  conflictDraft(id: string): Promise<Project | null>;
+  /** Удалить черновик офлайн-конфликта. */
+  discardConflictDraft(id: string): void;
   dispose(): void;
 }
 
@@ -91,6 +107,7 @@ export function createCloudStorage(base: BoardsStorage, opts: CloudStorageOption
   const debounceMs = opts.debounceMs ?? 2000;
   const retryMs = opts.retryMs ?? [5000, 15000, 60000];
   const notify = opts.notify ?? showToast;
+  const canCopyOnConflict = opts.canCopyOnConflict ?? (() => true);
 
   /** Последняя сохранённая версия каждого проекта, ещё не отправленная. */
   const pending = new Map<string, Project>();
@@ -209,16 +226,26 @@ export function createCloudStorage(base: BoardsStorage, opts: CloudStorageOption
       emit();
       return 'network';
     }
+    // правки, пришедшие после неудачной отправки, тоже сохраняются
+    const mine = pending.get(id) ?? local;
     const now = Date.now();
-    const copy: Project = { ...structuredClone(local), id: uid(), name: `${local.name}${CONFLICT_COPY_SUFFIX}`, createdAt: now, updatedAt: now };
-    await base.save(copy);
-    clearSyncBase(copy.id);
-    clearSyncedRev(copy.id);
-    pending.set(copy.id, copy);
-    versions.set(copy.id, 1);
-    setDirty(copy.id);
-    schedule(copy.id, 0);
-    // основной — серверная версия; правки, пришедшие после неудачной отправки, тоже в копии
+    let copyMeta: ProjectMeta | undefined;
+    // копию создать нельзя (лимит проектов) — черновик при проекте; не записался (хранилище переполнено) — всё же копия:
+    // правки дороже лимита
+    const draft = !canCopyOnConflict() && setConflictDraft((await store.extractProjectAssets(mine)).strippedProject, now);
+    if (!draft) {
+      const copy: Project = { ...structuredClone(mine), id: uid(), name: `${mine.name}${CONFLICT_COPY_SUFFIX}`, createdAt: now, updatedAt: now };
+      await base.save(copy);
+      clearSyncBase(copy.id);
+      clearSyncedRev(copy.id);
+      pending.set(copy.id, copy);
+      versions.set(copy.id, 1);
+      setDirty(copy.id);
+      schedule(copy.id, 0);
+      copyMeta = projectMeta(copy);
+      state.projects = [copyMeta, ...state.projects.filter(m => m.id !== copyMeta!.id)];
+    }
+    // основной — серверная версия
     pending.delete(id);
     versions.delete(id);
     window.clearTimeout(timers.get(id));
@@ -228,10 +255,8 @@ export function createCloudStorage(base: BoardsStorage, opts: CloudStorageOption
     setSyncBase(id, typeof view.sig === 'string' ? view.sig : contentSignature(view.project));
     clearDirty(id);
     netFailed.delete(id);
-    const copyMeta = projectMeta(copy);
-    state.projects = [copyMeta, ...state.projects.filter(m => m.id !== copy.id)];
     emit();
-    opts.onConflict?.({ id, project: server, copy: copyMeta });
+    opts.onConflict?.(copyMeta ? { id, project: server, copy: copyMeta } : { id, project: server, draft: true });
     return 'conflict';
   }
 
@@ -278,6 +303,7 @@ export function createCloudStorage(base: BoardsStorage, opts: CloudStorageOption
     clearSyncedRev(oldId);
     clearSyncBase(oldId);
     clearDirty(oldId);
+    clearConflictDraft(oldId);
     if (state.project.id === oldId) {
       state.project = { ...state.project, id: next.id };
       try { localStorage.setItem('doska.last', JSON.stringify({ pid: next.id, pageId: state.pageId })); } catch { /* не запомним */ }
@@ -407,6 +433,7 @@ export function createCloudStorage(base: BoardsStorage, opts: CloudStorageOption
       clearSyncedRev(id);
       clearSyncBase(id);
       clearDirty(id);
+      clearConflictDraft(id);
       limited.delete(id);
       netFailed.delete(id);
       remote = remote.filter(m => m.id !== id);
@@ -449,7 +476,18 @@ export function createCloudStorage(base: BoardsStorage, opts: CloudStorageOption
         busy: pending.has(id) || inflight.has(id) || timers.has(id),
         networkError: netFailed.has(id) && (pending.has(id) || inflight.has(id)),
         room: activeRoom === id ? 'open' : null,
+        draft: hasConflictDraft(id),
       });
+    },
+
+    async conflictDraft(id) {
+      const d = getConflictDraft(id);
+      return d ? hydrateFromCloud(d.project, getClient(), store) : null;
+    },
+
+    discardConflictDraft(id) {
+      clearConflictDraft(id);
+      emit();
     },
 
     onStatus(fn) {
@@ -494,7 +532,7 @@ export function createCloudStorage(base: BoardsStorage, opts: CloudStorageOption
 let shared: CloudStorage | null = null;
 
 /** Подключает облако к приложению: хранилище проектов становится облачным. Без адреса сервера — ничего не меняется. */
-export function initCloudSync(hooks: Pick<CloudStorageOptions, 'onRemoteProjects' | 'onSynced' | 'onConflict'> = {}): CloudStorage | null {
+export function initCloudSync(hooks: Pick<CloudStorageOptions, 'onRemoteProjects' | 'onSynced' | 'onConflict' | 'canCopyOnConflict'> = {}): CloudStorage | null {
   if (shared) return shared;
   if (!getApi()) return null;
   const cloud = createCloudStorage(storage, hooks);

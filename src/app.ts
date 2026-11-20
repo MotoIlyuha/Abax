@@ -84,7 +84,7 @@ import { openProjectDialog, type FirstProjectStep, type ProjectFormValues } from
 import { wireTopName, type TopName } from './topbar-names';
 import { PAGE_NAME_MAX, PROJECT_NAME_MAX, defaultProjectName, planNote } from './project-names';
 import { pushNotice } from './notify-center';
-import { CONFLICT_TEXT, cloudStorage, openFresh, type ConflictResolution } from './cloud-sync';
+import { CONFLICT_DRAFT_TEXT, CONFLICT_TEXT, cloudStorage, openFresh, type ConflictResolution } from './cloud-sync';
 import { clearStarter, isPristineStarterProject, starterId } from './sync-state';
 import { parseProject } from './file';
 import { setPanelActions } from './panel-actions';
@@ -4135,12 +4135,71 @@ export async function replaceStarterWithCloud(metas: ProjectMeta[]): Promise<voi
   }
 }
 
-/** Офлайн-конфликт разрешён: открытая доска — серверная версия, тост с переходом к копии (SPEC_NIGHT5 §2.4). */
+/**
+ * Можно ли сохранить офлайн-правки копией: копия — новый проект, и конфликт не должен создавать проекты в обход лимита
+ * тарифа (тогда правки — черновиком при проекте, src/conflict-draft.ts).
+ */
+export function canCopyOnConflict(): boolean {
+  return !limitsEnforced() || canCreateProject(userPlan(), state.projects.length);
+}
+
+/**
+ * Офлайн-конфликт разрешён: открытая доска — серверная версия, тост с переходом к копии (SPEC_NIGHT5 §2.4)
+ * или с действиями над черновиком.
+ */
 export function applyCloudConflict(r: ConflictResolution): void {
   homeProjects.delete(r.id);
   if (state.project.id === r.id && !state.linkMode && state.collabRole === null) void showCloudProject(r.project, { keepView: true });
   else document.dispatchEvent(new CustomEvent('doska:projects-changed'));
-  pushNotice({ title: CONFLICT_TEXT, level: 'warn', icon: 'offline', action: { label: 'Открыть копию', run: () => { void openFromHome(r.copy.id); } } });
+  const copyId = r.copy?.id;
+  if (copyId) pushNotice({ title: CONFLICT_TEXT, level: 'warn', icon: 'offline', action: { label: 'Открыть копию', run: () => { void openFromHome(copyId); } } });
+  else conflictDraftNotice(r.id, CONFLICT_DRAFT_TEXT);
+}
+
+/** Уведомление с действиями над черновиком офлайн-конфликта (после конфликта и по клику на индикатор в шапке). */
+function conflictDraftNotice(id: string, title: string, quiet = false): void {
+  pushNotice({
+    title, body: 'Можно оставить свою версию вместо облачной или скачать её файлом', level: 'warn', icon: 'offline', quiet,
+    action: { label: 'Оставить мою версию', run: () => { void restoreConflictDraft(id); } },
+    actions: [
+      { label: 'Скачать файлом', run: () => { void downloadConflictDraft(id); } },
+      { label: 'Удалить', run: () => { discardConflictDraft(id); } },
+    ],
+  });
+}
+
+/** «Оставить мою версию»: черновик заменяет облачную версию проекта (тот же проект, без нового). */
+async function restoreConflictDraft(id: string): Promise<void> {
+  const cloud = cloudStorage();
+  const draft = await cloud?.conflictDraft(id);
+  if (!cloud || !draft) { showToast('Черновика уже нет'); return; }
+  const open = state.project.id === id;
+  if (open && (state.linkMode || state.collabRole !== null)) { showToast('Сначала завершите совместную работу'); return; }
+  if (!confirm(`Заменить проект «${draft.name}» вашими офлайн-правками?\n\nПравки, сделанные на другом устройстве, пропадут.`)) return;
+  const next: Project = { ...draft, updatedAt: Date.now() };
+  if (open) await showCloudProject(next, { keepView: true });
+  else {
+    state.projects = [projectMeta(next), ...state.projects.filter(m => m.id !== id)];
+    document.dispatchEvent(new CustomEvent('doska:projects-changed'));
+  }
+  await storage.save(next);
+  cloud.discardConflictDraft(id);
+  showToast('Оставлена ваша версия проекта');
+}
+
+/** «Скачать файлом»: черновик — файлом .json (его можно открыть как проект, когда лимит позволит). */
+async function downloadConflictDraft(id: string): Promise<void> {
+  const draft = await cloudStorage()?.conflictDraft(id);
+  if (!draft) { showToast('Черновика уже нет'); return; }
+  const url = URL.createObjectURL(new Blob([JSON.stringify(draft, null, 2)], { type: 'application/json' }));
+  const a = document.createElement('a'); a.href = url; a.download = `${draft.name || 'Abax'} (офлайн-правки).json`; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function discardConflictDraft(id: string): void {
+  const cloud = cloudStorage();
+  if (!cloud || !confirm('Удалить офлайн-правки? Вернуть их не получится.')) return;
+  cloud.discardConflictDraft(id);
 }
 
 /** «Новый проект»: окно «Создать проект» (название, страница, смайл), затем — сам проект. */
@@ -5931,7 +5990,7 @@ export function initApp(c: HTMLCanvasElement): void {
     if (d) void goToCollabPoint(d);
   });
   initCollabPresence(refreshPageAvatars, { openProfile: () => openAllSettings('profile') });
-  initSyncIndicator();
+  initSyncIndicator({ onDraft: () => conflictDraftNotice(state.project.id, 'Есть офлайн-правки с этого устройства', true) });
   initSubscriptionUi();
   c.addEventListener('dragover', e => { if (draggedColor && canEditBoard()) e.preventDefault(); });
   c.addEventListener('drop', e => {

@@ -42,8 +42,8 @@ export function currentSyncStatus(): SyncStatus {
   return cloud.status(state.project);
 }
 
-/** Привязать индикатор к кнопке #sync-indicator. Без облака кнопка остаётся скрытой. */
-export function initSyncIndicator(): void {
+/** Привязать индикатор к кнопке #sync-indicator. Без облака кнопка остаётся скрытой. onDraft — клик при черновике конфликта. */
+export function initSyncIndicator(opts: { onDraft?: () => void } = {}): void {
   const btn = document.getElementById('sync-indicator') as HTMLButtonElement | null;
   const cloud = cloudStorage();
   if (!btn || !cloud) return;
@@ -67,6 +67,7 @@ export function initSyncIndicator(): void {
   btn.addEventListener('click', () => {
     if (shown === 'offline') void cloud.flushNow().catch(() => {}).then(schedule);
     else if (shown === 'limit') showToast(LIMIT_INFO_TEXT);
+    else if (shown === 'draft') opts.onDraft?.();
   });
   render();
 }
