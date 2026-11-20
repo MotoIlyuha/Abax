@@ -6,6 +6,7 @@ import {
   setSidePanelPref, sidePanelElements, sidePanelMode, sidePanelOpen, sidePanelPref, toggleSidePanel,
 } from '../../src/side-panel';
 import { initNotifyButton } from '../../src/notify-button';
+import { claimMenu, releaseMenu } from '../../src/menu-motion';
 import { clearNotices, markRead, pushNotice } from '../../src/notify-center';
 import type { PanelMode, PanelView } from '../../src/panel-types';
 
@@ -48,6 +49,16 @@ describe('боковая панель («Выкл»)', () => {
     clearNotices();
     localStorage.clear();
     document.body.className = '';
+  });
+
+  it('закрытие панели закрывает открытое меню (например «Поделиться»): его место сдвигала панель', () => {
+    openSidePanel();
+    const menuClose = vi.fn();
+    claimMenu('share', menuClose);
+    closeSidePanel();
+    expect(menuClose).toHaveBeenCalledTimes(1);
+    expect(sidePanelOpen()).toBe(false);
+    releaseMenu('share');
   });
 
   it('разметка: complementary с подписью, кнопка закрытия снаружи; закрытая панель скрыта', () => {

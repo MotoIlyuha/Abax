@@ -552,6 +552,10 @@ export function closeSidePanel(instant = false): void {
   if (!isOpen) return;
   const u = ensureUi();
   const hadFocus = u.panel.contains(document.activeElement) || u.close.contains(document.activeElement);
+  // открытое меню (например «Поделиться», открытое при панели) закрывается вместе с ней: его место
+  // в шапке сдвигала панель, и после её закрытия меню висело бы не у кнопки (как при открытии панели)
+  claimMenu('side-panel', () => {});
+  releaseMenu('side-panel');
   u.select.close(true);
   isOpen = false;
   hideView(current);
