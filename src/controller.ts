@@ -445,7 +445,7 @@ export function initController(canvas: HTMLCanvasElement): void {
     if (changed) { a.changed = true; replaceElements(next); }
   }
 
-  function finishShape(): void {
+  function finishShape(keepTool = false): void {
     const ls = state.liveShape;
     state.liveShape = null;
     if (!ls) { update(); return; }
@@ -457,6 +457,8 @@ export function initController(canvas: HTMLCanvasElement): void {
       el = { ...el, x: Math.min(ls.x0, ls.x1), y: Math.min(ls.y0, ls.y1), w: Math.abs(w), h: Math.abs(h) };
     }
     addElement(el);
+    // с зажатым Shift инструмент «Фигура» остаётся включённым — можно рисовать следующую фигуру
+    if (keepTool) { update(); return; }
     // фигура сразу выделена: её двигают, а в прямоугольник, эллипс и треугольник сразу пишут текст
     selectInserted(el.id);
   }
@@ -548,7 +550,7 @@ export function initController(canvas: HTMLCanvasElement): void {
     st.pts.push({ x: last.x + (pt.x - last.x) * 0.6, y: last.y + (pt.y - last.y) * 0.6, p: pt.p });
   }
 
-  function finishAction(): void {
+  function finishAction(keepTool = false): void {
     stopAutoPan();
     const a = action;
     action = null;
@@ -567,7 +569,7 @@ export function initController(canvas: HTMLCanvasElement): void {
         if (a.changed) pushHistory(a.pre);
         update();
         break;
-      case 'shape': finishShape(); break;
+      case 'shape': finishShape(keepTool); break;
       case 'solid': finishSolid(); break;
       case 'move':
         state.attachmentPreview = null;
@@ -1211,7 +1213,7 @@ export function initController(canvas: HTMLCanvasElement): void {
       clearTransfer(); action=null; state.liveEdit=false; state.guides=[]; update(true);
       return;
     }
-    finishAction();
+    finishAction(e.shiftKey);
     if (a?.kind === 'move' && !a.moved && a.link) openPageLink(a.link);
   }
 
