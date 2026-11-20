@@ -1,15 +1,26 @@
 import type { CommentThread, Element } from './types';
 import { onChange, onDraft, replaceElements, state, touchProject, update } from './state';
-import { addCommentReply, createCommentThread, resolveCommentThread, toggleElementReaction } from './comments';
+import { addCommentReply, cleanCommentText, createCommentThread, MAX_COMMENT_TEXT, resolveCommentThread, toggleElementReaction } from './comments';
 import { elementAABB } from './geom';
 import { canEditPagesNote, noteName, sendComment, sendReaction, type CommentRequest } from './collab-notes';
 import { clientId } from './identity';
 import { myCollabCaps } from './collab';
 import { PIN_R, hitPin, layoutPins } from './annotations';
 import { noteRecentReaction, showComments } from './annot-prefs';
+import {
+  discussionMessages, discussionResolved, elementLabel, elementThreads, replyThread, threadLastAt, type DiscussionMessage,
+} from './discussion';
+import { createChatComposer, type ChatComposer } from './chat-composer';
+import type { ChatSendResult } from './collab-chat';
+import { fillChatText, fullTime, isEmojiOnly, timeHM } from './chat-feed';
+import { createUserAvatar } from './avatar';
+import { notePerson } from './note-people';
+import { claimMenu, closeMenu, openMenu, releaseMenu } from './menu-motion';
+import { onBoardFrame } from './renderer';
 
-// Интерфейс реакций и комментариев: быстрые реакции для выделенного, нажатия на пилюли и пины, поповер ветки.
-// Работает у автора, у участников комнаты (читатель тоже) и скрыт при просмотре по ссылке.
+// Интерфейс реакций и комментариев (SPEC_COMMENTS): постановка и снятие реакций, нажатия на пины веток без объекта,
+// панель обсуждения объекта. Работает у автора, у участников комнаты (читатель — только читает) и скрыт при просмотре
+// по ссылке. Кнопки и пилюли под объектами — src/annot-layer.ts.
 
 /** Реакции и комментарии доступны: не просмотр по ссылке и не черновик (его не видит никто, кроме автора). */
 export function annotationsAvailable(): boolean {
@@ -69,11 +80,33 @@ export function annotationClick(x: number, y: number): boolean {
   return true;
 }
 
-// ----- Поповер ветки -----
 
-type PopState = { kind: 'thread'; id: string } | { kind: 'new'; targetId: string; x: number; y: number };
-interface Pop { el: HTMLElement; state: PopState; list: HTMLElement; sig: string; input: HTMLTextAreaElement }
+// ----- Панель обсуждения (SPEC_COMMENTS §3) -----
+// Обсуждение объекта — лента как в чате (свои справа акцентом, чужие слева с аватаром, именем цвета плашки и временем)
+// и поле ввода чата (src/chat-composer.ts). Выходит из кнопки «Комментировать» по трём уровням анимации
+// (src/menu-motion.ts). Ветка без объекта (пин) открывает ту же панель только со своими сообщениями.
+
+type PopState = { kind: 'element'; elId: string } | { kind: 'thread'; id: string };
+interface Pop {
+  el: HTMLElement;
+  state: PopState;
+  title: HTMLElement;
+  sub: HTMLElement;
+  resolve: HTMLButtonElement;
+  list: HTMLElement;
+  banner: HTMLElement;
+  foot: HTMLElement;
+  composer: ChatComposer;
+  sig: string;
+  anchor: HTMLElement | null;
+}
 let pop: Pop | null = null;
+
+/** Сообщения подряд от одного автора ближе этого — одна группа (как в чате). */
+const GROUP_MS = 3 * 60_000;
+const RESOLVE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.2l2.4 2.4 4.6-4.8"/></svg>';
+const CLOSE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17"/></svg>';
+export const READER_COMMENT_TEXT = 'Читатели не пишут комментарии';
 
 function host(): HTMLElement | null {
   return document.getElementById('ctx-layer');
@@ -81,11 +114,6 @@ function host(): HTMLElement | null {
 
 function threadOf(id: string): CommentThread | undefined {
   return state.board.comments?.find(t => t.id === id);
-}
-
-function time(ts: number): string {
-  const d = new Date(ts);
-  return `${String(d.getDate()).padStart(2, '0')}.${String(d.getMonth() + 1).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
 function make<K extends keyof HTMLElementTagNameMap>(parent: HTMLElement | null, tag: K, cls: string, text?: string): HTMLElementTagNameMap[K] {
@@ -96,168 +124,302 @@ function make<K extends keyof HTMLElementTagNameMap>(parent: HTMLElement | null,
   return e;
 }
 
-export function closeThread(): void {
-  pop?.el.remove();
+/** Ветки, которые показывает панель. */
+function popThreads(st: PopState): CommentThread[] {
+  if (st.kind === 'element') return elementThreads(state.board.comments, st.elId);
+  const t = threadOf(st.id);
+  return t ? [t] : [];
+}
+
+/** Кнопка «Комментировать» объекта, если его строка сейчас на экране (из неё выходит панель). */
+function commentButton(elId: string): HTMLElement | null {
+  const esc = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(elId) : elId.replace(/["\\]/g, '\\$&');
+  return document.querySelector<HTMLElement>(`#annot-layer .an-row[data-el="${esc}"] .an-comment`);
+}
+
+export function closeThread(instant = false): void {
+  const p = pop;
+  if (!p) return;
   pop = null;
+  releaseMenu('discussion');
+  p.anchor?.setAttribute('aria-expanded', 'false');
+  p.anchor?.classList.remove('open');
+  closeMenu(p.el, instant || !p.el.isConnected);
 }
 
 export function threadOpen(): boolean {
   return pop !== null;
 }
 
-/** Новая ветка к элементу: поповер с полем ввода у правого верхнего угла элемента. */
+/** Какое обсуждение открыто (для слоя плашек и тестов). */
+export function openDiscussionId(): string | null {
+  return pop?.state.kind === 'element' ? pop.state.elId : null;
+}
+
+/** Обсуждение объекта: панель у его кнопки «Комментировать» (from — откуда она выходит). */
+export function openDiscussion(elId: string, from?: HTMLElement | null): void {
+  if (!annotationsAvailable() || !state.board.elements.some(e => e.id === elId)) return;
+  if (pop?.state.kind === 'element' && pop.state.elId === elId) { closeThread(); return; }
+  openPop({ kind: 'element', elId }, from ?? commentButton(elId));
+}
+
+/** Новый комментарий к элементу (то же обсуждение). */
 export function startComment(el: Element): void {
-  if (!canAnnotate()) return;
-  const a = elementAABB(el);
-  openPop({ kind: 'new', targetId: el.id, x: a.x1, y: a.y0 });
+  openDiscussion(el.id);
 }
 
-/** Обсуждение объекта: панель у кнопки «Комментировать» (from). */
-export function openDiscussion(elId: string, _from?: HTMLElement | null): void {
-  const el = state.board.elements.find(e => e.id === elId);
-  if (!el || !annotationsAvailable()) return;
-  const t = state.board.comments?.find(x => x.targetElementId === elId);
-  if (t && !canAnnotate()) openThread(t.id);
-  else startComment(el);
-}
-
+/** Ветка без объекта (пин) или ветка по id. Ветка при объекте открывает обсуждение объекта. */
 export function openThread(id: string): void {
-  if (!annotationsAvailable() || !threadOf(id)) return;
-  openPop({ kind: 'thread', id });
+  const t = threadOf(id);
+  if (!annotationsAvailable() || !t) return;
+  if (t.targetElementId && state.board.elements.some(e => e.id === t.targetElementId)) { openDiscussion(t.targetElementId); return; }
+  openPop({ kind: 'thread', id }, null);
 }
 
-function openPop(st: PopState): void {
-  closeThread();
+function openPop(st: PopState, from: HTMLElement | null): void {
+  closeThread(true);
   const layer = host();
   if (!layer) return;
-  const el = make(layer, 'div', 'comment-pop');
+  claimMenu('discussion', () => closeThread());
+  const el = make(null, 'div', 'comment-pop');
   el.setAttribute('role', 'dialog');
-  el.setAttribute('aria-label', 'Комментарий');
+  el.setAttribute('aria-label', 'Комментарии');
+  el.dataset.ownKeys = '';
   const head = make(el, 'div', 'cp-head');
-  make(head, 'span', 'cp-title', st.kind === 'new' ? 'Новый комментарий' : 'Комментарий');
-  const close = make(head, 'button', 'cp-close', '×');
+  const titles = make(head, 'div', 'cp-titles');
+  const title = make(titles, 'div', 'cp-title');
+  const sub = make(titles, 'div', 'cp-sub');
+  const resolve = make(head, 'button', 'cp-icon cp-resolve');
+  resolve.type = 'button';
+  resolve.innerHTML = RESOLVE_ICON; // константа кода
+  resolve.addEventListener('click', () => toggleResolved());
+  const close = make(head, 'button', 'cp-icon cp-close');
   close.type = 'button';
   close.title = 'Закрыть (Esc)';
-  close.addEventListener('click', closeThread);
+  close.setAttribute('aria-label', 'Закрыть');
+  close.innerHTML = CLOSE_ICON; // константа кода
+  close.addEventListener('click', () => closeThread());
   const list = make(el, 'div', 'cp-list');
-  // читатель ветку читает, но не отвечает и не закрывает её
-  const readOnlyThread = !canAnnotate();
-  if (readOnlyThread) make(el, 'div', 'cp-readonly', 'Читатели не пишут комментарии');
-  const input = make(el, 'textarea', 'cp-input');
-  input.hidden = readOnlyThread;
-  input.rows = 2;
-  input.maxLength = 2000;
-  input.placeholder = st.kind === 'new' ? 'Напишите комментарий…' : 'Ответить…';
-  input.spellcheck = false;
-  const row = make(el, 'div', 'cp-actions');
-  row.hidden = readOnlyThread;
-  const send = make(row, 'button', 'cp-send', st.kind === 'new' ? 'Отправить' : 'Ответить');
-  send.type = 'button';
-  send.addEventListener('click', () => submit());
-  if (st.kind === 'thread') {
-    const resolve = make(row, 'button', 'cp-resolve');
-    resolve.type = 'button';
-    resolve.addEventListener('click', () => {
-      const t = threadOf(st.id);
-      if (t) change({ op: 'resolve', threadId: t.id, resolved: !t.resolved }, p => resolveCommentThread(p, t.id, !t.resolved));
-    });
-  }
-  input.addEventListener('keydown', e => {
-    e.stopPropagation(); // буквы и Delete в поле — не горячие клавиши доски
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submit(); }
-    if (e.key === 'Escape') closeThread();
+  list.setAttribute('role', 'log');
+  list.setAttribute('aria-live', 'polite');
+  const banner = make(el, 'div', 'cp-banner');
+  const foot = make(el, 'div', 'cp-foot');
+  const composer = createChatComposer({ submit: text => submit(text), maxLength: MAX_COMMENT_TEXT, label: 'Комментарий' });
+  // клавиши в панели — её, а не доски (Delete, буквы-инструменты); Esc закрывает панель
+  el.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeThread(); return; }
+    if (!e.ctrlKey && !e.metaKey && !e.altKey) e.stopPropagation();
   });
   for (const type of ['pointerdown', 'dblclick', 'contextmenu', 'wheel'] as const) el.addEventListener(type, e => e.stopPropagation());
-  pop = { el, state: st, list, sig: '', input };
+  document.body.append(el);
+  const anchor = from && from.isConnected ? from : null;
+  anchor?.setAttribute('aria-expanded', 'true');
+  anchor?.classList.add('open');
+  pop = { el, state: st, title, sub, resolve, list, banner, foot, composer, sig: '', anchor };
   refresh();
-  if (readOnlyThread) close.focus();
-  else input.focus();
+  const p = pop;
+  openMenu(el, {
+    from: anchor ?? el, pop: anchor, remove: true, place: () => place(p),
+    items: () => [...el.querySelectorAll<HTMLElement>(':scope > .cp-head, :scope > .cp-list, :scope > .cp-foot')],
+  });
+  if (canAnnotate()) composer.focus();
+  else close.focus();
 }
 
 /** Правка комментариев: через хаб в комнате, иначе — у себя (мимо истории отмены). */
-function change(req: CommentRequest, local: (page: typeof state.board) => typeof state.board): void {
-  if (!canAnnotate()) return;
-  if (sendComment(state.pageId, req)) return;
-  if (!canEditPagesNote()) return;
+function change(req: CommentRequest, local: (page: typeof state.board) => typeof state.board): boolean {
+  if (!canAnnotate()) return false;
+  if (sendComment(state.pageId, req)) return true;
+  if (!canEditPagesNote()) return false;
   const next = local(state.board);
-  if (next === state.board) return;
+  if (next === state.board) return false;
   if (next.comments) state.board.comments = next.comments;
   else delete state.board.comments;
   touchProject();
   update();
+  return true;
 }
 
-function submit(): void {
+function submit(raw: string): ChatSendResult {
+  const p = pop;
+  if (!p) return 'empty';
+  const text = cleanCommentText(raw);
+  if (!text) return 'empty';
+  if (!canAnnotate()) return 'readonly';
+  const author = { authorId: clientId(), authorName: noteName() };
+  let ok: boolean;
+  if (p.state.kind === 'thread') {
+    const id = p.state.id;
+    ok = change({ op: 'reply', threadId: id, text }, page => addCommentReply(page, id, { ...author, text }));
+  } else {
+    const elId = p.state.elId;
+    const target = replyThread(elementThreads(state.board.comments, elId));
+    if (target) {
+      ok = change({ op: 'reply', threadId: target.id, text }, page => addCommentReply(page, target.id, { ...author, text }));
+    } else {
+      const el = state.board.elements.find(e => e.id === elId);
+      if (!el) return 'empty';
+      // точка новой ветки — правый верхний угол объекта (её видят старые версии как пин)
+      const a = elementAABB(el);
+      ok = change({ op: 'create', x: a.x1, y: a.y0, targetElementId: elId, text },
+        page => createCommentThread(page, { x: a.x1, y: a.y0, targetElementId: elId, ...author, text }));
+    }
+  }
+  return ok ? 'ok' : 'offline';
+}
+
+/** «Решено» закрывает все открытые ветки обсуждения; «Вернуть в обсуждение» открывает последнюю. */
+function toggleResolved(): void {
   const p = pop;
   if (!p) return;
-  const text = p.input.value.trim();
-  if (text === '') return;
-  const author = { authorId: clientId(), authorName: noteName() };
-  if (p.state.kind === 'new') {
-    const st = p.state;
-    change({ op: 'create', x: st.x, y: st.y, targetElementId: st.targetId, text },
-      page => createCommentThread(page, { x: st.x, y: st.y, targetElementId: st.targetId, ...author, text }));
-    // ветка получила id уже у хаба; в поповер её не переносим — пользователь увидит пин и откроет его
-    closeThread();
+  const threads = popThreads(p.state);
+  if (!threads.length) return;
+  if (discussionResolved(threads)) {
+    const last = threads.reduce((a, b) => (threadLastAt(b) >= threadLastAt(a) ? b : a));
+    change({ op: 'resolve', threadId: last.id, resolved: false }, page => resolveCommentThread(page, last.id, false));
     return;
   }
-  const id = p.state.id;
-  p.input.value = '';
-  change({ op: 'reply', threadId: id, text }, page => addCommentReply(page, id, { ...author, text }));
+  for (const t of threads) {
+    if (t.resolved) continue;
+    change({ op: 'resolve', threadId: t.id, resolved: true }, page => resolveCommentThread(page, t.id, true));
+  }
 }
 
-/** Перерисовка поповера: пропала ветка — закрыть; изменился состав — пересобрать сообщения; всегда — положение. */
+/** Лента сообщений: группы по автору (как в чате), свои — справа. */
+function renderMessages(p: Pop, msgs: readonly DiscussionMessage[], fresh: ReadonlySet<string>): void {
+  p.list.textContent = '';
+  const me = clientId();
+  let prev: DiscussionMessage | null = null;
+  for (const m of msgs) {
+    const mine = m.authorId === me;
+    const grouped = !!prev && prev.authorId === m.authorId && m.createdAt - prev.createdAt < GROUP_MS;
+    const row = make(p.list, 'div', `cp-msg${mine ? ' mine' : ''}${grouped ? ' grouped' : ''}${m.resolved ? ' resolved' : ''}${fresh.has(m.id) ? ' cp-new' : ''}`);
+    row.dataset.id = m.id;
+    if (!mine) {
+      const who = notePerson(m.authorId);
+      const name = m.authorName || who.name;
+      const slot = make(row, 'div', 'cp-avatar');
+      if (!grouped) {
+        const av = createUserAvatar({ name, bg: who.bg, fg: who.fg, cursorId: who.cursorId ?? null, avatar: who.avatar ?? null, status: 'online' }, 'cp-ua');
+        av.tabIndex = -1;
+        slot.append(av);
+      }
+    }
+    const body = make(row, 'div', 'cp-body');
+    if (!grouped) {
+      const meta = make(body, 'div', 'cp-meta');
+      if (!mine) {
+        const who = notePerson(m.authorId);
+        const author = make(meta, 'span', 'cp-author', m.authorName || who.name);
+        author.style.color = who.bg;
+      }
+      const time = make(meta, 'time', 'cp-time', timeHM(m.createdAt));
+      time.title = fullTime(m.createdAt);
+    }
+    const bubble = make(body, 'div', `cp-text${isEmojiOnly(m.text) ? ' emoji' : ''}`);
+    bubble.title = fullTime(m.createdAt);
+    fillChatText(bubble, m.text);
+    prev = m;
+  }
+}
+
+/** Перерисовка панели: пропала ветка или объект — закрыть; изменился состав — пересобрать; всегда — положение. */
 function refresh(): void {
   const p = pop;
   if (!p) return;
   if (!annotationsAvailable()) { closeThread(); return; }
-  let anchor: { x: number; y: number };
-  if (p.state.kind === 'thread') {
-    const t = threadOf(p.state.id);
-    if (!t) { closeThread(); return; }
-    anchor = { x: t.x, y: t.y };
-    const sig = JSON.stringify([t.resolved ?? false, t.messages.map(m => m.id)]);
-    if (sig !== p.sig) {
-      p.sig = sig;
-      p.list.textContent = '';
-      for (const m of t.messages) {
-        const item = make(p.list, 'div', 'cp-msg');
-        const meta = make(item, 'div', 'cp-meta');
-        make(meta, 'span', 'cp-author', m.authorName || 'Участник');
-        make(meta, 'span', 'cp-time', time(m.createdAt));
-        make(item, 'div', 'cp-text', m.text);
+  if (p.state.kind === 'element') {
+    const id = p.state.elId;
+    if (!state.board.elements.some(e => e.id === id)) { closeThread(); return; }
+  } else if (!threadOf(p.state.id)) { closeThread(); return; }
+  const threads = popThreads(p.state);
+  const msgs = discussionMessages(threads);
+  const resolved = discussionResolved(threads);
+  const can = canAnnotate();
+  const sig = JSON.stringify([msgs.map(m => m.id), resolved, can]);
+  if (sig !== p.sig) {
+    const before = new Set(p.sig ? (JSON.parse(p.sig) as [string[]])[0] : msgs.map(m => m.id));
+    p.sig = sig;
+    const el = p.state.kind === 'element' ? state.board.elements.find(e => e.id === (p.state as { elId: string }).elId) : undefined;
+    p.title.textContent = msgs.length === 0 ? 'Новый комментарий' : `Комментарии · ${msgs.length}`;
+    p.sub.textContent = p.state.kind === 'element' ? elementLabel(el) : 'Комментарий на доске';
+    p.resolve.hidden = msgs.length === 0 || !can;
+    p.resolve.classList.toggle('on', resolved);
+    p.resolve.title = resolved ? 'Вернуть в обсуждение' : 'Отметить как решённое';
+    p.resolve.setAttribute('aria-label', p.resolve.title);
+    p.resolve.setAttribute('aria-pressed', String(resolved));
+    p.el.classList.toggle('resolved', resolved);
+    p.el.classList.toggle('empty', msgs.length === 0);
+    const fresh = new Set(msgs.filter(m => !before.has(m.id)).map(m => m.id));
+    renderMessages(p, msgs, fresh);
+    p.banner.textContent = '';
+    p.banner.hidden = !resolved;
+    if (resolved) {
+      make(p.banner, 'span', 'cp-banner-text', 'Обсуждение решено');
+      if (can) {
+        const back = make(p.banner, 'button', 'cp-banner-btn', 'Вернуть');
+        back.type = 'button';
+        back.addEventListener('click', () => toggleResolved());
       }
-      const resolve = p.el.querySelector<HTMLButtonElement>('.cp-resolve');
-      if (resolve) resolve.textContent = t.resolved ? 'Вернуть в обсуждение' : 'Решено';
-      p.el.classList.toggle('resolved', !!t.resolved);
-      p.list.scrollTop = p.list.scrollHeight;
     }
-  } else {
-    anchor = { x: p.state.x, y: p.state.y };
+    p.foot.textContent = '';
+    if (can) p.foot.append(p.composer.el);
+    else make(p.foot, 'div', 'cp-readonly', READER_COMMENT_TEXT);
+    p.composer.input.placeholder = msgs.length === 0 ? 'Напишите комментарий…' : resolved ? 'Новое сообщение вернёт обсуждение' : 'Ответить…';
+    p.list.scrollTop = p.list.scrollHeight;
   }
-  const cam = state.camera;
-  const layer = host()!;
-  const lw = layer.clientWidth || window.innerWidth;
-  const lh = layer.clientHeight || window.innerHeight;
-  const ew = p.el.offsetWidth || 280;
-  const eh = p.el.offsetHeight || 200;
-  const sx = (anchor.x - cam.x) * cam.zoom + PIN_R + 8;
-  const sy = (anchor.y - cam.y) * cam.zoom - PIN_R;
-  p.el.style.left = `${Math.max(8, Math.min(sx, lw - ew - 8))}px`;
-  p.el.style.top = `${Math.max(8, Math.min(sy, lh - eh - 8))}px`;
+  if (!p.el.classList.contains('mm-morph')) place(p);
 }
 
-/** Подключает слежение за состоянием и закрытие поповера по Esc и нажатию мимо. */
+/** Под кнопкой «Комментировать» (правым краем к ней), не влезает — над ней; без кнопки — у угла объекта. */
+function place(p: Pop): void {
+  if (p.anchor && !p.anchor.isConnected && p.state.kind === 'element') p.anchor = commentButton(p.state.elId);
+  const w = p.el.offsetWidth || 320;
+  const h = p.el.offsetHeight || 240;
+  const m = 8;
+  let ay0: number, ax1: number, ay1: number;
+  const r = p.anchor?.getBoundingClientRect();
+  if (r && (r.width || r.height)) {
+    ay0 = r.top; ax1 = r.right; ay1 = r.bottom;
+  } else {
+    const wrap = document.getElementById('canvas-wrap')?.getBoundingClientRect();
+    const cam = state.camera;
+    let pt = { x: 0, y: 0 };
+    if (p.state.kind === 'element') {
+      const id = p.state.elId;
+      const el = state.board.elements.find(e => e.id === id);
+      if (el) { const a = elementAABB(el); pt = { x: a.x1, y: a.y1 }; }
+    } else {
+      const t = threadOf(p.state.id);
+      if (t) pt = { x: t.x + PIN_R / cam.zoom, y: t.y };
+    }
+    ax1 = (wrap?.left ?? 0) + (pt.x - cam.x) * cam.zoom;
+    ay0 = ay1 = (wrap?.top ?? 0) + (pt.y - cam.y) * cam.zoom;
+  }
+  let left = ax1 - w;
+  let top = ay1 + 8;
+  if (top + h > window.innerHeight - m && ay0 - 8 - h >= m) top = ay0 - 8 - h;
+  left = Math.max(m, Math.min(left, window.innerWidth - w - m));
+  top = Math.max(m, Math.min(top, window.innerHeight - h - m));
+  p.el.style.left = `${Math.round(left)}px`;
+  p.el.style.top = `${Math.round(top)}px`;
+}
+
+let inited = false;
+
+/** Подключает слежение за состоянием, кадрами холста и закрытие панели по Esc и нажатию мимо. */
 export function initCommentsUi(): void {
   onChange(refresh);
+  if (inited) return;
+  inited = true;
+  onBoardFrame(() => { if (pop && !pop.el.classList.contains('mm-morph')) place(pop); });
   window.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && pop) { e.stopPropagation(); closeThread(); }
+    if (e.key === 'Escape' && pop && !(e.target instanceof Node && pop.el.contains(e.target))) { e.stopPropagation(); closeThread(); }
   }, true);
   document.addEventListener('pointerdown', e => {
-    if (pop && !pop.el.contains(e.target as Node) && !(e.target as HTMLElement | null)?.closest?.('.qm-comment')) {
-      // нажатие по пину откроет ветку само (annotationClick), остальное закрывает
-      closeThread();
-    }
+    const t = e.target as HTMLElement | null;
+    // нажатие по кнопке «Комментировать» решает она сама (откроет другое обсуждение или закроет это);
+    // по пину откроет ветку annotationClick; остальное — закрывает
+    if (pop && !(t instanceof Node && pop.el.contains(t)) && !t?.closest?.('.an-comment, #icon-picker')) closeThread();
   }, true);
 }
-

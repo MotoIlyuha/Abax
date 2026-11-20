@@ -16,6 +16,11 @@ const SEND_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 export interface ChatComposerOptions {
   /** Отправка текста (пустой — только если есть вложение); итог решает, что показать. */
   submit: (text: string) => ChatSendResult;
+  /** Предел длины (по умолчанию — сообщения чата; комментарий длиннее, src/comments-ui.ts). */
+  maxLength?: number;
+  /** Подсказка в пустом поле и подпись для чтения с экрана. */
+  placeholder?: string;
+  label?: string;
 }
 
 export interface ChatComposer {
@@ -43,10 +48,11 @@ export function createChatComposer(o: ChatComposerOptions): ChatComposer {
   const input = document.createElement('textarea');
   input.className = 'composer-input';
   input.rows = 1;
-  input.maxLength = CHAT_MAX_LEN;
-  input.placeholder = 'Сообщение';
+  const max = o.maxLength ?? CHAT_MAX_LEN;
+  input.maxLength = max;
+  input.placeholder = o.placeholder ?? 'Сообщение';
   input.title = 'Enter — отправить, Shift+Enter — новая строка';
-  input.setAttribute('aria-label', 'Сообщение в чат');
+  input.setAttribute('aria-label', o.label ?? 'Сообщение в чат');
   const send = document.createElement('button');
   send.type = 'button';
   send.className = 'composer-send';
@@ -86,7 +92,7 @@ export function createChatComposer(o: ChatComposerOptions): ChatComposer {
 
   const sync = () => {
     const len = input.value.length;
-    count.textContent = len > CHAT_COUNTER_FROM ? `${len}/${CHAT_MAX_LEN}` : '';
+    count.textContent = len > max - (CHAT_MAX_LEN - CHAT_COUNTER_FROM) ? `${len}/${max}` : '';
     send.disabled = input.value.trim() === '' && !chip;
     foot.classList.toggle('on', !!hint.textContent || !!count.textContent);
   };

@@ -11,7 +11,7 @@
 // Эмодзи, имена и числа — только textContent; SVG — константы каталога иконок.
 
 import { onChange, state } from './state';
-import { onBoardFrame } from './renderer';
+import { onBoardFrame, requestRender } from './renderer';
 import { layoutAnnotRows, type AnnotRow } from './annotations';
 import { onAnnotView, recentReactions, showComments, showReactions } from './annot-prefs';
 import { notePerson, peopleLabel } from './note-people';
@@ -60,6 +60,16 @@ function host(): HTMLElement | null {
     if (anchor?.parentElement === wrap) anchor.after(layer);
     else wrap.appendChild(layer);
   }
+  // слой и холст никогда не прокручиваются: фокус с клавиатуры на кнопке у края (или автопрокрутка к элементу)
+  // сдвинул бы их содержимое, и плашки разошлись бы с объектами
+  const pin = (n: HTMLElement) => n.addEventListener('scroll', () => {
+    if (!n.scrollTop && !n.scrollLeft) return;
+    n.scrollTop = 0;
+    n.scrollLeft = 0;
+    requestRender(); // панели у плашек встают на место по кадру
+  });
+  pin(layer);
+  pin(wrap);
   // колесо над плашкой — холсту: масштаб и прокрутка не «застревают» на пилюле
   layer.addEventListener('wheel', e => {
     const canvas = document.getElementById('board');
