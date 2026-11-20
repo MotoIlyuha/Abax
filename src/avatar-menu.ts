@@ -6,6 +6,7 @@
 
 import { createUserAvatar, type AvatarData } from './avatar';
 import { BACK_ARROW_ICON } from './icons';
+import { morphLeave } from './morph-tooltip';
 import { claimMenu, closeMenu, drillMenu, menuShown, openMenu, releaseMenu } from './menu-motion';
 import { createToggleSwitch } from './toggle-switch';
 
@@ -191,6 +192,7 @@ export function openAvatarMenu(spec: AvatarMenuSpec): HTMLElement {
   closeAvatarMenu(true);
   const menu = el('div', 'popup-menu menu-list avatar-menu');
   menu.id = 'avatar-menu';
+  menu.dataset.tipSide = 'left'; // подсказки — сбоку от меню (в режиме без анимаций тоже)
   menu.setAttribute('role', 'menu');
   menu.setAttribute('aria-label', spec.name);
   const head = el('div', 'avatar-menu-head');
@@ -231,6 +233,7 @@ export function openAvatarMenu(spec: AvatarMenuSpec): HTMLElement {
     document.removeEventListener('pointerdown', away, true);
     document.removeEventListener('keydown', onKey, true);
     window.removeEventListener('resize', closeAvatarMenuSoon);
+    morphLeave(true); // подсказка и подсветка пункта не остаются висеть после закрытия меню
   };
   current = { menu, spec, cleanup, page, sub: null };
   claimMenu(KEY, () => closeAvatarMenu());

@@ -5,7 +5,7 @@
 // Кнопки панели инструментов (#toolbar) обслуживает «морфящаяся» подсказка — morph-tooltip.ts:
 // одна на всю панель, перетекает от кнопки к кнопке. Остальные элементы — обычный пузырь ниже.
 
-import { MORPH_SCOPE, morphActive, morphHideTip, morphLeave, morphOver, morphPop, splitTipText } from './morph-tooltip';
+import { MORPH_MENU_ROW, MORPH_SCOPE, morphActive, morphHideTip, morphLeave, morphOver, morphPop, splitTipText } from './morph-tooltip';
 
 type Side = 'top' | 'bottom' | 'left' | 'right';
 
@@ -169,7 +169,10 @@ export function initTooltips(): void {
     // (если «Motion анимации» выключены в настройках — обычный пузырь, как у остальных кнопок)
     if (!document.body.classList.contains('no-motion') && e.target instanceof Element && e.target.closest(MORPH_SCOPE)) {
       hide();
-      if (t) morphOver(t, t.dataset.tip ?? '');
+      // меню аватара: морфятся пункты первого уровня; пункт без подсказки — только подсветка
+      const row = e.target.closest<HTMLElement>(MORPH_MENU_ROW);
+      if (row) morphOver(row, t && row.contains(t) ? t.dataset.tip ?? '' : '');
+      else if (t && !e.target.closest('#avatar-menu')) morphOver(t, t.dataset.tip ?? '');
       return;
     }
     morphLeave();

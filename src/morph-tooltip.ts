@@ -135,10 +135,14 @@ function remeasure(): void {
 }
 
 /** Где живёт подсказка: панель инструментов или раскрытая панель её группы (кнопки внутри тоже морфятся). */
-export const MORPH_SCOPE = '#toolbar, .ctx-panel[data-kind="shapes"]';
+export const MORPH_SCOPE = '#toolbar, .ctx-panel[data-kind="shapes"], #avatar-menu';
+/** Пункты меню аватара первого уровня: подсвечиваются и подсказывают так же, как кнопки панели. */
+export const MORPH_MENU_ROW = '#avatar-menu .avatar-menu-page > :is(.avatar-menu-item, .avatar-menu-switch)';
 const barOf = (btn: HTMLElement): HTMLElement | null => btn.closest<HTMLElement>(MORPH_SCOPE);
 
 function preferredSide(bar: HTMLElement): Side {
+  // меню аватара: подсказка сбоку от меню (не закрывает пункты); слева нет места — справа
+  if (bar.id === 'avatar-menu') return 'left';
   // у панели группы сторона та же, что у самой панели инструментов: пузырь снаружи, не закрывая кнопки
   const pos = (bar.id === 'toolbar' ? bar : document.getElementById('toolbar'))?.dataset.pos;
   switch (pos) {
@@ -246,7 +250,7 @@ function pointHl(btn: HTMLElement): void {
   const bar = barOf(btn);
   if (!bar) return;
   // подсветка живёт в самой панели; у группы — в сетке кнопок (она position: relative)
-  const holder = bar.id === 'toolbar' ? bar : bar.querySelector<HTMLElement>('.ctx-shapes') ?? bar;
+  const holder = bar.id === 'toolbar' || bar.id === 'avatar-menu' ? bar : bar.querySelector<HTMLElement>('.ctx-shapes') ?? bar;
   const moved = hlEl.parentElement !== holder; // перешли в другую панель: подсветка возникает на месте
   if (moved) holder.prepend(hlEl);
   const br = holder.getBoundingClientRect();

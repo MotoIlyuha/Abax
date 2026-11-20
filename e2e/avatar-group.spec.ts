@@ -86,7 +86,17 @@ test('группа аватаров: раскрытие, меню, скрыть 
   await expect(menu.locator('[data-action="summon-all"]')).toBeVisible();
   await expect(menu.locator('[data-action="hide-cursors"]')).toBeVisible();
   await a.waitForTimeout(300);
-  if (shots) await a.screenshot({ path: `${shots}/self-menu.png`, clip: { x: 900, y: 0, width: 540, height: 360 } });
+  // подсказка пункта — морфящаяся, как в панели инструментов, и сбоку от меню; подсветка пункта — внутри меню
+  await menu.locator('[data-action="hide-cursors"]').hover();
+  await expect(a.locator('#morph-tip[data-state="shown"] .mt-lab.cur')).toContainText('ничего не заметят');
+  expect(await a.locator('#morph-tip .mt-tip').getAttribute('data-side')).toBe('left');
+  const tipBox = (await a.locator('#morph-tip .mt-tip').boundingBox())!;
+  const menuBox = (await menu.boundingBox())!;
+  expect(tipBox.x + tipBox.width).toBeLessThanOrEqual(menuBox.x);
+  await expect(menu.locator('.mt-hl')).toHaveCount(1);
+  await menu.locator('[data-action="summon-all"]').hover();
+  await expect(a.locator('#morph-tip .mt-lab.cur')).toContainText('перейдут на вашу страницу');
+  if (shots) await a.screenshot({ path: `${shots}/self-menu.png`, clip: { x: 600, y: 0, width: 840, height: 360 } });
   await a.keyboard.press('Escape');
   await expect(menu).toHaveCount(0);
 

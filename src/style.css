@@ -2360,6 +2360,10 @@ body.collab-guest.readonly-mode #toolbar { display: none; }
 .ctx-shapes { position: relative; }
 body:not(.no-motion) :is(#toolbar .tool, .ctx-shapes .tool):hover:not(.active):not(.gesture-hover) { background: transparent; }
 body.no-motion .mt-hl { display: none; }
+/* меню аватара: подсветка пункта тянется между пунктами, как у панели инструментов */
+#avatar-menu .mt-hl { border-radius: 7px; background: var(--accent-soft); }
+#avatar-menu .avatar-menu-page > :is(.avatar-menu-item, .avatar-menu-switch) { position: relative; z-index: 1; }
+body:not(.no-motion) #avatar-menu .avatar-menu-page > :is(.avatar-menu-item, .avatar-menu-switch):hover:not(.danger):not(.armed):not(:disabled) { background: transparent; }
 
 /* ----- Плавное появление меню и панелей ----- */
 /* только появление: закрываются мгновенно. Плавающее меню выделения на холсте не анимируем —
