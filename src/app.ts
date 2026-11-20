@@ -747,6 +747,7 @@ function closePanel(cp: CtxPanel): void {
   const i = ctxPanels.indexOf(cp);
   if (i < 0) return;
   ctxPanels.splice(i, 1);
+  if (cp.kind === 'font') qmFrozen = null;
   // группа с панели инструментов втягивается в кнопку (src/stretch.ts); остальные панели и откреплённые — как раньше
   if (isGroupPanel(cp) && !cp.detached) stretchClose(cp.el, ctxAnchor(cp));
   cp.el.remove();
@@ -765,6 +766,8 @@ function openCtxPanel(kind: CtxKind, source: CtxSource): void {
   closeCtxPanel();
   const same = panelOf(kind);
   if (same) closePanel(same);
+  // пока открыта панель кегля, меню выделения стоит на месте: текст меняет размер, а меню под ним — не должно «дрожать»
+  if (kind === 'font' && source === 'quick') freezeQuickMenu();
   const el = document.createElement('div');
   el.className = 'ctx-panel';
   el.style.zIndex = String(++ctxZ);
@@ -1999,10 +2002,28 @@ function quickMenuTarget(wr: DOMRect): { sx: number; sy: number; sw: number; top
   return { sx: (x0 - cam.x) * cam.zoom, sy: (y0 - cam.y) * cam.zoom, sw: (x1 - x0) * cam.zoom, topGap: 10 + (hasRotateHandle ? 22 : 0) };
 }
 
+/** Положение меню выделения (координаты сцены), зафиксированное на время работы панели кегля. */
+let qmFrozen: { x: number; y: number } | null = null;
+
+function freezeQuickMenu(): void {
+  const qm = quickMenuEl();
+  const left = parseFloat(qm.style.left), top = parseFloat(qm.style.top);
+  if (qm.hidden || Number.isNaN(left) || Number.isNaN(top)) { qmFrozen = null; return; }
+  const cam = state.camera;
+  qmFrozen = { x: cam.x + left / cam.zoom, y: cam.y + top / cam.zoom };
+}
+
 function positionQuickMenu(): void {
   const qm = quickMenuEl();
   const wrap = document.getElementById('canvas-wrap')!;
   const wr = wrap.getBoundingClientRect();
+  if (qmFrozen) {
+    // двигается только вместе с камерой (прокрутка, масштаб), но не вслед за размером текста
+    const cam = state.camera;
+    qm.style.left = `${(qmFrozen.x - cam.x) * cam.zoom}px`;
+    qm.style.top = `${(qmFrozen.y - cam.y) * cam.zoom}px`;
+    return;
+  }
   const target = quickMenuTarget(wr);
   if (!target) { qm.hidden = true; return; }
   const { sx, sy, sw, topGap } = target;
