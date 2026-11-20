@@ -22,7 +22,7 @@ export type AvatarMenuEntry =
     /** Пометка справа (например, «Скоро»). */
     badge?: string;
   }
-  | { kind: 'switch'; id: string; label: string; icon: string; checked: boolean; onChange: (on: boolean) => void; disabled?: boolean; title?: string }
+  | { kind: 'switch'; id: string; label: string; icon: string; checked: boolean; onChange: (on: boolean) => void; disabled?: boolean; title?: string; badge?: string }
   /** Подменю в этом же меню: содержимое строится при каждом входе. */
   | { kind: 'submenu'; id: string; label: string; icon: string; title?: string; content: () => AvatarSubmenu }
   | { kind: 'sep' };
@@ -167,6 +167,12 @@ function switchRow(e: Extract<AvatarMenuEntry, { kind: 'switch' }>): HTMLLabelEl
   row.dataset.action = e.id;
   const input = row.querySelector<HTMLInputElement>('.switch-input')!;
   if (e.disabled) input.disabled = true;
+  if (e.badge) {
+    // переключатель скрыт за меткой (например, «Pro»): ввод недоступен
+    input.disabled = true;
+    row.classList.add('has-badge');
+    row.querySelector('.switch-track')?.replaceWith(el('span', 'avatar-menu-badge avatar-menu-badge-pro', e.badge));
+  }
   return row;
 }
 

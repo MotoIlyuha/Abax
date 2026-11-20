@@ -188,7 +188,7 @@ export function selfMenuEntries(anchor: HTMLElement): AvatarMenuEntry[] {
     const locked = followLocked();
     out.push({
       kind: 'switch', id: 'follow-me', label: 'Автопереход за мной', icon: FOLLOW_ICON,
-      checked: hostFollowEnabled() && !locked, disabled: locked,
+      checked: hostFollowEnabled() && !locked, disabled: locked, badge: locked ? 'Pro' : undefined,
       title: locked ? 'Автопереход участников за мной — доступно в подписке Pro' : 'Участники будут переходить за вами по страницам',
       onChange: setFollowMe,
     });

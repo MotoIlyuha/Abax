@@ -5141,3 +5141,4 @@ body.no-ui-anim :is(.chat-lightbox, .clb-img) { animation: none !important; }
 @media (prefers-reduced-motion: reduce) { :is(.chat-lightbox, .clb-img) { animation: none !important; } }
 .avatar-menu-switch.has-badge { cursor: default; }
 .avatar-menu-switch.has-badge .switch-input { cursor: default; }
+.avatar-menu-badge-pro { background: linear-gradient(135deg, #f59f00, #f76707); color: #fff; font-weight: 700; letter-spacing: 0.02em; }
