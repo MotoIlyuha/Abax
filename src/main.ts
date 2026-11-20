@@ -20,7 +20,7 @@ import { myCursorId, profileName } from './profile';
 import { startProfileSync, syncAccount } from './profile-sync';
 import { completePendingAuth, type AuthOutcome } from './auth';
 import { needsOnboarding, openOnboarding } from './onboarding';
-import { applyCloudConflict, openProfileAfterAuth, replaceStarterWithCloud } from './app';
+import { applyCloudConflict, firstProjectStep, openProfileAfterAuth, replaceStarterWithCloud } from './app';
 import { STARTER_PROJECT_NAME, markStarter } from './sync-state';
 import { roomFullInfo, showRoomFullModal } from './room-full';
 import { refreshIncomingInvites } from './incoming-invites';
@@ -189,11 +189,11 @@ let afterStartup: (() => void) | null = null;
 function startOnboarding(outcome: AuthOutcome | null): void {
   const resume = outcome?.resume ?? null;
   if (outcome && resume?.where === 'onboarding') {
-    openOnboarding({ step: outcome.ok ? 2 : 1, resume, error: outcome.ok ? null : outcome.error });
+    openOnboarding({ step: outcome.ok ? 2 : 1, resume, error: outcome.ok ? null : outcome.error, project: firstProjectStep });
   } else if (outcome && resume?.where === 'settings') {
     openProfileAfterAuth(outcome);
   } else if (needsOnboarding()) {
-    openOnboarding();
+    openOnboarding({ project: firstProjectStep });
   }
 }
 

@@ -1,5 +1,6 @@
 // Аватар пользователя: буквы по умолчанию, смайл кнопкой в углу круга, фото — системный выбор файла и обрезка под круг.
 import { expect, test, type Browser, type Page } from '@playwright/test';
+import { continueOnboarding } from './fixtures';
 
 const errors: string[] = [];
 test.afterEach(() => { expect(errors.splice(0), 'ошибки JS на странице').toEqual([]); });
@@ -80,7 +81,7 @@ test('знакомство: фото обрезается под круг, «У�
   expect(center[0]).toBeGreaterThan(180);
   expect(center[2]).toBeLessThan(80);
 
-  await page.locator('.ob-continue').click();
+  await continueOnboarding(page);
   await expect(page.locator('#onboarding')).toHaveCount(0);
   expect((await profile(page)).avatar).toMatch(/^data:image\/jpeg;base64,/);
   // мой аватар в шапке — с фото
@@ -103,7 +104,7 @@ test('настройки: смайл вместо букв через кнопк
   const page = await fresh(browser);
   await page.locator('.ob-skip').click();
   await page.locator('.ob-name').fill('Аня');
-  await page.locator('.ob-continue').click();
+  await continueOnboarding(page);
   await page.keyboard.press('Control+Comma');
   await page.locator('.sd-nav-item', { hasText: 'Профиль' }).click();
   const ps = page.locator('#settings-dialog .ps-identity .ae');

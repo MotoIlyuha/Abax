@@ -2,6 +2,8 @@
 // Шаг 1 — способ входа (Почта, Telegram, Google) или «Продолжить без входа».
 // Шаг 2 — аватар (буквы, смайл или фото), имя (подсказка-placeholder из смешных имён), курсор с превью и,
 // если вошли, привязка других способов.
+// Шаг 3 — «Создайте свой первый проект!»: то же, что окно «Создать проект» (src/project-dialog.ts), с плашкой
+// о страницах; проект не создаётся — переименовывается стартовый (шаг есть, только пока он открыт).
 // Весь текст пользователя — через textContent; иконки — константы.
 
 import { getApi, type MeResponse } from './api-client';
@@ -16,6 +18,7 @@ import { DEFAULT_CURSOR_ID } from './cursors';
 import { BACK_CHEVRON_ICON, CLOSE_ICON, PROVIDER_ICONS } from './icons';
 import { createEmailLogin, springLayout, type EmailLogin, type EmailStage } from './email-login';
 import { nextFunnyName, randomFunnyName } from './funny-names';
+import { createProjectForm, type FirstProjectStep, type ProjectForm } from './project-dialog';
 import { motionEnabled, reduceMotion } from './motion';
 import { createLetterLimit } from './letter-limit';
 import { introEnabled, playIntro } from './onboarding-intro';
@@ -35,11 +38,14 @@ export interface OnboardingOptions {
   resume?: AuthResume | null;
   /** Ошибка входа после возврата — показывается на шаге 1. */
   error?: string | null;
+  /** Шаг «Создайте свой первый проект!»: спрашивается при «Продолжить» на шаге 2; null — шага нет. */
+  project?(): FirstProjectStep | null;
   /** Окно закрыто (имя и курсор сохранены). */
   onDone?(): void;
 }
 
-interface Open { root: HTMLElement; close(): void; step(): 1 | 2; go(step: 1 | 2): void }
+type Step = 1 | 2 | 3;
+interface Open { root: HTMLElement; close(): void; step(): Step; go(step: Step): void }
 let current: Open | null = null;
 
 export function onboardingOpen(): boolean {
@@ -191,7 +197,7 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
   let avatarValue: string | null = resume && resume.avatar !== undefined ? cleanAvatar(resume.avatar) ?? null : getProfile().avatar;
   /** Что запомнить перед переходом к провайдеру входа. */
   const resumeNow = (): AuthResume => ({ where: 'onboarding', name: nameInput.value, cursorId: choice.saved, placeholder, avatar: avatarValue });
-  let step: 1 | 2 = 1;
+  let step: Step = 1;
 
   const root = el('div');
   root.id = 'onboarding';
@@ -296,10 +302,16 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
   msg2.hidden = true;
   const say2 = (text: string, kind: 'error' | 'info' = 'error') => { msg2.hidden = false; msg2.textContent = text; msg2.dataset.kind = kind; fitHeight(); };
   const done = button('ob-btn ob-primary ob-continue', 'Продолжить');
-  done.addEventListener('click', finish);
+  done.addEventListener('click', next2);
   s2.append(head, identity, cursorCaption, picker.el, link, msg2, done);
 
-  track.append(s1, s2);
+  // ----- шаг 3 (заполняется при переходе: стартовый проект мог смениться) -----
+  const s3 = el('section', 'ob-step ob-step3');
+  s3.dataset.step = '3';
+  let projectStep: FirstProjectStep | null = null;
+  let projectForm: ProjectForm | null = null;
+
+  track.append(s1, s2, s3);
 
   const showName = () => {
     const n = resolveName(nameInput.value, placeholder);
@@ -318,7 +330,7 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
       }
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      finish();
+      next2();
     }
   });
 
@@ -382,10 +394,47 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
     fitHeight();
   }
 
+  /** «Продолжить» на шаге 2: к проекту, если шаг есть, иначе — готово. */
+  function next2(): void {
+    projectStep = opts.project?.() ?? null;
+    if (projectStep) go(3);
+    else finish();
+  }
+
+  /** Шаг 3 собирается заново при каждом входе: подсказки — из текущего стартового проекта. */
+  function buildStep3(p: FirstProjectStep): void {
+    projectForm?.destroy();
+    s3.textContent = '';
+    const back = el('button', 'ob-back');
+    back.type = 'button';
+    back.title = 'Назад';
+    back.setAttribute('aria-label', 'Назад');
+    back.innerHTML = BACK_CHEVRON_ICON;
+    back.addEventListener('click', () => go(2));
+    const head3 = el('div', 'ob-head');
+    head3.append(back, el('h2', 'ob-title', 'Создайте свой первый проект!'));
+    projectForm = createProjectForm({
+      namePlaceholder: p.namePlaceholder, pagePlaceholder: p.pagePlaceholder, icon: p.icon,
+      planNote: p.planNote, pagesNote: true,
+      pileHost: () => root, floorEl: () => win, onEnter: createProject,
+    });
+    const create = button('ob-btn ob-primary ob-create', 'Создать');
+    create.addEventListener('click', createProject);
+    s3.append(head3, projectForm.el, create);
+  }
+
+  function createProject(): void {
+    const values = projectForm?.values();
+    if (projectStep && values) projectStep.apply(values);
+    finish();
+  }
+
+  const stepEl = (n: Step): HTMLElement => (n === 1 ? s1 : n === 2 ? s2 : s3);
+
   let fitTimer = 0;
   /** Высота окна по активному шагу; now — высота меняется покадрово, ставим её без CSS-перехода. */
   function fitHeight(now = false): void {
-    const active = step === 1 ? s1 : s2;
+    const active = stepEl(step);
     if (now) {
       viewport.style.transition = 'none';
       clearTimeout(fitTimer);
@@ -394,17 +443,22 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
     viewport.style.height = `${active.scrollHeight}px`;
   }
 
-  function go(next: 1 | 2): void {
-    if (next === 2) enterStep2();
+  function go(next: Step): void {
+    if (next === 2 && step !== 3) enterStep2();
+    if (next === 3) {
+      if (!projectStep) { finish(); return; }
+      buildStep3(projectStep);
+    }
     step = next;
     root.dataset.step = String(next);
-    track.style.transform = next === 2 ? 'translateX(-50%)' : 'translateX(0)';
-    s1.toggleAttribute('inert', next !== 1);
-    s2.toggleAttribute('inert', next !== 2);
-    s1.setAttribute('aria-hidden', next !== 1 ? 'true' : 'false');
-    s2.setAttribute('aria-hidden', next !== 2 ? 'true' : 'false');
+    track.style.transform = next === 1 ? 'translateX(0)' : `translateX(calc(-100% * ${next - 1} / 3))`;
+    for (const n of [1, 2, 3] as const) {
+      stepEl(n).toggleAttribute('inert', next !== n);
+      stepEl(n).setAttribute('aria-hidden', next !== n ? 'true' : 'false');
+    }
     fitHeight();
-    if (next === 2) nameInput.focus({ preventScroll: true });
+    if (next === 3) projectForm?.focus();
+    else if (next === 2) nameInput.focus({ preventScroll: true });
     else focusStep1();
   }
 
@@ -434,11 +488,11 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
     if (e.target instanceof Element && e.target.closest('[data-own-keys]')) return;
     e.stopPropagation();
     if (e.key === 'Escape') { e.preventDefault(); finish(); return; }
-    if (e.key === 'Tab') { e.preventDefault(); if (step === 2) nameInput.focus(); else focusStep1(); }
+    if (e.key === 'Tab') { e.preventDefault(); if (step === 3) projectForm?.focus(); else if (step === 2) nameInput.focus(); else focusStep1(); }
   }
 
   function trapFocus(e: KeyboardEvent): void {
-    const active = step === 1 ? s1 : s2;
+    const active = stepEl(step);
     const items = [closeBtn, ...active.querySelectorAll<HTMLElement>('button, input, [tabindex]:not([tabindex="-1"])')]
       .filter(x => !(x as HTMLButtonElement).disabled && !x.closest('[hidden]'));
     if (items.length === 0) return;
@@ -455,6 +509,7 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
     if (current?.root !== root) return;
     current = null;
     nameField.destroy();
+    projectForm?.destroy();
     picker.dispose();
     avatarEditor.dispose();
     window.removeEventListener('keydown', onOutsideKey, true);
@@ -469,8 +524,10 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
   current = { root, close, step: () => step, go };
   // первый шаг всегда — способы входа; после возврата от провайдера — сразу второй
   root.dataset.step = '1';
-  s2.setAttribute('inert', '');
-  s2.setAttribute('aria-hidden', 'true');
+  for (const sx of [s2, s3]) {
+    sx.setAttribute('inert', '');
+    sx.setAttribute('aria-hidden', 'true');
+  }
   if (opts.error) say1(authErrorText(opts.error), 'error');
   if (opts.step === 2) {
     // без анимации: окно только что появилось

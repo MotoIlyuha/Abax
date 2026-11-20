@@ -1,6 +1,6 @@
 // Ночь №4: окно первого входа на чистом устройстве (сборка без облачного сервера).
 import { expect, test, type Browser, type Page } from '@playwright/test';
-import { Board } from './fixtures';
+import { Board, continueOnboarding } from './fixtures';
 
 const errors: string[] = [];
 test.afterEach(() => { expect(errors.splice(0), 'ошибки JS на странице').toEqual([]); });
@@ -58,7 +58,24 @@ test.describe('окно первого входа', () => {
 
     await page.locator('.ob-step2 [data-cursor="mint"]').click();
     await page.locator('.ob-continue').click();
+    // шаг 3: «Создайте свой первый проект!» — стартовый проект переименовывается, новый не создаётся
+    await expect(step(page)).toHaveAttribute('data-step', '3');
+    await expect(page.locator('.ob-step3 .ob-title')).toHaveText('Создайте свой первый проект!');
+    await expect(page.locator('.ob-step3 .pd-pages-note')).toBeVisible();
+    const projectName = page.locator('.ob-step3 .pd-name');
+    await expect(projectName).toBeFocused();
+    await expect(projectName).toHaveAttribute('placeholder', 'Проект 1');
+    await projectName.fill('Геометрия и алгебра, 8 класс');
+    await page.locator('.ob-step3 .pd-page').fill('Дроби');
+    await page.locator('.ob-step3 .ob-create').click();
     await expect(step(page)).toHaveCount(0);
+    await expect(page.locator('#project-name')).toHaveValue('Геометрия и алгебр...');
+    await expect(page.locator('#page-name')).toHaveValue('Дроби');
+    const st = await page.evaluate(() => {
+      const s = (window as unknown as { __doska: { state: { project: { name: string }; projects: unknown[] } } }).__doska.state;
+      return { name: s.project.name, count: s.projects.length };
+    });
+    expect(st).toEqual({ name: 'Геометрия и алгебра, 8 класс', count: 1 });
     expect(await profile(page)).toMatchObject({ name: placeholder, cursorId: 'mint', onboarded: true });
     // курсор и кнопка «Выделение» — выбранные
     await expect(page.locator('#toolbar .tool[data-tool="select"] svg.cursor-icon path').first()).toHaveAttribute('fill', '#96f2d7');
@@ -81,7 +98,7 @@ test.describe('окно первого входа', () => {
     await expect(page.locator('.cp-lock')).toBeHidden();
     await expect(page.locator('.ob-step2 [data-cursor="coral"]')).toHaveClass(/active/);
     await page.locator('.ob-step2 [data-cursor="flame"]').click();
-    await page.locator('.ob-continue').click();
+    await continueOnboarding(page);
     expect(await profile(page)).toMatchObject({ name: placeholder, cursorId: 'coral' });
     await page.context().close();
   });

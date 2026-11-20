@@ -173,40 +173,33 @@ body.hide-undo-redo .undo-group { display: none; }
 @media (max-width: 850px) {
   #topbar { gap: 6px; }
   .topbar-side { gap: 12px; }
-  #project-name { max-width: 90px; }
-  #page-name { max-width: 100px; }
+  #project-name { max-width: 110px; }
+  #page-name { max-width: 120px; }
 }
-#page-name {
+/* названия проекта и страницы в шапке — поля ввода; вне фокуса сокращены до 18 символов (src/topbar-names.ts) */
+:is(#page-name, #project-name) {
   border: 1px solid transparent;
   border-radius: 6px;
   padding: 5px 8px;
   font: inherit;
   font-weight: 600;
-  width: 240px;
-  min-width: 72px;
+  width: 200px;
+  min-width: 56px;
   flex: 0 1 auto;
   background: transparent;
   color: var(--fg);
-}
-/* поле по ширине названия: на узком экране не забирает место у названия проекта */
-@supports (field-sizing: content) {
-  #page-name { field-sizing: content; width: auto; max-width: 240px; }
-}
-#page-name:hover, #page-name:focus { border-color: var(--border); background: var(--panel); outline: none; }
-/* «Проект / Страница» в шапке */
-#project-name {
-  max-width: 200px;
-  min-width: 0;
-  flex: 0 1 auto;
-  padding-left: 4px;
-  overflow: hidden;
-  white-space: nowrap;
   text-overflow: ellipsis;
-  color: var(--muted);
-  font-weight: 500;
 }
+/* поле по ширине названия: на узком экране одно не забирает место у другого */
+@supports (field-sizing: content) {
+  :is(#page-name, #project-name) { field-sizing: content; width: auto; max-width: 240px; }
+}
+:is(#page-name, #project-name):hover, :is(#page-name, #project-name):focus { border-color: var(--border); background: var(--panel); outline: none; }
+:is(#page-name, #project-name):read-only:focus { border-color: transparent; background: transparent; }
+/* «Проект / Страница» в шапке: проект — приглушённый */
+#project-name { color: var(--muted); font-weight: 500; margin-left: -4px; }
 /* у поля названия свой внутренний отступ — подтягиваем его к разделителю */
-.crumb-sep { color: var(--fg-disabled); margin-right: -7px; }
+.crumb-sep { color: var(--fg-disabled); margin: 0 -7px; }
 
 /* масштаб: подпись-кнопка, по клику — поле для точного значения */
 #zoom-label {
@@ -2644,7 +2637,7 @@ body.link-view #btn-home,
 body.link-view #grid-mode,
 body.link-view #view-grid-icon { display: none !important; }
 body.link-view-page #pages-dock { display: none !important; }
-body.link-view #page-name { pointer-events: none; }
+body.link-view :is(#page-name, #project-name) { pointer-events: none; }
 body.link-view #project-icon { pointer-events: none; }
 
 /* ---- задания: контролы поверх карточек ---- */
@@ -2977,14 +2970,14 @@ body.no-ui-anim .grid-switch :is(.switch-track, .switch-knob) { transition: none
 .ob-viewport { overflow: hidden; overflow: clip; transition: height 0.3s cubic-bezier(0.22, 0.8, 0.24, 1); }
 .ob-track {
   display: flex;
-  width: 200%;
+  width: 300%;
   align-items: flex-start;
   transition: transform 0.3s cubic-bezier(0.22, 0.8, 0.24, 1);
 }
 #onboarding.ob-instant .ob-track, #onboarding.ob-instant .ob-viewport,
 #onboarding.ob-no-anim .ob-track, #onboarding.ob-no-anim .ob-viewport { transition: none; }
 #onboarding.ob-instant, #onboarding.ob-instant .ob-window { animation: none; }
-.ob-step { width: 50%; flex: none; padding: 28px 28px 24px; box-sizing: border-box; }
+.ob-step { width: calc(100% / 3); flex: none; padding: 28px 28px 24px; box-sizing: border-box; }
 .ob-logo { display: block; width: 56px; height: 56px; margin: 0 auto 12px; }
 .ob-title { margin: 0 0 6px; font-size: 22px; font-weight: 700; text-align: center; color: var(--fg); }
 .ob-head { display: grid; grid-template-columns: 36px 1fr 36px; align-items: center; gap: 8px; margin-bottom: 6px; }
@@ -5442,3 +5435,75 @@ body.toolbar-detachable #toolbar.tb-dragging .tb-grip { cursor: grabbing; color:
 #toolbar .tb-grip svg { width: 14px; height: 14px; transform: rotate(90deg); }
 body.no-ui-anim.toolbar-detachable #toolbar .tb-grip { transition: none; }
 @media (prefers-reduced-motion: reduce) { body.toolbar-detachable #toolbar .tb-grip { transition: none; } }
+
+/* ----- Окно «Создать проект» (src/project-dialog.ts) и шаг 3 окна первого входа ----- */
+#project-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 960;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: var(--scrim);
+  animation: ui-fade 0.18s ease-out;
+  -webkit-user-select: none;
+  user-select: none;
+}
+#project-dialog input { -webkit-user-select: text; user-select: text; }
+.pd-window {
+  position: relative;
+  width: min(480px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding: 24px 24px 20px;
+  box-sizing: border-box;
+  background: var(--panel);
+  border-radius: 18px;
+  box-shadow: var(--shadow-dialog);
+  animation: ui-pop 0.2s cubic-bezier(0.22, 0.8, 0.24, 1);
+}
+#project-dialog.pd-instant, #project-dialog.pd-instant .pd-window { animation: none; }
+.pd-title { margin-bottom: 4px; }
+.pd-row { display: flex; align-items: flex-start; gap: 16px; margin-top: 14px; }
+.pd-fields { flex: 1; min-width: 0; display: grid; gap: 12px; }
+.pd-fields > .ob-field { margin: 0; }
+/* смайл проекта слева от полей: крупная плитка, пустая — значок «добавить иконку» */
+.project-icon.pd-icon {
+  width: 72px;
+  height: 72px;
+  margin-top: 24px;
+  border: 1px dashed var(--border-input);
+  border-radius: 16px;
+  background: var(--surface-sunken);
+  font-size: 40px;
+}
+.project-icon.pd-icon:not(.empty) { border-style: solid; border-color: transparent; }
+.project-icon.pd-icon:hover { background: var(--hover); color: var(--fg); }
+.project-icon.pd-icon:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.project-icon.pd-icon svg { width: 34px; height: 34px; }
+.project-icon.pd-icon img { width: 56px; height: 56px; border-radius: 12px; }
+.pd-plan { margin: 14px 0 0; color: var(--fg-secondary); font-size: 13px; line-height: 1.45; }
+/* «что такое страницы» — выделенная плашка (шаг окна первого входа) */
+.pd-pages-note {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--accent-soft);
+  color: var(--fg);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.pd-pages-mark { flex: none; display: grid; width: 20px; height: 20px; color: var(--accent); }
+.pd-pages-mark svg { width: 20px; height: 20px; }
+.ob-step3 .ob-title { font-size: 20px; }
+.pd-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+.pd-actions .ob-btn { min-width: 110px; }
+.ob-step3 .ob-create { width: 100%; margin-top: 18px; }
+@media (max-width: 480px) {
+  .pd-row { gap: 12px; }
+  .project-icon.pd-icon { width: 56px; height: 56px; font-size: 30px; }
+  .pd-actions .ob-btn { flex: 1; min-width: 0; }
+}

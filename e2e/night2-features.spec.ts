@@ -1,5 +1,5 @@
 // Ночь №2: просмотр по ссылке, клонирование, патчи, задания, реакции и лимиты тарифов.
-import { expect, pickOption, test } from './fixtures';
+import { expect, newProject, pickOption, test } from './fixtures';
 import type { Page } from '@playwright/test';
 import { createRequire } from 'node:module';
 
@@ -537,9 +537,16 @@ test.describe('лимиты тарифов', () => {
   test('четвёртый проект не создаётся: уведомление', async ({ board, page }) => {
     await enforce(page);
     await board.open();
+    // в окне «Создать проект» — пояснение тарифа
+    await board.home();
+    await page.locator('#home .new-project').click();
+    await expect(page.locator('#project-dialog .pd-plan')).toHaveText('На бесплатном тарифе можно создать только 3 проекта и только 3 страницы в каждом из них.');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#project-dialog')).toHaveCount(0);
+    await board.back();
     for (let i = 0; i < 2; i++) {
       await board.home();
-      await page.locator('#home .new-project').click();
+      await newProject(page);
       await expect.poll(async () => (await board.state()).projects.length).toBe(i + 2);
     }
     await board.home();
