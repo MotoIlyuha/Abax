@@ -36,6 +36,36 @@ test.describe('окно «Поделиться»', () => {
     await A.close();
   });
 
+  test('«Настройки доступа»: подсказки и подсветка строк — морфящиеся, сбоку от окна', async ({ browser }) => {
+    const { base } = env.get();
+    const A = await device(browser, base, { name: 'Лемур' });
+    const a = await openAt(A, `${base}/`, env.errors);
+    await a.locator('#btn-share').click();
+    await a.locator('#share-tab-settings').click();
+    const dlg = a.locator('#share-dialog');
+    const row = dlg.locator('#share-panel-settings .share-toggle').first();
+    await expect(row).toBeVisible();
+    await row.hover();
+    await expect(a.locator('#morph-tip[data-state="shown"] .mt-lab.cur')).toContainText('не могут сдвигать');
+    expect(await a.locator('#morph-tip .mt-tip').getAttribute('data-side')).toBe('left');
+    // пузырь оседает пружиной: правый край — левее окна, когда движение закончилось
+    await expect.poll(async () => {
+      const tip = (await a.locator('#morph-tip .mt-tip').boundingBox())!;
+      const box = (await dlg.boundingBox())!;
+      return tip.x + tip.width <= box.x;
+    }).toBe(true);
+    await expect(dlg.locator('.mt-hl')).toHaveCount(1);
+    // следующая строка: тот же пузырь перетекает, подсветка одна
+    await dlg.locator('#share-panel-settings .share-toggle').nth(1).hover();
+    await expect(a.locator('#morph-tip .mt-lab.cur')).toContainText('Читатели и комментаторы');
+    await expect(dlg.locator('.mt-hl')).toHaveCount(1);
+    // закрытие окна убирает подсказку
+    await a.keyboard.press('Escape');
+    await expect(dlg).toHaveCount(0);
+    await expect(a.locator('#morph-tip')).toHaveAttribute('data-state', 'hidden');
+    await A.close();
+  });
+
   test('почта с ролью и список «Есть доступ»; черновик адреса переживает вход гостя', async ({ browser }) => {
     const { base, outbox } = env.get();
     const host = await login(base, 'teacher-share@abax.example');

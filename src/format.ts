@@ -31,3 +31,8 @@ export function pagesLabel(n: number): string {
 export function capitalize(s: string): string {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
+
+/** «1 объект», «3 объекта», «12 объектов». */
+export function objectsLabel(n: number): string {
+  return `${n} ${plural(Math.abs(n), ['объект', 'объекта', 'объектов'])}`;
+}

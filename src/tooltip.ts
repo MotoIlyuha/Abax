@@ -5,7 +5,7 @@
 // Кнопки панели инструментов (#toolbar) и переключатели подменю «Взаимодействия» в МВВ обслуживает «морфящаяся» подсказка — morph-tooltip.ts:
 // одна на всю панель, перетекает от кнопки к кнопке. Остальные элементы — обычный пузырь ниже.
 
-import { MORPH_MENU, MORPH_SCOPE, morphActive, morphHideTip, morphLeave, morphOver, morphPop, splitTipText } from './morph-tooltip';
+import { MORPH_MENU, MORPH_MENU_ROW, MORPH_SCOPE, morphActive, morphHideTip, morphLeave, morphOver, morphPop, splitTipText } from './morph-tooltip';
 
 type Side = 'top' | 'bottom' | 'left' | 'right';
 
@@ -167,12 +167,23 @@ export function initTooltips(): void {
     if (e.buttons) { hide(); morphLeave(true); return; }
     // панель инструментов: своя подсказка; в щели между кнопками остаётся предыдущая
     // (если «Motion анимации» выключены в настройках — обычный пузырь, как у остальных кнопок)
-    if (!document.body.classList.contains('no-motion') && e.target instanceof Element && e.target.closest(MORPH_SCOPE)) {
-      hide();
-      if (t) morphOver(t, t.dataset.tip ?? '');
-      // в меню щелей между пунктами нет: курсор на пункте без подсказки («назад») — подсветка уходит
-      else if (e.target.closest(MORPH_MENU)) morphLeave();
-      return;
+    // ручка откреплённой панели (.tb-grip) — обычный пузырь: подсветка кнопок легла бы поверх неё и спрятала
+    if (!document.body.classList.contains('no-motion') && e.target instanceof Element && e.target.closest(MORPH_SCOPE)
+      && !e.target.closest('.tb-grip')) {
+      // меню аватара и «Настройки доступа»: морфятся только свои строки; пункт без подсказки — только подсветка
+      const row = e.target.closest<HTMLElement>(MORPH_MENU_ROW);
+      if (row) {
+        hide();
+        morphOver(row, t && row.contains(t) ? t.dataset.tip ?? '' : '');
+        return;
+      }
+      if (!e.target.closest('#avatar-menu, #share-dialog')) {
+        hide();
+        if (t) morphOver(t, t.dataset.tip ?? '');
+        // в меню щелей между пунктами нет: курсор на пункте без подсказки («назад») — подсветка уходит
+        else if (e.target.closest(MORPH_MENU)) morphLeave();
+        return;
+      }
     }
     morphLeave();
     if (t === target) return;

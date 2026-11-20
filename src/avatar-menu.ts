@@ -6,6 +6,7 @@
 
 import { createUserAvatar, type AvatarData } from './avatar';
 import { BACK_ARROW_ICON } from './icons';
+import { morphLeave } from './morph-tooltip';
 import { claimMenu, closeMenu, drillMenu, menuShown, openMenu, releaseMenu } from './menu-motion';
 import { createToggleSwitch } from './toggle-switch';
 
@@ -21,7 +22,7 @@ export type AvatarMenuEntry =
     /** Пометка справа (например, «Скоро»). */
     badge?: string;
   }
-  | { kind: 'switch'; id: string; label: string; icon: string; checked: boolean; onChange: (on: boolean) => void; disabled?: boolean; title?: string }
+  | { kind: 'switch'; id: string; label: string; icon: string; checked: boolean; onChange: (on: boolean) => void; disabled?: boolean; title?: string; badge?: string }
   /** Подменю в этом же меню: содержимое строится при каждом входе. */
   | { kind: 'submenu'; id: string; label: string; icon: string; title?: string; content: () => AvatarSubmenu }
   | { kind: 'sep' };
@@ -166,6 +167,12 @@ function switchRow(e: Extract<AvatarMenuEntry, { kind: 'switch' }>): HTMLLabelEl
   row.dataset.action = e.id;
   const input = row.querySelector<HTMLInputElement>('.switch-input')!;
   if (e.disabled) input.disabled = true;
+  if (e.badge) {
+    // переключатель скрыт за меткой (например, «Pro»): ввод недоступен
+    input.disabled = true;
+    row.classList.add('has-badge');
+    row.querySelector('.switch-track')?.replaceWith(el('span', 'avatar-menu-badge avatar-menu-badge-pro', e.badge));
+  }
   return row;
 }
 
@@ -191,6 +198,7 @@ export function openAvatarMenu(spec: AvatarMenuSpec): HTMLElement {
   closeAvatarMenu(true);
   const menu = el('div', 'popup-menu menu-list avatar-menu');
   menu.id = 'avatar-menu';
+  menu.dataset.tipSide = 'left'; // подсказки — сбоку от меню (в режиме без анимаций тоже)
   menu.setAttribute('role', 'menu');
   menu.setAttribute('aria-label', spec.name);
   const head = el('div', 'avatar-menu-head');
@@ -231,6 +239,7 @@ export function openAvatarMenu(spec: AvatarMenuSpec): HTMLElement {
     document.removeEventListener('pointerdown', away, true);
     document.removeEventListener('keydown', onKey, true);
     window.removeEventListener('resize', closeAvatarMenuSoon);
+    morphLeave(true); // подсказка и подсветка пункта не остаются висеть после закрытия меню
   };
   current = { menu, spec, cleanup, page, sub: null };
   claimMenu(KEY, () => closeAvatarMenu());

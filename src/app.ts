@@ -4,8 +4,10 @@ import type {
   AnimationMode, BoardSettings, Camera, Element, GridMode, ImageEl, NoteEl, Page, PageTransition, Project, ProjectMeta, ShapeEl, TaskEl, TextAlign, TextEl, TextVAlign,
   ToolId, ToolbarPos, WheelMode,
 } from './types';
+import { setStickyTool, stickyTool } from './sticky-tool';
 import { resolveAnimationMode } from './motion';
 import { setZoomCounter } from './zoom-counter';
+import { createValueCounter } from './value-counter';
 import { initZoomChevron } from './zoom-chevron';
 import { claimMenu, closeMenu, drillMenu, menuShown, openMenu, releaseMenu } from './menu-motion';
 import { attachOverlayScroll } from './overlay-scroll';
@@ -37,7 +39,8 @@ import {
 import * as pdfjsLib from 'pdfjs-dist';
 // ?worker&inline: воркер инлайнится в бандл и работает из file:// (Electron)
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker&inline';
-import { initChatButton } from './collab-chat';
+import { initNotifyButton } from './notify-button';
+import { initNotifyStack } from './notify-stack';
 import { collabActive, isHost, myCollabCaps, myColor, noteSelection, readOnly, startHostConnection, stopCollab, type CollabGotoDetail, type CollabSummonDetail } from './collab';
 import { animateCameraTo, cameraAnimating, clampZoom } from './camera-anim';
 import { stopFollowByUser } from './follow';
@@ -54,6 +57,7 @@ import {
 } from './settings-dialog';
 import { experimentalHeadIcon, experimentsShown, renderExperimental, setExperimentsShown, setRecursionDiscovered } from './experimental';
 import { renderToolbarEditor } from './toolbar-editor';
+import { GRIP_ROOM, clampFloat, dragFloat, floatSide, orientOfPos, rotateFloat, sanitizeToolbarFloat, type Area, type ToolbarFloat } from './toolbar-float';
 import { renderHotkeysSettings } from './hotkeys-settings';
 import { DEFAULT_NEW_PAGE_KEY, DRAFT_KEY, comboLabel, macKeys, newPageKeyProblem } from './hotkeys';
 import { renderAbout, showToast } from './about';
@@ -61,6 +65,8 @@ import { closeIconPicker } from './icon-picker';
 import { createIconButton, type IconButton } from './icon-button';
 import { capitalize, dayLabel, pagesLabel } from './format';
 import { buildCustomColorPicker } from './color-picker';
+import { setShown } from './collapse';
+import { eyedropperActive } from './eyedropper';
 import { copySelection, duplicateSelection as duplicateInPlace, pasteFromMemory, pasteFromSystem } from './clipboard';
 import { stretchCancel, stretchClose, stretchOpen } from './stretch';
 import { morphLeave } from './morph-tooltip';
@@ -69,8 +75,16 @@ import { hideHeldTooltip, showHeldTooltip } from './tooltip';
 import { LIMIT_PROJECTS_TEXT, copyBoardLink, currentBoardLink, registerLinkViewHooks } from './link-view-ui';
 import { canCreateProject, isOverPageLimit, isOverProjectLimit, PLAN_LIMITS } from './limits';
 import { limitsEnforced, userPlan } from './plan';
+import { pushNotice } from './notify-center';
 import { CONFLICT_TEXT, cloudStorage, openFresh, type ConflictResolution } from './cloud-sync';
 import { clearStarter, isPristineStarterProject, starterId } from './sync-state';
+import { parseProject } from './file';
+import { setPanelActions } from './panel-actions';
+import { setChatAttachActions } from './chat-attach-view';
+import { attachSelection, selectionAttachBlock } from './chat-attach';
+import { chatAvailable, chatCanWrite, openChat } from './collab-chat';
+import { registerPanelModes } from './panel-modes';
+import { closeSidePanel, onSidePanel, sidePanelMode, sidePanelOpen, toggleSidePanel } from './side-panel';
 import { initSyncIndicator } from './sync-indicator';
 import { openShareDialog as openShareDialogUi, type ShareApi } from './share-dialog';
 import { onCancelInteraction } from './interaction';
@@ -178,6 +192,8 @@ function restoreSettings(): void {
     if (v && pos.includes(v.toolbarPos)) {
       state.settings = {
         toolbarPos: v.toolbarPos as ToolbarPos,
+        toolbarDetachable: v.toolbarDetachable === true,
+        toolbarFloat: v.toolbarDetachable === true ? sanitizeToolbarFloat(v.toolbarFloat) : null,
         snapToGrid: typeof v.snapToGrid === 'boolean' ? v.snapToGrid : false,
         wheelMode: v.wheelMode === 'scroll' ? 'scroll' : 'zoom',
         pageTransition: PAGE_TRANSITIONS.some(t => t.mode === v.pageTransition) ? v.pageTransition : 'slide',
@@ -750,7 +766,7 @@ function openCtxPanel(kind: CtxKind, source: CtxSource): void {
   el.className = 'ctx-panel';
   el.style.zIndex = String(++ctxZ);
   // откуда выплывает при появлении: от панели инструментов или из-под меню выделения
-  el.dataset.from = source === 'quick' ? 'quick' : state.settings.toolbarPos;
+  el.dataset.from = source === 'quick' ? 'quick' : toolbarSide();
   const cp: CtxPanel = { el, kind, source, baseHeight: 0, detached: false };
   ctxPanels.push(cp);
   el.addEventListener('pointerdown', () => { el.style.zIndex = String(++ctxZ); }, { capture: true });
@@ -909,7 +925,7 @@ function positionCtxPanel(cp: CtxPanel): void {
   } else {
     // центр панели — на уровне кнопки инструмента
     const tr = document.getElementById('toolbar')!.getBoundingClientRect();
-    const pos = state.settings.toolbarPos;
+    const pos = toolbarSide();
     if (pos === 'left' || pos === 'right') {
       maxH = wr.height - margin * 2;
       left = pos === 'left' ? tr.right - wr.left + gap : tr.left - wr.left - w - gap;
@@ -993,6 +1009,8 @@ function isLightColor(hex: string): boolean {
 /** Круглый свотч в стиле Miro; у активного — галочка контрастного цвета. */
 let colorMenuController: AbortController | null = null;
 let allColorsCollapsed = false;
+/** «Все цвета» свернула открытая панель «Добавить цвет»: при её закрытии разворачиваем обратно. */
+let allAutoCollapsed = false;
 let draggedColor: { color: string; custom: boolean } | null = null;
 function changeFavorite(c: string, add: boolean): void {
   const rest = loadCustomColors().filter(x => x !== c);
@@ -1010,7 +1028,7 @@ function makeSwatch(c: string, active: boolean, onPick: (c: string) => void, cus
   if (onPick === chooseColor) {
     b.draggable = true;
     b.addEventListener('dragstart', e => { draggedColor = { color: c, custom }; e.dataTransfer?.setData('text/plain', c); });
-    b.addEventListener('dragend', () => { draggedColor = null; });
+    b.addEventListener('dragend', () => { draggedColor = null; document.querySelector('.ctx-my-colors.drop-over')?.classList.remove('drop-over'); });
     b.addEventListener('contextmenu', e => {
       e.preventDefault(); e.stopPropagation();
       colorMenuController?.abort();
@@ -1040,7 +1058,22 @@ function renderCustomSwatches(): void {
   grid.textContent = '';
   const list = loadCustomColors();
   for (const c of list) grid.appendChild(makeSwatch(c, c === currentPanelColor(), chooseColor, true));
-  grid.hidden = list.length === 0;
+  // приёмник перетаскивания занимает остаток ряда за свотчами; текст — только пока своих цветов нет
+  const cols = 4;
+  const hint = document.createElement('div');
+  hint.className = 'ctx-drop-hint';
+  if (list.length === 0) {
+    hint.style.gridColumn = `span ${cols}`;
+    const strong = document.createElement('b');
+    strong.textContent = 'Мои цвета';
+    const text = document.createElement('span');
+    text.append('Перетащите цвет сюда, чтобы добавить его в ', strong);
+    hint.appendChild(text);
+  } else {
+    hint.style.gridColumn = `span ${cols - (list.length % cols)}`;
+    hint.title = 'Перетащите цвет сюда, чтобы добавить его в «Мои цвета»';
+  }
+  grid.appendChild(hint);
 }
 
 /** Выделенные элементы, к которым относится панель из меню выделения. */
@@ -1111,8 +1144,8 @@ function buildStylePanel(cp: CtxPanel): void {
     sliderHost.className = 'ctx-drop-slider';
     const val = document.createElement('span');
     val.className = 'ctx-range-val';
-    const show = (v: number) => { val.textContent = formatWidth(v); };
-    show(state.style.width);
+    const counter = createValueCounter(val, formatWidth, 0.05, state.style.width);
+    const show = (v: number) => counter.set(v);
     buildDropSlider(sliderHost, state.style.width, (v, first) => {
       show(v);
       chooseWidth(v, first);
@@ -1150,12 +1183,6 @@ function buildStylePanel(cp: CtxPanel): void {
     }
     p.appendChild(tabs);
   }
-  if (styleNeedsOpacity(cp.source)) {
-    p.appendChild(buildRange({
-      kind: 'opacity', title: 'Прозрачность', min: OPACITY_MIN, max: 1, step: 0.01, value: styleColorTab === 'fill' ? ((selected.find((e): e is ShapeEl => e.type === 'shape' && e.shape !== 'line' && e.shape !== 'arrow')?.fillOpacity) ?? (selected.find((e): e is ShapeEl => e.type === 'shape' && e.shape !== 'line' && e.shape !== 'arrow')?.opacity) ?? 1) : (state.style.opacity ?? 1),
-      format: v => `${Math.round(v * 100)}%`, icon: () => OPACITY_ICON, onChange: chooseOpacity,
-    }));
-  }
   const scroll = document.createElement('div');
   scroll.className = 'ctx-scroll';
   if (hasFill && styleColorTab === 'fill') {
@@ -1173,35 +1200,61 @@ function buildStylePanel(cp: CtxPanel): void {
   const pickerHost = document.createElement('div');
   pickerHost.className = 'ctx-picker';
   pickerHost.hidden = true;
+  let pickerOpen = false;
+  const reposition = () => positionCtxPanel(cp);
   add.addEventListener('click', () => {
-    pickerHost.hidden = !pickerHost.hidden;
-    if (!pickerHost.hidden) {
+    pickerOpen = !pickerOpen;
+    if (pickerOpen) {
       pickerHead = null;
-      buildCustomColorPicker(pickerHost, currentPanelColor() || '#ffffff', choosePickedColor);
+      buildCustomColorPicker(pickerHost, currentPanelColor() || '#ffffff', choosePickedColor, { eyedropper: true });
+      // пикер вместо «Всех цветов»: панель не растягивается на два больших блока
+      if (!allColorsCollapsed) { allAutoCollapsed = true; allColorsCollapsed = true; updateCollapsed(true); }
+    } else if (allAutoCollapsed) {
+      allAutoCollapsed = false; allColorsCollapsed = false; updateCollapsed(true);
     }
-    add.textContent = pickerHost.hidden ? '+ Добавить цвет' : 'Готово';
-    positionCtxPanel(cp);
+    setShown(pickerHost, pickerOpen, reposition);
+    add.textContent = pickerOpen ? 'Готово' : '+ Добавить цвет';
   });
   const custom = document.createElement('div');
   custom.className = 'ctx-swatches custom';
   const all = document.createElement('div');
   all.className = 'ctx-swatches';
   for (const c of PALETTE) all.appendChild(makeSwatch(c, c === currentPanelColor(), chooseColor));
+  // сворачивается обёртка без отступов: у сетки есть padding, высота сетки до нуля не доедет
+  const allWrap = document.createElement('div');
+  allWrap.className = 'ctx-all-colors';
+  allWrap.appendChild(all);
   const myHeader = sectionHead('Мои цвета');
   myHeader.classList.add('ctx-section-row'); myHeader.appendChild(add);
   const allHeader = sectionHead('Все цвета');
   allHeader.classList.add('ctx-section-row');
   const toggle = document.createElement('button'); toggle.className = 'ctx-section-action';
-  const updateCollapsed = () => { all.hidden = allColorsCollapsed; toggle.textContent = allColorsCollapsed ? 'Развернуть' : 'Свернуть'; };
-  toggle.addEventListener('click', () => { allColorsCollapsed = !allColorsCollapsed; updateCollapsed(); positionCtxPanel(cp); });
-  allHeader.appendChild(toggle); updateCollapsed();
+  function updateCollapsed(animate: boolean): void {
+    toggle.textContent = allColorsCollapsed ? 'Развернуть' : 'Свернуть';
+    if (animate) setShown(allWrap, !allColorsCollapsed, reposition);
+    else allWrap.hidden = allColorsCollapsed;
+  }
+  toggle.addEventListener('click', () => { allAutoCollapsed = false; allColorsCollapsed = !allColorsCollapsed; updateCollapsed(true); });
+  // панель пересобрали с открытым пикером (пикер после пересборки закрыт) — «Все цвета» возвращаются
+  if (allAutoCollapsed) { allAutoCollapsed = false; allColorsCollapsed = false; }
+  allHeader.appendChild(toggle); updateCollapsed(false);
   const dropZone = (zone: HTMLElement, addFavorite: boolean) => {
-    zone.addEventListener('dragover', e => { if (draggedColor) { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'; } });
-    zone.addEventListener('drop', e => { if (!draggedColor) return; e.preventDefault(); e.stopPropagation(); changeFavorite(draggedColor.color, addFavorite); });
+    // «Мои цвета» подсвечивают приёмник синим, пока цвет над зоной
+    const over = (on: boolean) => { if (addFavorite) zone.classList.toggle('drop-over', on); };
+    zone.addEventListener('dragover', e => { if (draggedColor) { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'; over(true); } });
+    zone.addEventListener('dragleave', e => { if (!(e.relatedTarget instanceof Node && zone.contains(e.relatedTarget))) over(false); });
+    zone.addEventListener('drop', e => { over(false); if (!draggedColor) return; e.preventDefault(); e.stopPropagation(); changeFavorite(draggedColor.color, addFavorite); });
   };
   const mine = document.createElement('div'); mine.className = 'ctx-my-colors';
   mine.append(myHeader, pickerHost, custom); dropZone(mine, true);
-  const allSection = document.createElement('div'); allSection.append(allHeader, all); dropZone(allSection, false);
+  const allSection = document.createElement('div'); allSection.append(allHeader, allWrap); dropZone(allSection, false);
+  // прозрачность — в самом низу «Всех цветов»; не в сворачиваемой обёртке, чтобы не пропадала при сворачивании
+  if (styleNeedsOpacity(cp.source)) {
+    allSection.appendChild(buildRange({
+      kind: 'opacity', title: 'Прозрачность', min: OPACITY_MIN, max: 1, step: 0.01, value: styleColorTab === 'fill' ? ((selected.find((e): e is ShapeEl => e.type === 'shape' && e.shape !== 'line' && e.shape !== 'arrow')?.fillOpacity) ?? (selected.find((e): e is ShapeEl => e.type === 'shape' && e.shape !== 'line' && e.shape !== 'arrow')?.opacity) ?? 1) : (state.style.opacity ?? 1),
+      format: v => `${Math.round(v * 100)}%`, icon: () => OPACITY_ICON, onChange: chooseOpacity,
+    }));
+  }
   scroll.append(mine, allSection);
   p.appendChild(scroll);
   renderCustomSwatches();
@@ -1228,8 +1281,9 @@ function buildDropSlider(host: HTMLElement, initial: number, onChange: (v: numbe
     const d = 10 + frac * 14;
     thumb.style.width = `${d}px`;
     thumb.style.height = `${d}px`;
-    // центр ручки ходит по треку (отступ 12px = макс. радиус), поэтому ручка не вылезает за края
-    thumb.style.left = `calc(12px + (100% - 24px) * ${frac.toFixed(4)} - ${d / 2}px)`;
+    // центр ручки ходит от 5px (радиус при минимуме) до «ширина − 12px» (радиус при максимуме):
+    // ручка не вылезает за края, а на минимуме закрывает тонкий хвост дорожки
+    thumb.style.left = `calc(5px + (100% - 17px) * ${frac.toFixed(4)} - ${d / 2}px)`;
     if (emit) {
       onChange(Math.round(value * 2) / 2, first);
       first = false;
@@ -1237,7 +1291,8 @@ function buildDropSlider(host: HTMLElement, initial: number, onChange: (v: numbe
   };
   const pointToValue = (e: PointerEvent) => {
     const r = track.getBoundingClientRect();
-    const frac = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+    // центр ручки ходит от 5px до «ширина − 12px» (см. apply)
+    const frac = Math.max(0, Math.min(1, (e.clientX - r.left - 5) / Math.max(1, r.width - 17)));
     value = WIDTH_MIN + frac * (WIDTH_MAX - WIDTH_MIN);
     apply(true);
   };
@@ -1288,15 +1343,19 @@ function buildRange(o: RangeOpts): HTMLElement {
   const val = document.createElement('span');
   val.className = 'ctx-range-val';
   row.append(icon, track, val);
+  // числа меняются так же, как процент масштаба в МВВ: по режиму анимаций (src/value-counter.ts)
+  const counter = createValueCounter(val, o.format, (o.max - o.min) / 200, o.value);
   const snap = (v: number) => Number(Math.min(o.max, Math.max(o.min, Math.round(v / o.step) * o.step)).toFixed(4));
   let value = snap(o.value);
   let fresh = true;
+  let painted = false;
   const paint = () => {
     const frac = (value - o.min) / (o.max - o.min);
     thumb.style.left = `${(frac * 100).toFixed(2)}%`;
     track.setAttribute('aria-valuenow', String(value));
     track.setAttribute('aria-valuetext', o.format(value));
-    val.textContent = o.format(value);
+    counter.set(value, !painted);
+    painted = true;
     icon.innerHTML = o.icon(value);
   };
   const emit = (v: number) => {
@@ -1736,6 +1795,20 @@ function copyImageButton(): HTMLButtonElement {
   return copyImage;
 }
 
+/** «Отправить в чат»: выделенное — вложением в поле ввода чата (панель ЧУ, вкладка «Чат»). */
+function sendToChatButton(): HTMLButtonElement | null {
+  if (!collabActive() || !chatAvailable() || !chatCanWrite() || selectionAttachBlock()) return null;
+  const b = document.createElement('button');
+  b.className = 'qm-btn qm-send-chat';
+  b.title = 'Отправить в чат';
+  b.setAttribute('aria-label', b.title);
+  b.innerHTML = ICONS.sendChat;
+  b.addEventListener('click', () => {
+    void attachSelection().then(err => { if (err) showToast(err); else openChat(); });
+  });
+  return b;
+}
+
 function updateQuickMenu(): void {
   const qm = quickMenuEl();
   // кегль набирают в поле меню — меню не пересобираем, иначе поле пропадёт из-под курсора
@@ -1754,6 +1827,8 @@ function updateQuickMenu(): void {
   if (!canEditBoard()) {
     for (const b of annotationButtons()) qm.appendChild(b);
     if (canCopyCurrentBoard()) qm.appendChild(copyImageButton());
+    const toChat = sendToChatButton();
+    if (toChat) qm.appendChild(toChat);
     if (!qm.hasChildNodes()) { qm.hidden = true; return; }
     positionQuickMenu();
     return;
@@ -1870,6 +1945,8 @@ function updateQuickMenu(): void {
   }
   for (const b of annotationButtons()) qm.appendChild(b);
   qm.appendChild(copyImageButton());
+  const toChat = sendToChatButton();
+  if (toChat) qm.appendChild(toChat);
   // ссылка на выделенные объекты: открывается с наведением на них
   if (currentBoardLink('focus')) {
     const linkBtn = document.createElement('button');
@@ -2183,10 +2260,30 @@ export function openAllSettings(section?: string): void {
         editToolKeys: () => openAllSettings('toolbar'),
       }),
     },
+    { id: 'advanced', title: 'Дополнительные', icon: ICONS.advanced, render: host => renderAdvancedSettings(host) },
     { id: 'about', title: 'О проекте', icon: ICONS.info, render: host => renderAbout(host, showExperiments) },
     ...(experimentsShown() ? [EXPERIMENTAL] : []),
     // «Профиль» — первым в списке, но окно без явного раздела по-прежнему открывается на «Доске» (или на последнем)
   ], section ?? (lastSettingsSection() || 'general'));
+}
+
+/** Раздел «Дополнительные»: редкие настройки, которые по умолчанию выключены. */
+function renderAdvancedSettings(host: HTMLElement): void {
+  const box = document.createElement('div');
+  box.className = 'sd-general';
+  const lbl = document.createElement('div');
+  lbl.className = 'ctx-label';
+  lbl.textContent = 'Панель инструментов';
+  box.appendChild(lbl);
+  box.appendChild(settingCheck('toolbarDetachable', 'Разрешить откреплять панель инструментов',
+    'При наведении над панелью появляется ручка: за неё панель переносят по доске (не помещается — поворачивается), '
+    + 'нажатие на ручку поворачивает панель. Выключение возвращает панель на её край',
+    () => {
+      // запрет откреплять — панель возвращается к своему краю
+      if (!state.settings.toolbarDetachable) { setSettings({ toolbarFloat: null }); persistSettings(); }
+      applyToolbarPos();
+    }));
+  host.appendChild(box);
 }
 
 /** Скрытый раздел (см. experimental.ts): открывается, если задержать логотип в «О проекте». */
@@ -2225,9 +2322,10 @@ function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
     const b = document.createElement('button');
     const names: Record<ToolbarPos, string> = { left: 'Слева', top: 'Сверху', right: 'Справа', bottom: 'Снизу' };
     b.textContent = names[pos];
-    b.className = state.settings.toolbarPos === pos ? 'active' : '';
+    // откреплённая панель — ни одна сторона не выбрана; выбор стороны снова пристыковывает её
+    b.className = !state.settings.toolbarFloat && state.settings.toolbarPos === pos ? 'active' : '';
     b.addEventListener('click', () => {
-      setSettings({ toolbarPos: pos });
+      setSettings({ toolbarPos: pos, toolbarFloat: null });
       persistSettings();
       applyToolbarPos();
       rerender();
@@ -2333,7 +2431,7 @@ function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
   pop.appendChild(lbl7);
 }
 
-type BoolSetting = 'closePagesOnPick' | 'thumbViewport' | 'pageLinks' | 'recursionEnabled';
+type BoolSetting = 'toolbarDetachable' | 'alignGuides' | 'closePagesOnPick' | 'thumbViewport' | 'pageLinks' | 'recursionEnabled';
 
 /** Флажок настройки доски: меняет и сразу сохраняет. */
 function settingCheck(key: BoolSetting, text: string, hint?: string, after?: () => void): HTMLElement {
@@ -2356,7 +2454,8 @@ function settingCheck(key: BoolSetting, text: string, hint?: string, after?: () 
 
 function applyToolbarPos(): void {
   const tb = document.getElementById('toolbar')!;
-  tb.dataset.pos = state.settings.toolbarPos;
+  document.body.classList.toggle('toolbar-detachable', state.settings.toolbarDetachable);
+  placeToolbar(tb);
   // панель внизу заняла бы место кнопки страниц: кнопка уходит наверх, список — колонкой под ней
   const dock = document.getElementById('pages-dock')!;
   const top = pagesAtTop();
@@ -2367,7 +2466,116 @@ function applyToolbarPos(): void {
 
 /** Кнопка страниц — слева вверху, список вертикальный (когда панель инструментов внизу). */
 function pagesAtTop(): boolean {
-  return state.settings.toolbarPos === 'bottom';
+  return !state.settings.toolbarFloat && state.settings.toolbarPos === 'bottom';
+}
+
+// ----- Откреплённая панель инструментов (src/toolbar-float.ts) -----
+
+/** Сторона, от которой раскладывается всё, что открывается с панели: у откреплённой — по её месту на холсте. */
+function toolbarSide(): ToolbarPos {
+  return document.getElementById('toolbar')?.dataset.pos as ToolbarPos | undefined ?? state.settings.toolbarPos;
+}
+
+/** Холст для откреплённой панели: сверху — под шапкой доски, с местом под ручку. */
+function canvasArea(): Area {
+  const wrap = document.getElementById('canvas-wrap')!;
+  const bar = document.getElementById('topbar');
+  const under = bar && bar.offsetHeight ? bar.getBoundingClientRect().bottom - wrap.getBoundingClientRect().top + 6 : 8;
+  return { w: wrap.clientWidth, h: wrap.clientHeight, top: Math.max(8, under) + GRIP_ROOM };
+}
+
+/** Пристыкованная — у своего края; откреплённая — в своей точке, повёрнутая как сохранено, в пределах холста. */
+function placeToolbar(tb: HTMLElement): void {
+  const f = state.settings.toolbarFloat;
+  tb.classList.toggle('floating', !!f);
+  if (!f) {
+    tb.style.left = '';
+    tb.style.top = '';
+    tb.dataset.pos = state.settings.toolbarPos;
+    return;
+  }
+  // сначала ориентация (по ней раскладываются кнопки), потом размер и место
+  tb.dataset.pos = f.orient === 'v' ? 'left' : 'top';
+  const area = canvasArea();
+  const size = { w: tb.offsetWidth, h: tb.offsetHeight };
+  const at = area.w > 0 && size.w > 0 ? clampFloat(f, size, area) : f;
+  tb.style.left = `${at.x}px`;
+  tb.style.top = `${at.y}px`;
+  if (area.w > 0) tb.dataset.pos = floatSide(at, size, area);
+}
+
+function setToolbarFloat(f: ToolbarFloat | null): void {
+  setSettings({ toolbarFloat: f });
+  applyToolbarPos();
+}
+
+/**
+ * Ручка над панелью (видна при наведении, если откреплять разрешено): перенос открепляет панель
+ * и поворачивает её, когда она не помещается; простое нажатие — поворачивает на месте;
+ * удержание — возвращает откреплённую панель к её краю.
+ */
+/** Сколько держать ручку, чтобы прикрепить панель обратно (мс). */
+const TOOLBAR_HOLD_MS = 500;
+
+function toolbarGrip(tb: HTMLElement): HTMLElement {
+  const grip = document.createElement('div');
+  grip.className = 'tb-grip';
+  grip.title = 'Перетащите, чтобы переместить панель. Нажмите — повернуть, удерживайте — прикрепить обратно к краю';
+  grip.innerHTML = GRIP_ICON;
+  grip.addEventListener('pointerdown', e => {
+    if (e.button !== 0 || !e.isPrimary || !state.settings.toolbarDetachable) return;
+    e.preventDefault();
+    const wr = document.getElementById('canvas-wrap')!.getBoundingClientRect();
+    const tr = tb.getBoundingClientRect();
+    // ручка — середина верхнего края; запоминаем, где за неё взялись, чтобы панель не прыгнула
+    const offX = e.clientX - (tr.left + tr.width / 2);
+    const offY = e.clientY - tr.top;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let moved = false;
+    let held = false;
+    try { grip.setPointerCapture(e.pointerId); } catch { /* синтетический pointer */ }
+    tb.classList.add('tb-dragging');
+    // удержание без движения: откреплённая панель возвращается к своему краю
+    const holdTimer = window.setTimeout(() => {
+      if (moved || !state.settings.toolbarFloat) return;
+      held = true;
+      tb.classList.remove('tb-dragging');
+      navigator.vibrate?.(10);
+      setToolbarFloat(null);
+      persistSettings();
+    }, TOOLBAR_HOLD_MS);
+    const onMove = (ev: PointerEvent) => {
+      if (held) return;
+      if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) < 3) return;
+      moved = true;
+      clearTimeout(holdTimer);
+      const cur = state.settings.toolbarFloat;
+      const orient = cur?.orient ?? orientOfPos(state.settings.toolbarPos);
+      const size = { w: tb.offsetWidth, h: tb.offsetHeight };
+      setToolbarFloat(dragFloat(ev.clientX - offX - wr.left, ev.clientY - offY - wr.top, orient, size, canvasArea()));
+    };
+    const onUp = (ev: PointerEvent) => {
+      grip.removeEventListener('pointermove', onMove);
+      grip.removeEventListener('pointerup', onUp);
+      grip.removeEventListener('pointercancel', onUp);
+      clearTimeout(holdTimer);
+      tb.classList.remove('tb-dragging');
+      if (held) return;
+      if (!moved && ev.type === 'pointerup') {
+        const r = tb.getBoundingClientRect();
+        const size = { w: tb.offsetWidth, h: tb.offsetHeight };
+        const cur = state.settings.toolbarFloat
+          ?? { x: r.left - wr.left, y: r.top - wr.top, orient: orientOfPos(state.settings.toolbarPos) };
+        setToolbarFloat(rotateFloat(cur, size, canvasArea()));
+      }
+      persistSettings();
+    };
+    grip.addEventListener('pointermove', onMove);
+    grip.addEventListener('pointerup', onUp);
+    grip.addEventListener('pointercancel', onUp);
+  });
+  return grip;
 }
 
 // ----- Экспорт PNG -----
@@ -2405,13 +2613,19 @@ export async function copySelectionAsImage(): Promise<void> {
   }
 }
 
-export async function exportPng(): Promise<void> {
+/**
+ * PNG страницы. scope: 'auto' (как раньше: есть выделение — только оно, иначе вся страница), 'page' — вся страница,
+ * 'selection' — только выделенное (режим «Экспорт» боковой панели).
+ */
+export async function exportPng(scope: 'auto' | 'page' | 'selection' = 'auto'): Promise<void> {
   if (!canCopyCurrentBoard()) { showToast('Автор запретил копирование'); return; }
-  const els = state.selection.size
+  const onlySelected = scope === 'selection' || (scope === 'auto' && state.selection.size > 0);
+  const els = onlySelected
     ? state.board.elements.filter(e => state.selection.has(e.id))
     : state.board.elements;
   if (els.length === 0) {
-    alert('Страница пуста — нечего экспортировать');
+    if (scope === 'selection') showToast('Сначала выделите объекты на доске');
+    else alert('Страница пуста — нечего экспортировать');
     return;
   }
   const bb = contentBBox(els);
@@ -2524,6 +2738,24 @@ async function documentText(file: File): Promise<string> {
   throw new Error('Формат не поддерживается');
 }
 
+/** Документ с диска: PDF — страницами-картинками, Word/Excel/OpenDocument/текст — текстом на доске. */
+async function importDocumentFile(file: File): Promise<void> {
+  try {
+    if (/\.pdf$/i.test(file.name) || file.type === 'application/pdf') {
+      const dataUrl = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(reader.error); reader.readAsDataURL(file); });
+      await importPdfFromDataUrl(dataUrl);
+    } else {
+      const text = (await documentText(file)).trim();
+      if (!text) throw new Error('Документ не содержит текста');
+      const el: TextEl = { id: uid(), type: 'text', text, x: state.camera.x + 40, y: state.camera.y + 40, size: 20, color: '#222222' };
+      pushHistory(state.board.elements);
+      replaceElements([...state.board.elements, el]);
+      selectInserted(el.id);
+      fitContent();
+    }
+  } catch (err) { alert('Не удалось открыть документ: ' + (err instanceof Error ? err.message : String(err))); }
+}
+
 export async function importDocument(): Promise<void> {
   if (!canEditBoard()) return;
   const input = document.createElement('input');
@@ -2532,20 +2764,7 @@ export async function importDocument(): Promise<void> {
   input.onchange = async () => {
     const file = input.files?.[0];
     if (!file) return;
-    try {
-      if (/\.pdf$/i.test(file.name)) {
-        const dataUrl = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(reader.error); reader.readAsDataURL(file); });
-        await importPdfFromDataUrl(dataUrl);
-      } else {
-        const text = (await documentText(file)).trim();
-        if (!text) throw new Error('Документ не содержит текста');
-        const el: TextEl = { id: uid(), type: 'text', text, x: state.camera.x + 40, y: state.camera.y + 40, size: 20, color: '#222222' };
-        pushHistory(state.board.elements);
-        replaceElements([...state.board.elements, el]);
-        selectInserted(el.id);
-        fitContent();
-      }
-    } catch (err) { alert('Не удалось открыть документ: ' + (err instanceof Error ? err.message : String(err))); }
+    await importDocumentFile(file);
   };
   input.click();
 }
@@ -2650,13 +2869,94 @@ export async function insertImage(): Promise<void> {
   if (dataUrl) insertImageFromDataUrl(dataUrl);
 }
 
-function fileToDataUrl(f: File): Promise<string | null> {
+function fileToDataUrl(f: Blob): Promise<string | null> {
   const { promise, resolve } = Promise.withResolvers<string | null>();
   const fr = new FileReader();
   fr.onload = () => resolve(String(fr.result));
   fr.onerror = () => resolve(null);
   fr.readAsDataURL(f);
   return promise;
+}
+
+/** Картинка-файл (вставка Ctrl+V, перетаскивание, «Из буфера обмена») — на доску в центр экрана. */
+function insertImageFile(f: Blob): void {
+  void fileToDataUrl(f).then(d => { if (d) insertImageFromDataUrl(d); });
+}
+
+const DOCUMENT_FILE = /\.(pdf|docx|xlsx|odt|ods|txt|csv|tsv|md)$/i;
+const PROJECT_FILE = /\.json$/i;
+
+/**
+ * Перетащенный файл — на холст или в зону режима «Импорт» боковой панели: изображение, PDF или документ
+ * встаёт на доску (нужно право правки), проект .json открывается отдельным проектом.
+ */
+export function importDroppedFile(f: File): boolean {
+  if (PROJECT_FILE.test(f.name) || f.type === 'application/json') { void importProjectFile(f); return true; }
+  if (!canEditBoard()) return false;
+  if (f.type.startsWith('image/')) insertImageFile(f);
+  else if (f.type === 'application/pdf' || DOCUMENT_FILE.test(f.name)) void importDocumentFile(f);
+  else { showToast('Этот формат не поддерживается: подойдут PDF, изображение, документ или файл проекта'); return false; }
+  return true;
+}
+
+/** «Из буфера обмена»: картинка из системного буфера — тем же путём, что вставка Ctrl+V. */
+export async function pasteImageFromClipboard(): Promise<void> {
+  if (!canEditBoard()) return;
+  let items: ClipboardItems;
+  try {
+    items = await navigator.clipboard.read();
+  } catch {
+    showToast(macKeys('Нет доступа к буферу обмена — нажмите Ctrl+V на доске'));
+    return;
+  }
+  for (const it of items) {
+    const type = it.types.find(t => t.startsWith('image/'));
+    if (type) { insertImageFile(await it.getType(type)); return; }
+  }
+  showToast('В буфере обмена нет изображения');
+}
+
+/** Можно открыть проект из файла: не просмотр по ссылке и не гость чужой доски. */
+export function canOpenProjectFile(): boolean {
+  return state.linkMode === null && state.collabRole !== 'guest';
+}
+
+/**
+ * Проект из файла .json (скачанный «Скачать проект как файл»): проверка parseProject и открытие копией —
+ * с новым id, чтобы не перезаписать свой проект с тем же id; права доступа и закрепление не переносятся.
+ */
+export async function importProjectFile(f: File): Promise<void> {
+  if (!canOpenProjectFile()) return;
+  let parsed: Project | null = null;
+  try { parsed = parseProject(JSON.parse(await f.text())); } catch { parsed = null; }
+  if (!parsed) { showToast('Это не файл проекта Abax'); return; }
+  if (limitsEnforced() && !canCreateProject(userPlan(), state.projects.length)) { showToast(LIMIT_PROJECTS_TEXT); return; }
+  await saveNow();
+  saveCamera();
+  rememberOpenProject();
+  const now = Date.now();
+  const { permissions: _p, pinned: _pin, ...rest } = parsed;
+  const p: Project = { ...rest, id: uid(), createdAt: now, updatedAt: now, ownerPlan: userPlan() };
+  await storage.save(p);
+  state.projects = [projectMeta(p), ...state.projects];
+  openProject(p);
+  if (!state.linkMode) localStorage.setItem('doska.last', JSON.stringify({ pid: p.id, pageId: realPageId() }));
+  refresh();
+  fitContent();
+  showToast(`Проект «${p.name}» открыт`);
+}
+
+/** Выбор файла проекта (.json) — строка «Файл проекта» режима «Импорт». */
+export function openProjectFile(): void {
+  if (!canOpenProjectFile()) return;
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json,application/json';
+  input.onchange = () => {
+    const f = input.files?.[0];
+    if (f) void importProjectFile(f);
+  };
+  input.click();
 }
 
 /** Событие буфера обмена относится к доске, а не к полю ввода или окну настроек. */
@@ -2785,7 +3085,7 @@ function wireImageInput(): void {
         const f = it.getAsFile();
         if (f) {
           e.preventDefault();
-          void fileToDataUrl(f).then(d => { if (d) insertImageFromDataUrl(d); });
+          insertImageFile(f);
           return;
         }
       }
@@ -2801,9 +3101,7 @@ function wireImageInput(): void {
   wrap.addEventListener('drop', e => {
     e.preventDefault();
     const f = e.dataTransfer?.files?.[0];
-    if (f && f.type.startsWith('image/') && canEditBoard()) {
-      void fileToDataUrl(f).then(d => { if (d) insertImageFromDataUrl(d); });
-    }
+    if (f) importDroppedFile(f);
   });
 }
 
@@ -3792,7 +4090,7 @@ export function applyCloudConflict(r: ConflictResolution): void {
   homeProjects.delete(r.id);
   if (state.project.id === r.id && !state.linkMode && state.collabRole === null) void showCloudProject(r.project, { keepView: true });
   else document.dispatchEvent(new CustomEvent('doska:projects-changed'));
-  showToast(CONFLICT_TEXT, { label: 'Открыть копию', run: () => { void openFromHome(r.copy.id); } });
+  pushNotice({ title: CONFLICT_TEXT, level: 'warn', icon: 'offline', action: { label: 'Открыть копию', run: () => { void openFromHome(r.copy.id); } } });
 }
 
 async function newProjectHandler(): Promise<void> {
@@ -4537,7 +4835,7 @@ function buildToolbar(): void {
           hideHeldTooltip();
           if (!next) return;
           next.classList.add('gesture-hover');
-          const pos = state.settings.toolbarPos;
+          const pos = toolbarSide();
           showHeldTooltip(next, panel.el, pos === 'right' ? 'left' : pos === 'top' ? 'bottom' : pos === 'bottom' ? 'top' : 'right');
           navigator.vibrate?.(10);
         };
@@ -4580,6 +4878,13 @@ function buildToolbar(): void {
         if (dropClickBlocked()) return;
         toggleCtxPanel(groupId, 'toolbar');
         selectShownTool();
+      });
+      // двойной щелчок — «залипающий» режим массового добавления (индикатор «+» на кнопке); снимается выбором другого инструмента
+      b.addEventListener('dblclick', () => {
+        selectShownTool();
+        if (state.tool === 'select' || state.tool === 'pan') return;
+        setStickyTool(state.tool);
+        update();
       });
     } else {
       const id = item.id;
@@ -4624,6 +4929,9 @@ function buildToolbar(): void {
     styleGroup.appendChild(sBtn);
   }
   tb.appendChild(styleGroup);
+  tb.appendChild(toolbarGrip(tb));
+  // набор кнопок изменился — откреплённая панель могла перестать помещаться
+  if (state.settings.toolbarFloat) placeToolbar(tb);
 }
 
 const PRESET_SLOTS = 3;
@@ -4686,7 +4994,8 @@ function wireTopbar(): void {
   // иконка «Поделиться» — когда шапке не хватает места (см. topbar-fit.ts)
   document.querySelector<HTMLElement>('#btn-share .share-icon')!.innerHTML = ICONS.share;
   document.getElementById('btn-share')!.addEventListener('click', () => { void openShareDialog(); });
-  initChatButton();
+  initNotifyButton();
+  initNotifyStack();
   topProjectIcon = createIconButton({
     el: document.getElementById('project-icon') as HTMLButtonElement,
     value: state.project.icon ?? null,
@@ -4835,20 +5144,9 @@ function wireTopbar(): void {
     if (action === 'link-project') void copyBoardLink('project');
     if (action === 'link-page') void copyBoardLink('page');
     if (action === 'settings') openAllSettings();
-    if (action === 'project') void (async () => {
-      if (!canCloneCurrentProject()) { showToast('Автор запретил сохранение проекта'); return; }
-      await saveNow();
-      const url = URL.createObjectURL(new Blob([JSON.stringify(state.project, null, 2)], { type: 'application/json' }));
-      const a = document.createElement('a'); a.href = url; a.download = `${state.project.name || 'Abax'}.json`; a.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    })();
+    if (action === 'project') void downloadProjectFile();
     if (action === 'pdf') showToast('Экспорт в PDF пока недоступен');
-    if (action === 'app') {
-      // установленная Abax зарегистрировала схему abax:// — запускаем её. Ссылка на скачивание
-      // остаётся в тосте: так пункт меню работает и там, где приложение ещё не установлено.
-      showToast('Открываем Abax…', { label: 'Скачать, если не открылось', href: RELEASES_URL });
-      openDesktopApp();
-    }
+    if (action === 'app') openInDesktopApp();
   });
   document.addEventListener('pointerdown', e => { if (menuShown(menu) && !menu.contains(e.target as Node) && !menuButton.contains(e.target as Node)) setMenuOpen(false); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && menuShown(menu)) { setMenuOpen(false); menuButton.focus(); } });
@@ -4893,7 +5191,9 @@ function wireTopbar(): void {
   document.addEventListener('pointerdown', e => { if (menuShown(exportMenu) && !exportMenu.contains(e.target as Node) && !exportButton.contains(e.target as Node)) closeExportMenu(); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && menuShown(exportMenu)) { closeExportMenu(); exportButton.focus(); } });
   document.getElementById('btn-present')!.addEventListener('click', togglePresent);
-  wireHelpMenu();
+  registerPanelActions();
+  registerPanelModes();
+  wireHelpButton();
   initTopbarFit();
   // список страниц внизу не должен заходить под правый нижний угол
   const bottombar = document.getElementById('bottombar')!;
@@ -4932,9 +5232,13 @@ function wireTopbar(): void {
     if (d && !d.el.contains(t) && !t.closest('[data-ctx]')) closePanel(d);
   }, { capture: true });
   window.addEventListener('resize', () => positionCtxPanels(true));
+  // холст сменил размер (окно, боковая панель) — откреплённая панель остаётся в его пределах
+  if (typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(() => { if (state.settings.toolbarFloat) applyToolbarPos(); }).observe(document.getElementById('canvas-wrap')!);
+  }
   window.addEventListener('keydown', e => {
     // Esc у открытого окна настроек закрывает только его
-    if (settingsDialogOpen()) return;
+    if (settingsDialogOpen() || eyedropperActive()) return;
     if (e.key === 'Escape') {
       // Esc закрывает только верхнее: выделение на доске (см. controller.ts) остаётся до следующего нажатия
       if (!gridMenu().hidden) { e.stopPropagation(); closeGridMenu(); gridButton().focus(); return; }
@@ -4945,55 +5249,65 @@ function wireTopbar(): void {
   }, { capture: true });
 }
 
+/** «Скачать проект как файл»: весь проект — файлом .json (пункт меню экспорта и режим «Экспорт» панели). */
+async function downloadProjectFile(): Promise<void> {
+  if (!canCloneCurrentProject()) { showToast('Автор запретил сохранение проекта'); return; }
+  await saveNow();
+  const url = URL.createObjectURL(new Blob([JSON.stringify(state.project, null, 2)], { type: 'application/json' }));
+  const a = document.createElement('a'); a.href = url; a.download = `${state.project.name || 'Abax'}.json`; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** «Открыть в приложении» (только в браузере). */
+function openInDesktopApp(): void {
+  // установленная Abax зарегистрировала схему abax:// — запускаем её. Ссылка на скачивание
+  // остаётся в тосте: так пункт меню работает и там, где приложение ещё не установлено.
+  showToast('Открываем Abax…', { label: 'Скачать, если не открылось', href: RELEASES_URL });
+  openDesktopApp();
+}
+
+/** Действия доски для режимов боковой панели «История», «Импорт», «Экспорт» (src/panel-actions.ts). */
+function registerPanelActions(): void {
+  // вложения чата у получателя: вставка картинки и копий, переход к объектам (SPEC_CHAT §7)
+  setChatAttachActions({
+    canEdit: canEditBoard,
+    insertImage: src => { if (canEditBoard()) insertImageFromDataUrl(src); },
+    goToPage: async pageId => {
+      if (state.view !== 'board' || !state.project.pages.some(p => p.id === pageId)) return false;
+      await switchPageHandler(pageId);
+      return state.pageId === pageId;
+    },
+  });
+  setPanelActions({
+    canEdit: canEditBoard,
+    importDocument: () => { void importDocument(); },
+    insertImage: () => { void insertImage(); },
+    importFile: importDroppedFile,
+    canOpenProject: canOpenProjectFile,
+    openProjectFile,
+    pasteFromClipboard: () => { void pasteImageFromClipboard(); },
+    exportPng: scope => { void exportPng(scope); },
+    copyImage: () => { void copySelectionAsImage(); },
+    downloadProject: () => { void downloadProjectFile(); },
+    openInApp: !doskaApi && !isNativeApp() ? openInDesktopApp : null,
+  });
+}
+
 // ----- «Помощь и советы»: кнопка в правом нижнем углу и F1 -----
 
-/** Меню помощи. Пока заготовка: пункты появятся позже, кнопка и F1 уже открывают и закрывают его. */
-function wireHelpMenu(): void {
+/** Кнопка «Помощь» и F1 открывают и закрывают боковую панель в режиме «Справка» (SPEC_CHAT §5). */
+function wireHelpButton(): void {
   const button = document.getElementById('btn-help') as HTMLButtonElement;
   button.innerHTML = ICONS.help;
-  const menu = document.createElement('div');
-  menu.id = 'help-menu';
-  menu.className = 'popup-menu menu-list';
-  menu.setAttribute('role', 'menu');
-  menu.setAttribute('aria-label', 'Помощь и советы');
-  menu.hidden = true;
-  const title = document.createElement('div');
-  title.className = 'help-menu-title';
-  title.textContent = 'Помощь и советы';
-  const note = document.createElement('div');
-  note.className = 'help-menu-note';
-  note.textContent = 'Скоро здесь появятся справка и советы по работе с доской.';
-  menu.append(title, note);
-  document.body.append(menu);
-  const close = () => {
-    button.setAttribute('aria-expanded', 'false');
-    if (!menuShown(menu)) return;
-    closeMenu(menu);
-    releaseMenu('help');
-  };
-  const open = () => {
-    claimMenu('help', close);
-    openMenu(menu, {
-      from: button,
-      reverse: true,
-      // над плашкой помощи, по её правому краю
-      place: () => {
-        const r = button.closest('.topbar-group')!.getBoundingClientRect();
-        menu.style.left = `${Math.max(8, r.right - menu.offsetWidth)}px`;
-        menu.style.bottom = `${window.innerHeight - r.top + 6}px`;
-      },
-    });
-    button.setAttribute('aria-expanded', 'true');
-  };
-  const toggle = () => { if (menuShown(menu)) close(); else open(); };
-  button.addEventListener('click', toggle);
-  document.addEventListener('pointerdown', e => { if (menuShown(menu) && !menu.contains(e.target as Node) && !button.contains(e.target as Node)) close(); });
+  const sync = () => button.setAttribute('aria-expanded', sidePanelOpen() && sidePanelMode() === 'help' ? 'true' : 'false');
+  onSidePanel(sync);
+  sync();
+  button.addEventListener('click', () => toggleSidePanel('help'));
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && menuShown(menu)) { close(); button.focus(); return; }
     // F1 — и на доске, и в полях ввода; браузер свою справку не открывает
     if (e.code === 'F1' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey && state.view === 'board' && !settingsDialogOpen()) {
       e.preventDefault();
-      if (!e.repeat) toggle();
+      if (!e.repeat) toggleSidePanel('help');
     }
   });
 }
@@ -5367,6 +5681,7 @@ function refresh(): void {
     const btn = tb.querySelector<HTMLButtonElement>(`[data-ctx="${group.id}"]`);
     if (!btn) continue;
     btn.classList.toggle('active', active);
+    btn.classList.toggle('sticky', active && stickyTool() === state.tool);
     // инструмент могли перенести в другую группу — тогда кнопка показывает первый
     const cur = group.tools.includes(lastGroupTool[group.id]) ? lastGroupTool[group.id] : group.tools[0];
     if (btn.dataset.shape !== cur) {
@@ -5409,7 +5724,7 @@ function refresh(): void {
   if (home.hidden === isHome) {
     home.hidden = !isHome;
     // на домашнюю пришли заново: карусели — снова с последней открытой страницы
-    if (isHome) { carouselPos.clear(); lastHomeKey = ''; }
+    if (isHome) { carouselPos.clear(); lastHomeKey = ''; closeSidePanel(true); }
     closeIconPicker();
   }
   noteOpened();

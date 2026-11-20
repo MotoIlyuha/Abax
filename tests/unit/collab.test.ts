@@ -10,6 +10,7 @@ const { createShareServer } = require('../../electron/share.cjs');
 type Collab = typeof import('../../src/collab');
 type State = typeof import('../../src/state');
 type Storage = typeof import('../../src/storage');
+type Center = typeof import('../../src/notify-center');
 type Msg = Record<string, any>;
 
 interface Peer { ws: WebSocket; inbox: Msg[] }
@@ -66,6 +67,7 @@ async function hostCaps(): Promise<void> {
 let server: ShareServer;
 let base: string;
 let collab: Collab;
+let center: Center;
 let st: State;
 let storageMod: Storage;
 const peers: Peer[] = [];
@@ -75,7 +77,11 @@ async function freshModules(): Promise<void> {
   storageMod = await import('../../src/storage');
   st = await import('../../src/state');
   collab = await import('../../src/collab');
+  center = await import('../../src/notify-center');
 }
+
+/** Уведомления центра одной строкой (то, что видно в стопке и слышно при чтении с экрана). */
+const noticeTexts = (): string[] => center.notices().map(center.noticeText);
 
 beforeAll(async () => {
   server = await createShareServer({ port: 0, code: 'TEST01' });
@@ -872,7 +878,7 @@ describe('персональные курсоры (Ночь №4)', () => {
 
 describe('аватары участников', () => {
   const PHOTO = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ==';
-  const pillTexts = () => [...document.querySelectorAll('#activity-pills .ap-text')].map(n => n.textContent);
+  const pillTexts = noticeTexts;
 
   it('свой аватар уходит сразу после входа и при смене; чужое фото приходит отдельно, смена — пилюля', async () => {
     localStorage.setItem('doska.profile', JSON.stringify({ name: 'Ученик', cursorId: 'default', avatar: '🦊', onboarded: true, updatedAt: 1 }));
@@ -899,7 +905,7 @@ describe('аватары участников', () => {
 });
 
 describe('уведомления и чат комнаты (Ночь №5)', () => {
-  const pillTexts = () => [...document.querySelectorAll('#activity-pills .ap-text')].map(n => n.textContent);
+  const pillTexts = noticeTexts;
 
   it('вход и выход участника — пилюли; своё подключение — без пилюли', async () => {
     await collab.startCollab(base, false, 'Ученик');
@@ -922,13 +928,17 @@ describe('уведомления и чат комнаты (Ночь №5)', () =
     await until(() => st.state.project.id === 'proj');
     const chat = await import('../../src/collab-chat');
     expect(chat.chatMessages().map(m => m.text)).toEqual(['до вас']);
-    expect(document.getElementById('btn-chat')).toBeNull(); // в тестовой разметке кнопки нет — модуль не падает
+    expect(document.getElementById('btn-notify')).toBeNull(); // в тестовой разметке кнопки ЧУ нет — модуль не падает
     expect(collab.sendChat('  привет  ')).toBe(true);
     await until(() => [...other.inbox].some(m => m.t === 'chat' && m.text === 'привет' && m.name === 'Ученик'));
     other.ws.send(JSON.stringify({ t: 'chat', text: 'и тебе' }));
     await until(() => chat.chatMessages().some(m => m.text === 'и тебе'));
     expect(chat.chatUnread()).toBe(1);
     expect(pillTexts()).toContain('Лемур: и тебе');
+    // уведомление чата — структурное: имя, текст, участник для аватара
+    const n = center.notices().find(x => x.kind === 'chat')!;
+    expect(n).toMatchObject({ title: 'Лемур', body: 'и тебе', read: false, user: { name: 'Лемур' } });
+    expect(center.unreadCount()).toBe(1);
   });
 
   it('смена моих прав — пилюля', async () => {
@@ -1003,18 +1013,36 @@ describe('уведомления и чат комнаты (Ночь №5)', () =
     await until(() => !collab.hostFollowEnabled());
   });
 
-  it('конец совместной работы убирает пилюли и выключает чат', async () => {
-    document.body.insertAdjacentHTML('beforeend', '<button id="btn-chat" hidden></button>');
+  it('конец совместной работы убирает уведомления и выключает чат', async () => {
+    const chat = await import('../../src/collab-chat');
     await collab.startCollab(base, false, 'Ученик');
     await until(() => st.state.project.id === 'proj');
-    expect((document.getElementById('btn-chat') as HTMLButtonElement).hidden).toBe(false);
+    expect(chat.chatAvailable()).toBe(true);
     const other = await peer(`${base}&name=${encodeURIComponent('Корги')}`);
     peers.push(other);
     await until(() => pillTexts().length > 0);
+    expect(center.unreadCount()).toBeGreaterThan(0);
     collab.stopCollab();
     expect(pillTexts()).toEqual([]);
-    expect((document.getElementById('btn-chat') as HTMLButtonElement).hidden).toBe(true);
+    expect(center.unreadCount()).toBe(0);
+    expect(chat.chatAvailable()).toBe(false);
     expect(collab.sendChat('x')).toBe(false);
+  });
+
+  it('отклики на мои действия — тихие (прочитаны сразу), события от других — нет', async () => {
+    await collab.startCollab(base, false, 'Ученик');
+    await until(() => st.state.project.id === 'proj');
+    const other = await peer(`${base}&name=${encodeURIComponent('Корги')}`);
+    peers.push(other);
+    await until(() => pillTexts().includes('Корги присоединился к доске'));
+    const join = center.notices().find(n => n.icon === 'join')!;
+    expect(join).toMatchObject({ title: 'Корги', body: 'присоединился к доске', level: 'ok', read: false, user: { name: 'Корги' } });
+    expect(join.quiet).toBeUndefined();
+    const presence = await import('../../src/collab-presence');
+    presence.goToParticipant({ ...collab.collabUsers().find(u => u.name === 'Корги')!, hiddenPage: true, pageId: null }, 'avatar');
+    const hidden = center.notices().find(n => n.title === 'Участник сейчас на скрытой странице')!;
+    expect(hidden).toMatchObject({ quiet: true, read: true });
+    expect(center.unreadCount()).toBe(1);
   });
 });
 
@@ -1147,7 +1175,7 @@ describe('живые права страниц у гостя (Ночь №5, TAS
     expect(st.state.pageId).toBe('pg1');
     expect(st.state.selection.size).toBe(0);
     expect(cancelled).toBe(1);
-    expect(document.getElementById('activity-pills')?.textContent).toContain(collab.PAGE_HIDDEN_PILL);
+    expect(noticeTexts()).toContain(collab.PAGE_HIDDEN_PILL);
   });
 
   it('скрыли другую страницу: гость остаётся на своей без пилюли', async () => {
@@ -1155,7 +1183,7 @@ describe('живые права страниц у гостя (Ночь №5, TAS
     host.ws.send(JSON.stringify({ t: 'project', project: withRights({ pg2: 'hidden' }) }));
     await until(() => st.state.project.pages.length === 1);
     expect(st.state.pageId).toBe('pg1');
-    expect(document.getElementById('activity-pills')?.textContent ?? '').not.toContain(collab.PAGE_HIDDEN_PILL);
+    expect(noticeTexts()).not.toContain(collab.PAGE_HIDDEN_PILL);
   });
 
   it('скрыли все страницы: баннер, холст только для чтения, ничего не отправляется; открыли — баннер уходит', async () => {
@@ -1294,13 +1322,12 @@ describe('интерфейс гостя по возможностям (Ночь 
     await until(() => collab.myCollabRole() === 'reader');
     expect(collab.myCollabCaps()).toMatchObject({ comment: false, chat: false, pointer: false });
     expect(canAnnotate()).toBe(false);
-    expect(document.querySelector('#activity-pills, .activity-pill') ? document.body.textContent : '').toContain('Автор изменил вашу роль: Читатель');
-    chat.openChat();
-    expect(document.querySelector<HTMLTextAreaElement>('.chat-input')!.hidden).toBe(true);
-    expect(document.querySelector('.chat-hint')!.textContent).toBe('Читатели не пишут в чат');
+    expect(noticeTexts()).toContain('Автор изменил вашу роль: Читатель');
+    expect(chat.chatCanWrite()).toBe(false);
+    expect(chat.sendChatMessage('привет')).toBe('readonly');
     server.setRights(collab.myCollabId(), { role: 'editor' });
     await until(() => collab.myCollabRole() === 'editor');
     expect(st.canCopyCurrentBoard()).toBe(true); // редактор копирует всегда
-    expect(document.querySelector<HTMLTextAreaElement>('.chat-input')!.hidden).toBe(false);
+    expect(chat.chatCanWrite()).toBe(true);
   });
 });

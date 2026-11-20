@@ -26,6 +26,10 @@ export interface SelectOption {
   action?: boolean;
   /** Подсказка строки. */
   title?: string;
+  /** Иконка строки — SVG-константа кода (не данные пользователя): перед подписью; у кнопки — иконка выбранного. */
+  icon?: string;
+  /** Счётчик справа в строке (акцентная пилюля, например непрочитанные); пусто — нет. */
+  badge?: string;
 }
 
 export interface SpringSelectOptions {
@@ -53,6 +57,11 @@ export interface SpringSelect {
   setValue(value: string, instant?: boolean): void;
   setDisabled(disabled: boolean): void;
   close(instant?: boolean): void;
+  /**
+   * Счётчик пункта value без пересоздания списка: строка открытого меню и кнопка обновляются на месте.
+   * На кнопке виден счётчик первого НЕвыбранного пункта со счётчиком (у выбранного он и так «прочитан»).
+   */
+  setBadge(value: string, text: string): void;
 }
 
 const ROW_SHIFT = 14;   // px: строка выпадает сверху (у меню над кнопкой — снизу)
@@ -85,6 +94,7 @@ interface Inst {
   hov: number;
   cssTimer: number;
   roll: Roll;
+  badge: HTMLElement;
 }
 
 let uid = 0;
@@ -226,10 +236,23 @@ function buildMenu(it: Inst): HTMLElement {
     if (opt.title) el.title = opt.title;
     const selected = !opt.action && opt.value === it.value;
     el.setAttribute('aria-selected', String(selected));
+    if (opt.icon) {
+      const ic = document.createElement('span');
+      ic.className = 'ss-opt-icon';
+      ic.setAttribute('aria-hidden', 'true');
+      ic.innerHTML = opt.icon; // константа из кода
+      el.append(ic);
+    }
     const text = document.createElement('span');
     text.className = 'ss-opt-text';
     text.textContent = opt.label;
     el.append(text);
+    const badge = document.createElement('span');
+    badge.className = 'ss-opt-badge';
+    badge.setAttribute('aria-hidden', 'true');
+    badge.textContent = opt.badge ?? '';
+    badge.hidden = !opt.badge;
+    el.append(badge);
     if (!opt.action) el.insertAdjacentHTML('beforeend', TICK); // константа из кода
     el.addEventListener('pointermove', () => { if (it.isOpen) setHover(it, i); });
     el.addEventListener('click', () => { if (it.isOpen) choose(it, i); });
@@ -354,7 +377,8 @@ function choose(it: Inst, i: number): void {
   if (!opt.action && opt.value !== it.value) {
     it.value = opt.value;
     it.trigger.dataset.value = opt.value;
-    it.roll.set(opt.label);
+    it.roll.set(opt.label, { icon: opt.icon });
+    syncTriggerBadge(it);
     for (const row of it.rows) {
       const on = !row.opt.action && row.opt.value === opt.value;
       row.el.setAttribute('aria-selected', String(on));
@@ -373,6 +397,15 @@ function choose(it: Inst, i: number): void {
   it.opts.onChange(opt.value);
 }
 
+/** Счётчик на кнопке: первый невыбранный пункт со счётчиком. */
+function syncTriggerBadge(it: Inst): void {
+  const other = it.opts.options.find(o => !o.action && o.value !== it.value && o.badge);
+  const text = other?.badge ?? '';
+  if (it.badge.textContent !== text && text) it.badge.textContent = text;
+  it.badge.classList.toggle('on', !!text);
+  it.trigger.classList.toggle('ss-has-badge', !!text);
+}
+
 export function createSpringSelect(o: SpringSelectOptions): SpringSelect {
   const trigger = document.createElement('button');
   trigger.type = 'button';
@@ -382,18 +415,24 @@ export function createSpringSelect(o: SpringSelectOptions): SpringSelect {
   trigger.setAttribute('aria-label', o.label);
   if (o.title) trigger.title = o.title;
   const roll = createRoll('ss-value', 18, { enter: [340, 26], leave: [340, 26] });
-  trigger.append(roll.el);
+  const tBadge = document.createElement('span');
+  tBadge.className = 'ss-badge';
+  tBadge.setAttribute('aria-hidden', 'true');
+  trigger.append(roll.el, tBadge);
   trigger.insertAdjacentHTML('beforeend', CHEV); // константа из кода
   const it: Inst = {
     trigger, menu: null, rows: [], opts: { ...o, options: [...o.options] }, value: o.value, isOpen: false, above: false,
     mode: 'enhanced', time: 0, closeAt: 0, MH: 0,
     H: S(0, 300, 23), C: S(0, 300, 18), O: S(0, 400, 34), TS: S(1, 500, 18),
     HT: S(0, 620, 36), HB: S(0, 620, 36), HO: S(0, 400, 32),
-    hov: -1, cssTimer: 0, roll,
+    hov: -1, cssTimer: 0, roll, badge: tBadge,
   };
-  const labelOf = (v: string) => it.opts.options.find(x => !x.action && x.value === v)?.label ?? v;
+  const optOf = (v: string) => it.opts.options.find(x => !x.action && x.value === v);
+  const labelOf = (v: string) => optOf(v)?.label ?? v;
+  const iconOf = (v: string) => optOf(v)?.icon;
   trigger.dataset.value = o.value;
-  roll.set(labelOf(o.value), { instant: true });
+  roll.set(labelOf(o.value), { instant: true, icon: iconOf(o.value) });
+  syncTriggerBadge(it);
 
   trigger.addEventListener('click', () => {
     if (it.isOpen) closeInst(it);
@@ -429,19 +468,35 @@ export function createSpringSelect(o: SpringSelectOptions): SpringSelect {
       it.opts = { ...it.opts, options: [...options] };
       it.value = value;
       trigger.dataset.value = value;
-      roll.set(labelOf(value), { instant: true });
+      roll.set(labelOf(value), { instant: true, icon: iconOf(value) });
+      syncTriggerBadge(it);
     },
     setValue(value, instant = false) {
       if (value === it.value) return;
       it.value = value;
       trigger.dataset.value = value;
-      roll.set(labelOf(value), { instant: instant || it.isOpen });
+      roll.set(labelOf(value), { instant: instant || it.isOpen, icon: iconOf(value) });
       if (it.isOpen) closeInst(it, true);
+      syncTriggerBadge(it);
     },
     setDisabled(d) {
       trigger.disabled = d;
       if (d && it.isOpen) closeInst(it, true);
     },
     close(instant = false) { closeInst(it, instant); },
+    setBadge(value, text) {
+      const i = it.opts.options.findIndex(x => x.value === value);
+      if (i < 0 || (it.opts.options[i].badge ?? '') === text) return;
+      const options = [...it.opts.options];
+      options[i] = { ...options[i], badge: text };
+      it.opts = { ...it.opts, options };
+      const row = it.rows.find(r => r.opt.value === value);
+      if (row) {
+        row.opt = options[i];
+        const b = row.el.querySelector<HTMLElement>('.ss-opt-badge');
+        if (b) { b.textContent = text; b.hidden = !text; }
+      }
+      syncTriggerBadge(it);
+    },
   };
 }

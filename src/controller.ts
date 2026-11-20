@@ -1,3 +1,4 @@
+import { stickyTool } from './sticky-tool';
 import { geometricFoundationFor, rebindAttachment, reattachMoved, withAttached } from './attachment';
 import type { Camera, Element, FadeStroke, Handle, ImageEl, Pt, ShapeEl, ToolId } from './types';
 import {
@@ -457,6 +458,8 @@ export function initController(canvas: HTMLCanvasElement): void {
       el = { ...el, x: Math.min(ls.x0, ls.x1), y: Math.min(ls.y0, ls.y1), w: Math.abs(w), h: Math.abs(h) };
     }
     addElement(el);
+    // двойной щелчок по кнопке группы — режим массового добавления: инструмент остаётся, фигура не выделяется
+    if (stickyTool() === state.tool) { update(); return; }
     // фигура сразу выделена: её двигают, а в прямоугольник, эллипс и треугольник сразу пишут текст
     selectInserted(el.id);
   }
@@ -475,6 +478,7 @@ export function initController(canvas: HTMLCanvasElement): void {
     }
     const el = { ...fitSolid(ls.solid, x0, y0, x1, y1, { id: uid(), color: ls.color, width: ls.width }), ...opacityField(ls.opacity) };
     addElement(el);
+    if (stickyTool() === state.tool) { update(); return; } // массовое добавление
     // тело сразу выделено: его параметры правятся ручками
     selectInserted(el.id);
   }

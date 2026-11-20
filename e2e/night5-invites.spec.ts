@@ -35,7 +35,7 @@ test.describe('приглашения', () => {
     await pickOption(a, right(first), 'hidden');
     await expect.poll(() => stateOf(g, s => s.pageId as string), { timeout: 10000 }).toBe(other);
     await g.mouse.up();
-    await expect(g.locator('#activity-pills .activity-pill', { hasText: 'Автор скрыл страницу, на которой вы находились' })).toBeVisible();
+    await expect(g.locator('#notify-stack .ns-card', { hasText: 'Автор скрыл страницу, на которой вы находились' })).toBeVisible();
     expect(await stateOf(g, s => s.project.pages.map((p: any) => p.id))).toEqual([other]);
     expect(await stateOf(g, s => [...s.selection].length)).toBe(0);
 

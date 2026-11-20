@@ -348,8 +348,18 @@ export type AnimationMode = 'off' | 'normal' | 'enhanced';
 /** Модификатор перехода на страницу по номеру: Ctrl+1…9 или Alt+1…9. */
 export type PageKeyMod = 'ctrl' | 'alt';
 
+/** Ориентация откреплённой панели инструментов: v — колонкой, h — строкой. */
+export type ToolbarOrient = 'v' | 'h';
+
+/** Положение откреплённой панели инструментов: левый верхний угол в координатах холста (#canvas-wrap). */
+export interface ToolbarFloat { x: number; y: number; orient: ToolbarOrient }
+
 export interface BoardSettings {
   toolbarPos: ToolbarPos;
+  /** «Дополнительные»: панель инструментов можно открепить за ручку сверху (по умолчанию выключено). */
+  toolbarDetachable: boolean;
+  /** Откреплённая панель: где стоит и как повёрнута; null — пристыкована у края (toolbarPos). */
+  toolbarFloat: ToolbarFloat | null;
   /** Привязка перемещения/размеров к видимому шагу сетки. */
   snapToGrid: boolean;
   /** Колёсико без модификаторов: прокрутка или масштаб. */

@@ -24,6 +24,7 @@ import { applyCloudConflict, openProfileAfterAuth, replaceStarterWithCloud } fro
 import { STARTER_PROJECT_NAME, markStarter } from './sync-state';
 import { roomFullInfo, showRoomFullModal } from './room-full';
 import { refreshIncomingInvites } from './incoming-invites';
+import { pushNotice } from './notify-center';
 
 /**
  * Уведомление гостю, когда комната закрылась или отказала. Мест нет (4402/4430) — окно «Комната заполнена»
@@ -70,7 +71,7 @@ async function boot(): Promise<void> {
     initController(canvas);
     onChange(() => requestRender());
     document.body.classList.add('collab-guest');
-    (window as unknown as Record<string, unknown>).__doska = { state, undo, redo, requestRender };
+    (window as unknown as Record<string, unknown>).__doska = { state, undo, redo, requestRender, notify: pushNotice };
     return;
   }
 
@@ -116,7 +117,7 @@ async function boot(): Promise<void> {
         initController(canvas);
         onChange(() => requestRender());
         document.body.classList.add('collab-guest');
-        (window as unknown as Record<string, unknown>).__doska = { state, undo, redo, requestRender };
+        (window as unknown as Record<string, unknown>).__doska = { state, undo, redo, requestRender, notify: pushNotice };
         return;
       }
       if (outcome === 'view') viewRoute = { mode: 'view-project', projectId: state.project.id };
@@ -175,7 +176,7 @@ async function boot(): Promise<void> {
   }
 
   // отладочный доступ для smoke-тестов
-  (window as unknown as Record<string, unknown>).__doska = { state, undo, redo, requestRender, importPdfFromDataUrl, startLocalRoom };
+  (window as unknown as Record<string, unknown>).__doska = { state, undo, redo, requestRender, importPdfFromDataUrl, startLocalRoom, notify: pushNotice };
 
   // окно первого входа — на обычной доске (не в просмотре по ссылке), когда интерфейс уже показан
   if (!viewRoute) afterStartup = () => startOnboarding(authOutcome);

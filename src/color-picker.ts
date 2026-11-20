@@ -1,6 +1,9 @@
 // Свой пикер цвета: квадрат насыщенность–яркость, радужная полоса тона и поле hex.
 // Нужен панели цветов и разделу «Экспериментальные» (цвета иконки приложения).
 
+import { startEyedropper } from './eyedropper';
+import { EYEDROPPER_ICON } from './icons';
+
 export function hsvToHex(h: number, s: number, v: number): string {
   const f = (n: number) => {
     const k = (n + h / 60) % 6;
@@ -24,8 +27,8 @@ export function hexToHsv(hex: string): { h: number; s: number; v: number } {
   return { h, s: max === 0 ? 0 : d / max, v: max };
 }
 
-/** Собственный пикер: SV-квадрат + радужная полоса + hex. */
-export function buildCustomColorPicker(host: HTMLElement, initial: string, onChange: (hex: string) => void): void {
+/** Собственный пикер: SV-квадрат + радужная полоса + hex; eyedropper — кнопка «Пипетка» справа от превью. */
+export function buildCustomColorPicker(host: HTMLElement, initial: string, onChange: (hex: string) => void, opts: { eyedropper?: boolean } = {}): void {
   host.textContent = '';
   let { h, s, v } = hexToHsv(initial);
   const sv = document.createElement('div');
@@ -48,6 +51,28 @@ export function buildCustomColorPicker(host: HTMLElement, initial: string, onCha
   swatch.className = 'picker-swatch';
   hexRow.append(hexInput, swatch);
   host.append(sv, hue, hexRow);
+  if (opts.eyedropper) {
+    const dropper = document.createElement('button');
+    dropper.type = 'button';
+    dropper.className = 'picker-eyedropper';
+    dropper.title = 'Пипетка';
+    dropper.setAttribute('aria-label', 'Пипетка');
+    dropper.innerHTML = EYEDROPPER_ICON; // константа иконки, не пользовательские данные
+    // превью и hex показывают цвет под пипеткой; отмена возвращает прежний
+    const preview = (hex: string) => { swatch.style.background = hex; hexInput.value = hex; };
+    dropper.addEventListener('click', () => {
+      dropper.classList.add('active');
+      startEyedropper(preview, hex => {
+        dropper.classList.remove('active');
+        ({ h, s, v } = hexToHsv(hex));
+        apply(true);
+      }, () => {
+        dropper.classList.remove('active');
+        apply(false);
+      });
+    });
+    hexRow.appendChild(dropper);
+  }
 
   const apply = (emit: boolean) => {
     const base = hsvToHex(h, 1, 1);

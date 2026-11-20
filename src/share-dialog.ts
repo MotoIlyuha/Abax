@@ -23,6 +23,7 @@ import { createSpoiler } from './spoiler';
 import { clamp, reduceMotion, uiAnimOff } from './motion';
 import { createRoll } from './roll-text';
 import { flyInvite, shakeField } from './invite-motion';
+import { morphLeave } from './morph-tooltip';
 import type { PageRight } from './types';
 
 // Окно «Поделиться» (SPEC_NIGHT6 §6; редизайн — ветка design/share-dialog).
@@ -257,6 +258,7 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
   };
   const main = makePanel('share-panel-share', 'share-tab-share');
   const settings = makePanel('share-panel-settings', 'share-tab-settings');
+  settings.panel.dataset.tipSide = 'left'; // подсказки строк — сбоку от окна (и без анимаций)
   const panels = [main, settings];
   const view = el('div', 'share-view');
   const track = el('div', 'share-track');
@@ -1105,7 +1107,7 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
   guestsSec.append(guestsCard);
   const summonRow = el('div', 'share-setting share-summon');
   const summonLabel = el('span', 'share-setting-label', 'Позвать всех к себе');
-  tip(summonLabel, 'Кто может перенести всех участников к себе на экран');
+  tip(summonRow, 'Кто может перенести всех участников к себе на экран');
   const summon = createSegmented({
     className: 'share-summon-seg', label: 'Кто может позвать всех к себе', value: 'owner',
     options: [{ value: 'owner', label: 'Только я' }, { value: 'editors', label: 'И редакторы', title: 'Я и редакторы' }],
@@ -1383,6 +1385,7 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
     fitObserver?.disconnect();
     for (const sc of [...scrolls, pagesScroll]) sc.destroy();
     releaseMenu('share');
+    morphLeave(true); // подсказка и подсветка строки не остаются висеть после закрытия окна
     closeMenu(dlg);
     const back2 = opener && opener.isConnected ? opener : document.getElementById('btn-share');
     back2?.focus();

@@ -43,6 +43,67 @@ test.describe('панель цвета и толщины', () => {
     await expect(panel.locator(`.ctx-swatches.custom [data-c="${color}"]`)).toHaveCount(0);
   });
 
+  test('перетаскивание в «Мои цвета»: приёмник синеет над зоной, текст — только без своих цветов', async ({ page }) => {
+    await page.locator('#btn-style').click();
+    const panel = page.locator('.ctx-panel[data-kind="style"]');
+    const hint = panel.locator('.ctx-drop-hint');
+    await expect(hint).toContainText('Перетащите цвет сюда');
+    const src = (await panel.locator('.ctx-swatches:not(.custom) [data-c="#ff6464"]').boundingBox())!;
+    const dst = (await hint.boundingBox())!;
+    await page.mouse.move(src.x + 17, src.y + 17);
+    await page.mouse.down();
+    await page.mouse.move(dst.x + dst.width / 2, dst.y + dst.height / 2, { steps: 8 });
+    await page.mouse.move(dst.x + dst.width / 2 + 4, dst.y + dst.height / 2);
+    await expect(panel.locator('.ctx-my-colors')).toHaveClass(/drop-over/);
+    await page.mouse.up();
+    await expect(panel.locator('.ctx-swatches.custom [data-c="#ff6464"]')).toHaveCount(1);
+    await expect(panel.locator('.ctx-my-colors')).not.toHaveClass(/drop-over/);
+    // свои цвета есть — пустой приёмник без текста
+    await expect(hint).toHaveText('');
+    await expect(hint).toBeVisible();
+  });
+
+  test('пипетка в «Добавить цвет»: превью следует за курсором, щелчок добавляет цвет, Esc отменяет', async ({ board, page }) => {
+    await page.locator('#btn-style').click();
+    const panel = page.locator('.ctx-panel[data-kind="style"]');
+    // цели пипетки — свои блоки в углах окна («Все цвета» при открытом пикере свёрнуты)
+    await page.evaluate(() => {
+      for (const [side, bg] of [['left', '#2dc75c'], ['right', '#123456']]) {
+        const d = document.createElement('div');
+        d.style.cssText = `position:fixed;${side}:0;bottom:0;width:40px;height:40px;z-index:9999;background:${bg}`;
+        document.body.appendChild(d);
+      }
+    });
+    const { width: vw, height: vh } = page.viewportSize()!;
+    await panel.locator('.ctx-add-color').click();
+    await expect(panel.locator('.ctx-all-colors')).toBeHidden();
+    const hex = panel.locator('.picker-hex input');
+    const before = await hex.inputValue();
+    // Esc — прежний цвет
+    await panel.getByRole('button', { name: 'Пипетка' }).click();
+    await page.mouse.move(20, vh - 20);
+    await expect(hex).toHaveValue('#2dc75c');
+    // лупа с пиксельной сеткой; колесо меняет её размер (пружиной — доезжает до цели)
+    const loupe = page.locator('.eyedropper-loupe');
+    await expect(loupe).toBeVisible();
+    await expect(loupe.locator('.eyedropper-hex')).toHaveText('#2dc75c');
+    const w0 = (await loupe.boundingBox())!.width;
+    await page.mouse.wheel(0, -200);
+    await expect.poll(async () => (await loupe.boundingBox())!.width).toBeGreaterThan(w0 + 30);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.eyedropper-overlay')).toHaveCount(0);
+    await expect(hex).toHaveValue(before);
+    // щелчок по цвету не из палитры — он в «Моих цветах» и текущий
+    await panel.getByRole('button', { name: 'Пипетка' }).click();
+    await page.mouse.move(vw - 20, vh - 20);
+    await expect(hex).toHaveValue('#123456');
+    await page.mouse.click(vw - 20, vh - 20);
+    await expect(page.locator('.eyedropper-overlay')).toHaveCount(0);
+    await expect(panel.locator('.ctx-swatches.custom [data-c="#123456"]')).toHaveCount(1);
+    expect((await board.state()).style.color).toBe('#123456');
+    await expect(panel.locator('.ctx-drop-hint')).toContainText('Перетащите цвет сюда');
+  });
+
   test('пресеты: три у пера и маркера, один у остальных', async ({ board, page }) => {
     const presets = page.locator('#toolbar .style-btn');
     await expect(presets.locator('visible=true')).toHaveCount(3);
@@ -158,6 +219,9 @@ test.describe('панель цвета и толщины', () => {
     const panel = page.locator('.ctx-panel[data-kind="style"]');
     await panel.locator('.ctx-add-color').click();
     await expect(panel.locator('.ctx-add-color')).toHaveText('Готово');
+    // пикер вместо «Всех цветов»
+    await expect(panel.locator('.ctx-all-colors')).toBeHidden();
+    await expect(panel.locator('.ctx-section-action')).toHaveText('Развернуть');
     const hex = panel.locator('.picker-hex input');
     await hex.fill('#123abc');
     await hex.press('Enter');
@@ -177,6 +241,9 @@ test.describe('панель цвета и толщины', () => {
     expect((await board.state()).style.color).not.toBe(picked);
     await panel.locator('.ctx-add-color').click();
     await expect(panel.locator('.ctx-picker')).toBeHidden();
+    // «Все цвета» возвращаются
+    await expect(panel.locator('.ctx-all-colors')).toBeVisible();
+    await expect(panel.locator('.ctx-section-action')).toHaveText('Свернуть');
     const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('doska.customColors') || '[]'));
     expect(saved).toHaveLength(1);
   });
@@ -641,15 +708,17 @@ test.describe('вёрстка шапки', () => {
     const exp = (await page.locator('.export-group').boundingBox())!;
     expect(exp.x).toBeGreaterThan(imp.x + imp.width);
 
+    // F1 и «Помощь» — боковая панель в режиме «Справка» (SPEC_CHAT §5)
     await page.keyboard.press('F1');
-    await expect(page.locator('#help-menu')).toBeVisible();
+    await expect(page.locator('#side-panel')).toBeVisible();
+    await expect(page.locator('#side-panel .sp-mode')).toHaveAttribute('data-value', 'help');
     await expect(page.locator('#btn-help')).toHaveAttribute('aria-expanded', 'true');
     await page.keyboard.press('F1');
-    await expect(page.locator('#help-menu')).toBeHidden();
+    await expect(page.locator('#side-panel')).toBeHidden();
     await page.locator('#btn-help').click();
-    await expect(page.locator('#help-menu')).toBeVisible();
+    await expect(page.locator('#side-panel')).toBeVisible();
     await page.keyboard.press('Escape');
-    await expect(page.locator('#help-menu')).toBeHidden();
+    await expect(page.locator('#side-panel')).toBeHidden();
 
     await page.locator('#btn-home').click();
     await page.locator('#main-menu [data-section="hide"]').click();
@@ -666,12 +735,14 @@ test.describe('вёрстка шапки', () => {
 
 test.describe('всплывающие меню', () => {
   test('открыто одно меню: новое закрывает прежнее, и с клавиатуры тоже', async ({ board, page }) => {
-    const shown = () => page.evaluate(() => ['main-menu', 'export-menu', 'help-menu', 'view-menu', 'icon-picker', 'share-dialog']
+    const shown = () => page.evaluate(() => ['main-menu', 'export-menu', 'view-menu', 'icon-picker', 'share-dialog']
       .filter(id => { const e = document.getElementById(id); return !!e && !e.hidden; }).join(','));
     await page.locator('#btn-home').click();
     await expect.poll(shown).toBe('main-menu');
+    // F1 открывает боковую панель «Справка»: открытое меню закрывается, панель — не всплывающее меню
     await page.keyboard.press('F1');
-    await expect.poll(shown).toBe('help-menu');
+    await expect.poll(shown).toBe('');
+    await expect(page.locator('#side-panel')).toBeVisible();
     await page.locator('#btn-export').focus();
     await page.keyboard.press('Enter');
     await expect.poll(shown).toBe('export-menu');
@@ -713,8 +784,9 @@ test.describe('адаптивная шапка', () => {
     const fit = () => page.evaluate(() => [...document.body.classList].filter(c => c.startsWith('fit-')).sort().join(' '));
     await page.setViewportSize({ width: 1280, height: 800 });
     await expect.poll(fit).toBe('');
-    // слева от «Поделиться» всегда есть мой аватар (группа аватаров: 48 px и промежуток)
-    await page.setViewportSize({ width: 620, height: 800 });
+    // слева от «Поделиться» всегда есть мой аватар (группа аватаров: 48 px и промежуток),
+    // справа — кнопка «Чат и уведомления» (48 px и промежуток): она не уходит из шапки
+    await page.setViewportSize({ width: 680, height: 800 });
     await expect.poll(fit).toBe('fit-export');
     await expect(page.locator('#btn-export')).toBeHidden();
     await expect(page.locator('#btn-import')).toBeVisible();

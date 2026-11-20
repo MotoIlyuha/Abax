@@ -12,8 +12,11 @@ import { PHOTO_KEY, isAvatarEmoji, isAvatarPhoto } from './avatar-value';
 import { setStorage, storage, type BoardsStorage } from './storage';
 import { getApi } from './api-client';
 import { hydrateFromCloud } from './cloud-assets';
-import { clearPills, diffUsers, showPill, showUserEvents } from './activity-pills';
-import { chatReceive, chatReset, setChatAvailable, setChatCanWrite, setChatSender } from './collab-chat';
+import { diffUsers, showUserEvents } from './activity-pills';
+import { clearNotifyStack } from './notify-stack';
+import { chatReceive, chatReset, setChatAvatarLookup, setChatAvailable, setChatCanWrite, setChatSender } from './collab-chat';
+import type { ChatAttachment } from './room-chat';
+import { clearNotices, pushNotice } from './notify-center';
 import { viewCenter, viewportSize } from './camera-anim';
 import { cancelActiveInteraction } from './interaction';
 import { nearestAvailablePage } from './presence';
@@ -84,7 +87,7 @@ function noteAccess(m: Record<string, unknown>, initial = false): void {
   }
   setChatCanWrite(myCaps?.chat !== false);
   if (!initial && role === 'guest' && prevRole && myAccessRole && myAccessRole !== 'owner' && prevRole !== myAccessRole) {
-    showPill({ kind: 'info', text: `Автор изменил вашу роль: ${roleLabel(myAccessRole)}` });
+    pushNotice({ title: `Автор изменил вашу роль: ${roleLabel(myAccessRole)}`, icon: 'role' });
     roleChangedPill = true;
   }
 }
@@ -265,10 +268,10 @@ export function sendFollowHost(enabled: boolean): boolean {
   return transport.send(JSON.stringify({ t: 'follow-host', enabled })) !== false;
 }
 
-/** Сообщение в чат комнаты; false — нет соединения. */
-export function sendChat(text: string): boolean {
+/** Сообщение в чат комнаты (с вложением — SPEC_CHAT §7); false — нет соединения. */
+export function sendChat(text: string, att?: ChatAttachment): boolean {
   if (!connected || !transport) return false;
-  return transport.send(JSON.stringify({ t: 'chat', text })) !== false;
+  return transport.send(JSON.stringify(att ? { t: 'chat', text, att } : { t: 'chat', text })) !== false;
 }
 const cursorThrottle: { last: number; timer: number; pending: { x: number; y: number } | null } = { last: 0, timer: 0, pending: null };
 const projectThrottle: { timer: number } = { timer: 0 };
@@ -347,9 +350,11 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
       resetPhotos(m.photos);
       followHost = m.followHost === true;
       setChatSender(sendChat);
+      setChatAvatarLookup(uid => { const u = users.find(x => x.userId === uid); return u ? collabAvatar(u) : null; });
       setChatAvailable(true);
       chatReset(m.chat, myUserId);
-      if (lostAt !== null && Date.now() - lostAt < RESTORE_WINDOW_MS) showPill({ kind: 'ok', text: 'Связь с доской восстановлена' });
+      // отклик на восстановление моего соединения — тихое: видно, но не копится
+      if (lostAt !== null && Date.now() - lostAt < RESTORE_WINDOW_MS) pushNotice({ level: 'ok', title: 'Связь с доской восстановлена', icon: 'online', quiet: true });
       lostAt = null;
       // хаб умеет патчи — сообщаем, что мы тоже: до ответа он шлёт полные проекты
       hubPatches = m.patches === true;
@@ -364,7 +369,7 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
       sendProfile(false);
     } else if (m.t === 'users') {
       const next = Array.isArray(m.users) ? m.users as CollabUser[] : users;
-      if (usersKnown) showUserEvents(diffUsers(users, next, myUserId));
+      if (usersKnown) showUserEvents(diffUsers(users, next, myUserId), u => collabAvatar(u));
       usersKnown = true;
       users = next;
       followHostPages(next);
@@ -376,7 +381,7 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
       const nextRights = (m.rights as typeof myRights) || myRights;
       roleChangedPill = false;
       noteAccess(m);
-      if (role === 'guest' && !roleChangedPill && JSON.stringify(nextRights) !== JSON.stringify(myRights)) showPill({ kind: 'info', text: 'Автор изменил права доступа' });
+      if (role === 'guest' && !roleChangedPill && JSON.stringify(nextRights) !== JSON.stringify(myRights)) pushNotice({ title: 'Автор изменил права доступа', icon: 'rights' });
       myRights = nextRights;
       // перерисовываем UI — тулбар и список страниц зависят от прав
       setSelection([...state.selection]);
@@ -407,7 +412,8 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
       receiveSummon(m);
     } else if (m.t === 'set-rights') {
       // хаб отклонил «Настройки доступа» из меню аватара (например, лимит редакторов)
-      if (role === 'host' && m.ok === false) showPill({ kind: 'warn', text: typeof m.error === 'string' && m.error ? m.error : 'Не удалось изменить доступ участника' });
+      // ответ на моё действие — тихое предупреждение
+      if (role === 'host' && m.ok === false) pushNotice({ level: 'warn', title: typeof m.error === 'string' && m.error ? m.error : 'Не удалось изменить доступ участника', icon: 'rights', quiet: true });
     } else if (m.t === 'denied') {
       lastDenied = {
         reason: typeof m.reason === 'string' ? m.reason : '',
@@ -446,7 +452,7 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
       // гостю причину объясняет карточка уведомления; автору — пилюля: его комната подключится снова
       if (wasInRoom && role === 'host') {
         lostAt = Date.now();
-        showPill({ kind: 'warn', text: 'Соединение прервано, переподключаемся…' });
+        pushNotice({ level: 'warn', title: 'Соединение прервано, переподключаемся…', icon: 'offline' });
       }
       resolve(); // не открылся вовсе — не держим запуск приложения
     };
@@ -462,7 +468,12 @@ function receiveSummon(m: Record<string, unknown>): void {
   const who = users.find(u => u.userId === m.by);
   const name = !who || who.host ? 'Автор' : String(who.name ?? '') || 'Участник';
   const you = typeof m.to === 'number' && m.to === myUserId;
-  showPill({ kind: 'info', text: `${name} позвал${you ? ' вас' : ' всех'} на страницу «${page.name}»` });
+  pushNotice({
+    title: name,
+    body: `позвал${you ? ' вас' : ' всех'} на страницу «${page.name}»`,
+    icon: 'summon',
+    ...(who ? { user: { userId: who.userId, name, cursorId: who.cursorId ?? DEFAULT_CURSOR_ID, avatar: collabAvatar(who) } } : {}),
+  });
   const detail: CollabSummonDetail = { pageId: page.id, vx: num(m.vx, 0), vy: num(m.vy, 0), vz: num(m.vz, 1), by: num(m.by, -1) };
   document.dispatchEvent(new CustomEvent<CollabSummonDetail>('doska:collab-summon', { detail }));
 }
@@ -573,7 +584,7 @@ function applyRemoteProject(project: Project): void {
   setSelection(lost ? [] : [...state.selection]);
   // содержимое теперь общее: следующие правки считаются от него
   markSent(state.project);
-  if (lost) showPill({ kind: 'warn', text: PAGE_HIDDEN_PILL });
+  if (lost) pushNotice({ level: 'warn', title: PAGE_HIDDEN_PILL, icon: 'hidden' });
   document.dispatchEvent(new CustomEvent('doska:collab-project'));
 }
 
@@ -1324,8 +1335,11 @@ export function stopCollab(): void {
   hostPages.clear();
   resetCursorVisibility();
   setChatSender(null);
+  setChatAvatarLookup(null);
   setChatAvailable(false);
-  clearPills();
+  // уведомления — о комнате: с концом совместной работы счётчик и стопка пустеют
+  clearNotifyStack();
+  clearNotices();
   if (allHidden) { allHidden = false; setAllHiddenBanner(false); }
   state.collabRole = null;
   renderRemoteCursors();

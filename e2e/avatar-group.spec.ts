@@ -86,7 +86,20 @@ test('группа аватаров: раскрытие, меню, скрыть 
   await expect(menu.locator('[data-action="summon-all"]')).toBeVisible();
   await expect(menu.locator('[data-action="hide-cursors"]')).toBeVisible();
   await a.waitForTimeout(300);
-  if (shots) await a.screenshot({ path: `${shots}/self-menu.png`, clip: { x: 900, y: 0, width: 540, height: 360 } });
+  // подсказка пункта — морфящаяся, как в панели инструментов, и сбоку от меню; подсветка пункта — внутри меню
+  await menu.locator('[data-action="hide-cursors"]').hover();
+  await expect(a.locator('#morph-tip[data-state="shown"] .mt-lab.cur')).toContainText('ничего не заметят');
+  expect(await a.locator('#morph-tip .mt-tip').getAttribute('data-side')).toBe('left');
+  // пузырь оседает пружиной: правый край — левее меню, когда движение закончилось
+  await expect.poll(async () => {
+    const tipBox = (await a.locator('#morph-tip .mt-tip').boundingBox())!;
+    const menuBox = (await menu.boundingBox())!;
+    return tipBox.x + tipBox.width <= menuBox.x;
+  }).toBe(true);
+  await expect(menu.locator('.mt-hl')).toHaveCount(1);
+  await menu.locator('[data-action="summon-all"]').hover();
+  await expect(a.locator('#morph-tip .mt-lab.cur')).toContainText('перейдут на вашу страницу');
+  if (shots) await a.screenshot({ path: `${shots}/self-menu.png`, clip: { x: 600, y: 0, width: 840, height: 360 } });
   await a.keyboard.press('Escape');
   await expect(menu).toHaveCount(0);
 
@@ -117,7 +130,7 @@ test('группа аватаров: раскрытие, меню, скрыть 
   await capy.click();
   await menu.locator('[data-action="summon"]').click();
   await expect.poll(() => pageIdOf(g1), { timeout: 10000 }).toBe(pages[1]);
-  await expect(g1.locator('#activity-pills .activity-pill', { hasText: 'позвал вас на страницу' })).toBeVisible();
+  await expect(g1.locator('#notify-stack .ns-card', { hasText: 'позвал вас на страницу' })).toBeVisible();
   expect(await pageIdOf(g2)).toBe(pages[0]);
 
   // у карточки страницы в доке — те же аватары: Капибара на второй, Енот на первой; нажатие — то же меню

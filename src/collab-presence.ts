@@ -7,7 +7,7 @@ import {
 import { DEFAULT_CURSOR_ID, cursorPreset, cursorSvg, isCursorId } from './cursors';
 import { computeEdgePointer, type SafeInsets } from './edge-pointer';
 import { pageAvatars } from './presence';
-import { showPill } from './activity-pills';
+import { pushNotice } from './notify-center';
 import { PLAN_LIMITS } from './limits';
 import { limitsEnforced, userPlan } from './plan';
 import { ACCESS_ICON, FOLLOW_ICON, ICON_ARROW, ICONS, PROFILE_ICON, SUMMON_ICON } from './icons';
@@ -21,7 +21,7 @@ import { myAvatar, myCursorId, onProfileChange, profileName } from './profile';
 import { followWaiting, followingUid, initFollow, onFollowChange, startFollow, stopFollow } from './follow';
 
 // Присутствие участников (SPEC_NIGHT5 §8): краевые курсоры у границы экрана, аватары в шапке и у страниц,
-// кнопки автора «Позвать всех сюда» и «Автопереход участников за мной». Имена и цвета приходят от других
+// пункты автора «Позвать всех к себе» и «Автопереход за мной» в меню аватара. Имена и цвета приходят от других
 // участников — только textContent, setAttribute и свойства style; SVG курсора — константы каталога.
 
 /** Отступ краевого курсора от интерфейса (шапка, панель инструментов, док страниц), px. */
@@ -82,7 +82,8 @@ function goTo(detail: CollabGotoDetail): void {
 /** Клик по участнику: к нему; на скрытой странице — только пилюля. */
 export function goToParticipant(u: CollabUser, reason: CollabGotoDetail['reason']): void {
   if (u.hiddenPage) {
-    showPill({ kind: 'info', text: u.host ? 'Автор сейчас на скрытой странице' : 'Участник сейчас на скрытой странице' });
+    // отклик на мой щелчок по участнику — тихое уведомление
+    pushNotice({ title: u.host ? 'Автор сейчас на скрытой странице' : 'Участник сейчас на скрытой странице', icon: 'hidden', quiet: true });
     return;
   }
   const target = gotoTarget(u, reason);
@@ -178,8 +179,18 @@ export function selfMenuEntries(anchor: HTMLElement): AvatarMenuEntry[] {
       disabled: onDraft(), title: onDraft() ? 'Черновик виден только вам — позвать на него нельзя' : 'Участники перейдут на вашу страницу и к центру вашего экрана',
       run: () => {
         if (isHost()) { summonHere(anchor); return; }
-        if (sendSummon(state.pageId)) showPill({ kind: 'ok', text: 'Вы позвали всех на эту страницу' });
+        if (sendSummon(state.pageId)) pushNotice({ level: 'ok', title: 'Вы позвали всех на эту страницу', icon: 'summon', quiet: true });
       },
+    });
+  }
+  // автопереход — только автор; на тарифе без него переключатель выключен (тариф проверяет и хаб)
+  if (collabActive() && isHost()) {
+    const locked = followLocked();
+    out.push({
+      kind: 'switch', id: 'follow-me', label: 'Автопереход за мной', icon: FOLLOW_ICON,
+      checked: hostFollowEnabled() && !locked, disabled: locked, badge: locked ? 'Pro' : undefined,
+      title: locked ? 'Автопереход участников за мной — доступно в подписке Pro' : 'Участники будут переходить за вами по страницам',
+      onChange: setFollowMe,
     });
   }
   // чужие курсоры бывают только в совместной работе
@@ -221,7 +232,7 @@ export function accessSubmenu(u: CollabUser): AvatarSubmenu {
       onChange: v => {
         if (v === 'edit') return;
         const right = v === 'view' || v === 'hidden' ? v : null;
-        if (!sendPageRights(u.userId, { [pg.id]: right })) showPill({ kind: 'warn', text: 'Нет связи с доской — доступ не изменён' });
+        if (!sendPageRights(u.userId, { [pg.id]: right })) pushNotice({ level: 'warn', title: 'Нет связи с доской — доступ не изменён', icon: 'offline', quiet: true });
       },
     });
     sel.el.dataset.key = `access-${pg.id}`;
@@ -256,7 +267,7 @@ export function participantMenuEntries(u: CollabUser): AvatarMenuEntry[] {
     out.push({
       kind: 'action', id: 'summon', label: 'Позвать к себе', icon: SUMMON_ICON, disabled: !!reason,
       title: reason || 'Участник перейдёт на вашу страницу и к центру вашего экрана',
-      run: () => { if (sendSummon(state.pageId, u.userId)) showPill({ kind: 'ok', text: `Вы позвали к себе: ${name}` }); },
+      run: () => { if (sendSummon(state.pageId, u.userId)) pushNotice({ level: 'ok', title: `Вы позвали к себе: ${name}`, icon: 'summon', quiet: true }); },
     });
   }
   const following = followingUid() === u.userId;
@@ -276,7 +287,7 @@ export function participantMenuEntries(u: CollabUser): AvatarMenuEntry[] {
     out.push({
       kind: 'action', id: 'remove', label: 'Исключить', icon: ICONS.del, danger: true, confirm: 'Нажмите ещё раз, чтобы исключить',
       title: 'Отключить участника от доски сейчас. Ссылка или приглашение продолжают действовать — их отзывают в окне «Поделиться»',
-      run: () => { if (sendRemove(u.userId)) showPill({ kind: 'info', text: `${name} больше не участвует в совместной работе` }); },
+      run: () => { if (sendRemove(u.userId)) pushNotice({ title: `${name} больше не участвует в совместной работе`, icon: 'remove', quiet: true }); },
     });
   }
   return out;
@@ -380,7 +391,7 @@ export function safeInsets(wrap: DOMRect, obstacles: readonly DOMRect[], pad = E
 
 function obstacleRects(): DOMRect[] {
   const out: DOMRect[] = [];
-  for (const sel of ['#topbar', '#bottombar', '#toolbar', '#btn-pages', '#pages-dock.open #pages-tray', '#activity-pills']) {
+  for (const sel of ['#topbar', '#bottombar', '#toolbar', '#btn-pages', '#pages-dock.open #pages-tray', '#notify-stack']) {
     const n = document.querySelector<HTMLElement>(sel);
     if (n && !n.hidden) out.push(n.getBoundingClientRect());
   }
@@ -475,23 +486,13 @@ const pageHidden = (pageId: string): boolean => state.project.permissions?.pageR
 
 let hostKey = '';
 
+/** Плашка «страница скрыта — участники остались» у автора с включённым автопереходом. */
 function refreshHostControls(force = false): void {
   const host = collabActive() && isHost();
   const hidden = host && !onDraft() && pageHidden(state.pageId);
-  const key = `${host}|${hostFollowEnabled()}|${followLocked()}|${hidden}|${state.pageId}`;
+  const key = `${host}|${hostFollowEnabled()}|${hidden}|${state.pageId}`;
   if (!force && key === hostKey) return;
   hostKey = key;
-  const summon = document.getElementById('btn-summon');
-  const follow = document.getElementById('btn-follow');
-  if (summon) summon.hidden = !host;
-  if (follow) {
-    follow.hidden = !host;
-    const locked = followLocked();
-    follow.classList.toggle('locked', locked);
-    follow.setAttribute('aria-pressed', String(hostFollowEnabled() && !locked));
-    follow.classList.toggle('active', hostFollowEnabled() && !locked);
-    follow.title = locked ? 'Автопереход участников за мной — доступно в подписке Pro' : hostFollowEnabled() ? 'Автопереход участников за мной: включён' : 'Автопереход участников за мной';
-  }
   const badge = document.getElementById('follow-hidden-badge');
   if (badge) badge.hidden = !(hidden && hostFollowEnabled());
   if (!host) closeSummonPopover();
@@ -541,10 +542,10 @@ export function setProjectPageRight(pageId: string, right: PageRight): void {
 /** «Позвать всех сюда»: скрытая страница — сначала спросить, открыть ли её. */
 export function summonHere(anchor?: HTMLElement | null): void {
   if (!collabActive() || !isHost()) return;
-  if (onDraft()) { showPill({ kind: 'info', text: 'Черновик виден только вам — позвать на него нельзя' }); return; }
+  if (onDraft()) { pushNotice({ title: 'Черновик виден только вам — позвать на него нельзя', icon: 'draft', quiet: true }); return; }
   const pageId = state.pageId;
   if (!pageHidden(pageId)) {
-    if (sendSummon(pageId)) showPill({ kind: 'ok', text: 'Вы позвали всех на эту страницу' });
+    if (sendSummon(pageId)) pushNotice({ level: 'ok', title: 'Вы позвали всех на эту страницу', icon: 'summon', quiet: true });
     return;
   }
   closeSummonPopover();
@@ -560,7 +561,7 @@ export function summonHere(anchor?: HTMLElement | null): void {
     if (!right || state.pageId !== pageId) return;
     setProjectPageRight(pageId, right);
     refreshHostControls(true);
-    if (sendSummon(pageId)) showPill({ kind: 'ok', text: 'Страница открыта, участники переходят на неё' });
+    if (sendSummon(pageId)) pushNotice({ level: 'ok', title: 'Страница открыта, участники переходят на неё', icon: 'summon', quiet: true });
   };
   const edit = el('button', 'summon-choice', 'Открыть для редактирования и позвать');
   edit.addEventListener('click', () => choose('edit'));
@@ -574,7 +575,7 @@ export function summonHere(anchor?: HTMLElement | null): void {
   const r = anchor?.getBoundingClientRect();
   if (r) {
     box.style.top = `${Math.round(r.bottom + 8)}px`;
-    // левее колонки пилюль справа, чтобы уведомления не закрывали выбор
+    // левее стопки уведомлений справа, чтобы она не закрывала выбор
     box.style.left = `${Math.round(Math.max(8, Math.min(r.left - 140, window.innerWidth - 600)))}px`;
   }
   edit.focus();
@@ -590,12 +591,13 @@ export function summonHere(anchor?: HTMLElement | null): void {
   }, 0);
 }
 
-function toggleFollow(): void {
+/** Переключатель «Автопереход за мной» в меню аватара. */
+function setFollowMe(next: boolean): void {
   if (!collabActive() || !isHost()) return;
-  if (followLocked()) { showPill({ kind: 'info', text: 'Автопереход участников — доступно в подписке Pro' }); return; }
-  const next = !hostFollowEnabled();
+  // отклики на мой переключатель — тихие
+  if (followLocked()) { pushNotice({ title: 'Автопереход участников — доступно в подписке Pro', icon: 'follow', quiet: true }); return; }
   sendFollowHost(next);
-  showPill({ kind: 'info', text: next ? 'Участники следуют за вами по страницам' : 'Автопереход участников выключен' });
+  pushNotice({ title: next ? 'Участники следуют за вами по страницам' : 'Автопереход участников выключен', icon: 'follow', quiet: true });
   refreshHostControls(true);
 }
 
@@ -611,16 +613,6 @@ export function initCollabPresence(onPageAvatars?: () => void, opts: { openProfi
   if (inited) return;
   inited = true;
   if (opts.openProfile) openProfile = opts.openProfile;
-  const summon = document.getElementById('btn-summon');
-  if (summon) {
-    summon.innerHTML = SUMMON_ICON; // константа модуля
-    summon.addEventListener('click', () => summonHere(summon));
-  }
-  const follow = document.getElementById('btn-follow');
-  if (follow) {
-    follow.innerHTML = FOLLOW_ICON; // константа модуля
-    follow.addEventListener('click', toggleFollow);
-  }
   // мой аватар без комнаты строится по профилю: имя и курсор меняются в настройках
   onProfileChange(() => renderStrip());
   renderStrip();
