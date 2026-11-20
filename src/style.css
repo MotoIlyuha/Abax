@@ -5142,3 +5142,16 @@ body.no-ui-anim :is(.chat-lightbox, .clb-img) { animation: none !important; }
 .avatar-menu-switch.has-badge { cursor: default; }
 .avatar-menu-switch.has-badge .switch-input { cursor: default; }
 .avatar-menu-badge-pro { background: linear-gradient(135deg, #f59f00, #f76707); color: #fff; font-weight: 700; letter-spacing: 0.02em; }
+
+/* «Мои цвета»: пипетка и подсказка-приёмник в той же сетке */
+.ctx-eyedropper { background: var(--panel); color: var(--fg); }
+.ctx-eyedropper svg { width: 18px; height: 18px; }
+.ctx-eyedropper:disabled { opacity: .45; cursor: default; }
+.ctx-drop-hint {
+  align-self: center;
+  font-size: 11px;
+  line-height: 1.3;
+  color: var(--muted);
+  padding-left: 4px;
+}
+.ctx-drop-hint b { font-weight: 600; color: var(--fg-label); white-space: nowrap; }

@@ -89,7 +89,7 @@ import { annotationButtons, initCommentsUi } from './comments-ui';
 import { openTaskDialog, taskDialogOpen, type TaskFormValues } from './task-dialog';
 import { TASK_H, TASK_W, createTaskElement } from './task-element';
 import { createToggleSwitch } from './toggle-switch';
-import { ALIGN_ICONS, BACKGROUND_ICON, BACK_ARROW_ICON, COORD_ICON_ZERO, FONT_ICON, GRID_ICONS, GRIP_ICON, ICONS, OPACITY_ICON, PIN_ICON, PROFILE_ICON, SLIDER_TRACK_ICON, SMOOTH_PAN_ICON, SNAP_ICON, VALIGN_ICONS, WIDTH_ICON, svg } from './icons';
+import { ALIGN_ICONS, BACKGROUND_ICON, BACK_ARROW_ICON, COORD_ICON_ZERO, EYEDROPPER_ICON, FONT_ICON, GRID_ICONS, GRIP_ICON, ICONS, OPACITY_ICON, PIN_ICON, PROFILE_ICON, SLIDER_TRACK_ICON, SMOOTH_PAN_ICON, SNAP_ICON, VALIGN_ICONS, WIDTH_ICON, svg } from './icons';
 import { setTopbarGroupHidden } from './topbar-hide';
 import {
   browserSetRights, browserShareStatus, startBrowserCloud, startBrowserHost, stopBrowserCloud, stopBrowserHost,
@@ -1048,7 +1048,51 @@ function renderCustomSwatches(): void {
   grid.textContent = '';
   const list = loadCustomColors();
   for (const c of list) grid.appendChild(makeSwatch(c, c === currentPanelColor(), chooseColor, true));
-  grid.hidden = list.length === 0;
+  grid.appendChild(makeEyedropperButton());
+  // подсказка занимает остаток ряда за пипеткой; если в ряду меньше трёх ячеек — целый следующий ряд
+  const cols = 4;
+  const left = cols - ((list.length + 1) % cols);
+  const hint = document.createElement('div');
+  hint.className = 'ctx-drop-hint';
+  hint.style.gridColumn = `span ${left >= 3 && left < cols ? left : cols}`;
+  const strong = document.createElement('b');
+  strong.textContent = 'Мои цвета';
+  hint.append('Перетащите цвет сюда, чтобы добавить его в ', strong);
+  grid.appendChild(hint);
+}
+
+/** EyeDropper API (Chromium/Electron); в типах DOM его может не быть. */
+interface EyeDropperApi { open(): Promise<{ sRGBHex: string }> }
+type EyeDropperCtor = new () => EyeDropperApi;
+
+/** Круглая кнопка «Пипетка»: цвет с экрана попадает в «Мои цвета» и применяется. */
+function makeEyedropperButton(): HTMLButtonElement {
+  const b = document.createElement('button');
+  b.className = 'ctx-swatch ctx-eyedropper';
+  b.innerHTML = EYEDROPPER_ICON; // константа иконки, не пользовательские данные
+  b.setAttribute('aria-label', 'Пипетка');
+  const Ctor = (window as unknown as { EyeDropper?: EyeDropperCtor }).EyeDropper;
+  b.title = Ctor ? 'Пипетка' : 'Пипетка недоступна в этом браузере';
+  b.disabled = !Ctor;
+  b.addEventListener('click', () => {
+    if (!Ctor) return;
+    new Ctor().open().then(({ sRGBHex }) => {
+      const c = normalizeHex(sRGBHex);
+      if (!c) return;
+      changeFavorite(c, true);
+      chooseColor(c);
+    }).catch(() => { /* отмена клавишей Esc */ });
+  });
+  return b;
+}
+
+/** '#RRGGBB' или 'rgb(r, g, b)' → '#rrggbb'. */
+function normalizeHex(v: string): string | null {
+  const s = v.trim().toLowerCase();
+  if (/^#[0-9a-f]{6}$/.test(s)) return s;
+  const m = /^rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(s);
+  if (!m) return null;
+  return '#' + m.slice(1, 4).map(n => Math.min(255, Number(n)).toString(16).padStart(2, '0')).join('');
 }
 
 /** Выделенные элементы, к которым относится панель из меню выделения. */

@@ -273,3 +273,6 @@ export const PANEL_ICONS = {
 
 /** «Свернуть вправо» — кнопка закрытия боковой панели (#side-panel-close): стрелка к черте справа. */
 export const PANEL_COLLAPSE_ICON = svg('<path d="M9 6l6 6-6 6"/>');
+
+/** Пипетка: взять цвет с экрана. */
+export const EYEDROPPER_ICON = svg('<path d="M14.5 4.5l5 5"/><path d="M17 2.8a2.1 2.1 0 0 1 3 0l1.2 1.2a2.1 2.1 0 0 1 0 3L18.5 9.7l-4.2-4.2z"/><path d="M15.5 8.5L6.8 17.2 4 18l-1 3 3-1 .8-2.8"/><path d="M12.6 5.6l5.8 5.8"/>');
