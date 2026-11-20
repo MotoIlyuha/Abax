@@ -73,6 +73,7 @@ import { LIMIT_PROJECTS_TEXT, copyBoardLink, currentBoardLink, registerLinkViewH
 import { canCreateProject, isOverPageLimit, isOverProjectLimit, PLAN_LIMITS } from './limits';
 import { limitsEnforced, userPlan } from './plan';
 import { CONFLICT_TEXT, cloudStorage, openFresh, type ConflictResolution } from './cloud-sync';
+import { pushNotice } from './notify-center';
 import { clearStarter, isPristineStarterProject, starterId } from './sync-state';
 import { parseProject } from './file';
 import { setPanelActions } from './panel-actions';
@@ -3974,7 +3975,7 @@ export function applyCloudConflict(r: ConflictResolution): void {
   homeProjects.delete(r.id);
   if (state.project.id === r.id && !state.linkMode && state.collabRole === null) void showCloudProject(r.project, { keepView: true });
   else document.dispatchEvent(new CustomEvent('doska:projects-changed'));
-  showToast(CONFLICT_TEXT, { label: 'Открыть копию', run: () => { void openFromHome(r.copy.id); } });
+  pushNotice({ title: CONFLICT_TEXT, level: 'warn', icon: 'offline', action: { label: 'Открыть копию', run: () => { void openFromHome(r.copy.id); } } });
 }
 
 async function newProjectHandler(): Promise<void> {
