@@ -10,7 +10,8 @@ import { pageAvatars } from './presence';
 import { pushNotice } from './notify-center';
 import { PLAN_LIMITS } from './limits';
 import { limitsEnforced, userPlan } from './plan';
-import { ACCESS_ICON, FOLLOW_ICON, ICON_ARROW, ICONS, PROFILE_ICON, SUMMON_ICON } from './icons';
+import { ACCESS_ICON, COMMENT_ICON, FOLLOW_ICON, ICON_ARROW, ICONS, PROFILE_ICON, REACTION_ICON, SUMMON_ICON } from './icons';
+import { setAnnotView, showComments, showReactions } from './annot-prefs';
 import { STATUS_TEXT, type AvatarData, type AvatarStatus } from './avatar';
 import { createAvatarGroup, type AvatarGroup, type AvatarGroupItem } from './avatar-group';
 import { closeAvatarMenu, openAvatarMenu, type AvatarMenuEntry, type AvatarSubmenu } from './avatar-menu';
@@ -195,6 +196,17 @@ export function selfMenuEntries(anchor: HTMLElement): AvatarMenuEntry[] {
   }
   // чужие курсоры бывают только в совместной работе
   if (collabActive()) out.push({ kind: 'switch', id: 'hide-cursors', label: 'Скрыть курсоры других', icon: ICONS.eyeOff, checked: othersCursorsHidden(), onChange: setOthersCursorsHidden, title: 'Только у вас: другие участники ничего не заметят' });
+  // реакции и комментарии на доске (SPEC_COMMENTS §7): личная настройка, уведомления о них приходят всё равно
+  out.push(
+    {
+      kind: 'switch', id: 'show-reactions', label: 'Показывать реакции', icon: REACTION_ICON, checked: showReactions(),
+      onChange: on => setAnnotView({ reactions: on }), title: 'Реакции под объектами и их частицы — только у вас',
+    },
+    {
+      kind: 'switch', id: 'show-comments', label: 'Показывать комментарии', icon: COMMENT_ICON, checked: showComments(),
+      onChange: on => setAnnotView({ comments: on }), title: 'Счётчики комментариев под объектами — только у вас',
+    },
+  );
   return out;
 }
 
