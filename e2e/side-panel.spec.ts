@@ -19,12 +19,12 @@ test.describe('боковая панель', () => {
     await expect(notify).toHaveAttribute('aria-expanded', 'true');
     await expect(mode).toHaveAttribute('data-value', 'notify');
     await expect(page.locator('#notify-stack')).toBeHidden(); // открыта панель ЧУ — стопки нет
-    // кнопка закрытия — снаружи панели слева, верх по верху панели
+    // кнопка закрытия — язычок, прикреплённый к панели слева (заходит на её рамку на 1 px), на 8 px ниже верха панели
     await expect.poll(async () => {
       const p = (await panel.boundingBox())!;
       const c = (await close.boundingBox())!;
-      return [Math.round(p.x - (c.x + c.width)), Math.round(c.y - p.y), Math.round(p.width)];
-    }).toEqual([8, 0, 360]);
+      return [Math.round(p.x - (c.x + c.width)), Math.round(c.y - p.y), Math.round(c.width), Math.round(p.width)];
+    }).toEqual([-1, 8, 33, 360]);
     // шапка уехала влево: «Поделиться» левее кнопки закрытия
     const share = (await page.locator('#btn-share').boundingBox())!;
     expect(share.x + share.width).toBeLessThan((await close.boundingBox())!.x);

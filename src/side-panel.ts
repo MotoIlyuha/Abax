@@ -2,8 +2,8 @@
 // «Справка», «Импорт», «Экспорт». Каркас: шапка с переключателем режимов (Spring dropdown, src/spring-select.ts)
 // и действиями режима справа, ниже — виды режимов (монтируются при первом показе, src/panel-types.ts).
 //
-// Геометрия (широкий экран): панель 360 px у правого края (12 px от краёв окна), кнопка закрытия #side-panel-close
-// 48×48 снаружи слева от панели (зазор 8). Правая сторона шапки (.topbar-left) и #bottombar уезжают влево
+// Геометрия (широкий экран): панель 360 px у правого края (12 px от краёв окна), кнопка закрытия #side-panel-close —
+// язычок 32×40, прикреплённый к левому краю панели снаружи (без зазора и правого скругления). Правая сторона шапки (.topbar-left) и #bottombar уезжают влево
 // (--side-panel-shift); в режиме ЧУ кнопка ЧУ «влилась» в кнопку закрытия: её место в шапке — ровно под
 // кнопкой закрытия (--side-panel-tuck), сама она скрыта. В других режимах ЧУ видна слева от кнопки закрытия:
 // [аватары][Поделиться][ЧУ][✕]|панель|. Узкий экран (< 760 px): панель — лист под шапкой, кнопка закрытия —
@@ -35,11 +35,14 @@ export const SIDE_PANEL_KEY = 'doska.sidePanel';
 export const SIDE_PANEL_NARROW = 760;
 /** Ширина панели (как --side-panel-w в style.css). */
 export const SIDE_PANEL_W = 360;
-const CLOSE_GAP = 8; // от кнопки закрытия до панели
-const BTN = 48;      // кнопка ЧУ и кнопка закрытия
+const BTN = 48;      // кнопка ЧУ
 const BAR_GAP = 12;  // промежуток между кнопками шапки
-/** На сколько уезжает правая сторона шапки и нижняя панель: панель + кнопка закрытия + промежуток. */
-export const SIDE_PANEL_SHIFT = SIDE_PANEL_W + CLOSE_GAP + BTN + BAR_GAP;
+/** Язычок «Свернуть панель», прикреплённый к левому краю панели (как --sp-tab-* в style.css). */
+const TAB_W = 32;
+const TAB_H = 40;
+const TAB_TOP = 8;   // от верха панели (панель — 12 px от верха окна, кнопка ЧУ — тоже)
+/** На сколько уезжает правая сторона шапки и нижняя панель: панель + язычок + промежуток. */
+export const SIDE_PANEL_SHIFT = SIDE_PANEL_W + TAB_W + BAR_GAP;
 /** В режиме ЧУ место кнопки ЧУ — под кнопкой закрытия: шапка уезжает на столько меньше. */
 const TUCK = BTN + BAR_GAP;
 const CSS_MS = 220;
@@ -295,8 +298,20 @@ function paint(u: Ui): void {
   root.setProperty('--side-panel-shift', `${SH.x.toFixed(2)}px`);
   root.setProperty('--side-panel-tuck', `${TK.x.toFixed(2)}px`);
   // кнопка закрытия — на месте кнопки ЧУ (с учётом сдвига шапки) или у панели
-  const dx = narrow() ? 0 : SIDE_PANEL_SHIFT - SH.x + TK.x - TUCK * J.x;
-  u.close.style.translate = `${dx.toFixed(2)}px 0`;
+  // в полёте кнопка закрытия — кнопка ЧУ (48×48 на её месте), у панели — узкий язычок без правого скругления
+  const g0 = narrow() ? 1 : clamp(G.x, 0, 1);
+  const k = 1 - g0;
+  const dx = narrow() ? 0 : SIDE_PANEL_SHIFT - SH.x + TK.x - TUCK * J.x + (BTN - TAB_W - 1) * k; // язычок заходит на рамку панели на 1 px
+  u.close.style.translate = `${dx.toFixed(2)}px ${(-TAB_TOP * k).toFixed(2)}px`;
+  if (narrow() || k < 0.002) {
+    for (const p of ['width', 'height', 'border-top-right-radius', 'border-bottom-right-radius', 'border-right-width', 'clip-path']) u.close.style.removeProperty(p);
+  } else {
+    u.close.style.clipPath = 'none'; // в полёте — целая кнопка с тенью со всех сторон
+    u.close.style.width = `${(TAB_W + 1 + (BTN - TAB_W - 1) * k).toFixed(2)}px`;
+    u.close.style.height = `${(TAB_H + (BTN - TAB_H) * k).toFixed(2)}px`;
+    u.close.style.borderTopRightRadius = u.close.style.borderBottomRightRadius = `${(12 * k).toFixed(2)}px`;
+    u.close.style.borderRightWidth = k > 0.15 ? '1px' : '0';
+  }
   u.close.style.scale = Math.abs(CB.x - 1) < 0.0005 ? '' : CB.x.toFixed(4);
   const m = clamp(M.x, 0, 1.1);
   u.cloud.style.transform = `rotate(${(-90 * m).toFixed(2)}deg) scale(${clamp(1 - 0.7 * m, 0, 1).toFixed(3)})`;
@@ -345,7 +360,7 @@ function settle(): void {
   const u = ui;
   applyStatic();
   if (!u) return;
-  for (const p of ['translate', 'scale']) u.close.style.removeProperty(p);
+  for (const p of ['translate', 'scale', 'width', 'height', 'border-top-right-radius', 'border-bottom-right-radius', 'border-right-width', 'clip-path']) u.close.style.removeProperty(p);
   for (const el of [u.cloud, u.cross]) { el.style.removeProperty('transform'); el.style.removeProperty('opacity'); }
   u.panel.style.removeProperty('clip-path');
   u.inner.style.removeProperty('opacity');
