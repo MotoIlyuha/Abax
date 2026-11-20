@@ -447,6 +447,7 @@ export function pointInPoly(x: number, y: number, pts: { x: number; y: number }[
 
 const ROT_HANDLE_OFF_PX = 13; // отступ ручки поворота от левого верхнего угла по каждой оси, px экрана
 const MIN_SHAPE_SIZE = 4;
+const MIN_TEXT_SIZE = 6; // наименьший кегль при масштабировании текста за угол
 const MIN_NOTE_W = 80;
 const MIN_NOTE_H = 60;
 const MIN_TASK_W = 220;
@@ -519,8 +520,15 @@ export function elementHandles(el: Element, zoom: number): HandlePos[] {
       return out;
     }
     case 'text': {
+      // боковые ручки меняют ширину блока, угловые — масштабируют текст целиком (кегль и ширину)
       const box = textSize(el);
-      return [-1, 1].map(dx => ({ h: { kind: 'resize' as const, dx: dx as -1 | 1, dy: 0 as const }, x: el.x + (dx > 0 ? box.w : 0), y: el.y + box.h / 2 }));
+      const out: HandlePos[] = [-1, 1].map(dx => ({ h: { kind: 'resize' as const, dx: dx as -1 | 1, dy: 0 as const }, x: el.x + (dx > 0 ? box.w : 0), y: el.y + box.h / 2 }));
+      for (const dy of [-1, 1] as const) {
+        for (const dx of [-1, 1] as const) {
+          out.push({ h: { kind: 'resize', dx, dy }, x: el.x + (dx > 0 ? box.w : 0), y: el.y + (dy > 0 ? box.h : 0) });
+        }
+      }
+      return out;
     }
     case 'note':
     case 'task': {
@@ -677,6 +685,19 @@ export function applyHandle(el: Element, h: Handle, pt: Pt, mods?: ResizeMods, r
     const ncx = cx + offx * ccos - offy * csin;
     const ncy = cy + offx * csin + offy * ccos;
     return { ...el, x: ncx - nw / 2, y: ncy - nh / 2, w: nw, h: nh };
+  }
+  if (el.type === 'text' && h.kind === 'resize' && h.dx && h.dy) {
+    // угловая ручка: масштаб от противоположного угла, кегль и ширина растут пропорционально
+    const box = textSize(el);
+    const ax = h.dx > 0 ? el.x : el.x + box.w, ay = h.dy > 0 ? el.y : el.y + box.h;
+    const fx = (h.dx > 0 ? pt.x - ax : ax - pt.x) / Math.max(box.w, 1e-6);
+    const fy = (h.dy > 0 ? pt.y - ay : ay - pt.y) / Math.max(box.h, 1e-6);
+    const f = Math.max(Math.max(fx, fy), MIN_TEXT_SIZE / el.size);
+    const next: TextEl = { ...el, size: el.size * f };
+    if (el.w !== undefined) next.w = el.w * f;
+    next.x = h.dx > 0 ? ax : ax - box.w * f;
+    next.y = h.dy > 0 ? ay : ay - box.h * f;
+    return next;
   }
   if (el.type === 'text' && h.kind === 'resize' && h.dx) {
     const right = el.x + textSize(el).w;
