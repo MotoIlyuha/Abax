@@ -88,7 +88,7 @@ describe('окно первого входа', () => {
     openOnboarding();
     $('.ob-skip').click();
     expect(step()).toBe('2');
-    expect($('.ob-track').style.transform).toBe('translateX(-50%)');
+    expect($('.ob-track').style.transform).toBe('translateX(calc(-100% * 1 / 3))');
     expect($('.ob-step1').hasAttribute('inert')).toBe(true);
     const name = $<HTMLInputElement>('.ob-name');
     expect(name.value).toBe('');
@@ -127,6 +127,65 @@ describe('окно первого входа', () => {
     expect(onboardingOpen()).toBe(false);
     expect(document.getElementById('onboarding')).toBeNull();
     expect(done).toHaveBeenCalledOnce();
+  });
+
+  it('шаг 3 «Создайте свой первый проект!»: плашка о страницах, «Создать» отдаёт введённое, пустые поля — подсказки', () => {
+    const apply = vi.fn();
+    const done = vi.fn();
+    openOnboarding({
+      onDone: done,
+      project: () => ({ namePlaceholder: 'Проект 1', pagePlaceholder: 'Страница 1', icon: null, planNote: 'На бесплатном тарифе…', apply }),
+    });
+    $('.ob-skip').click();
+    $('.ob-continue').click();
+    expect(step()).toBe('3');
+    expect(onboardingOpen()).toBe(true);
+    expect($('.ob-step3 .ob-title').textContent).toBe('Создайте свой первый проект!');
+    expect($('.ob-step3 .pd-pages-note').textContent).toContain('страниц');
+    expect($('.ob-step3 .pd-plan').textContent).toBe('На бесплатном тарифе…');
+    const name = $<HTMLInputElement>('.ob-step3 .pd-name');
+    expect(name.placeholder).toBe('Проект 1');
+    expect(document.activeElement).toBe(name);
+    // «Назад» — к имени, и снова вперёд
+    $('.ob-step3 .ob-back').click();
+    expect(step()).toBe('2');
+    $('.ob-continue').click();
+    type($<HTMLInputElement>('.ob-step3 .pd-name'), '  Алгебра 7Б  ');
+    $('.ob-create').click();
+    expect(apply).toHaveBeenCalledWith({ name: 'Алгебра 7Б', page: 'Страница 1', icon: null });
+    expect(getProfile().onboarded).toBe(true);
+    expect(onboardingOpen()).toBe(false);
+    expect(done).toHaveBeenCalledOnce();
+  });
+
+  it('шаг 3: Enter в поле — «Создать»; Esc — закрыть без переименования; нет стартового проекта — шага нет', () => {
+    const apply = vi.fn();
+    const project = () => ({ namePlaceholder: 'Проект 1', pagePlaceholder: 'Страница 1', icon: null, planNote: null, apply });
+    openOnboarding({ project });
+    $('.ob-skip').click();
+    key($('.ob-name'), 'Enter');
+    expect(step()).toBe('3');
+    expect(document.querySelector('.ob-step3 .pd-plan')).toBeNull();
+    key($('.ob-step3 .pd-page'), 'Enter');
+    expect(apply).toHaveBeenCalledWith({ name: 'Проект 1', page: 'Страница 1', icon: null });
+    expect(onboardingOpen()).toBe(false);
+
+    resetProfileForTests();
+    apply.mockClear();
+    openOnboarding({ project });
+    $('.ob-skip').click();
+    $('.ob-continue').click();
+    key($('.ob-step3 .pd-name'), 'Escape');
+    expect(apply).not.toHaveBeenCalled();
+    expect(getProfile().onboarded).toBe(true);
+    expect(onboardingOpen()).toBe(false);
+
+    resetProfileForTests();
+    openOnboarding({ project: () => null });
+    $('.ob-skip').click();
+    $('.ob-continue').click();
+    expect(onboardingOpen()).toBe(false);
+    expect(getProfile().onboarded).toBe(true);
   });
 
   it('кнопка-рандомайзер рядом с именем подставляет другое имя и обновляет бейдж', () => {

@@ -137,7 +137,7 @@ function remeasure(): void {
 /** Подменю «Взаимодействия» в МВВ: переключатели подсвечиваются и подсказываются так же, как кнопки панели. */
 export const MORPH_MENU = '#view-menu .view-page[data-level="interactions"]';
 /** Где живёт подсказка: панель инструментов, раскрытая панель её группы, подменю «Взаимодействия», меню аватара и «Поделиться». */
-export const MORPH_SCOPE = `#toolbar, .ctx-panel[data-kind="shapes"], ${MORPH_MENU}, #avatar-menu, #share-dialog`;
+export const MORPH_SCOPE = `#toolbar, #quick-menu, .ctx-panel[data-kind="shapes"], .ctx-panel[data-kind="font"], ${MORPH_MENU}, #avatar-menu, #share-dialog`;
 /**
  * Строки, которые подсвечиваются и подсказывают так же, как кнопки панели: пункты меню аватара первого уровня
  * и строки «Поделиться» → «Настройки доступа». Остальное в этих окнах — обычные подсказки.
@@ -149,6 +149,9 @@ function preferredSide(bar: HTMLElement): Side {
   // сторона задана явно (подменю МВВ: справа края окна, сверху и снизу — другие элементы)
   const explicit = bar.dataset.tipSide;
   if (explicit === 'top' || explicit === 'bottom' || explicit === 'left' || explicit === 'right') return explicit;
+  // меню выделения стоит над объектом — подсказка над ним; панель размера текста раскрывается под меню — под ней
+  if (bar.id === 'quick-menu') return 'top';
+  if (bar.dataset.kind === 'font') return 'bottom';
   // меню аватара: подсказка сбоку от меню (не закрывает пункты); слева нет места — справа
   if (bar.id === 'avatar-menu' || bar.id === 'share-dialog') return 'left';
   // у панели группы сторона та же, что у самой панели инструментов: пузырь снаружи, не закрывая кнопки
@@ -260,8 +263,9 @@ function pointHl(btn: HTMLElement): void {
   if (!bar) return;
   // подсветка живёт в самой панели; у группы — в сетке кнопок (она position: relative)
   // окно «Поделиться»: подсветка в содержимом вкладки (оно прокручивается вместе со строками)
-  const holder = bar.id === 'toolbar' || bar.id === 'avatar-menu' ? bar
+  const holder = bar.id === 'toolbar' || bar.id === 'avatar-menu' || bar.id === 'quick-menu' ? bar
     : bar.id === 'share-dialog' ? btn.closest<HTMLElement>('.share-page-inner') ?? bar
+    : bar.dataset.kind === 'font' ? bar.querySelector<HTMLElement>('.ctx-font-chips') ?? bar
     : bar.querySelector<HTMLElement>('.ctx-shapes') ?? bar;
   const moved = hlEl.parentElement !== holder; // перешли в другую панель: подсветка возникает на месте
   if (moved) holder.prepend(hlEl);
@@ -341,7 +345,7 @@ export function morphActive(): boolean {
 
 /** Клик по кнопке панели: иконка «нажимается» и пружинит обратно. */
 export function morphPop(target: EventTarget | null): void {
-  const btn = target instanceof Element ? target.closest<HTMLElement>('#toolbar .tool, .ctx-panel[data-kind="shapes"] .tool') : null;
+  const btn = target instanceof Element ? target.closest<HTMLElement>('#toolbar .tool, #quick-menu .qm-btn, .ctx-panel[data-kind="shapes"] .tool, .ctx-font-chip') : null;
   if (!btn) return;
   ensure();
   let s = pops.get(btn);

@@ -75,6 +75,9 @@ import { hideHeldTooltip, showHeldTooltip } from './tooltip';
 import { LIMIT_PROJECTS_TEXT, copyBoardLink, currentBoardLink, registerLinkViewHooks } from './link-view-ui';
 import { canCreateProject, isOverPageLimit, isOverProjectLimit, PLAN_LIMITS } from './limits';
 import { limitsEnforced, userPlan } from './plan';
+import { openProjectDialog, type FirstProjectStep, type ProjectFormValues } from './project-dialog';
+import { wireTopName, type TopName } from './topbar-names';
+import { PAGE_NAME_MAX, PROJECT_NAME_MAX, defaultProjectName, planNote } from './project-names';
 import { pushNotice } from './notify-center';
 import { CONFLICT_TEXT, cloudStorage, openFresh, type ConflictResolution } from './cloud-sync';
 import { clearStarter, isPristineStarterProject, starterId } from './sync-state';
@@ -3747,7 +3750,7 @@ function renderPages(): void {
   // карточку тащат: список сверится с проектом, когда её отпустят
   if (reordering()) return;
   try {
-    document.getElementById('project-name')!.textContent = state.project.name;
+    topProjectName?.set(state.project.name);
     topProjectIcon?.set(state.project.icon ?? null);
     const list = document.getElementById('pages-list')!;
     const pages = state.project.pages;
@@ -3963,6 +3966,7 @@ function startPageRename(card: PageCard, pageId: string): void {
   if (oldName === undefined) return;
   const input = document.createElement('input');
   input.value = oldName;
+  input.maxLength = PAGE_NAME_MAX;
   input.spellcheck = false;
   card.name.hidden = true;
   card.name.after(input);
@@ -4116,12 +4120,26 @@ export function applyCloudConflict(r: ConflictResolution): void {
   pushNotice({ title: CONFLICT_TEXT, level: 'warn', icon: 'offline', action: { label: 'Открыть копию', run: () => { void openFromHome(r.copy.id); } } });
 }
 
-async function newProjectHandler(): Promise<void> {
+/** «Новый проект»: окно «Создать проект» (название, страница, смайл), затем — сам проект. */
+function newProjectHandler(): void {
+  if (limitsEnforced() && !canCreateProject(userPlan(), state.projects.length)) { showToast(LIMIT_PROJECTS_TEXT); return; }
+  openProjectDialog({
+    namePlaceholder: defaultProjectName(state.projects.map(m => m.name)),
+    pagePlaceholder: 'Страница 1',
+    planNote: planNote(userPlan(), limitsEnforced()),
+    onSubmit: v => { void createProjectHandler(v); },
+  });
+}
+
+async function createProjectHandler(v: ProjectFormValues): Promise<void> {
+  // пока окно было открыто, лимит мог исчерпаться (проект пришёл из облака)
   if (limitsEnforced() && !canCreateProject(userPlan(), state.projects.length)) { showToast(LIMIT_PROJECTS_TEXT); return; }
   await saveNow();
   saveCamera();
   rememberOpenProject();
-  const p = { ...blankProject(`Проект ${state.projects.length + 1}`), ownerPlan: userPlan() };
+  const blank = blankProject(v.name);
+  const p: Project = { ...blank, pages: [{ ...blank.pages[0], name: v.page }], ownerPlan: userPlan() };
+  if (v.icon) p.icon = v.icon;
   await storage.save(p);
   state.projects = [projectMeta(p), ...state.projects];
   openProject(p);
@@ -4173,6 +4191,38 @@ async function renameProjectHandler(id: string, name: string): Promise<void> {
   }
   renderHome();
   renderPages();
+}
+
+/**
+ * Шаг окна первого входа «Создайте свой первый проект!»: только пока открыт стартовый проект первого запуска
+ * (вошли в аккаунт и он заменился облачным — шага нет). Новый проект не создаётся — стартовый переименовывается.
+ */
+export function firstProjectStep(): FirstProjectStep | null {
+  const id = starterId();
+  if (!id || state.project.id !== id || state.linkMode || state.collabRole !== null) return null;
+  return {
+    namePlaceholder: state.project.name,
+    pagePlaceholder: state.project.pages[0]?.name ?? 'Страница 1',
+    icon: state.project.icon ?? null,
+    planNote: planNote(userPlan(), limitsEnforced()),
+    apply: v => { void applyFirstProject(id, v); },
+  };
+}
+
+async function applyFirstProject(id: string, v: ProjectFormValues): Promise<void> {
+  // пока шло знакомство, стартовый проект мог смениться облачным
+  if (state.project.id !== id) return;
+  await saveNow();
+  const first = state.project.pages[0];
+  if (first && first.name !== v.page) renamePage(first.id, v.page);
+  const next: Project = { ...state.project, name: v.name };
+  if (v.icon) next.icon = v.icon;
+  else delete next.icon;
+  state.project = next;
+  await storage.save(state.project);
+  state.projects = state.projects.map(m => (m.id === id ? projectMeta(state.project) : m));
+  renderPages();
+  refresh();
 }
 
 /** Закрепить проект в избранном или открепить (дата изменения не трогается — это не правка содержимого). */
@@ -4253,6 +4303,10 @@ async function setProjectIconHandler(id: string, icon: string | null): Promise<v
   renderHome();
   renderPages();
 }
+
+/** Поля названий страницы и проекта в шапке (создаются при запуске). */
+let topPageName: TopName | null = null;
+let topProjectName: TopName | null = null;
 
 /** Кнопка иконки открытого проекта в шапке (из index.html; создаётся при запуске). */
 let topProjectIcon: IconButton | null = null;
@@ -4383,7 +4437,7 @@ function renderHome(): void {
   newBtn.className = 'new-project';
   newBtn.innerHTML = ICONS.plus;
   newBtn.append('Новый проект');
-  newBtn.addEventListener('click', () => { void newProjectHandler(); });
+  newBtn.addEventListener('click', () => { newProjectHandler(); });
   tools.append(views, newBtn, profileButton());
   head.append(logo, h, tools);
   home.appendChild(head);
@@ -4660,6 +4714,7 @@ function startProjectRename(card: HTMLElement, projectId: string, oldName: strin
   const input = document.createElement('input');
   input.className = 'project-rename';
   input.value = oldName;
+  input.maxLength = PROJECT_NAME_MAX;
   input.spellcheck = false;
   nameEl.replaceWith(input);
   input.focus();
@@ -4683,6 +4738,7 @@ function startProjectRename(card: HTMLElement, projectId: string, oldName: strin
 function startCarouselRename(nameEl: HTMLElement, projectId: string, pageId: string, oldName: string): void {
   const input = document.createElement('input');
   input.value = oldName;
+  input.maxLength = PAGE_NAME_MAX;
   input.spellcheck = false;
   nameEl.replaceWith(input);
   input.focus();
@@ -5231,15 +5287,19 @@ function wireTopbar(): void {
     else closeSettings();
   });
 
-  const nameInput = document.getElementById('page-name') as HTMLInputElement;
-  nameInput.addEventListener('change', () => {
-    const v = nameInput.value.trim();
-    if (!canEditPages()) { nameInput.value = state.board.name; return; }
-    if (v && v !== state.board.name) {
-      renamePage(state.pageId, v);
-      void saveNow();
-    }
+  // названия в шапке: вне фокуса — сокращённые, в фокусе — полные (src/topbar-names.ts)
+  topPageName = wireTopName(document.getElementById('page-name') as HTMLInputElement, {
+    max: PAGE_NAME_MAX,
+    canEdit: canEditPages,
+    commit: v => { renamePage(state.pageId, v); void saveNow(); },
   });
+  topProjectName = wireTopName(document.getElementById('project-name') as HTMLInputElement, {
+    max: PROJECT_NAME_MAX,
+    // проект переименовывает только автор у себя (не гость и не просмотр по ссылке)
+    canEdit: () => state.linkMode === null && !(collabActive() && !isHost()),
+    commit: v => { void renameProjectHandler(state.project.id, v); },
+  });
+  topProjectName.set(state.project.name);
 
   wireGridPicker();
 
@@ -5736,10 +5796,7 @@ function refresh(): void {
   document.querySelector<HTMLElement>('.undo-group')!.style.display = canEditBoard() ? '' : 'none';
   setZoomCounter(document.getElementById('zoom-value')!, Math.round(state.camera.zoom * 100));
   renderGridButton();
-  const nameInput = document.getElementById('page-name') as HTMLInputElement;
-  if (document.activeElement !== nameInput && nameInput.value !== state.board.name) {
-    nameInput.value = state.board.name;
-  }
+  topPageName?.set(state.board.name);
 
   // вид домашней страницы
   const home = document.getElementById('home')!;

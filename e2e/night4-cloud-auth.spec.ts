@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { createAppServer, type AppServer } from '../server/app';
-import { Board } from './fixtures';
+import { Board, continueOnboarding } from './fixtures';
 
 let srv: AppServer;
 let base = '';
@@ -93,7 +93,7 @@ test.describe('вход через облако (dev-провайдеры)', () 
     await expect(page.locator('.ob-link [data-provider]')).toHaveCount(1); // остался Google
     expect(await me(page)).toMatchObject({ email: 'anya@abax.example', telegram: true });
 
-    await page.locator('.ob-continue').click();
+    await continueOnboarding(page);
     await expect(page.locator('#onboarding')).toHaveCount(0);
     await expect.poll(async () => (await me(page)).displayName).toBe('Аня');
     expect(await me(page)).toMatchObject({ cursorId: 'lavender', nameCustom: true });
@@ -106,7 +106,7 @@ test.describe('вход через облако (dev-провайдеры)', () 
     await page.waitForURL(u => u.pathname === '/' && !u.hash);
     await expect(page.locator('#onboarding')).toHaveAttribute('data-step', '2');
     await expect(page.locator('.ob-name')).toHaveValue('Тестовый Google');
-    await page.locator('.ob-continue').click();
+    await continueOnboarding(page);
     await expect(page.locator('#onboarding')).toHaveCount(0);
     await new Board(page).ready();
 
@@ -126,7 +126,7 @@ test.describe('вход через облако (dev-провайдеры)', () 
   test('вход из «Профиля» через Telegram возвращает в «Профиль» с сообщением', async ({ browser }) => {
     const page = await device(browser);
     await page.locator('.ob-skip').click();
-    await page.locator('.ob-continue').click();
+    await continueOnboarding(page);
     await new Board(page).ready();
     await page.keyboard.press('Control+Comma');
     await page.locator('.sd-nav-item', { hasText: 'Профиль' }).click();

@@ -240,6 +240,19 @@ export class Board {
 const GRID_LABELS: Record<string, string> = { none: 'Без фона', dots: 'Точки', square: 'Клетка', coord: 'Координатная плоскость' };
 
 /** Кнопка по подсказке: title переносится в data-tip при первом наведении. */
+/** «Продолжить» на шаге 2 окна первого входа и, если открылся шаг «Создайте свой первый проект!», — «Создать». */
+export async function continueOnboarding(page: Page): Promise<void> {
+  await page.locator('.ob-continue').click();
+  const create = page.locator('.ob-step3 .ob-create');
+  if (await create.count()) await create.click();
+}
+
+/** «Новый проект» на домашней и «Создать» в окне «Создать проект» (имена — по умолчанию). */
+export async function newProject(page: Page): Promise<void> {
+  await page.locator('#home .new-project').click();
+  await page.locator('#project-dialog .pd-create').click();
+}
+
 export function byTip(scope: Page | Locator, tip: string): Locator {
   return scope.locator(`[title="${tip}"], [data-tip="${tip}"]`);
 }

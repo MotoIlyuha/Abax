@@ -216,6 +216,6 @@ export function initTopbarFit(): void {
   mo.observe(document.body, { attributes: true, attributeFilter: ['class'] });
   if (toolbar) mo.observe(toolbar, { attributes: true, attributeFilter: ['data-pos', 'style', 'class'] });
   window.addEventListener('resize', scheduleTopbarFit);
-  document.getElementById('page-name')?.addEventListener('input', scheduleTopbarFit);
+  for (const id of ['page-name', 'project-name']) document.getElementById(id)?.addEventListener('input', scheduleTopbarFit);
   refitTopbar();
 }
