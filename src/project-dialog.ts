@@ -1,4 +1,4 @@
-// Окно «Создать проект»: слева — выбор смайла (иконка проекта), справа — поля «Название проекта» и
+// Окно «Создать проект»: поле «Название проекта» с кнопкой смайла (иконка проекта) слева от него, ниже —
 // «Название страницы» с видимым лимитом символов (src/letter-limit.ts), под ними — пояснение тарифа.
 // Подсказка-placeholder поля — имя по умолчанию: «Создать» с пустым полем даёт проект с этим именем.
 // Форма (createProjectForm) общая с шагом «Создайте свой первый проект!» окна первого входа (src/onboarding.ts).
@@ -54,9 +54,14 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
 }
 
 /** Поле с подписью и лимитом символов. */
-function limitedField(caption: string, cls: string, placeholder: string, limit: number, o: ProjectFormOptions): { label: HTMLElement; input: HTMLInputElement; limit: LetterLimit } {
-  const label = el('label', 'ob-field pd-field');
+let fieldSeq = 0;
+
+/** Поле с подписью и лимитом символов; lead — что поставить в ряд слева от поля (кнопка смайла). */
+function limitedField(caption: string, cls: string, placeholder: string, limit: number, o: ProjectFormOptions, lead?: HTMLElement): { label: HTMLElement; input: HTMLInputElement; limit: LetterLimit } {
+  // обёртка — не <label>: иначе клик по подписи нажимал бы кнопку смайла; подпись связана с полем по id
+  const label = el('div', 'ob-field pd-field');
   const input = el('input', `ob-limit-input ${cls}`);
+  input.id = `pd-input-${++fieldSeq}`;
   input.type = 'text';
   input.spellcheck = false;
   input.autocomplete = 'off';
@@ -66,7 +71,13 @@ function limitedField(caption: string, cls: string, placeholder: string, limit: 
   input.addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); o.onEnter(); }
   });
-  label.append(el('span', 'ob-caption', caption), l.el);
+  const cap = el('label', 'ob-caption', caption);
+  cap.htmlFor = input.id;
+  if (lead) {
+    const row = el('div', 'pd-name-row');
+    row.append(lead, l.el);
+    label.append(cap, row);
+  } else label.append(cap, l.el);
   return { label, input, limit: l };
 }
 
@@ -82,14 +93,12 @@ export function createProjectForm(o: ProjectFormOptions): ProjectForm {
   });
   iconBtn.el.setAttribute('aria-label', 'Иконка проекта');
   const fields = el('div', 'pd-fields');
-  const name = limitedField('Название проекта', 'pd-name', o.namePlaceholder, PROJECT_NAME_MAX, o);
+  const name = limitedField('Название проекта', 'pd-name', o.namePlaceholder, PROJECT_NAME_MAX, o, iconBtn.el);
   const page = limitedField('Название страницы', 'pd-page', o.pagePlaceholder, PAGE_NAME_MAX, o);
   name.limit.set(o.name ?? '', false);
   page.limit.set(o.page ?? '', false);
   fields.append(name.label, page.label);
-  const row = el('div', 'pd-row');
-  row.append(iconBtn.el, fields);
-  root.appendChild(row);
+  root.appendChild(fields);
   if (o.pagesNote) {
     const note = el('div', 'pd-pages-note');
     note.setAttribute('role', 'note');

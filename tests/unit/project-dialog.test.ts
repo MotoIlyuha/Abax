@@ -24,12 +24,15 @@ beforeEach(() => { document.body.innerHTML = ''; });
 afterEach(() => { closeProjectDialog(); });
 
 describe('окно «Создать проект»', () => {
-  it('заголовок, смайл слева от полей, подсказки, текст тарифа; фокус — в названии', () => {
+  it('заголовок, смайл слева от поля названия, подсказки, текст тарифа; фокус — в названии', () => {
     open();
     expect(projectDialogOpen()).toBe(true);
     expect($('.pd-title').textContent).toBe('Создать проект');
-    const row = $('.pd-row');
+    const row = $('.pd-name-row');
     expect(row.firstElementChild!.classList.contains('pd-icon')).toBe(true);
+    expect(row.contains($('.pd-name'))).toBe(true);
+    // подпись связана с полем, а не с кнопкой смайла
+    expect($<HTMLLabelElement>('.pd-field .ob-caption').htmlFor).toBe($('.pd-name').id);
     expect($<HTMLInputElement>('.pd-name').placeholder).toBe('Проект 4');
     expect($<HTMLInputElement>('.pd-page').placeholder).toBe('Страница 1');
     expect($('.pd-plan').textContent).toBe('На бесплатном тарифе…');

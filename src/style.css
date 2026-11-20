@@ -5465,24 +5465,24 @@ body.no-ui-anim.toolbar-detachable #toolbar .tb-grip { transition: none; }
 }
 #project-dialog.pd-instant, #project-dialog.pd-instant .pd-window { animation: none; }
 .pd-title { margin-bottom: 4px; }
-.pd-row { display: flex; align-items: flex-start; gap: 16px; margin-top: 14px; }
-.pd-fields { flex: 1; min-width: 0; display: grid; gap: 12px; }
+.pd-fields { display: grid; gap: 12px; margin-top: 14px; }
 .pd-fields > .ob-field { margin: 0; }
-/* смайл проекта слева от полей: крупная плитка, пустая — значок «добавить иконку» */
+/* кнопка смайла проекта — слева от поля названия, по высоте поля */
+.pd-name-row { display: flex; align-items: center; gap: 8px; }
+.pd-name-row > .ob-limit { flex: 1; min-width: 0; }
 .project-icon.pd-icon {
-  width: 72px;
-  height: 72px;
-  margin-top: 24px;
+  width: 44px;
+  height: 44px;
   border: 1px dashed var(--border-input);
-  border-radius: 16px;
+  border-radius: 12px;
   background: var(--surface-sunken);
-  font-size: 40px;
+  font-size: 24px;
 }
-.project-icon.pd-icon:not(.empty) { border-style: solid; border-color: transparent; }
+.project-icon.pd-icon:not(.empty) { border-style: solid; border-color: var(--border-input); background: var(--panel); }
 .project-icon.pd-icon:hover { background: var(--hover); color: var(--fg); }
 .project-icon.pd-icon:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.project-icon.pd-icon svg { width: 34px; height: 34px; }
-.project-icon.pd-icon img { width: 56px; height: 56px; border-radius: 12px; }
+.project-icon.pd-icon svg { width: 22px; height: 22px; }
+.project-icon.pd-icon img { width: 30px; height: 30px; border-radius: 7px; }
 .pd-plan { margin: 14px 0 0; color: var(--fg-secondary); font-size: 13px; line-height: 1.45; }
 /* «что такое страницы» — выделенная плашка (шаг окна первого входа) */
 .pd-pages-note {
@@ -5503,7 +5503,5 @@ body.no-ui-anim.toolbar-detachable #toolbar .tb-grip { transition: none; }
 .pd-actions .ob-btn { min-width: 110px; }
 .ob-step3 .ob-create { width: 100%; margin-top: 18px; }
 @media (max-width: 480px) {
-  .pd-row { gap: 12px; }
-  .project-icon.pd-icon { width: 56px; height: 56px; font-size: 30px; }
   .pd-actions .ob-btn { flex: 1; min-width: 0; }
 }
