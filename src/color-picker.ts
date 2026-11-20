@@ -1,6 +1,7 @@
 // Свой пикер цвета: квадрат насыщенность–яркость, радужная полоса тона и поле hex.
 // Нужен панели цветов и разделу «Экспериментальные» (цвета иконки приложения).
 
+import { startEyedropper } from './eyedropper';
 import { EYEDROPPER_ICON } from './icons';
 
 export function hsvToHex(h: number, s: number, v: number): string {
@@ -24,98 +25,6 @@ export function hexToHsv(hex: string): { h: number; s: number; v: number } {
   }
   if (h < 0) h += 360;
   return { h, s: max === 0 ? 0 : d / max, v: max };
-}
-
-/** Пиксель холста под точкой экрана; null — прозрачно или холст недоступен для чтения. */
-function canvasPixel(cv: HTMLCanvasElement, x: number, y: number): string | null {
-  const r = cv.getBoundingClientRect();
-  if (r.width === 0 || r.height === 0) return null;
-  const px = Math.floor((x - r.left) * cv.width / r.width);
-  const py = Math.floor((y - r.top) * cv.height / r.height);
-  if (px < 0 || py < 0 || px >= cv.width || py >= cv.height) return null;
-  try {
-    const d = cv.getContext('2d')?.getImageData(px, py, 1, 1).data;
-    if (!d || d[3] === 0) return null;
-    return rgbToHex(d[0], d[1], d[2]);
-  } catch {
-    return null; // «грязный» холст (чужая картинка) или не 2D
-  }
-}
-
-function rgbToHex(r: number, g: number, b: number): string {
-  return '#' + [r, g, b].map(n => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, '0')).join('');
-}
-
-/** 'rgb(…)' / 'rgba(…)' из getComputedStyle → hex; прозрачный — null. */
-function cssColorToHex(css: string): string | null {
-  const m = /^rgba?\(([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:[,\s/]+([\d.]+))?/.exec(css);
-  if (!m || (m[4] !== undefined && Number(m[4]) === 0)) return null;
-  return rgbToHex(Number(m[1]), Number(m[2]), Number(m[3]));
-}
-
-/** Цвет окна приложения под точкой: пиксель холста, иначе фон ближайшего непрозрачного элемента. */
-export function sampleColorAt(x: number, y: number, skip?: globalThis.Element): string | null {
-  for (const node of document.elementsFromPoint(x, y)) {
-    if (node === skip) continue;
-    if (node instanceof HTMLCanvasElement) {
-      const c = canvasPixel(node, x, y);
-      if (c) return c;
-      continue;
-    }
-    const c = cssColorToHex(getComputedStyle(node).backgroundColor);
-    if (c) return c;
-  }
-  return null;
-}
-
-/**
- * Пипетка: курсор-прицел поверх окна, onHover — цвет под курсором на каждое движение,
- * щелчок — onPick, Esc или правая кнопка — onCancel.
- */
-let dropperActive = false;
-/** Пипетка ждёт щелчка: Esc принадлежит ей (глобальные обработчики Esc его пропускают). */
-export function eyedropperActive(): boolean { return dropperActive; }
-
-function startEyedropper(onHover: (hex: string) => void, onPick: (hex: string) => void, onCancel: () => void): void {
-  const overlay = document.createElement('div');
-  overlay.className = 'eyedropper-overlay';
-  const loupe = document.createElement('div');
-  loupe.className = 'eyedropper-loupe';
-  loupe.hidden = true;
-  overlay.appendChild(loupe);
-  document.body.appendChild(overlay);
-  dropperActive = true;
-  let current: string | null = null;
-  const at = (e: PointerEvent) => {
-    const c = sampleColorAt(e.clientX, e.clientY, overlay);
-    loupe.hidden = false;
-    loupe.style.left = `${e.clientX}px`;
-    loupe.style.top = `${e.clientY}px`;
-    if (!c) return;
-    current = c;
-    loupe.style.background = c;
-    onHover(c);
-  };
-  const finish = () => {
-    dropperActive = false;
-    overlay.remove();
-    window.removeEventListener('keydown', onKey, true);
-  };
-  const onKey = (e: KeyboardEvent) => {
-    if (e.key !== 'Escape') return;
-    e.preventDefault(); e.stopPropagation();
-    finish(); onCancel();
-  };
-  overlay.addEventListener('pointermove', at);
-  overlay.addEventListener('pointerdown', e => {
-    e.preventDefault(); e.stopPropagation();
-    if (e.button !== 0) { finish(); onCancel(); return; }
-    at(e);
-    finish();
-    if (current) onPick(current); else onCancel();
-  });
-  overlay.addEventListener('contextmenu', e => e.preventDefault());
-  window.addEventListener('keydown', onKey, true);
 }
 
 /** Собственный пикер: SV-квадрат + радужная полоса + hex; eyedropper — кнопка «Пипетка» справа от превью. */

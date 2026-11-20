@@ -55,6 +55,13 @@ test.describe('панель цвета и толщины', () => {
     await panel.getByRole('button', { name: 'Пипетка' }).click();
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await expect(hex).toHaveValue('#2dc75c');
+    // лупа с пиксельной сеткой; колесо меняет её размер (пружиной — доезжает до цели)
+    const loupe = page.locator('.eyedropper-loupe');
+    await expect(loupe).toBeVisible();
+    await expect(loupe.locator('.eyedropper-hex')).toHaveText('#2dc75c');
+    const w0 = (await loupe.boundingBox())!.width;
+    await page.mouse.wheel(0, -200);
+    await expect.poll(async () => (await loupe.boundingBox())!.width).toBeGreaterThan(w0 + 30);
     await page.keyboard.press('Escape');
     await expect(page.locator('.eyedropper-overlay')).toHaveCount(0);
     await expect(hex).toHaveValue(before);

@@ -5178,12 +5178,28 @@ body.no-ui-anim :is(.chat-lightbox, .clb-img) { animation: none !important; }
 .eyedropper-overlay { position: fixed; inset: 0; z-index: 100000; cursor: crosshair; }
 .eyedropper-loupe {
   position: absolute;
-  width: 28px;
-  height: 28px;
-  margin: -42px 0 0 10px;
+  left: 0;
+  top: 0;
   border-radius: 50%;
-  border: 3px solid #fff;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3), 0 2px 6px rgba(0, 0, 0, 0.25);
   pointer-events: none;
+  will-change: transform;
 }
+.eyedropper-loupe canvas {
+  display: block;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px var(--loupe-color, #fff), 0 0 0 4px rgba(0, 0, 0, 0.25), 0 4px 14px rgba(0, 0, 0, 0.3);
+}
+.eyedropper-hex {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 10px);
+  transform: translateX(-50%);
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: rgba(20, 22, 26, 0.85);
+  color: #fff;
+  font: 600 11px/1.4 ui-monospace, Consolas, monospace;
+  white-space: nowrap;
+}
+.eyedropper-hex:empty { display: none; }
 .eyedropper-loupe[hidden] { display: none; }
