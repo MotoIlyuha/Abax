@@ -16,3 +16,11 @@ relay/.env
 .env.local
 .data/
 dist-server/
+
+# Архивные спецификации и журналы ночной разработки
+/NIGHT_LOG.md
+/NIGHT_LOG_NIGHT[1-5].md
+/SPEC_NIGHT[1-6].md
+/SPEC_CHAT.md
+/SPEC_COMMENTS.md
+/TASKS.md
