@@ -90,7 +90,7 @@ describe('стопка уведомлений («Выкл»: всё сразу)'
     expect(stack().hidden).toBe(true);
     expect(stackCount()).toBe(2);
     expect(notifyShownCount()).toBe(2);
-    expect(btn().getAttribute('aria-label')).toBe('Чат и уведомления: непрочитанных — 2');
+    expect(btn().getAttribute('aria-label')).toBe('Чат, комментарии и уведомления: непрочитанных — 2');
   });
 
   it('наведение раскрывает и держит стопку; уход мыши — через 600 мс в кнопку', () => {

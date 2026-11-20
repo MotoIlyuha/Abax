@@ -1,12 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  NOTIFY_MODE, NOTIFY_OFF_TEXT, NOTIFY_QUIET_TEXT, NOTIFY_TAB_KEY, mountNotifyPanel, notifyTab, revealChatMessage, setNotifyTab,
+  NOTIFY_MODE, NOTIFY_OFF_TEXT, NOTIFY_QUIET_TEXT, NOTIFY_TAB_KEY, mountNotifyPanel, notifyTab, revealChatMessage, revealCommentCard,
+  setNotifyTab,
 } from '../../src/notify-panel';
 import {
   chatOpen, chatReceive, chatReset, setChatAvailable, setChatCanWrite, setChatSender,
 } from '../../src/collab-chat';
 import { clearNotices, doNotDisturb, notices, pushNotice, setDoNotDisturb, unreadCount } from '../../src/notify-center';
-import { state } from '../../src/state';
+import { addElement, blankProject, openProject, state } from '../../src/state';
+import { createCommentThread } from '../../src/comments';
+import type { ShapeEl } from '../../src/types';
 import type { PanelView } from '../../src/panel-types';
 
 const T = Date.now() - 60_000;
@@ -41,7 +44,7 @@ describe('режим «Чат и уведомления»', () => {
     expect(NOTIFY_MODE).toMatchObject({ id: 'notify', label: 'Чат и уведомления' });
     expect(v.actions!.querySelector('.np-dnd')).not.toBeNull();
     expect(v.actions!.querySelector('.np-read-all')!.getAttribute('aria-label')).toBe('Прочитать всё');
-    expect([...host.querySelectorAll('[role="tab"]')].map(t => t.querySelector('.tp-label')!.textContent)).toEqual(['Все', 'Чат', 'Уведомления']);
+    expect([...host.querySelectorAll('[role="tab"]')].map(t => t.querySelector('.tp-label')!.textContent)).toEqual(['Все', 'Чат', 'Комментарии', 'Уведомления']);
   });
 
   it('вкладка запоминается в doska.notifyTab', () => {
@@ -244,4 +247,62 @@ describe('режим «Чат и уведомления»', () => {
     v.show!();
     expect($('#np-view-all [data-id="a"]')!.classList.contains('cf-flash')).toBe(true);
   });
+
+  describe('вкладка «Комментарии»', () => {
+    const rect = (id: string, extra: Partial<ShapeEl> = {}): ShapeEl =>
+      ({ id, type: 'shape', shape: 'rect', x: 0, y: 0, w: 10, h: 10, color: '#000', width: 1, ...extra });
+    beforeEach(() => {
+      openProject(blankProject('Тест'));
+      state.view = 'board';
+      addElement(rect('a', { text: 'Задача' }));
+      addElement(rect('b', { reactions: { '👍': ['u1'] } }));
+      addElement(rect('c'));
+    });
+
+    it('карточки обсуждений и объектов с реакциями; свежее обсуждение выше; поля ввода нет', () => {
+      let page = createCommentThread(state.board, { x: 0, y: 0, targetElementId: 'a', authorId: 'u1', authorName: '<b>Маша</b>', text: 'старое', now: 1000 });
+      page = createCommentThread(page, { x: 5, y: 5, authorId: 'u2', authorName: 'Вова', text: 'без объекта', now: 2000 });
+      state.board.comments = page.comments;
+      setNotifyTab('comments');
+      v.show?.();
+      const cards = [...host.querySelectorAll<HTMLElement>('.cm-card')];
+      expect(cards.map(c => c.querySelector('.cm-label')!.textContent)).toEqual(['Комментарий на доске', 'Фигура «Задача»', 'Фигура']);
+      expect(cards[1].querySelector('.cm-author')!.textContent).toBe('<b>Маша</b>');
+      expect(host.querySelector('.cm-list b')).toBeNull();
+      expect(cards[2].querySelector('.cm-pill')!.textContent).toBe('👍1');
+      expect($('.np-compose')!.hidden).toBe(true);
+    });
+
+    it('пусто — подсказка; уведомление о комментарии — счётчик вкладки и точка на карточке, просмотр — прочитано', () => {
+      openProject(blankProject('Пусто'));
+      state.view = 'board';
+      setNotifyTab('comments');
+      v.show?.();
+      expect($('.cm-empty')!.hidden).toBe(false);
+      expect($('.cm-empty')!.textContent).toContain('Комментариев пока нет');
+      v.hide?.();
+      addElement(rect('a', { text: 'Задача' }));
+      state.board.comments = createCommentThread(state.board, { x: 0, y: 0, targetElementId: 'a', authorId: 'u1', authorName: 'Маша', text: 'т' }).comments;
+      pushNotice({ kind: 'comment', title: 'Маша', body: 'т', ref: { pageId: state.pageId, elId: 'a' } });
+      expect(countOf('comments')).toBe('1');
+      expect(unreadCount('comment')).toBe(1);
+      v.show?.();
+      expect(unreadCount('comment')).toBe(0);
+      expect(host.querySelector('.cm-card.unread .cm-label')!.textContent).toBe('Фигура «Задача»');
+    });
+
+    it('revealCommentCard: вкладка «Комментарии» и подсветка карточки', () => {
+      v.show?.();
+      revealCommentCard({ pageId: state.pageId, elId: 'b' });
+      expect(notifyTab()).toBe('comments');
+      expect(host.querySelector('.cm-card.cm-flash .cm-label')!.textContent).toBe('Фигура');
+    });
+
+    it('«Все»: события комментариев в общей ленте', () => {
+      v.show?.();
+      pushNotice({ kind: 'comment', title: 'Маша', body: 'Фигура: привет', ref: { pageId: state.pageId, elId: 'a' } });
+      expect(host.querySelector('#np-view-all .cf-event .cf-ev-text')!.textContent).toBe('Маша · Фигура: привет');
+    });
+  });
 });
+

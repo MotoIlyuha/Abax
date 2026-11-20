@@ -2753,7 +2753,7 @@ body.link-view #project-icon { pointer-events: none; }
 .cp-msg.grouped { margin-top: 2px; }
 .cp-msg.mine { justify-content: flex-end; }
 .cp-avatar { flex: none; width: 24px; }
-.cp-avatar .cp-ua { width: 24px; height: 24px; font-size: 10px; pointer-events: none; }
+.cp-avatar .cp-ua { --ua-size: 24px; display: block; pointer-events: none; }
 .cp-body { max-width: 82%; min-width: 0; display: flex; flex-direction: column; }
 .cp-msg.mine .cp-body { align-items: flex-end; }
 .cp-meta { display: flex; gap: 6px; align-items: baseline; margin: 0 6px 2px; font-size: 11px; }
@@ -5042,6 +5042,48 @@ body.no-ui-anim .ss-badge.on { animation: none; }
 }
 .tp-count.on { max-width: 40px; min-width: 16px; margin-left: 6px; padding: 0 5px; opacity: 1; transform: none; }
 .tp-count .roll { height: 16px; line-height: 16px; }
+/* четыре вкладки ЧКУ в ширину панели: поуже, подписи сжимаются раньше, чем вкладки вылезут за край */
+.np-tabs .tp-tab { min-width: 0; padding: 0 8px; font-size: 12.5px; }
+.np-tabs .tp-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.np-tabs .tp-count.on { margin-left: 4px; }
+
+/* Вкладка «Комментарии» (src/comments-panel.ts) */
+.cm { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.cm-frame { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.cm-frame[hidden], .cm-empty[hidden] { display: none; }
+.cm-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 8px; padding: 2px 12px 14px; }
+.cm-page { margin-top: 4px; }
+.cm-card { position: relative; flex: none; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 14px; background: var(--panel); box-shadow: 0 0 0 1px var(--border); transition: box-shadow .2s ease, background .2s ease; }
+.cm-card.resolved { background: var(--surface-sunken); }
+.cm-card.resolved :is(.cm-msgs, .cm-reactions) { opacity: .7; }
+.cm-card.cm-flash { animation: cm-flash 1.6s ease both; }
+@keyframes cm-flash { 0%, 40% { box-shadow: 0 0 0 2px var(--accent), 0 0 0 6px var(--accent-soft); } 100% { box-shadow: 0 0 0 1px var(--border); } }
+body.no-ui-anim .cm-card.cm-flash { animation: none; box-shadow: 0 0 0 2px var(--accent); }
+.cm-card .np-dot { position: absolute; top: 14px; right: 44px; }
+.cm-head { display: flex; align-items: flex-start; gap: 8px; }
+.cm-titles { flex: 1; min-width: 0; }
+.cm-label { font-size: 13px; font-weight: 700; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm-meta { margin-top: 1px; font-size: 11.5px; color: var(--muted); }
+.cm-go { flex: none; width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 8px; background: var(--surface-sunken); color: var(--fg-secondary); cursor: pointer; }
+.cm-go svg { width: 16px; height: 16px; }
+.cm-go:hover { background: var(--accent-soft); color: var(--accent); }
+.cm-reactions { display: flex; flex-wrap: wrap; gap: 4px; }
+.cm-pill { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px 0 6px; border-radius: 11px; background: var(--an-bg); color: var(--an-fg); font-size: 11.5px; font-weight: 700; }
+.cm-pill-emoji { font-size: 13px; line-height: 1; }
+.cm-msgs { display: flex; flex-direction: column; gap: 8px; }
+.cm-more { align-self: flex-start; padding: 0; border: 0; background: none; color: var(--accent); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.cm-more:hover { text-decoration: underline; }
+.cm-msg { display: flex; align-items: flex-start; gap: 8px; }
+.cm-msg .cm-ua { --ua-size: 22px; flex: none; pointer-events: none; }
+.cm-msg-main { flex: 1; min-width: 0; }
+.cm-msg-meta { display: flex; align-items: baseline; gap: 6px; font-size: 11.5px; }
+.cm-author { font-weight: 700; }
+.cm-time { color: var(--muted); font-variant-numeric: tabular-nums; }
+.cm-text { font-size: 13px; line-height: 1.38; color: var(--fg); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.cm-foot { display: flex; }
+.cm-reply { height: 28px; padding: 0 12px; border: 0; border-radius: 8px; background: var(--accent-soft); color: var(--accent); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.cm-reply:hover { background: var(--accent); color: var(--fg-inverse); }
+.cm-empty .np-empty-icon svg { width: 22px; height: 22px; }
 body.no-ui-anim :is(.tp-tab, .tp-count, .tp-pill) { transition: none; }
 @media (prefers-reduced-motion: reduce) { :is(.tp-tab, .tp-count, .tp-pill) { transition: none; } }
 

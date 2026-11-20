@@ -101,6 +101,11 @@ export function insertBoardCopy(att: Pick<ChatBoardAtt, 'elements'>): boolean {
   return true;
 }
 
+/** Перейти на страницу проекта (с переходом и проверкой прав, как в приложении); true — уже на ней. */
+export async function goToBoardPage(pageId: string): Promise<boolean> {
+  return state.pageId === pageId || (await actions?.goToPage(pageId)) === true;
+}
+
 /** «Показать»: страница, кадр по объектам, что ещё есть, и вспышка; false — объектов уже нет. */
 export async function showBoardObjects(att: Pick<ChatBoardAtt, 'pageId' | 'ids'>): Promise<boolean> {
   const onPage = state.pageId === att.pageId || (await actions?.goToPage(att.pageId)) === true;

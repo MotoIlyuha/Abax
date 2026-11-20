@@ -1,4 +1,4 @@
-import type { Element, FadeStroke, GridMode, Page, PageRight, Project, ProjectMeta, Pt } from './types';
+import type { CommentThread, Element, FadeStroke, GridMode, Page, PageRight, Project, ProjectMeta, Pt } from './types';
 import { roleLabel, type AccessRole, type ParticipantCaps } from './access';
 import { state, openProject, setSelection, setCopyGuard, setTouchGuard, isDraftId, onDraft, onChange, touchProject, update } from './state';
 import { MAX_PATCH_OPS, applyBoardPatch, diffElements, isBoardPatch, type BoardPatch } from './delta';
@@ -65,6 +65,15 @@ export interface CollabUser {
   /** Роль, откуда доступ и личные права страниц (pageId → право) — приходит только автору (SPEC_NIGHT6 §3.2). */
   access?: { role: AccessRole | 'owner'; source: 'owner' | 'link' | 'alias' | 'email' | 'p2p'; inviteId?: string; personal?: Record<string, PageRight> };
 }
+
+/**
+ * Событие на document: от комнаты пришли комментарии страницы или правка её элементов (до применения у себя) —
+ * src/note-notices.ts ищет в них новые чужие сообщения и реакции (SPEC_COMMENTS §6).
+ */
+export const NOTES_EVENT = 'doska:collab-notes';
+export type CollabNotesDetail =
+  | { pageId: string; kind: 'comments'; prev: CommentThread[] | undefined; next: CommentThread[] }
+  | { pageId: string; kind: 'elements'; ids: string[]; prev: readonly Element[]; next: readonly Element[] };
 
 /** Событие на document: участник привлёк внимание к объекту реакцией (SPEC_COMMENTS §5). */
 export const ATTENTION_EVENT = 'doska:collab-attention';
@@ -712,6 +721,14 @@ function applyIncomingPatch(p: BoardPatch): void {
   if (!page) return;
   const next = applyBoardPatch(page, p);
   const same = next.elements === page.elements && next.grid === page.grid && next.backgroundColor === page.backgroundColor && next.coordLabels === page.coordLabels;
+  // новые реакции участников — уведомлениям (src/note-notices.ts): сравниваются только присланные элементы
+  if (next.elements !== page.elements) {
+    const ids = p.ops.flatMap(o => (o.op === 'put' ? [o.el.id] : []));
+    if (ids.length) {
+      const detail: CollabNotesDetail = { pageId: page.id, kind: 'elements', ids, prev: page.elements, next: next.elements };
+      document.dispatchEvent(new CustomEvent<CollabNotesDetail>(NOTES_EVENT, { detail }));
+    }
+  }
   if (!same) {
     page.elements = next.elements;
     page.grid = next.grid;
@@ -999,6 +1016,9 @@ function applyIncomingComments(pageId: unknown, raw: unknown): void {
   const page = state.project.pages.find(pg => pg.id === pageId);
   if (!page) return;
   const list = sanitizeComments(raw);
+  const prev = page.comments;
+  const detail: CollabNotesDetail = { pageId: page.id, kind: 'comments', prev, next: list };
+  document.dispatchEvent(new CustomEvent<CollabNotesDetail>(NOTES_EVENT, { detail }));
   if (list.length > 0) page.comments = list;
   else delete page.comments;
   if (sentStructure) {

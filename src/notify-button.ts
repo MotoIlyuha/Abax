@@ -1,4 +1,4 @@
-// Кнопка «Чат и уведомления» (ЧУ, SPEC_CHAT §3): #btn-notify в шапке — крайняя справа, видна всегда.
+// Кнопка «Чат, комментарии и уведомления» (ЧКУ, SPEC_CHAT §3, SPEC_COMMENTS §6): #btn-notify в шапке — крайняя справа, видна всегда.
 // Счётчик — непрочитанные центра уведомлений (src/notify-center.ts), кроме тех, что ещё видны в стопке
 // и не «долетели» до кнопки (их стопка сообщает через setNotifyPending): число меняется, когда карточки
 // уходят в кнопку. «Не беспокоить» — счётчик серый, у кнопки маленький полумесяц.
@@ -19,7 +19,7 @@ import { menuMotion } from './menu-motion';
 import { doNotDisturb, formatUnread, notices, onNotices } from './notify-center';
 import { onSidePanel, sidePanelMode, sidePanelOpen, toggleSidePanel } from './side-panel';
 
-export const NOTIFY_LABEL = 'Чат и уведомления';
+export const NOTIFY_LABEL = 'Чат, комментарии и уведомления';
 export const NOTIFY_DND_HINT = 'Не беспокоить включено';
 
 /** Подпись кнопки (aria-label и подсказка) для числа непрочитанных. */

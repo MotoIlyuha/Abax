@@ -188,9 +188,9 @@ export const COMMENT_ICON = svg('<path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 
 /** Только уведомления: колокольчик (вкладка «Уведомления»). */
 export const BELL_ICON = svg('<path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>');
 
-/** Иконка ЧУ по вкладке: «Чат» — пузырь, «Уведомления» — колокольчик, «Все» — колокольчик с пузырём. */
+/** Иконка ЧКУ по вкладке: «Чат» — пузырь, «Комментарии» — пузырь со строками, «Уведомления» — колокольчик, «Все» — колокольчик с пузырём. */
 export function notifyTabIcon(tab: string): string {
-  return tab === 'chat' ? CHAT_ICON : tab === 'notices' ? BELL_ICON : NOTIFY_ICON;
+  return tab === 'chat' ? CHAT_ICON : tab === 'comments' ? COMMENT_ICON : tab === 'notices' ? BELL_ICON : NOTIFY_ICON;
 }
 
 /** «Не беспокоить»: залитый полумесяц (значок у кнопки ЧУ). */

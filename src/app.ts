@@ -94,6 +94,7 @@ import { initTaskOverlay, isTeacher } from './task-overlay';
 import { initCommentsUi } from './comments-ui';
 import { initAnnotLayer } from './annot-layer';
 import { initAttention } from './attention';
+import { initNoteNotices } from './note-notices';
 import { openTaskDialog, taskDialogOpen, type TaskFormValues } from './task-dialog';
 import { TASK_H, TASK_W, createTaskElement } from './task-element';
 import { createToggleSwitch } from './toggle-switch';
@@ -5811,6 +5812,7 @@ export function initApp(c: HTMLCanvasElement): void {
   initCommentsUi();
   initAnnotLayer();
   initAttention();
+  initNoteNotices();
   restoreCamera();
   restoreStyle();
   restoreSettings();

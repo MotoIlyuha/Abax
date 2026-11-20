@@ -605,7 +605,7 @@ function activate(c: Card): void {
   const n = c.n;
   dismiss(c, 'fade');
   if (n.onClick) { n.onClick(); return; }
-  setNotifyTab(n.kind === 'chat' ? 'chat' : 'notices');
+  setNotifyTab(n.kind === 'chat' ? 'chat' : n.kind === 'comment' ? 'comments' : 'notices');
   openSidePanel('notify');
   if (n.kind === 'chat' && n.chatId) revealChatMessage(n.chatId);
 }

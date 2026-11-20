@@ -1,16 +1,21 @@
-// Режим «Чат и уведомления» правой боковой панели (SPEC_CHAT §6). Каркас панели (src/side-panel.ts) монтирует вид
-// в свой контейнер и показывает/скрывает его; действия режима («Не беспокоить», «Прочитать всё») — в шапке панели.
-//  • Под шапкой — вкладки Tab pill (src/tab-pill.ts): «Все», «Чат», «Уведомления»; у «Чат» и «Уведомления» —
+// Режим «Чат, комментарии и уведомления» (ЧКУ) правой боковой панели (SPEC_CHAT §6, SPEC_COMMENTS §6). Каркас панели
+// (src/side-panel.ts) монтирует вид в свой контейнер и показывает/скрывает его; действия режима («Не беспокоить»,
+// «Прочитать всё») — в шапке панели. В переключателе режимов — два пункта: «Чат и уведомления» (вкладка «Все») и
+// «Комментарии» (вкладка «Комментарии»).
+//  • Под шапкой — вкладки Tab pill (src/tab-pill.ts): «Все», «Чат», «Комментарии», «Уведомления»; у трёх последних —
 //    число непрочитанных. Вкладка запоминается в localStorage['doska.notifyTab'].
-//  • «Все» — лента сообщений и системных событий по времени, «Чат» — только сообщения (src/chat-feed.ts); у обеих
-//    внизу поле ввода (src/chat-composer.ts). «Уведомления» — карточки системных событий (src/notice-card.ts) по дням.
-//  • Правила прочтения: пока вид показан, вкладка «Все» помечает прочитанным всё, «Чат» — чат, «Уведомления» —
-//    системные. Линия «Новые» — над первым непрочитанным на момент открытия вкладки.
+//  • «Все» — лента сообщений, событий комментариев и системных событий по времени, «Чат» — только сообщения
+//    (src/chat-feed.ts); у обеих внизу поле ввода (src/chat-composer.ts). «Комментарии» — карточки обсуждений
+//    объектов (src/comments-panel.ts). «Уведомления» — карточки системных событий (src/notice-card.ts) по дням.
+//  • Правила прочтения: пока вид показан, вкладка «Все» помечает прочитанным всё, «Чат» — чат, «Комментарии» —
+//    комментарии и реакции, «Уведомления» — системные. Линия «Новые» — над первым непрочитанным на момент открытия.
 //  • Без совместной работы — «Чат появится, когда к доске подключатся участники» и «Поделиться» (только у автора);
 //    читатель — «Читатели не пишут в чат», поля нет.
 // Имена и тексты участников — только textContent; SVG — константы кода.
 
-import { NOTIFY_ICON, NOTICE_ICONS, notifyTabIcon } from './icons';
+import { COMMENT_ICON, NOTIFY_ICON, NOTICE_ICONS, notifyTabIcon } from './icons';
+import { cardKeyOf, createCommentsView, type CommentsView } from './comments-panel';
+import { onChange } from './state';
 import { setPanelTabIcon } from './side-panel';
 import {
   clearNotices, doNotDisturb, markNoticeRead, markRead, notices, onNotices, setDoNotDisturb, unreadCount, type Notice,
@@ -30,9 +35,11 @@ import { state } from './state';
 import type { PanelModeDef, PanelView } from './panel-types';
 
 export const NOTIFY_MODE: Omit<PanelModeDef, 'mount'> = { id: 'notify', label: 'Чат и уведомления', icon: NOTIFY_ICON };
+/** Пункт «Комментарии» переключателя режимов: тот же режим ЧКУ на вкладке «Комментарии». */
+export const COMMENTS_ENTRY = { label: 'Комментарии', icon: COMMENT_ICON };
 
-/** Вкладки режима ЧУ. */
-export type NotifyTab = 'all' | 'chat' | 'notices';
+/** Вкладки режима ЧКУ. */
+export type NotifyTab = 'all' | 'chat' | 'comments' | 'notices';
 
 /** Ключ запомненной вкладки (режим панели каркас хранит отдельно — в doska.sidePanel). */
 export const NOTIFY_TAB_KEY = 'doska.notifyTab';
@@ -44,6 +51,7 @@ export const DND_TITLE_ON = 'Не беспокоить включено — ув
 const TABS: readonly { value: NotifyTab; label: string }[] = [
   { value: 'all', label: 'Все' },
   { value: 'chat', label: 'Чат' },
+  { value: 'comments', label: 'Комментарии' },
   { value: 'notices', label: 'Уведомления' },
 ];
 
@@ -52,7 +60,7 @@ const MOON_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" st
 /** «Прочитать всё»: двойная галочка. */
 const READ_ALL_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 12.5l4.5 4.5L17 7"/><path d="M12 16.5l.5.5L22 7.5"/></svg>';
 
-const isTab = (v: unknown): v is NotifyTab => v === 'all' || v === 'chat' || v === 'notices';
+const isTab = (v: unknown): v is NotifyTab => v === 'all' || v === 'chat' || v === 'comments' || v === 'notices';
 
 function loadTab(): NotifyTab {
   try {
@@ -74,7 +82,9 @@ interface View {
   pill: TabPill;
   openTab(): void;
   reveal(id: string): boolean;
+  revealCard(key: string): boolean;
 }
+let pendingCard: string | null = null;
 let view: View | null = null;
 let unsubs: (() => void)[] = [];
 
@@ -98,18 +108,26 @@ export function setNotifyTab(next: NotifyTab): void {
 
 /** Перейти к сообщению чата: вкладка, где оно видно, прокрутка к нему и мягкая подсветка. */
 export function revealChatMessage(id: string): void {
-  if (tab === 'notices') setNotifyTab('chat');
+  if (tab !== 'all' && tab !== 'chat') setNotifyTab('chat');
   if (view && shown) {
     if (!view.reveal(id)) pendingReveal = null;
   } else pendingReveal = id;
 }
 
+/** Перейти к обсуждению объекта: вкладка «Комментарии», прокрутка к карточке и подсветка. */
+export function revealCommentCard(ref: { pageId: string; elId?: string; threadId?: string }): void {
+  const key = cardKeyOf(ref);
+  setNotifyTab('comments');
+  if (view && shown) view.revealCard(key);
+  else pendingCard = key;
+}
+
 /** Пометить прочитанным то, что видно на вкладке, и сообщить чату, видна ли его лента. */
 function markShown(): void {
-  setChatVisible(shown && tab !== 'notices');
+  setChatVisible(shown && (tab === 'all' || tab === 'chat'));
   if (!shown) return;
   if (tab === 'all') markRead();
-  else markRead(tab === 'chat' ? 'chat' : 'system');
+  else markRead(tab === 'chat' ? 'chat' : tab === 'comments' ? 'comment' : 'system');
 }
 
 // ----- Данные лент -----
@@ -122,10 +140,15 @@ function systemNotices(): Notice[] {
   return notices().filter(n => n.kind === 'system');
 }
 
-/** «Все»: сообщения и системные события по времени (при равном времени — сообщения раньше). */
+/** События ленты «Все»: системные, комментарии и реакции. */
+function feedNotices(): Notice[] {
+  return notices().filter(n => n.kind !== 'chat');
+}
+
+/** «Все»: сообщения, события комментариев и системные события по времени (при равном времени — сообщения раньше). */
 function allItems(): FeedItem[] {
   const out: FeedItem[] = chatItems();
-  for (const n of systemNotices()) out.push({ kind: 'event', id: n.id, ts: n.ts, n });
+  for (const n of feedNotices()) out.push({ kind: 'event', id: n.id, ts: n.ts, n });
   return out.sort((a, b) => a.ts - b.ts);
 }
 
@@ -247,6 +270,17 @@ export function mountNotifyPanel(host: HTMLElement): PanelView {
   }
   panels.all.append(feeds.all.el);
   panels.chat.append(feeds.chat.el);
+  const comments: CommentsView = createCommentsView();
+  panels.comments.append(comments.el);
+  unsubs.push(() => comments.dispose());
+  /** Карточки с непрочитанным на момент открытия вкладки и пришедшим при ней. */
+  const freshCards = new Set<string>();
+  const unreadCards = (): Set<string> => {
+    const out = new Set(freshCards);
+    for (const n of notices()) if (n.kind === 'comment' && !n.read && n.ref) out.add(cardKeyOf(n.ref));
+    return out;
+  };
+  unsubs.push(onChange(() => { if (shown && tab === 'comments') comments.render(); }));
 
   // «Уведомления»: строка с «Очистить», карточки по дням, пустое состояние
   const noticesBar = el('div', 'np-notices-bar');
@@ -311,6 +345,7 @@ export function mountNotifyPanel(host: HTMLElement): PanelView {
 
   const renderCounts = () => {
     pill.setCount('chat', unreadCount('chat'));
+    pill.setCount('comments', unreadCount('comment'));
     pill.setCount('notices', unreadCount('system'));
     readAll.disabled = unreadCount() === 0;
   };
@@ -319,10 +354,10 @@ export function mountNotifyPanel(host: HTMLElement): PanelView {
   const renderCompose = () => {
     composeSlot.textContent = '';
     composeSlot.hidden = true;
-    if (tab === 'notices') return;
+    if (tab === 'notices' || tab === 'comments') return;
     if (!chatAvailable()) {
       // в «Все» с событиями лента не пуста — заметка о чате внизу вместо поля
-      if (tab === 'all' && systemNotices().length) {
+      if (tab === 'all' && feedNotices().length) {
         composeSlot.append(offState(true));
         composeSlot.hidden = false;
       }
@@ -389,6 +424,16 @@ export function mountNotifyPanel(host: HTMLElement): PanelView {
       fresh.clear();
       for (const n of systemNotices()) if (!n.read) fresh.add(n.id);
       renderNotices();
+    } else if (tab === 'comments') {
+      freshCards.clear();
+      for (const k of unreadCards()) freshCards.add(k);
+      comments.setUnread(freshCards);
+      comments.render();
+      if (pendingCard) {
+        const key = pendingCard;
+        pendingCard = null;
+        comments.reveal(key);
+      }
     } else {
       const feed = feeds[tab];
       feed.render(firstUnread(tab === 'all' ? allItems() : chatItems()));
@@ -404,7 +449,8 @@ export function mountNotifyPanel(host: HTMLElement): PanelView {
   const v: View = {
     pill,
     openTab,
-    reveal: id => (tab === 'notices' ? false : feeds[tab].reveal(id)),
+    reveal: id => (tab === 'all' || tab === 'chat' ? feeds[tab].reveal(id) : false),
+    revealCard: key => comments.reveal(key),
   };
   view = v;
 
@@ -413,16 +459,19 @@ export function mountNotifyPanel(host: HTMLElement): PanelView {
     renderCounts();
     if (!shown) return;
     const system = ev.type === 'push' ? ev.notice.kind === 'system' : true;
+    const note = ev.type === 'push' ? ev.notice.kind === 'comment' : true;
     if (tab === 'notices') {
       if (ev.type === 'push' && system && !ev.notice.read) fresh.add(ev.notice.id);
       if (system) renderNotices();
-    }
-    else if (tab === 'all' && system && ev.type !== 'read') { feeds.all.refresh(); renderCompose(); }
+    } else if (tab === 'comments') {
+      if (ev.type === 'push' && note && ev.notice.ref && !ev.notice.read) freshCards.add(cardKeyOf(ev.notice.ref));
+      comments.setUnread(new Set(freshCards));
+    } else if (tab === 'all' && (system || note) && ev.type !== 'read') { feeds.all.refresh(); renderCompose(); }
     if (ev.type === 'push') markShown();
   }));
   unsubs.push(onChat(ev => {
     if (ev.type === 'state') { renderEmpties(); renderCompose(); }
-    if (!shown || tab === 'notices') return;
+    if (!shown || (tab !== 'all' && tab !== 'chat')) return;
     if (ev.type === 'message') feeds[tab].refresh();
     else feeds[tab].render(null);
   }));
@@ -444,7 +493,7 @@ export function mountNotifyPanel(host: HTMLElement): PanelView {
       markShown();
     },
     focus() {
-      if (tab !== 'notices' && composer.el.isConnected && !composeSlot.hidden) composer.focus();
+      if ((tab === 'all' || tab === 'chat') && composer.el.isConnected && !composeSlot.hidden) composer.focus();
       else pill.tab(tab)?.focus();
     },
   };

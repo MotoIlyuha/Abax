@@ -25,8 +25,8 @@ describe('кнопка «Чат и уведомления»', () => {
 
   it('иконка — константа каталога, подпись без непрочитанных', () => {
     expect(btn().querySelector('svg')).not.toBeNull();
-    expect(btn().getAttribute('aria-label')).toBe('Чат и уведомления');
-    expect(btn().title).toBe('Чат и уведомления');
+    expect(btn().getAttribute('aria-label')).toBe('Чат, комментарии и уведомления');
+    expect(btn().title).toBe('Чат, комментарии и уведомления');
     expect(btn().getAttribute('aria-expanded')).toBe('false');
     expect(badge().classList.contains('on')).toBe(false);
     expect(badge().getAttribute('aria-hidden')).toBe('true');
@@ -39,17 +39,17 @@ describe('кнопка «Чат и уведомления»', () => {
     expect(badge().classList.contains('on')).toBe(true);
     expect(badgeText()).toBe('2');
     expect(notifyShownCount()).toBe(2);
-    expect(btn().getAttribute('aria-label')).toBe('Чат и уведомления: непрочитанных — 2');
-    expect(btn().title).toBe('Чат и уведомления: непрочитанных — 2');
+    expect(btn().getAttribute('aria-label')).toBe('Чат, комментарии и уведомления: непрочитанных — 2');
+    expect(btn().title).toBe('Чат, комментарии и уведомления: непрочитанных — 2');
   });
 
   it('99+ и исчезновение при нуле', () => {
     for (let i = 0; i < 120; i++) pushNotice({ title: `№${i}` });
     expect(badgeText()).toBe('99+');
-    expect(btn().getAttribute('aria-label')).toBe('Чат и уведомления: непрочитанных — 99+');
+    expect(btn().getAttribute('aria-label')).toBe('Чат, комментарии и уведомления: непрочитанных — 99+');
     clearNotices();
     expect(badge().classList.contains('on')).toBe(false);
-    expect(btn().getAttribute('aria-label')).toBe('Чат и уведомления');
+    expect(btn().getAttribute('aria-label')).toBe('Чат, комментарии и уведомления');
   });
 
   it('«не беспокоить»: серый счётчик, полумесяц и подсказка', () => {
@@ -57,10 +57,10 @@ describe('кнопка «Чат и уведомления»', () => {
     setDoNotDisturb(true);
     expect(btn().classList.contains('dnd')).toBe(true);
     expect(btn().querySelector('.nb-moon svg')).not.toBeNull();
-    expect(btn().title).toBe('Чат и уведомления: непрочитанных — 1 · Не беспокоить включено');
+    expect(btn().title).toBe('Чат, комментарии и уведомления: непрочитанных — 1 · Не беспокоить включено');
     setDoNotDisturb(false);
     expect(btn().classList.contains('dnd')).toBe(false);
-    expect(notifyLabel(0, true)).toBe('Чат и уведомления · Не беспокоить включено');
+    expect(notifyLabel(0, true)).toBe('Чат, комментарии и уведомления · Не беспокоить включено');
   });
 
   it('то, что ещё летит в кнопку из стопки, не считается, пока не долетит', () => {

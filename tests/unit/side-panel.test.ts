@@ -3,7 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   SIDE_PANEL_KEY, SIDE_PANEL_SHIFT, closeSidePanel, onSidePanel, openSidePanel, registerPanelMode, resetSidePanelForTests,
-  setSidePanelPref, sidePanelElements, sidePanelMode, sidePanelOpen, sidePanelPref, toggleSidePanel,
+  setPanelEntries, setSidePanelPref, sidePanelElements, sidePanelMode, sidePanelOpen, sidePanelPref, syncPanelSelect, toggleSidePanel,
 } from '../../src/side-panel';
 import { initNotifyButton } from '../../src/notify-button';
 import { claimMenu, releaseMenu } from '../../src/menu-motion';
@@ -191,6 +191,28 @@ describe('боковая панель («Выкл»)', () => {
     menu.querySelector<HTMLElement>('[data-value="help"]')!.click();
     expect(sidePanelMode()).toBe('help');
     expect(trigger().querySelector('.roll-icon .ic-help')).not.toBeNull();
+  });
+
+  it('пункты режима: «Чат и уведомления» и «Комментарии» открывают один режим; выбранный — по активному пункту', () => {
+    let tab = 'all';
+    const opened: string[] = [];
+    setPanelEntries('notify', [
+      { value: 'notify', label: 'Чат и уведомления', icon: '<svg class="ic-n"></svg>', active: () => tab !== 'comments', open: () => { tab = 'all'; opened.push('all'); openSidePanel('notify'); } },
+      { value: 'comments', label: 'Комментарии', icon: '<svg class="ic-c"></svg>', badge: () => '5', active: () => tab === 'comments', open: () => { tab = 'comments'; opened.push('comments'); openSidePanel('notify'); } },
+    ]);
+    openSidePanel('history');
+    trigger().click();
+    const menu = document.querySelector<HTMLElement>('.ss-menu')!;
+    expect([...menu.querySelectorAll('[role="option"]')].map(o => o.getAttribute('data-value'))).toEqual(['notify', 'comments', 'history', 'help']);
+    expect(menu.querySelector('[data-value="comments"] .ss-opt-badge')!.textContent).toBe('5');
+    menu.querySelector<HTMLElement>('[data-value="comments"]')!.click();
+    expect(opened).toEqual(['comments']);
+    expect(sidePanelMode()).toBe('notify');
+    expect(sidePanelElements().select.value).toBe('comments');
+    // вкладку сменили внутри режима — переключатель следует за ней
+    tab = 'chat';
+    syncPanelSelect();
+    expect(sidePanelElements().select.value).toBe('notify');
   });
 
   it('счётчик ЧУ: в строке переключателя и на кнопке, когда выбран другой режим; обновляется по центру уведомлений', () => {
