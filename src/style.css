@@ -2728,30 +2728,172 @@ body.link-view #project-icon { pointer-events: none; }
 .td-save:hover { background: var(--accent-strong); color: var(--fg-inverse); }
 
 /* ---- реакции и комментарии ---- */
-.qm-reactions { display: flex; align-items: center; gap: 1px; padding: 0 2px; }
-.qm-react { font-size: 15px; line-height: 1; }
-.qm-react.active { background: var(--accent-soft); }
-.qm-comment { font-size: 15px; line-height: 1; }
+/* ----- Панель обсуждения объекта (src/comments-ui.ts, SPEC_COMMENTS §3) ----- */
 .comment-pop {
-  position: absolute; z-index: 20; width: 280px; box-sizing: border-box; padding: 10px 12px; pointer-events: auto;
-  border: 1px solid var(--border); border-radius: 12px; background: var(--panel); box-shadow: var(--shadow); font-size: 13px;
+  position: fixed; z-index: 85; width: 340px; max-width: calc(100vw - 16px); max-height: min(520px, calc(100vh - 16px));
+  display: flex; flex-direction: column; box-sizing: border-box; pointer-events: auto;
+  border: 1px solid var(--border); border-radius: 16px; background: var(--panel); box-shadow: var(--shadow-card); font-size: 13px; color: var(--fg);
 }
-.comment-pop.resolved { background: var(--surface-sunken); }
-.cp-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
-.cp-title { font-weight: 700; }
-.cp-close { border: 0; background: none; font-size: 20px; line-height: 1; color: var(--muted); cursor: pointer; }
-.cp-list { max-height: 200px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; margin-bottom: 8px; user-select: text; }
+.comment-pop[hidden] { display: none; }
+.cp-head { display: flex; align-items: center; gap: 4px; padding: 10px 8px 8px 14px; border-bottom: 1px solid var(--border); }
+.comment-pop.empty .cp-head { border-bottom: 0; padding-bottom: 2px; }
+.cp-titles { flex: 1; min-width: 0; }
+.cp-title { font-weight: 700; font-size: 14px; }
+.cp-sub { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cp-icon { flex: none; width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; }
+.cp-icon[hidden] { display: none; }
+.cp-icon svg { width: 18px; height: 18px; }
+.cp-icon:hover { background: var(--surface-sunken); color: var(--fg); }
+.cp-resolve.on { color: #2b8a3e; }
+.cp-resolve.on svg circle { fill: #d3f9d8; }
+.cp-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; padding: 10px 12px 4px; scrollbar-width: thin; user-select: text; }
 .cp-list:empty { display: none; }
-.cp-meta { display: flex; gap: 8px; align-items: baseline; font-size: 12px; }
+.cp-msg { display: flex; align-items: flex-end; gap: 6px; margin-top: 10px; }
+.cp-msg:first-child { margin-top: 0; }
+.cp-msg.grouped { margin-top: 2px; }
+.cp-msg.mine { justify-content: flex-end; }
+.cp-avatar { flex: none; width: 24px; }
+.cp-avatar .cp-ua { --ua-size: 24px; display: block; pointer-events: none; }
+.cp-body { max-width: 82%; min-width: 0; display: flex; flex-direction: column; }
+.cp-msg.mine .cp-body { align-items: flex-end; }
+.cp-meta { display: flex; gap: 6px; align-items: baseline; margin: 0 6px 2px; font-size: 11px; }
 .cp-author { font-weight: 700; }
 .cp-time { color: var(--muted); }
-.cp-text { white-space: pre-wrap; overflow-wrap: anywhere; }
-.cp-input { width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; font: inherit; resize: vertical; }
-.cp-input:focus { outline: none; border-color: var(--accent); }
-.cp-actions { display: flex; gap: 6px; margin-top: 6px; }
-.cp-send, .cp-resolve { padding: 4px 11px; border: 1px solid var(--border); border-radius: 99px; background: var(--panel); font: inherit; cursor: pointer; }
-.cp-send { border-color: var(--accent); background: var(--accent); color: var(--fg-inverse); font-weight: 600; }
-.cp-resolve:hover { border-color: var(--accent); color: var(--accent); }
+.cp-text { padding: 7px 11px; border-radius: 15px; background: var(--surface-sunken); white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.38; }
+.cp-msg:not(.mine) .cp-text { border-bottom-left-radius: 6px; }
+.cp-msg.mine .cp-text { background: var(--accent); color: var(--fg-inverse); border-bottom-right-radius: 6px; }
+.cp-msg.mine .cp-text a { color: inherit; }
+.cp-text.emoji { padding: 0 2px; background: transparent !important; font-size: 28px; line-height: 1.15; }
+.cp-msg.resolved .cp-text { opacity: .72; }
+.cp-msg.cp-new { animation: cp-in .32s cubic-bezier(.34, 1.4, .64, 1) both; }
+@keyframes cp-in { from { opacity: 0; transform: translateY(8px) scale(.96); } to { opacity: 1; transform: none; } }
+body.no-motion .cp-msg.cp-new { animation: cp-fade .18s ease both; }
+@keyframes cp-fade { from { opacity: 0; } to { opacity: 1; } }
+body.no-ui-anim .cp-msg.cp-new { animation: none; }
+@media (prefers-reduced-motion: reduce) { .cp-msg.cp-new { animation: none; } }
+.cp-banner { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 6px 12px 0; padding: 6px 10px; border-radius: 10px; background: #ebfbee; color: #2b8a3e; font-size: 12px; font-weight: 600; }
+.cp-banner[hidden] { display: none; }
+.cp-banner-btn { border: 0; background: none; color: var(--accent); font: inherit; cursor: pointer; padding: 0; }
+.cp-banner-btn:hover { text-decoration: underline; }
+.cp-foot { padding: 8px 10px 10px; }
+.cp-readonly { padding: 6px 4px 2px; color: var(--muted); font-size: 12px; text-align: center; }
+.an-comment.open:not(.an-counter) { box-shadow: 0 0 0 3px var(--accent-soft); }
+/* ----- Плашки объектов: реакции и комментарии (src/annot-layer.ts, SPEC_COMMENTS §1–4) ----- */
+#annot-layer { position: absolute; inset: 0; pointer-events: none; z-index: 8; overflow: hidden; }
+.an-row {
+  position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 4px; height: 26px;
+  pointer-events: none; will-change: transform; white-space: nowrap;
+}
+.an-row.selected { z-index: 2; }
+.an-pills { display: flex; align-items: center; gap: 4px; }
+.an-row button { pointer-events: auto; font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.an-pill {
+  position: relative; display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 9px 0 7px;
+  border: 0; border-radius: 13px; background: var(--an-bg, var(--accent)); color: var(--an-fg, #fff);
+  font-size: 12px; font-weight: 700; line-height: 1; box-shadow: 0 1px 2px rgba(16, 24, 40, .18), 0 2px 8px rgba(16, 24, 40, .12);
+  overflow: hidden; touch-action: manipulation; user-select: none; -webkit-user-select: none;
+  transition: transform .18s cubic-bezier(.34, 1.56, .64, 1), box-shadow .15s ease;
+}
+.an-pill:hover { transform: translateY(-1px) scale(1.06); box-shadow: 0 2px 4px rgba(16, 24, 40, .2), 0 6px 14px rgba(16, 24, 40, .16); }
+.an-pill:active { transform: scale(.94); }
+.an-pill:focus-visible, .an-more:focus-visible, .an-comment:focus-visible, .an-btn:focus-visible, .an-recent-btn:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+.an-emoji { font-size: 15px; line-height: 1; }
+.an-num { min-width: 7px; text-align: center; font-variant-numeric: tabular-nums; transition: opacity .12s ease, transform .12s ease; }
+/* своя реакция: при наведении вместо счётчика — крестик */
+.an-x {
+  position: absolute; right: 4px; top: 50%; width: 18px; height: 18px; margin-top: -9px; border-radius: 9px;
+  display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 600;
+  background: rgba(0, 0, 0, .16); opacity: 0; transform: scale(.6); transition: opacity .12s ease, transform .15s cubic-bezier(.34, 1.56, .64, 1);
+}
+.an-pill.mine:hover .an-num, .an-pill.mine:focus-visible .an-num { opacity: 0; transform: scale(.6); }
+.an-pill.mine:hover .an-x, .an-pill.mine:focus-visible .an-x { opacity: 1; transform: none; }
+.an-x:hover { background: rgba(0, 0, 0, .3); }
+@media (hover: none) { .an-pill.mine:hover .an-num { opacity: 1; transform: none; } .an-pill.mine:hover .an-x { opacity: 0; } }
+/* удержание своей реакции: пилюля заливается тёмным слева направо */
+.an-pill::after {
+  content: ''; position: absolute; inset: 0; background: rgba(0, 0, 0, .22); transform: scaleX(0); transform-origin: 0 50%; pointer-events: none;
+}
+.an-pill.holding::after { transform: scaleX(1); transition: transform .5s linear; }
+.an-more, .an-comment, .an-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 4px; height: 26px; min-width: 26px; padding: 0 8px;
+  border: 1px solid var(--border); border-radius: 13px; background: var(--panel); color: var(--fg);
+  font-size: 12px; font-weight: 700; box-shadow: var(--shadow); transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+.an-more:hover, .an-comment:hover, .an-btn:hover { border-color: var(--accent); color: var(--accent); }
+.an-btn { width: 28px; padding: 0; }
+.an-btn svg { width: 17px; height: 17px; }
+.an-cicon { display: inline-flex; width: 16px; height: 16px; }
+.an-cicon svg { width: 16px; height: 16px; }
+.an-comment.empty .an-cnum { display: none; }
+.an-comment.empty { width: 28px; padding: 0; }
+.an-comment:not(.an-counter) { background: var(--accent); border-color: var(--accent); color: var(--fg-inverse); }
+.an-comment:not(.an-counter):hover { background: #2160dd; color: var(--fg-inverse); }
+.an-comment.an-counter { height: 22px; padding: 0 7px 0 5px; border-radius: 11px; font-size: 11px; }
+.an-comment.an-counter .an-cicon, .an-comment.an-counter .an-cicon svg { width: 14px; height: 14px; }
+.an-comment.an-counter.resolved { color: var(--muted); background: var(--surface-sunken); }
+.an-comment[hidden] { display: none; }
+/* недавние реакции выезжают из кнопки влево */
+.an-react-wrap { position: relative; display: flex; align-items: center; }
+.an-recent {
+  position: absolute; right: calc(100% + 4px); top: -3px; display: flex; flex-direction: row; gap: 2px; padding: 3px;
+  border: 1px solid var(--border); border-radius: 16px; background: var(--panel); box-shadow: var(--shadow-tip);
+  opacity: 0; pointer-events: none; transform: translateX(14px) scaleX(.6); transform-origin: 100% 50%;
+  transition: opacity .16s ease, transform .3s cubic-bezier(.34, 1.4, .64, 1);
+}
+.an-react-wrap:hover .an-recent, .an-react-wrap:focus-within .an-recent { opacity: 1; transform: none; pointer-events: auto; }
+.an-recent-btn {
+  width: 26px; height: 26px; padding: 0; border: 0; border-radius: 13px; background: transparent; font-size: 16px; line-height: 1;
+  opacity: 0; transform: translateX(10px) scale(.5);
+  transition: opacity .14s ease calc(var(--i) * 28ms), transform .32s cubic-bezier(.34, 1.56, .64, 1) calc(var(--i) * 28ms), background .12s ease;
+}
+.an-react-wrap:hover .an-recent-btn, .an-react-wrap:focus-within .an-recent-btn { opacity: 1; transform: none; }
+.an-react-wrap.an-picked .an-recent { opacity: 0; transform: translateX(14px) scaleX(.6); pointer-events: none; }
+.an-react-wrap.an-picked .an-recent-btn { opacity: 0; transform: translateX(10px) scale(.5); }
+.an-recent-btn:hover { background: var(--accent-soft); transform: scale(1.18) !important; }
+/* появление кнопок у выделенного объекта */
+.an-row.an-enter .an-react-wrap, .an-row.an-enter .an-comment:not(.an-counter) { animation: an-pop .34s cubic-bezier(.34, 1.56, .64, 1) both; }
+.an-row.an-enter .an-comment:not(.an-counter) { animation-delay: 40ms; }
+@keyframes an-pop { from { opacity: 0; transform: scale(.4); } to { opacity: 1; transform: none; } }
+body.no-motion .an-row.an-enter :is(.an-react-wrap, .an-comment) { animation: an-fade .16s ease both; }
+@keyframes an-fade { from { opacity: 0; } to { opacity: 1; } }
+body.no-motion :is(.an-pill, .an-recent, .an-recent-btn, .an-x, .an-num) { transition-timing-function: ease; transition-duration: .15s; transition-delay: 0s; }
+body.no-motion .an-pill:hover { transform: none; }
+body.no-ui-anim :is(.an-pill, .an-recent, .an-recent-btn, .an-x, .an-num, .an-more, .an-comment, .an-btn) { transition: none; }
+body.no-ui-anim .an-row.an-enter :is(.an-react-wrap, .an-comment) { animation: none; }
+body.no-ui-anim .an-pill.holding::after { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  :is(.an-pill, .an-recent, .an-recent-btn, .an-x, .an-num) { transition: none; }
+  .an-row.an-enter :is(.an-react-wrap, .an-comment) { animation: none; }
+}
+/* меню «+n»: все реакции объекта и кто их поставил */
+.reactions-menu { position: fixed; z-index: 90; width: 280px; max-width: calc(100vw - 16px); max-height: min(360px, calc(100vh - 16px)); display: flex; flex-direction: column; padding: 6px; box-sizing: border-box; }
+.arm-head { padding: 6px 8px 8px; font-size: 12px; font-weight: 700; color: var(--muted); }
+.arm-list { overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.arm-row { display: flex; align-items: flex-start; gap: 8px; padding: 5px 6px; border-radius: 8px; }
+.arm-row:hover { background: var(--surface-sunken); }
+.arm-emoji { flex: none; width: 30px; height: 30px; border: 0; border-radius: 15px; background: var(--surface-sunken); font-size: 17px; line-height: 1; cursor: pointer; }
+.arm-emoji:hover { background: var(--accent-soft); transform: scale(1.08); }
+.arm-count { flex: none; min-width: 14px; padding-top: 7px; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.arm-who { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; gap: 4px; padding-top: 4px; }
+.arm-chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 8px; border-radius: 10px; background: var(--an-bg); color: var(--an-fg); font-size: 11px; font-weight: 700; }
+.arm-remove { flex: none; width: 26px; height: 26px; margin-top: 2px; border: 0; border-radius: 13px; background: transparent; color: var(--muted); font-size: 18px; line-height: 1; cursor: pointer; }
+.arm-remove:hover { background: #fde8e8; color: #d6336c; }
+/* частицы «Привлечь внимание» (src/reaction-burst.ts) */
+#burst-layer { position: absolute; inset: 0; pointer-events: none; z-index: 10; overflow: hidden; }
+.burst-p {
+  position: absolute; left: 0; top: 0; display: flex; align-items: center; justify-content: center; line-height: 1;
+  will-change: transform, opacity; user-select: none; filter: drop-shadow(0 2px 3px rgba(16, 24, 40, .18));
+}
+.burst-p.burst-css { animation: burst-fly .7s cubic-bezier(.2, .7, .3, 1) both; }
+@keyframes burst-fly {
+  0% { opacity: 0; transform: scale(.4); }
+  15% { opacity: 1; transform: scale(1.1); }
+  65% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--dx), var(--dy)) rotate(var(--rot)) scale(.85); }
+}
+
 .sd-exp-plan { display: flex; align-items: center; gap: 6px; margin: 4px 0 10px; }
 .sd-exp-plan-select { padding: 4px 8px; border: 1px solid var(--border); border-radius: 8px; font: inherit; background: var(--panel); }
 
@@ -3557,10 +3699,9 @@ body.no-motion #sync-indicator[data-status="syncing"] svg .sync-arrows { animati
   overflow: hidden;
   overflow-wrap: anywhere;
 }
+.ns-actions { grid-area: action; justify-self: start; display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .ns-action {
-  grid-area: action;
   justify-self: start;
-  margin-top: 8px;
   height: 28px;
   padding: 0 12px;
   border: 0;
@@ -3573,6 +3714,11 @@ body.no-motion #sync-indicator[data-status="syncing"] svg .sync-arrows { animati
   cursor: pointer;
 }
 .ns-action:hover { background: var(--accent); color: var(--fg-inverse); }
+.ns-action-alt { background: transparent; box-shadow: inset 0 0 0 1px var(--border); color: var(--fg); }
+.ns-action-alt:hover { background: var(--surface-sunken); color: var(--fg); }
+/* реакция вместо значка события: эмодзи в квадрате и в значке на аватаре */
+.ns-media.ns-emoji { background: var(--surface-sunken); font-size: 19px; line-height: 1; }
+.ns-ev.ns-ev-emoji { width: 18px; height: 18px; top: -5px; right: -6px; background: var(--panel); color: var(--fg); font-size: 12px; line-height: 1; box-shadow: 0 0 0 1.5px var(--panel), 0 1px 3px rgba(16, 24, 40, .25); }
 .ns-action:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 /* × — слева сверху, видно при наведении и фокусе */
 .ns-close {
@@ -4898,6 +5044,48 @@ body.no-ui-anim .ss-badge.on { animation: none; }
 }
 .tp-count.on { max-width: 40px; min-width: 16px; margin-left: 6px; padding: 0 5px; opacity: 1; transform: none; }
 .tp-count .roll { height: 16px; line-height: 16px; }
+/* четыре вкладки ЧКУ в ширину панели: поуже, подписи сжимаются раньше, чем вкладки вылезут за край */
+.np-tabs .tp-tab { min-width: 0; padding: 0 8px; font-size: 12.5px; }
+.np-tabs .tp-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.np-tabs .tp-count.on { margin-left: 4px; }
+
+/* Вкладка «Комментарии» (src/comments-panel.ts) */
+.cm { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.cm-frame { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.cm-frame[hidden], .cm-empty[hidden] { display: none; }
+.cm-list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 8px; padding: 2px 12px 14px; }
+.cm-page { margin-top: 4px; }
+.cm-card { position: relative; flex: none; display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 14px; background: var(--panel); box-shadow: 0 0 0 1px var(--border); transition: box-shadow .2s ease, background .2s ease; }
+.cm-card.resolved { background: var(--surface-sunken); }
+.cm-card.resolved :is(.cm-msgs, .cm-reactions) { opacity: .7; }
+.cm-card.cm-flash { animation: cm-flash 1.6s ease both; }
+@keyframes cm-flash { 0%, 40% { box-shadow: 0 0 0 2px var(--accent), 0 0 0 6px var(--accent-soft); } 100% { box-shadow: 0 0 0 1px var(--border); } }
+body.no-ui-anim .cm-card.cm-flash { animation: none; box-shadow: 0 0 0 2px var(--accent); }
+.cm-card .np-dot { position: absolute; top: 14px; right: 44px; }
+.cm-head { display: flex; align-items: flex-start; gap: 8px; }
+.cm-titles { flex: 1; min-width: 0; }
+.cm-label { font-size: 13px; font-weight: 700; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm-meta { margin-top: 1px; font-size: 11.5px; color: var(--muted); }
+.cm-go { flex: none; width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border: 0; border-radius: 8px; background: var(--surface-sunken); color: var(--fg-secondary); cursor: pointer; }
+.cm-go svg { width: 16px; height: 16px; }
+.cm-go:hover { background: var(--accent-soft); color: var(--accent); }
+.cm-reactions { display: flex; flex-wrap: wrap; gap: 4px; }
+.cm-pill { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px 0 6px; border-radius: 11px; background: var(--an-bg); color: var(--an-fg); font-size: 11.5px; font-weight: 700; }
+.cm-pill-emoji { font-size: 13px; line-height: 1; }
+.cm-msgs { display: flex; flex-direction: column; gap: 8px; }
+.cm-more { align-self: flex-start; padding: 0; border: 0; background: none; color: var(--accent); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.cm-more:hover { text-decoration: underline; }
+.cm-msg { display: flex; align-items: flex-start; gap: 8px; }
+.cm-msg .cm-ua { --ua-size: 22px; flex: none; pointer-events: none; }
+.cm-msg-main { flex: 1; min-width: 0; }
+.cm-msg-meta { display: flex; align-items: baseline; gap: 6px; font-size: 11.5px; }
+.cm-author { font-weight: 700; }
+.cm-time { color: var(--muted); font-variant-numeric: tabular-nums; }
+.cm-text { font-size: 13px; line-height: 1.38; color: var(--fg); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.cm-foot { display: flex; }
+.cm-reply { height: 28px; padding: 0 12px; border: 0; border-radius: 8px; background: var(--accent-soft); color: var(--accent); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.cm-reply:hover { background: var(--accent); color: var(--fg-inverse); }
+.cm-empty .np-empty-icon svg { width: 22px; height: 22px; }
 body.no-ui-anim :is(.tp-tab, .tp-count, .tp-pill) { transition: none; }
 @media (prefers-reduced-motion: reduce) { :is(.tp-tab, .tp-count, .tp-pill) { transition: none; } }
 
@@ -4960,6 +5148,7 @@ body.no-ui-anim .cf-msg.cf-flash .cf-bubble { animation: none; box-shadow: 0 0 0
 .cf-ev-media { flex: none; width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; }
 .cf-ev-icon { border-radius: 50%; background: var(--panel); color: var(--icon-secondary); }
 .cf-ev-icon svg { width: 12px; height: 12px; }
+.cf-ev-icon.cf-ev-emoji { font-size: 13px; line-height: 1; }
 .cf-ev-avatar { --ua-size: 20px; cursor: default; pointer-events: none; }
 .cf-ev-body { min-width: 0; overflow-wrap: anywhere; }
 .cf-ev-time { margin-left: 6px; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }

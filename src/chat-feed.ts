@@ -17,7 +17,7 @@ import { createUserAvatar } from './avatar';
 import { DEFAULT_CURSOR_ID, cursorPreset, isCursorId } from './cursors';
 import { attachOverlayScroll, type OverlayScroll } from './overlay-scroll';
 import { tokenizeChat, type ChatMessage } from './room-chat';
-import { noticeText, type Notice } from './notify-center';
+import { noticeActions, noticeText, type Notice } from './notify-center';
 import { noticeIconSvg } from './notice-card';
 import { renderAttachment } from './chat-attach-view';
 import { chatAvatarOf } from './collab-chat';
@@ -213,7 +213,10 @@ function eventNode(n: Notice): HTMLElement {
   const media = el('span', 'cf-ev-media');
   media.setAttribute('aria-hidden', 'true');
   if (n.user) media.append(avatarFor(n.user, 'cf-ev-avatar'));
-  else {
+  else if (n.emoji) {
+    media.classList.add('cf-ev-icon', 'cf-ev-emoji');
+    media.textContent = n.emoji;
+  } else {
     media.classList.add('cf-ev-icon');
     media.innerHTML = noticeIconSvg(n); // константа каталога иконок
   }
@@ -222,11 +225,10 @@ function eventNode(n: Notice): HTMLElement {
   const time = el('time', 'cf-ev-time', timeHM(n.ts));
   time.dateTime = new Date(n.ts).toISOString();
   body.append(el('span', 'cf-ev-text', noticeText(n)), time);
-  if (n.action) {
-    const act = el('button', 'cf-ev-action', n.action.label);
+  for (const a of noticeActions(n)) {
+    const act = el('button', 'cf-ev-action', a.label);
     act.type = 'button';
-    const run = n.action.run;
-    act.addEventListener('click', () => run());
+    act.addEventListener('click', () => a.run());
     body.append(act);
   }
   row.append(media, body);

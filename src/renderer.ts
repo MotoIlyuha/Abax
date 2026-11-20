@@ -2,8 +2,9 @@ import type { Camera, Element, GridMode, ImageEl, LaserPt, Page, ShapeEl, SolidE
 import { EXAM_LABELS, SUBJECT_LABELS, TASK_STATUS_LABEL, taskStatus } from './task-element';
 import { foreignSelections, readOnly } from './collab';
 import { mySelectionColor } from './profile';
-import { PILL_H, layoutPills, layoutPins } from './annotations';
-import { clientId } from './identity';
+import { ROW_H, ITEM_GAP, MORE_W, commentWidth, layoutAnnotRows, layoutPins, pillWidth } from './annotations';
+import { showComments, showReactions } from './annot-prefs';
+import { notePerson } from './note-people';
 import {
   type AABB, type Caption, boxHandles, cornerRadius, elementAABB, elementHandles, imageFrame, pageLinkView, presentCamera, shapeCaption,
   shapeHoldsText, wrapText, textLines, textSpans, TEXT_FONT, NOTE_PAD, NOTE_FONT, NOTE_TEXT_COLOR,
@@ -575,35 +576,63 @@ function drawTaskEl(ctx: CanvasRenderingContext2D, el: TaskEl, lines: string[]):
 
 const REACTION_FONT = '600 12px "Segoe UI", system-ui, sans-serif';
 
-/** Пилюли реакций под элементами (экранные координаты). По ссылке просмотра их нет. */
+/**
+ * Реакции и счётчики комментариев под объектами — в окне демонстрации (на основном холсте их рисует DOM-слой
+ * src/annot-layer.ts). Та же раскладка, без кнопок; по ссылке просмотра их нет.
+ */
 function drawReactions(ctx: CanvasRenderingContext2D, cam: Camera, w: number, h: number, els: readonly Element[]): void {
   if (state.linkMode) return;
-  const pills = layoutPills(els, cam, clientId(), w, h);
-  if (pills.length === 0) return;
+  const rows = layoutAnnotRows(els, state.board.comments, cam, w, h, { toolsFor: null, showReactions: showReactions(), showComments: showComments() });
+  if (rows.length === 0) return;
   ctx.save();
   ctx.font = REACTION_FONT;
   ctx.textBaseline = 'middle';
   ctx.textAlign = 'left';
-  for (const p of pills) {
+  const pill = (x: number, y: number, pw: number, bg: string): void => {
     ctx.beginPath();
-    ctx.roundRect(p.x, p.y, p.w, PILL_H, PILL_H / 2);
-    ctx.fillStyle = p.mine ? '#e6efff' : '#ffffff';
+    ctx.roundRect(x, y, pw, ROW_H, ROW_H / 2);
+    ctx.fillStyle = bg;
     ctx.fill();
-    ctx.strokeStyle = p.mine ? '#3273f5' : '#cfd5df';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-    ctx.fillStyle = '#1f2329';
-    ctx.fillText(p.emoji, p.x + 8, p.y + PILL_H / 2 + 0.5);
-    ctx.fillStyle = p.mine ? '#2160dd' : '#4a4f59';
-    ctx.fillText(String(p.count), p.x + 8 + 20, p.y + PILL_H / 2 + 0.5);
+  };
+  for (const r of rows) {
+    // справа налево: счётчик комментариев, «+n», реакции
+    let x = r.right;
+    const y = r.top;
+    const cy = y + ROW_H / 2 + 0.5;
+    if (r.comments > 0) {
+      const cw = commentWidth(r.comments);
+      x -= cw;
+      pill(x, y, cw, r.resolved ? '#e9ecef' : '#ffffff');
+      ctx.fillStyle = '#4a4f59';
+      ctx.fillText(`💬 ${r.comments}`, x + 7, cy);
+      x -= ITEM_GAP;
+    }
+    if (r.shown < r.reactions.length) {
+      x -= MORE_W;
+      pill(x, y, MORE_W, '#ffffff');
+      ctx.fillStyle = '#4a4f59';
+      ctx.fillText(`+${r.reactions.length - r.shown}`, x + 7, cy);
+      x -= ITEM_GAP;
+    }
+    for (let i = r.shown - 1; i >= 0; i--) {
+      const [emoji, users] = r.reactions[i];
+      const pw = pillWidth(users.length);
+      x -= pw;
+      const who = notePerson(users[0]);
+      pill(x, y, pw, who.bg);
+      ctx.fillText(emoji, x + 8, cy);
+      ctx.fillStyle = who.fg;
+      ctx.fillText(String(users.length), x + 8 + 22, cy);
+      x -= ITEM_GAP;
+    }
   }
   ctx.restore();
 }
 
-/** Пины комментариев страницы: число сообщений в кружке; решённые — полупрозрачные. */
+/** Пины веток без объекта: число сообщений в кружке; решённые — полупрозрачные. */
 function drawCommentPins(ctx: CanvasRenderingContext2D, cam: Camera, w: number, h: number): void {
-  if (state.linkMode) return;
-  const pins = layoutPins(state.board.comments, cam, w, h);
+  if (state.linkMode || !showComments()) return;
+  const pins = layoutPins(state.board.comments, state.board.elements, cam, w, h);
   if (pins.length === 0) return;
   ctx.save();
   ctx.font = '700 11px "Segoe UI", system-ui, sans-serif';
@@ -1461,7 +1490,7 @@ function draw(): void {
     }
     ctx.setLineDash([]);
   }
-  drawReactions(ctx, cam, cssW, cssH, state.board.elements);
+  // реакции и счётчики комментариев — DOM-слой src/annot-layer.ts (кадр сообщается ему ниже); пины — здесь
   drawCommentPins(ctx, cam, cssW, cssH);
   // у объектного ластика курсор — его иконка (CSS), кружок — только у ластика для пера и маркера
   if (state.tool === 'partEraser' && state.hover) {
@@ -1476,6 +1505,18 @@ function draw(): void {
   drawSpread(ctx, cam, cssW);
   drawLaser(ctx);
   if (present) drawPresent(camSettled);
+  for (const fn of frameHooks) {
+    // ошибка DOM-слоя над холстом не должна останавливать отрисовку доски
+    try { fn(cam, cssW, cssH); } catch (e) { console.error(e); }
+  }
+}
+
+const frameHooks = new Set<(cam: Camera, w: number, h: number) => void>();
+
+/** Кадр основного холста нарисован (камера и размер холста) — DOM-слои над холстом встают по нему. Возвращает отписку. */
+export function onBoardFrame(fn: (cam: Camera, w: number, h: number) => void): () => void {
+  frameHooks.add(fn);
+  return () => { frameHooks.delete(fn); };
 }
 
 // ----- Окно демонстрации -----

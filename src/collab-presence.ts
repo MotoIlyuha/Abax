@@ -5,12 +5,13 @@ import {
   sendRemove, sendSummon, type CollabGotoDetail, type CollabUser,
 } from './collab';
 import { DEFAULT_CURSOR_ID, cursorPreset, cursorSvg, isCursorId } from './cursors';
-import { computeEdgePointer, type SafeInsets } from './edge-pointer';
+import { computeEdgePointer, type EdgePointer, type SafeInsets } from './edge-pointer';
 import { pageAvatars } from './presence';
 import { pushNotice } from './notify-center';
 import { PLAN_LIMITS } from './limits';
 import { limitsEnforced, userPlan } from './plan';
-import { ACCESS_ICON, FOLLOW_ICON, ICON_ARROW, ICONS, PROFILE_ICON, SUMMON_ICON } from './icons';
+import { ACCESS_ICON, COMMENT_ICON, FOLLOW_ICON, ICON_ARROW, ICONS, PROFILE_ICON, REACTION_ICON, SUMMON_ICON } from './icons';
+import { setAnnotView, showComments, showReactions } from './annot-prefs';
 import { STATUS_TEXT, type AvatarData, type AvatarStatus } from './avatar';
 import { createAvatarGroup, type AvatarGroup, type AvatarGroupItem } from './avatar-group';
 import { closeAvatarMenu, openAvatarMenu, type AvatarMenuEntry, type AvatarSubmenu } from './avatar-menu';
@@ -195,6 +196,17 @@ export function selfMenuEntries(anchor: HTMLElement): AvatarMenuEntry[] {
   }
   // чужие курсоры бывают только в совместной работе
   if (collabActive()) out.push({ kind: 'switch', id: 'hide-cursors', label: 'Скрыть курсоры других', icon: ICONS.eyeOff, checked: othersCursorsHidden(), onChange: setOthersCursorsHidden, title: 'Только у вас: другие участники ничего не заметят' });
+  // реакции и комментарии на доске (SPEC_COMMENTS §7): личная настройка, уведомления о них приходят всё равно
+  out.push(
+    {
+      kind: 'switch', id: 'show-reactions', label: 'Показывать реакции', icon: REACTION_ICON, checked: showReactions(),
+      onChange: on => setAnnotView({ reactions: on }), title: 'Реакции под объектами и их частицы — только у вас',
+    },
+    {
+      kind: 'switch', id: 'show-comments', label: 'Показывать комментарии', icon: COMMENT_ICON, checked: showComments(),
+      onChange: on => setAnnotView({ comments: on }), title: 'Счётчики комментариев под объектами — только у вас',
+    },
+  );
   return out;
 }
 
@@ -370,7 +382,13 @@ function renderStrip(): void {
 // ----- Краевые курсоры -----
 
 let edgeRoot: HTMLElement | null = null;
-const edgeNodes = new Map<number, { el: HTMLButtonElement; arrow: HTMLElement; label: HTMLElement; cursorId: string | null; user: CollabUser }>();
+const edgeNodes = new Map<number, { el: HTMLButtonElement; arrow: HTMLElement; label: HTMLElement; cursorId: string | null; user: CollabUser; at: EdgePointer | null }>();
+
+/** Краевой курсор участника сейчас (точка на рамке и направление к нему); null — его курсор виден или его нет. */
+export function edgePointerOf(uid: number): EdgePointer | null {
+  const n = edgeNodes.get(uid);
+  return n?.el.isConnected ? n.at : null;
+}
 
 /** Отступы безопасной области: интерфейс, лежащий поверх холста у его краёв, плюс EDGE_PAD. */
 export function safeInsets(wrap: DOMRect, obstacles: readonly DOMRect[], pad = EDGE_PAD): SafeInsets {
@@ -444,13 +462,14 @@ export function renderEdgePointers(): void {
         const arrow = el('i', 'ep-arrow');
         const label = el('span', 'ep-label');
         b.append(arrow, label);
-        const node = { el: b, arrow, label, cursorId: null as string | null, user: u };
+        const node = { el: b, arrow, label, cursorId: null as string | null, user: u, at: null as EdgePointer | null };
         b.addEventListener('click', () => goToParticipant(node.user, 'pointer'));
         edgeRoot.appendChild(b);
         n = node;
         edgeNodes.set(u.userId, n);
       }
       n.user = u;
+      n.at = p;
       const id = validCursor(u);
       if (n.cursorId !== id) {
         n.arrow.innerHTML = cursorSvg(id, { size: 20 }); // разметка каталога курсоров — только константы

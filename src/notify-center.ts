@@ -4,11 +4,13 @@
 // Тихие уведомления (отклик на моё действие) приходят уже прочитанными: в стопке видны, но не копятся.
 // «Не беспокоить» хранится в localStorage['doska.dnd'] (доступ — только в try/catch).
 
-export type NoticeKind = 'chat' | 'system';
+/** chat — сообщение чата, comment — комментарий или реакция на объект (SPEC_COMMENTS §6), system — событие доски. */
+export type NoticeKind = 'chat' | 'comment' | 'system';
 export type NoticeLevel = 'info' | 'ok' | 'warn';
 /** Иконка системного события — ключ каталога иконок (SVG — константы кода, src/icons.ts). */
 export type NoticeIcon = 'bell' | 'join' | 'leave' | 'rename' | 'cursor' | 'avatar' | 'role' | 'rights' | 'summon'
   | 'follow' | 'link' | 'offline' | 'online' | 'hidden' | 'draft' | 'remove' | 'image' | 'board';
+export interface NoticeAction { label: string; run: () => void }
 export interface NoticeUser { userId?: number; name: string; cursorId?: string; avatar?: string | null }
 export interface NoticeInput {
   /** По умолчанию 'system'. */
@@ -22,12 +24,18 @@ export interface NoticeInput {
   icon?: NoticeIcon;
   /** Для аватара (событие участника, сообщение чата). */
   user?: NoticeUser;
-  action?: { label: string; run: () => void };
+  action?: NoticeAction;
+  /** Ещё действия после action (уведомление о комментарии: «Перейти» и «Посмотреть»). */
+  actions?: NoticeAction[];
+  /** Эмодзи вместо значка события (реакция, «Привлечь внимание»): только textContent. */
+  emoji?: string;
   onClick?: () => void;
   /** Отклик на моё действие: в стопке показывается, но сразу прочитано. */
   quiet?: boolean;
   /** Сообщение чата, к которому ведёт уведомление. */
   chatId?: string;
+  /** Объект (и ветка комментариев), к которому относится уведомление о комментарии или реакции. */
+  ref?: { pageId: string; elId?: string; threadId?: string };
   ts?: number;
 }
 export interface Notice extends NoticeInput { id: string; kind: NoticeKind; level: NoticeLevel; ts: number; read: boolean }
@@ -62,7 +70,7 @@ export function pushNotice(input: NoticeInput): Notice {
   const n: Notice = {
     ...input,
     id: `n${++seq}`,
-    kind: input.kind === 'chat' ? 'chat' : 'system',
+    kind: input.kind === 'chat' || input.kind === 'comment' ? input.kind : 'system',
     level: input.level === 'ok' || input.level === 'warn' ? input.level : 'info',
     title: String(input.title ?? ''),
     ts: typeof input.ts === 'number' && Number.isFinite(input.ts) ? input.ts : Date.now(),
@@ -72,6 +80,11 @@ export function pushNotice(input: NoticeInput): Notice {
   const dropped = list.length > NOTICE_LIMIT ? list.splice(0, list.length - NOTICE_LIMIT) : [];
   emit({ type: 'push', notice: n, dropped });
   return n;
+}
+
+/** Все действия уведомления по порядку: action, затем actions. */
+export function noticeActions(n: Pick<NoticeInput, 'action' | 'actions'>): NoticeAction[] {
+  return [...(n.action ? [n.action] : []), ...(n.actions ?? [])];
 }
 
 /** Все уведомления по времени (старые первыми). */
@@ -159,6 +172,8 @@ export function noticeText(n: Pick<Notice, 'kind' | 'title' | 'body' | 'user'>):
   if (!body) return title;
   if (!title) return body;
   if (n.kind === 'chat') return `${title}: ${body}`;
+  // комментарий или реакция: «Капибара · Фигура «Задача»: Почему так?»
+  if (n.kind === 'comment') return `${title} · ${body}`;
   // событие участника — одно предложение: «Капибара присоединился к доске»
   if (n.user) return `${title} ${body}`;
   return /[.!?…]$/.test(title) ? `${title} ${body}` : `${title}. ${body}`;

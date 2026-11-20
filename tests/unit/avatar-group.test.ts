@@ -204,9 +204,24 @@ describe('меню аватара', () => {
     expect(list.at(-1)!.more).toEqual({ count: 2, title: 'У5, У6' });
   });
 
-  it('свой аватар без совместной работы: только профиль (звать некого, чужих курсоров нет)', () => {
+  it('свой аватар без совместной работы: профиль и показ реакций и комментариев (звать некого, чужих курсоров нет)', () => {
     const ids = selfMenuEntries(document.body).map(e => (e.kind === 'sep' ? '-' : e.id));
-    expect(ids).toEqual(['profile']);
+    expect(ids).toEqual(['profile', 'show-reactions', 'show-comments']);
+  });
+
+  it('«Показывать реакции» и «Показывать комментарии»: по умолчанию включены, переключают настройку показа', async () => {
+    const { annotView, setAnnotView } = await import('../../src/annot-prefs');
+    const entries = selfMenuEntries(document.body);
+    const sw = (id: string) => entries.find(e => e.kind === 'switch' && e.id === id) as Extract<(typeof entries)[number], { kind: 'switch' }>;
+    expect(sw('show-reactions')).toMatchObject({ label: 'Показывать реакции', checked: true });
+    expect(sw('show-comments')).toMatchObject({ label: 'Показывать комментарии', checked: true });
+    sw('show-reactions').onChange(false);
+    expect(annotView()).toEqual({ reactions: false, comments: true });
+    expect(localStorage.getItem('doska.annotView')).toBe(JSON.stringify({ reactions: false, comments: true }));
+    sw('show-comments').onChange(false);
+    expect(selfMenuEntries(document.body).filter(e => e.kind === 'switch').map(e => e.kind === 'switch' && e.checked)).toEqual([false, false]);
+    setAnnotView({ reactions: true, comments: true });
+    expect(localStorage.getItem('doska.annotView')).toBeNull();
   });
 
   it('группа без комнаты: один мой аватар по профилю, сразу доступен', async () => {

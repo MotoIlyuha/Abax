@@ -53,8 +53,8 @@
       <button id="btn-home" class="topbar-logo" title="Проекты (домашняя страница)" aria-label="Проекты (домашняя страница)"><img src="logo.svg" alt="Abax" /></button>
     </div>
     <div class="topbar-side topbar-left">
-      <!-- «Чат и уведомления» (src/notify-button.ts): row-reverse — крайняя справа, видна всегда; подсказка снизу -->
-      <button id="btn-notify" class="notify-btn" type="button" title="Чат и уведомления" aria-label="Чат и уведомления" aria-expanded="false" data-tip-side="bottom"></button>
+      <!-- «Чат, комментарии и уведомления» (src/notify-button.ts): row-reverse — крайняя справа, видна всегда; подсказка снизу -->
+      <button id="btn-notify" class="notify-btn" type="button" title="Чат, комментарии и уведомления" aria-label="Чат, комментарии и уведомления" aria-expanded="false" data-tip-side="bottom"></button>
       <button id="btn-share" class="share-btn" type="button" title="Поделиться доской" aria-label="Поделиться доской"><span class="share-icon" aria-hidden="true"></span><span class="share-text">Поделиться</span></button>
       <!-- row-reverse: группа аватаров — слева от «Поделиться», сама по себе, без плашки (src/collab-presence.ts) -->
       <div id="collab-presence" aria-label="Участники" hidden></div>
@@ -86,6 +86,8 @@
       <canvas id="board"></canvas>
       <div id="overlay"></div>
       <div id="task-overlay"></div>
+      <!-- плашки объектов: реакции, «Комментировать» (src/annot-layer.ts) -->
+      <div id="annot-layer"></div>
       <div id="follow-banner" role="status" hidden></div>
       <div id="follow-hidden-badge" role="status" hidden>Эта страница скрыта — участники остались на предыдущей странице</div>
       <div id="all-pages-hidden-banner" role="status" hidden>Автор временно скрыл все страницы доски. Доступ откроется автоматически, когда автор включит страницу.</div>

@@ -1,13 +1,14 @@
-// Реакции и комментарии: кнопки меню выделения, нажатия на пилюли и пины, поповер ветки.
-import { beforeEach, describe, expect, it } from 'vitest';
+// Реакции и комментарии: постановка и снятие реакций, нажатия на пины, поповер ветки.
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  QUICK_REACTIONS, annotationButtons, annotationClick, annotationsAvailable, closeThread, initCommentsUi, openThread, reactToSelection,
-  startComment, threadOpen, toggleReactionOn,
+  addReaction, annotationClick, annotationsAvailable, closeThread, hasMyReaction, initCommentsUi, openDiscussion, openDiscussionId,
+  removeReaction, startComment, threadOpen, toggleReactionOn,
 } from '../../src/comments-ui';
-import { layoutPills, layoutPins } from '../../src/annotations';
+import { layoutPins } from '../../src/annotations';
+import { recentReactions } from '../../src/annot-prefs';
 import { clientId, resetClientId } from '../../src/identity';
 import { createCommentThread } from '../../src/comments';
-import { addElement, blankProject, canUndo, openProject, setSelection, state, update } from '../../src/state';
+import { addElement, blankProject, canUndo, openProject, state, update } from '../../src/state';
 import type { ShapeEl } from '../../src/types';
 
 const rect = (id: string, x = 100, y = 100): ShapeEl =>
@@ -28,37 +29,34 @@ beforeEach(() => {
   state.camera = { x: 0, y: 0, zoom: 1 };
   addElement(rect('a'));
   addElement(rect('b', 400, 100));
-  closeThread();
+  closeThread(true);
   if (!inited) { initCommentsUi(); inited = true; }
 });
 
 describe('реакции у автора без комнаты', () => {
-  it('ставятся и снимаются мимо истории отмены; клик по пилюле переключает свою реакцию', () => {
+  it('ставятся и снимаются мимо истории отмены', () => {
     const history = canUndo();
     toggleReactionOn('a', '👍');
     expect(reactions('a')).toEqual({ '👍': [mine()] });
     expect(canUndo()).toBe(history && true);
-    // пилюля стоит под нижней границей элемента: x = 100, y = 150 + 6
-    expect(annotationClick(110, 167)).toBe(true);
+    toggleReactionOn('a', '👍');
     expect(reactions('a')).toBeUndefined();
-    expect(annotationClick(110, 167)).toBe(false); // пилюли больше нет
   });
 
-  it('реакция на всё выделенное; кнопка «✓» активна, когда она стоит у всех', () => {
-    setSelection(['a', 'b']);
-    reactToSelection('🔥');
+  it('«поставить» не снимает уже свою, «убрать» не ставит; можно несколько разных; недавние — свежая первой', () => {
+    addReaction('a', '🔥');
+    addReaction('a', '🔥');
     expect(reactions('a')).toEqual({ '🔥': [mine()] });
-    expect(reactions('b')).toEqual({ '🔥': [mine()] });
-    const box = annotationButtons()[0];
-    const fire = [...box.querySelectorAll('button')].find(b => b.textContent === '🔥')!;
-    expect(fire.classList.contains('active')).toBe(true);
-    expect([...box.querySelectorAll('button')].map(b => b.textContent)).toEqual(QUICK_REACTIONS);
-    // «Комментировать» — только для одного элемента
-    expect(annotationButtons()).toHaveLength(1);
-    setSelection(['a']);
-    expect(annotationButtons().map(b => b.className)).toEqual(['qm-reactions', 'qm-btn qm-comment']);
-    setSelection([]);
-    expect(annotationButtons()).toEqual([]);
+    addReaction('a', '🦄');
+    expect(reactions('a')).toEqual({ '🔥': [mine()], '🦄': [mine()] });
+    expect(hasMyReaction('a', '🦄')).toBe(true);
+    expect(recentReactions().slice(0, 2)).toEqual(['🦄', '🔥']);
+    removeReaction('a', '🔥');
+    removeReaction('a', '🔥');
+    expect(reactions('a')).toEqual({ '🦄': [mine()] });
+    // картинка из окна смайлов реакцией не бывает
+    addReaction('a', 'data:image/png;base64,AAAA');
+    expect(Object.keys(reactions('a')!)).toEqual(['🦄']);
   });
 
   it('по ссылке просмотра и на черновике их нет вовсе', () => {
@@ -66,71 +64,99 @@ describe('реакции у автора без комнаты', () => {
     expect(annotationsAvailable()).toBe(false);
     toggleReactionOn('a', '👍');
     expect(reactions('a')).toBeUndefined();
-    setSelection(['a']);
-    expect(annotationButtons()).toEqual([]);
     expect(annotationClick(110, 167)).toBe(false);
   });
 });
 
-describe('комментарии у автора без комнаты', () => {
+describe('обсуждение объекта у автора без комнаты', () => {
   const pop = () => document.querySelector<HTMLElement>('.comment-pop');
-  const typeIn = (text: string) => { const i = pop()!.querySelector('textarea')!; i.value = text; };
+  const send = (text: string) => {
+    const i = pop()!.querySelector('textarea')!;
+    i.value = text;
+    i.dispatchEvent(new Event('input'));
+    i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  };
 
-  it('новая ветка к выделенному элементу: пин у правого верхнего угла, подпись «Автор»', () => {
+  it('новое обсуждение: «Новый комментарий», первое сообщение — новая ветка у объекта; панель остаётся открытой', () => {
     startComment(state.board.elements[0]);
     expect(pop()!.querySelector('.cp-title')!.textContent).toBe('Новый комментарий');
-    click(pop()!.querySelector('.cp-send')); // пустой текст — ничего
+    expect(pop()!.querySelector('.cp-sub')!.textContent).toBe('Фигура');
+    expect(pop()!.querySelector<HTMLElement>('.cp-resolve')!.hidden).toBe(true);
+    send('   '); // пустой текст — ничего
     expect(state.board.comments).toBeUndefined();
-    typeIn('  Проверьте это  ');
-    click(pop()!.querySelector('.cp-send'));
-    expect(threadOpen()).toBe(false);
+    send('  Проверьте это  ');
+    expect(threadOpen()).toBe(true);
     const t = state.board.comments![0];
     expect(t).toMatchObject({ x: 200, y: 100, targetElementId: 'a' });
     expect(t.messages[0]).toMatchObject({ text: 'Проверьте это', authorName: 'Автор', authorId: mine() });
     expect(state.dirty).toBe(true);
     expect(canUndo()).toBe(true); // историю дали элементы, комментарий её не пополнил
+    expect(pop()!.querySelector('.cp-title')!.textContent).toBe('Комментарии · 1');
+    expect(pop()!.querySelector('.cp-msg.mine .cp-text')!.textContent).toBe('Проверьте это');
+    // второе сообщение — ответ в ту же ветку
+    send('И ещё');
+    expect(state.board.comments).toHaveLength(1);
+    expect(state.board.comments![0].messages.map(m => m.text)).toEqual(['Проверьте это', 'И ещё']);
+    expect(pop()!.querySelectorAll('.cp-msg.grouped')).toHaveLength(1);
   });
 
-  it('пин открывает ветку: сообщения текстом, ответ, «Решено» и возврат; Esc закрывает', () => {
-    state.board.comments = createCommentThread(state.board, { x: 50, y: 60, authorId: 'u1', authorName: '<b>Маша</b>', text: '<img src=x onerror=1>' }).comments;
-    const pin = layoutPins(state.board.comments, state.camera, 800, 600)[0];
-    expect(annotationClick(pin.x, pin.y)).toBe(true);
-    expect(pop()).not.toBeNull();
+  it('чужие сообщения — текстом, слева с именем; «Решено» закрывает все ветки, новое сообщение — новая ветка', () => {
+    let page = createCommentThread(state.board, { x: 0, y: 0, targetElementId: 'a', authorId: 'u1', authorName: '<b>Маша</b>', text: '<img src=x onerror=1>' });
+    page = createCommentThread(page, { x: 0, y: 0, targetElementId: 'a', authorId: 'u2', authorName: 'Вова', text: 'второй' });
+    state.board.comments = page.comments;
+    openDiscussion('a');
     expect(pop()!.querySelector('.cp-author')!.textContent).toBe('<b>Маша</b>');
     expect(pop()!.querySelector('.cp-text')!.textContent).toBe('<img src=x onerror=1>');
-    expect(pop()!.querySelector('img, b')).toBeNull();
-    typeIn('Отвечаю');
-    click(pop()!.querySelector('.cp-send'));
-    expect(state.board.comments![0].messages.map(m => m.text)).toEqual(['<img src=x onerror=1>', 'Отвечаю']);
-    expect(pop()!.querySelectorAll('.cp-msg')).toHaveLength(2);
-    expect(pop()!.querySelector('textarea')!.value).toBe('');
+    expect(pop()!.querySelector('.cp-list img, .cp-list b')).toBeNull();
+    expect(pop()!.querySelectorAll('.cp-msg:not(.mine)')).toHaveLength(2);
     click(pop()!.querySelector('.cp-resolve'));
-    expect(state.board.comments![0].resolved).toBe(true);
-    expect(pop()!.querySelector('.cp-resolve')!.textContent).toBe('Вернуть в обсуждение');
-    click(pop()!.querySelector('.cp-resolve'));
-    expect(state.board.comments![0].resolved).toBeUndefined();
+    expect(state.board.comments!.every(t => t.resolved)).toBe(true);
+    expect(pop()!.classList.contains('resolved')).toBe(true);
+    expect(pop()!.querySelector('.cp-banner')!.textContent).toContain('Обсуждение решено');
+    send('Снова вопрос');
+    expect(state.board.comments).toHaveLength(3);
+    expect(state.board.comments![2]).toMatchObject({ targetElementId: 'a' });
+    expect(state.board.comments![2].resolved).toBeUndefined();
+    expect(pop()!.classList.contains('resolved')).toBe(false);
+  });
+
+  it('пин ветки без объекта открывает её; повторное открытие того же обсуждения — закрывает; Esc закрывает', () => {
+    state.board.comments = createCommentThread(state.board, { x: 50, y: 60, authorId: 'u1', authorName: 'А', text: 'т' }).comments;
+    const pin = layoutPins(state.board.comments, state.board.elements, state.camera, 800, 600)[0];
+    expect(annotationClick(pin.x, pin.y)).toBe(true);
+    expect(pop()!.querySelector('.cp-sub')!.textContent).toBe('Комментарий на доске');
+    send('Отвечаю');
+    expect(state.board.comments![0].messages.map(m => m.text)).toEqual(['т', 'Отвечаю']);
     window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(threadOpen()).toBe(false);
+    openDiscussion('a');
+    expect(openDiscussionId()).toBe('a');
+    openDiscussion('a');
     expect(threadOpen()).toBe(false);
   });
 
-  it('ветка пропала (страница сменилась) — поповер закрывается сам', () => {
-    state.board.comments = createCommentThread(state.board, { x: 50, y: 60, authorId: 'u1', authorName: 'А', text: 'т' }).comments;
-    openThread(state.board.comments![0].id);
+  it('объект удалён — панель закрывается сама', () => {
+    openDiscussion('b');
     expect(threadOpen()).toBe(true);
-    delete state.board.comments;
+    state.board.elements = state.board.elements.filter(e => e.id !== 'b');
     update();
     expect(threadOpen()).toBe(false);
   });
 
-  it('нажатие мимо поповера закрывает его', () => {
-    state.board.comments = createCommentThread(state.board, { x: 50, y: 60, authorId: 'u1', authorName: 'А', text: 'т' }).comments;
-    openThread(state.board.comments![0].id);
+  it('нажатие мимо панели закрывает её', () => {
+    openDiscussion('a');
     document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }));
     expect(threadOpen()).toBe(false);
   });
 
-  it('пилюли и пины считаются теми же функциями, что рисует холст', () => {
-    toggleReactionOn('a', '👍');
-    expect(layoutPills(state.board.elements, state.camera, mine(), 800, 600)).toHaveLength(1);
+  it('читатель видит ленту, но не пишет', async () => {
+    state.board.comments = createCommentThread(state.board, { x: 0, y: 0, targetElementId: 'a', authorId: 'u1', authorName: 'А', text: 'т' }).comments;
+    const collab = await import('../../src/collab');
+    const spy = vi.spyOn(collab, 'myCollabCaps').mockReturnValue({ comment: false, chat: false, pointer: false, copy: true, summon: false });
+    openDiscussion('a');
+    expect(pop()!.querySelector('textarea')).toBeNull();
+    expect(pop()!.querySelector('.cp-readonly')!.textContent).toBe('Читатели не пишут комментарии');
+    expect(pop()!.querySelector<HTMLElement>('.cp-resolve')!.hidden).toBe(true);
+    spy.mockRestore();
   });
 });

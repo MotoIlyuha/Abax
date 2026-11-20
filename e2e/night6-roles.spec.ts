@@ -56,11 +56,11 @@ test.describe('роли', () => {
     await expect(p.locator('#side-panel .np-reader')).toHaveText('Читатели не пишут в чат');
     await p.locator('#side-panel-close').click();
     await expect(p.locator('#side-panel')).toBeHidden();
-    // выделить можно (копирование не запрещено), но реакций и «Комментировать» у читателя нет
+    // выделить можно (копирование не запрещено), но «Поставить реакцию» и «Комментировать» у читателя нет
     await new Board(p).click({ x: 460, y: 340 });
     await expect.poll(() => stateOf(p, st => st.selection.size)).toBe(1);
-    await expect(p.locator('.qm-react')).toHaveCount(0);
-    await expect(p.locator('.qm-comment')).toHaveCount(0);
+    await expect(p.locator('#annot-layer .an-react')).toHaveCount(0);
+    await expect(p.locator('#annot-layer .an-row.selected')).toHaveCount(0);
 
     // последний вход по письму виден в «Есть доступ» (кто сейчас на доске — отдельный виджет, не окно «Поделиться»)
     await expect(box.locator('.share-email-item .share-email-meta')).toContainText('заходил(а) сегодня', { timeout: 10000 });
@@ -98,7 +98,7 @@ test.describe('роли', () => {
     await g.locator('#side-panel-close').click();
     await expect(g.locator('#side-panel')).toBeHidden();
     await new Board(g).click({ x: 460, y: 340 });
-    await expect(g.locator('.qm-react').first()).toBeVisible();
+    await expect(g.locator('#annot-layer .an-row.selected .an-react')).toBeVisible();
     await A.close();
     await G.close();
   });

@@ -356,11 +356,31 @@ describe('elementHandles', () => {
 
   it('тело и текст имеют ручки, штрих — без ручек', () => {
     expect(elementHandles(cube, 1)).toEqual([expect.objectContaining({ h: { kind: 'param', key: 'a' } })]);
-    expect(elementHandles(text(), 1)).toHaveLength(2);
+    expect(elementHandles(text(), 1)).toHaveLength(6);
     const resized = applyHandle(text(), { kind: 'resize', dx: 1, dy: 0 }, { x: 30, y: 0, p: 0.5 });
     expect(resized).toMatchObject({ w: 24 });
     expect(elementAABB(resized).x1 - elementAABB(resized).x0).toBe(24);
     expect(elementHandles(stroke(), 1)).toEqual([]);
+  });
+
+  it('текст: угловая ручка масштабирует кегль и ширину от противоположного угла', () => {
+    const t = text({ w: 100 });
+    const box = elementAABB(t);
+    const bw = box.x1 - box.x0, bh = box.y1 - box.y0;
+    // правый нижний угол вдвое дальше от левого верхнего
+    const r = applyHandle(t, { kind: 'resize', dx: 1, dy: 1 }, { x: t.x + bw * 2, y: t.y + bh * 2, p: 0.5 }) as TextEl;
+    expect(r.size).toBeCloseTo(40);
+    expect(r.w).toBeCloseTo(200);
+    expect(r.x).toBe(t.x);
+    expect(r.y).toBe(t.y);
+    // левый верхний угол — якорь справа внизу остаётся на месте
+    const l = applyHandle(t, { kind: 'resize', dx: -1, dy: -1 }, { x: t.x + bw - bw * 2, y: t.y + bh - bh * 2, p: 0.5 }) as TextEl;
+    expect(l.size).toBeCloseTo(40);
+    expect(l.x + l.w!).toBeCloseTo(t.x + bw);
+    expect(l.y + l.size * 1.25).toBeCloseTo(t.y + bh);
+    // нижняя граница кегля
+    const tiny = applyHandle(t, { kind: 'resize', dx: 1, dy: 1 }, { x: t.x, y: t.y, p: 0.5 }) as TextEl;
+    expect(tiny.size).toBe(6);
   });
 });
 

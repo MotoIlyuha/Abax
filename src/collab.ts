@@ -1,4 +1,4 @@
-import type { Element, FadeStroke, GridMode, Page, PageRight, Project, ProjectMeta, Pt } from './types';
+import type { CommentThread, Element, FadeStroke, GridMode, Page, PageRight, Project, ProjectMeta, Pt } from './types';
 import { roleLabel, type AccessRole, type ParticipantCaps } from './access';
 import { state, openProject, setSelection, setCopyGuard, setTouchGuard, isDraftId, onDraft, onChange, touchProject, update } from './state';
 import { MAX_PATCH_OPS, applyBoardPatch, diffElements, isBoardPatch, type BoardPatch } from './delta';
@@ -60,9 +60,24 @@ export interface CollabUser {
   avatar?: string | null;
   /** Участник на странице, скрытой от меня: где он, не сообщается (SPEC_NIGHT5 §3.1). */
   hiddenPage?: boolean;
+  /** Id подписи реакций и комментариев участника (SPEC_COMMENTS §4): по нему — цвет и имя у пилюль реакций. */
+  noteId?: string;
   /** Роль, откуда доступ и личные права страниц (pageId → право) — приходит только автору (SPEC_NIGHT6 §3.2). */
   access?: { role: AccessRole | 'owner'; source: 'owner' | 'link' | 'alias' | 'email' | 'p2p'; inviteId?: string; personal?: Record<string, PageRight> };
 }
+
+/**
+ * Событие на document: от комнаты пришли комментарии страницы или правка её элементов (до применения у себя) —
+ * src/note-notices.ts ищет в них новые чужие сообщения и реакции (SPEC_COMMENTS §6).
+ */
+export const NOTES_EVENT = 'doska:collab-notes';
+export type CollabNotesDetail =
+  | { pageId: string; kind: 'comments'; prev: CommentThread[] | undefined; next: CommentThread[] }
+  | { pageId: string; kind: 'elements'; ids: string[]; prev: readonly Element[]; next: readonly Element[] };
+
+/** Событие на document: участник привлёк внимание к объекту реакцией (SPEC_COMMENTS §5). */
+export const ATTENTION_EVENT = 'doska:collab-attention';
+export interface CollabAttentionDetail { pageId: string; elId: string; emoji: string; by: number }
 
 /** Событие на document: автор позвал всех на страницу (SPEC_NIGHT5 §8); камеру наводит приложение. */
 export interface CollabSummonDetail { pageId: string; vx: number; vy: number; vz: number; by: number }
@@ -358,7 +373,8 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
       lostAt = null;
       // хаб умеет патчи — сообщаем, что мы тоже: до ответа он шлёт полные проекты
       hubPatches = m.patches === true;
-      if (hubPatches) send({ t: 'caps', patches: true });
+      // noteId — чем я подписываю реакции и комментарии: по нему остальные красят мои реакции цветом моей плашки
+      if (hubPatches) send({ t: 'caps', patches: true, noteId: clientId() });
       if (m.project) applyRemoteProject(m.project as Project);
       followHostPages(users);
       renderRemoteCursors();
@@ -410,6 +426,12 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
       document.dispatchEvent(new CustomEvent(PRESENCE_EVENT));
     } else if (m.t === 'summon') {
       receiveSummon(m);
+    } else if (m.t === 'attention') {
+      // «Привлечь внимание» (SPEC_COMMENTS §5): частицы и уведомление — src/attention.ts
+      if (typeof m.pageId === 'string' && typeof m.elId === 'string' && typeof m.emoji === 'string' && typeof m.by === 'number' && m.by !== myUserId) {
+        const detail: CollabAttentionDetail = { pageId: m.pageId, elId: m.elId, emoji: m.emoji, by: m.by };
+        document.dispatchEvent(new CustomEvent<CollabAttentionDetail>(ATTENTION_EVENT, { detail }));
+      }
     } else if (m.t === 'set-rights') {
       // хаб отклонил «Настройки доступа» из меню аватара (например, лимит редакторов)
       // ответ на моё действие — тихое предупреждение
@@ -699,6 +721,14 @@ function applyIncomingPatch(p: BoardPatch): void {
   if (!page) return;
   const next = applyBoardPatch(page, p);
   const same = next.elements === page.elements && next.grid === page.grid && next.backgroundColor === page.backgroundColor && next.coordLabels === page.coordLabels;
+  // новые реакции участников — уведомлениям (src/note-notices.ts): сравниваются только присланные элементы
+  if (next.elements !== page.elements) {
+    const ids = p.ops.flatMap(o => (o.op === 'put' ? [o.el.id] : []));
+    if (ids.length) {
+      const detail: CollabNotesDetail = { pageId: page.id, kind: 'elements', ids, prev: page.elements, next: next.elements };
+      document.dispatchEvent(new CustomEvent<CollabNotesDetail>(NOTES_EVENT, { detail }));
+    }
+  }
   if (!same) {
     page.elements = next.elements;
     page.grid = next.grid;
@@ -962,6 +992,13 @@ export function sendReaction(pageId: string, elId: string, emoji: string): boole
   return true;
 }
 
+/** «Привлечь внимание» к объекту реакцией (хаб проверит право и частоту); false — не в комнате. */
+export function sendAttention(pageId: string, elId: string, emoji: string): boolean {
+  if (!noteOnline()) return false;
+  send({ t: 'attention', pageId, elId, emoji });
+  return true;
+}
+
 export type CommentRequest =
   | { op: 'create'; x: number; y: number; targetElementId?: string; text: string }
   | { op: 'reply'; threadId: string; text: string }
@@ -979,6 +1016,9 @@ function applyIncomingComments(pageId: unknown, raw: unknown): void {
   const page = state.project.pages.find(pg => pg.id === pageId);
   if (!page) return;
   const list = sanitizeComments(raw);
+  const prev = page.comments;
+  const detail: CollabNotesDetail = { pageId: page.id, kind: 'comments', prev, next: list };
+  document.dispatchEvent(new CustomEvent<CollabNotesDetail>(NOTES_EVENT, { detail }));
   if (list.length > 0) page.comments = list;
   else delete page.comments;
   if (sentStructure) {

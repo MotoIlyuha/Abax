@@ -102,9 +102,57 @@ function savedMode(): PanelMode | null {
 const narrow = (): boolean => window.innerWidth < SIDE_PANEL_NARROW;
 const notifyBtn = (): HTMLElement | null => document.getElementById('btn-notify');
 
+/**
+ * Пункты переключателя вместо одного пункта режима (SPEC_COMMENTS §6): у режима ЧКУ — «Чат и уведомления» и
+ * «Комментарии», оба открывают его, но на разных вкладках. active — какой пункт показывать выбранным сейчас.
+ */
+export interface PanelEntryDef {
+  value: string;
+  label: string;
+  icon: string;
+  badge?: () => string;
+  active: () => boolean;
+  open: () => void;
+}
+const entries = new Map<PanelMode, PanelEntryDef[]>();
+
+/** Пункты режима mode в переключателе (пустой список — снова один пункт режима). */
+export function setPanelEntries(mode: PanelMode, list: readonly PanelEntryDef[]): void {
+  if (list.length) entries.set(mode, [...list]);
+  else entries.delete(mode);
+  if (ui) ui.select.setOptions(modeOptions(), optionValue(current));
+}
+
+/** Значение переключателя для режима: его выбранный пункт или сам режим. */
+function optionValue(mode: PanelMode): string {
+  const list = entries.get(mode);
+  if (!list) return mode;
+  return (list.find(e => e.active()) ?? list[0]).value;
+}
+
 function modeOptions(): SelectOption[] {
   const badge = formatUnread(unreadCount());
-  return [...modes.values()].map(({ def }) => ({ value: def.id, label: def.label, icon: def.icon, badge: def.id === 'notify' ? badge : '' }));
+  return [...modes.values()].flatMap(({ def }) => {
+    const list = entries.get(def.id);
+    if (list) return list.map(e => ({ value: e.value, label: e.label, icon: e.icon, badge: e.badge?.() ?? '' }));
+    return [{ value: def.id, label: def.label, icon: def.icon, badge: def.id === 'notify' ? badge : '' }];
+  });
+}
+
+/** Счётчики и выбранный пункт переключателя заново (сменилась вкладка ЧКУ, пришло уведомление). */
+export function syncPanelSelect(): void {
+  if (!ui) return;
+  for (const o of modeOptions()) ui.select.setBadge(o.value, o.badge ?? '');
+  const v = optionValue(current);
+  if (ui.select.value !== v) ui.select.setValue(v, !isOpen);
+}
+
+function choose(v: string): void {
+  for (const list of entries.values()) {
+    const e = list.find(x => x.value === v);
+    if (e) { e.open(); return; }
+  }
+  openSidePanel(v as PanelMode);
 }
 
 function build(): Ui {
@@ -119,8 +167,8 @@ function build(): Ui {
   head.className = 'sp-head';
   const select = createSpringSelect({
     className: 'sp-mode', label: 'Режим панели', title: 'Режим панели', align: 'start',
-    options: modeOptions(), value: current,
-    onChange: v => openSidePanel(v as PanelMode),
+    options: modeOptions(), value: optionValue(current),
+    onChange: v => choose(v),
   });
   const actions = document.createElement('div');
   actions.className = 'sp-actions';
@@ -165,7 +213,7 @@ function build(): Ui {
   panel.addEventListener('keydown', onKey);
   close.addEventListener('keydown', onKey);
   document.body.append(panel, close);
-  onNotices(() => ui?.select.setBadge('notify', formatUnread(unreadCount())));
+  onNotices(() => syncPanelSelect());
   window.addEventListener('resize', onResize);
   return { panel, inner, head, actions, body, close, cloud, cross, select };
 }
@@ -182,7 +230,7 @@ function ensureUi(): Ui {
 export function registerPanelMode(def: PanelModeDef): void {
   const prev = modes.get(def.id);
   modes.set(def.id, { def, host: prev?.host ?? null, view: prev?.view ?? null });
-  if (ui) ui.select.setOptions(modeOptions(), current);
+  if (ui) ui.select.setOptions(modeOptions(), optionValue(current));
 }
 
 /** Значок ЧУ на язычке «Свернуть панель» (по вкладке); в переключателе режимов значок общий. */
@@ -539,7 +587,7 @@ export function openSidePanel(mode?: PanelMode, opts: { focus?: boolean } = {}):
   current = next;
   isOpen = true;
   setSidePanelPref({ mode: next });
-  if (u.select.value !== next) u.select.setValue(next, opening);
+  if (u.select.value !== optionValue(next)) u.select.setValue(optionValue(next), opening);
   showView(next, opening ? 'off' : anim);
   animateTo(anim, opening, false);
   syncReserve();
@@ -585,6 +633,7 @@ export function resetSidePanelForTests(): void {
   isOpen = false;
   current = 'notify';
   modes.clear();
+  entries.clear();
   // подписчики (кнопка ЧУ, стопка) живут всё время модуля — не сбрасываются
   ui?.panel.remove();
   ui?.close.remove();

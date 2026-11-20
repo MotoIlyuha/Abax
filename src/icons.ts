@@ -183,12 +183,16 @@ export const SLIDER_TRACK_ICON = `<svg viewBox="3 0 108.5 24" preserveAspectRati
 export const NOTIFY_ICON = svg('<path d="M3.5 14.2a6.2 6.2 0 1 1 3 5.3L3 20.5z" transform="translate(0 -1)"/><path d="M6.7 12.7h.01M9.5 12.7h.01M12.3 12.7h.01" stroke-width="2.4"/><g transform="translate(11.6 1.2) scale(.58)" stroke-width="2.9"><path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></g>');
 /** Только чат: круглый пузырь с точками (вкладка «Чат»). */
 export const CHAT_ICON = svg('<path d="M20.5 12A8.5 8.5 0 0 1 8.2 19.6L3.5 20.8l1.3-4.3A8.5 8.5 0 1 1 20.5 12z"/><path d="M8.5 12h.01M12 12h.01M15.5 12h.01" stroke-width="2.6"/>');
+/** Реакции: улыбка (переключатель «Показывать реакции» в меню аватара). */
+export const REACTION_ICON = svg('<circle cx="12" cy="12" r="8.5"/><path d="M8.5 14a4.5 4.5 0 0 0 7 0"/><path d="M9 9.5h.01M15 9.5h.01" stroke-width="2.4"/>');
+/** Комментарии к объектам: квадратный пузырь со строками (кнопка «Комментировать», вкладка «Комментарии»). */
+export const COMMENT_ICON = svg('<path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v8a2.5 2.5 0 0 1-2.5 2.5H10l-4.5 3.5V17h0A1.5 1.5 0 0 1 4 15.5z"/><path d="M8 9h8M8 12.5h5"/>');
 /** Только уведомления: колокольчик (вкладка «Уведомления»). */
 export const BELL_ICON = svg('<path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>');
 
-/** Иконка ЧУ по вкладке: «Чат» — пузырь, «Уведомления» — колокольчик, «Все» — колокольчик с пузырём. */
+/** Иконка ЧКУ по вкладке: «Чат» — пузырь, «Комментарии» — пузырь со строками, «Уведомления» — колокольчик, «Все» — колокольчик с пузырём. */
 export function notifyTabIcon(tab: string): string {
-  return tab === 'chat' ? CHAT_ICON : tab === 'notices' ? BELL_ICON : NOTIFY_ICON;
+  return tab === 'chat' ? CHAT_ICON : tab === 'comments' ? COMMENT_ICON : tab === 'notices' ? BELL_ICON : NOTIFY_ICON;
 }
 
 /** «Не беспокоить»: залитый полумесяц (значок у кнопки ЧУ). */

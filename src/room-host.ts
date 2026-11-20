@@ -169,6 +169,10 @@ interface Client {
   chatOk: (now: number) => boolean;
   /** Участник уже присылал правки (после этого секрет возобновления не принимается). */
   edited: boolean;
+  /** Чем участник подписывает реакции и комментарии (caps.noteId или первая реакция/комментарий). */
+  noteId?: string;
+  /** Ограничитель частоты «Привлечь внимание». */
+  attentionOk: (now: number) => boolean;
 }
 
 /** Где участник смотрит: страница, центр экрана в мировых координатах, зум. */
@@ -195,6 +199,8 @@ export interface UserSnapshot {
   avatar?: string | null;
   /** Участник на странице, скрытой для получателя: страница, курсор, камера и выделение не передаются. */
   hiddenPage?: true;
+  /** Id, которым участник подписывает реакции и комментарии: по нему клиенты красят пилюли реакций (SPEC_COMMENTS §4). */
+  noteId?: string;
   /**
    * Роль, откуда доступ и личные права страниц (меню аватара «Настройки доступа») — только получателям-авторам
    * (SPEC_NIGHT6 §3.2).
@@ -322,6 +328,10 @@ export function hostElement(known: Element | undefined, incoming: Element): Elem
   if (!isTask(incoming) || !known || !isTask(known)) return incoming;
   return mergeHostTask(known, incoming) as Element;
 }
+
+/** «Привлечь внимание»: не чаще стольких раз за столько миллисекунд от одного участника (SPEC_COMMENTS §5). */
+export const ATTENTION_RATE_COUNT = 4;
+export const ATTENTION_RATE_MS = 3000;
 
 /** Идентификатор автора реакции или комментария из сообщения участника: короткая строка без управляющих символов. */
 export const MAX_USER_ID = 64;
@@ -529,6 +539,7 @@ export class Room {
         ...(c.cursorId ? { cursorId: c.cursorId } : {}),
         ...(c.view ? { view: c.view } : {}),
         ...(c.avatar !== undefined ? { avatar: avatarKey(c.avatar, c.avatarRev) } : {}),
+        ...(c.noteId ? { noteId: c.noteId } : {}),
         access: c.host ? { role: 'owner' as const, source: 'owner' as const }
           : { role: a?.role ?? 'commenter', source: a?.source ?? 'p2p', ...(a?.inviteId ? { inviteId: a.inviteId } : {}), ...this.personalSnapshot(a) },
       };
@@ -747,6 +758,7 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
       last: now(), cursor: null, pageId: null, selection: [], patches,
       cursorId: cleanCursorId(cursorId, allowProCursor), allowProCursor, avatarRev: 0,
       view: null, chatOk: createRateLimiter(), edited: false,
+      attentionOk: createRateLimiter(ATTENTION_RATE_COUNT, ATTENTION_RATE_MS),
     };
     room.clients.set(sock, info);
     if (isHost) room.access.delete(uid);
@@ -786,6 +798,7 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
       }
       if (m.t === 'caps') {
         info.patches = m.patches === true;
+        noteIdOf(info, m.noteId);
         return;
       }
       if (m.t === 'profile') {
@@ -832,6 +845,7 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
       else if (m.t === 'pointer') relayPointer(info, m);
       else if (m.t === 'react') acceptReaction(info, m);
       else if (m.t === 'comment') acceptComment(info, m);
+      else if (m.t === 'attention') acceptAttention(info, m);
     });
     sock.on('close', () => { room.clients.delete(sock); broadcastUsers(); });
     return uid;
@@ -1148,6 +1162,38 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
     commitPatch({ t: 'patch', pageId: page.id, rev: 0, ops: [{ op: 'put', el: next as Element }] }, -1, null, kind === 'draft' ? 'task-draft' : 'task-submit');
   }
 
+  /**
+   * Id, которым участник подписывает реакции и комментарии: из caps или (старый клиент) из первой реакции/комментария.
+   * Сменился — снимок участников уходит всем: по нему красятся пилюли реакций.
+   */
+  function noteIdOf(info: Client, raw: unknown): void {
+    const id = cleanUserId(raw);
+    if (!id || id === info.noteId) return;
+    info.noteId = id;
+    broadcastUsers();
+  }
+
+  /**
+   * «Привлечь внимание» (SPEC_COMMENTS §5): щелчок по реакции на объекте. Кто может реагировать, видит страницу,
+   * объект есть и реакция emoji на нём стоит; не чаще ATTENTION_RATE_COUNT раз за ATTENTION_RATE_MS.
+   * Получают все остальные, кому страница видна.
+   */
+  function acceptAttention(info: Client, m: Rec): void {
+    if (!isId(m.pageId) || !isId(m.elId) || typeof m.emoji !== 'string') return;
+    const page = room.project?.pages.find(p => p.id === m.pageId);
+    if (!page || !capsOf(info).comment || room.userPageRight(info.uid, page.id) === 'hidden') return;
+    const el = page.elements.find(e => e.id === m.elId);
+    // свой ключ объекта: «constructor» и подобные из прототипа реакцией не считаются
+    const users = el?.reactions && Object.prototype.hasOwnProperty.call(el.reactions, m.emoji) ? el.reactions[m.emoji] : null;
+    if (!el || !Array.isArray(users) || users.length === 0) return;
+    if (!info.attentionOk(now())) return;
+    const msg = { t: 'attention', pageId: page.id, elId: el.id, emoji: m.emoji, by: info.uid };
+    for (const c of room.clients.values()) {
+      if (c === info || room.userPageRight(c.uid, page.id) === 'hidden') continue;
+      sendTo(c.sock, msg);
+    }
+  }
+
   /** Реакция участника на элемент: ставится или снимается; результат — правка элемента от хаба (её получают все). */
   function acceptReaction(info: Client, m: Rec): void {
     if (!isId(m.pageId) || !isId(m.elId) || typeof m.emoji !== 'string') return;
@@ -1155,6 +1201,7 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
     if (!page || !capsOf(info).comment || room.userPageRight(info.uid, page.id) === 'hidden') return;
     const el = page.elements.find(e => e.id === m.elId);
     if (!el) return;
+    if (!info.noteId) noteIdOf(info, m.userId);
     const next = toggleElementReaction(el, m.emoji, cleanUserId(m.userId) ?? `u${info.uid}`);
     if (next === el) return;
     commitPatch({ t: 'patch', pageId: page.id, rev: 0, ops: [{ op: 'put', el: next }] }, -1, null, 'react');
@@ -1168,6 +1215,7 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
     if (!page || !capsOf(info).comment || room.userPageRight(info.uid, page.id) === 'hidden') return;
     const authorId = cleanUserId(m.userId) ?? `u${info.uid}`;
     const author = { authorId, authorName: info.name };
+    if (!info.noteId) noteIdOf(info, m.userId);
     let next = page;
     if (m.op === 'create') {
       if (!isNum(m.x) || !isNum(m.y) || typeof m.text !== 'string') return;

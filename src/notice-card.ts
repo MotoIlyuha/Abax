@@ -6,7 +6,7 @@
 import { createUserAvatar } from './avatar';
 import { DEFAULT_CURSOR_ID, cursorPreset, isCursorId } from './cursors';
 import { NOTICE_ICONS } from './icons';
-import { noticeTimeLabel, type Notice } from './notify-center';
+import { noticeActions, noticeTimeLabel, type Notice } from './notify-center';
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: string): HTMLElementTagNameMap[K] {
   const n = document.createElement(tag);
@@ -36,11 +36,16 @@ export function noticeMedia(n: Notice): HTMLElement {
     av.removeAttribute('title');
     av.removeAttribute('aria-label');
     box.append(av);
-    if (n.icon) {
+    if (n.emoji) {
+      box.append(el('span', 'ns-ev ns-ev-emoji', n.emoji));
+    } else if (n.icon) {
       const ev = el('span', 'ns-ev');
       ev.innerHTML = noticeIconSvg(n); // константа каталога иконок
       box.append(ev);
     }
+  } else if (n.emoji) {
+    box.classList.add('ns-square', 'ns-emoji');
+    box.textContent = n.emoji;
   } else {
     box.classList.add('ns-square');
     box.innerHTML = noticeIconSvg(n); // константа каталога иконок
@@ -76,12 +81,16 @@ export function noticeContent(n: Notice, beforeAction?: () => void): { content: 
   // «Капибара присоединился к доске»
   if (body) main.append(el('div', 'ns-body', ` ${body}`));
   main.append(time);
-  if (n.action) {
-    const act = el('button', 'ns-action', n.action.label);
-    act.type = 'button';
-    const run = n.action.run;
-    act.addEventListener('click', ev => { ev.stopPropagation(); beforeAction?.(); run(); });
-    main.append(act);
+  const acts = noticeActions(n);
+  if (acts.length) {
+    const row = el('div', 'ns-actions');
+    acts.forEach((a, i) => {
+      const act = el('button', `ns-action${i > 0 ? ' ns-action-alt' : ''}`, a.label);
+      act.type = 'button';
+      act.addEventListener('click', ev => { ev.stopPropagation(); beforeAction?.(); a.run(); });
+      row.append(act);
+    });
+    main.append(row);
   }
   return { content, time };
 }
