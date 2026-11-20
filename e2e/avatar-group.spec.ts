@@ -90,9 +90,12 @@ test('группа аватаров: раскрытие, меню, скрыть 
   await menu.locator('[data-action="hide-cursors"]').hover();
   await expect(a.locator('#morph-tip[data-state="shown"] .mt-lab.cur')).toContainText('ничего не заметят');
   expect(await a.locator('#morph-tip .mt-tip').getAttribute('data-side')).toBe('left');
-  const tipBox = (await a.locator('#morph-tip .mt-tip').boundingBox())!;
-  const menuBox = (await menu.boundingBox())!;
-  expect(tipBox.x + tipBox.width).toBeLessThanOrEqual(menuBox.x);
+  // пузырь оседает пружиной: правый край — левее меню, когда движение закончилось
+  await expect.poll(async () => {
+    const tipBox = (await a.locator('#morph-tip .mt-tip').boundingBox())!;
+    const menuBox = (await menu.boundingBox())!;
+    return tipBox.x + tipBox.width <= menuBox.x;
+  }).toBe(true);
   await expect(menu.locator('.mt-hl')).toHaveCount(1);
   await menu.locator('[data-action="summon-all"]').hover();
   await expect(a.locator('#morph-tip .mt-lab.cur')).toContainText('перейдут на вашу страницу');

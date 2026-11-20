@@ -2360,6 +2360,10 @@ body.collab-guest.readonly-mode #toolbar { display: none; }
 .ctx-shapes { position: relative; }
 body:not(.no-motion) :is(#toolbar .tool, .ctx-shapes .tool):hover:not(.active):not(.gesture-hover) { background: transparent; }
 body.no-motion .mt-hl { display: none; }
+/* «Поделиться» → «Настройки доступа»: подсветка строки тянется между строками и карточками; лежит поверх (карточки с фоном), поэтому полупрозрачная */
+#share-panel-settings .share-page-inner { position: relative; }
+#share-dialog .mt-hl { z-index: 2; border-radius: 7px; background: color-mix(in srgb, var(--accent) 9%, transparent); }
+body:not(.no-motion) #share-panel-settings .share-setting.share-toggle:hover:not(.locked) { background: transparent; }
 /* меню аватара: подсветка пункта тянется между пунктами, как у панели инструментов */
 #avatar-menu .mt-hl { border-radius: 7px; background: var(--accent-soft); }
 #avatar-menu .avatar-menu-page > :is(.avatar-menu-item, .avatar-menu-switch) { position: relative; z-index: 1; }
@@ -5135,3 +5139,5 @@ body.no-ui-anim :is(.composer-row, .composer-send, .np-moon svg path) { transiti
 @keyframes clb-fade { from { opacity: 0; } to { opacity: 1; } }
 body.no-ui-anim :is(.chat-lightbox, .clb-img) { animation: none !important; }
 @media (prefers-reduced-motion: reduce) { :is(.chat-lightbox, .clb-img) { animation: none !important; } }
+.avatar-menu-switch.has-badge { cursor: default; }
+.avatar-menu-switch.has-badge .switch-input { cursor: default; }

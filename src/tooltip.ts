@@ -168,12 +168,18 @@ export function initTooltips(): void {
     // панель инструментов: своя подсказка; в щели между кнопками остаётся предыдущая
     // (если «Motion анимации» выключены в настройках — обычный пузырь, как у остальных кнопок)
     if (!document.body.classList.contains('no-motion') && e.target instanceof Element && e.target.closest(MORPH_SCOPE)) {
-      hide();
-      // меню аватара: морфятся пункты первого уровня; пункт без подсказки — только подсветка
+      // меню аватара и «Настройки доступа»: морфятся только свои строки; пункт без подсказки — только подсветка
       const row = e.target.closest<HTMLElement>(MORPH_MENU_ROW);
-      if (row) morphOver(row, t && row.contains(t) ? t.dataset.tip ?? '' : '');
-      else if (t && !e.target.closest('#avatar-menu')) morphOver(t, t.dataset.tip ?? '');
-      return;
+      if (row) {
+        hide();
+        morphOver(row, t && row.contains(t) ? t.dataset.tip ?? '' : '');
+        return;
+      }
+      if (!e.target.closest('#avatar-menu, #share-dialog')) {
+        hide();
+        if (t) morphOver(t, t.dataset.tip ?? '');
+        return;
+      }
     }
     morphLeave();
     if (t === target) return;
