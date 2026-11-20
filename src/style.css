@@ -976,7 +976,9 @@ body:not(.no-motion) .ctx-panel[data-kind="shapes"] { animation: none; }
 .ctx-custom-btn:hover { border-color: var(--accent); color: var(--accent); }
 
 /* ----- Кастомный HSV-пикер ----- */
-.ctx-picker { margin-bottom: 14px; }
+.ctx-picker { display: flow-root; } /* отступ — у последнего ребёнка: блок сворачивается по высоте до нуля */
+.ctx-picker > :last-child { margin-bottom: 14px; }
+.ctx-picker[hidden], .ctx-all-colors[hidden] { display: none; }
 .picker-sv {
   position: relative;
   width: 100%;

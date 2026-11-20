@@ -46,14 +46,22 @@ test.describe('панель цвета и толщины', () => {
   test('пипетка в «Добавить цвет»: превью следует за курсором, щелчок добавляет цвет, Esc отменяет', async ({ board, page }) => {
     await page.locator('#btn-style').click();
     const panel = page.locator('.ctx-panel[data-kind="style"]');
+    // цели пипетки — свои блоки в углах окна («Все цвета» при открытом пикере свёрнуты)
+    await page.evaluate(() => {
+      for (const [side, bg] of [['left', '#2dc75c'], ['right', '#123456']]) {
+        const d = document.createElement('div');
+        d.style.cssText = `position:fixed;${side}:0;bottom:0;width:40px;height:40px;z-index:9999;background:${bg}`;
+        document.body.appendChild(d);
+      }
+    });
+    const { width: vw, height: vh } = page.viewportSize()!;
     await panel.locator('.ctx-add-color').click();
+    await expect(panel.locator('.ctx-all-colors')).toBeHidden();
     const hex = panel.locator('.picker-hex input');
     const before = await hex.inputValue();
-    const target = panel.locator('.ctx-swatches:not(.custom) [data-c="#2dc75c"]');
-    const box = (await target.boundingBox())!;
     // Esc — прежний цвет
     await panel.getByRole('button', { name: 'Пипетка' }).click();
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.move(20, vh - 20);
     await expect(hex).toHaveValue('#2dc75c');
     // лупа с пиксельной сеткой; колесо меняет её размер (пружиной — доезжает до цели)
     const loupe = page.locator('.eyedropper-loupe');
@@ -66,16 +74,10 @@ test.describe('панель цвета и толщины', () => {
     await expect(page.locator('.eyedropper-overlay')).toHaveCount(0);
     await expect(hex).toHaveValue(before);
     // щелчок по цвету не из палитры — он в «Моих цветах» и текущий
-    await page.evaluate(() => {
-      const d = document.createElement('div');
-      d.style.cssText = 'position:fixed;left:0;bottom:0;width:40px;height:40px;z-index:9999;background:#123456';
-      document.body.appendChild(d);
-    });
-    const vh = page.viewportSize()!.height;
     await panel.getByRole('button', { name: 'Пипетка' }).click();
-    await page.mouse.move(20, vh - 20);
+    await page.mouse.move(vw - 20, vh - 20);
     await expect(hex).toHaveValue('#123456');
-    await page.mouse.click(20, vh - 20);
+    await page.mouse.click(vw - 20, vh - 20);
     await expect(page.locator('.eyedropper-overlay')).toHaveCount(0);
     await expect(panel.locator('.ctx-swatches.custom [data-c="#123456"]')).toHaveCount(1);
     expect((await board.state()).style.color).toBe('#123456');
@@ -197,6 +199,9 @@ test.describe('панель цвета и толщины', () => {
     const panel = page.locator('.ctx-panel[data-kind="style"]');
     await panel.locator('.ctx-add-color').click();
     await expect(panel.locator('.ctx-add-color')).toHaveText('Готово');
+    // пикер вместо «Всех цветов»
+    await expect(panel.locator('.ctx-all-colors')).toBeHidden();
+    await expect(panel.locator('.ctx-section-action')).toHaveText('Развернуть');
     const hex = panel.locator('.picker-hex input');
     await hex.fill('#123abc');
     await hex.press('Enter');
@@ -216,6 +221,9 @@ test.describe('панель цвета и толщины', () => {
     expect((await board.state()).style.color).not.toBe(picked);
     await panel.locator('.ctx-add-color').click();
     await expect(panel.locator('.ctx-picker')).toBeHidden();
+    // «Все цвета» возвращаются
+    await expect(panel.locator('.ctx-all-colors')).toBeVisible();
+    await expect(panel.locator('.ctx-section-action')).toHaveText('Свернуть');
     const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('doska.customColors') || '[]'));
     expect(saved).toHaveLength(1);
   });

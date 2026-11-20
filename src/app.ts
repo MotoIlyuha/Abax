@@ -62,6 +62,7 @@ import { closeIconPicker } from './icon-picker';
 import { createIconButton, type IconButton } from './icon-button';
 import { capitalize, dayLabel, pagesLabel } from './format';
 import { buildCustomColorPicker } from './color-picker';
+import { setShown } from './collapse';
 import { eyedropperActive } from './eyedropper';
 import { copySelection, duplicateSelection as duplicateInPlace, pasteFromMemory, pasteFromSystem } from './clipboard';
 import { stretchCancel, stretchClose, stretchOpen } from './stretch';
@@ -1002,6 +1003,8 @@ function isLightColor(hex: string): boolean {
 /** Круглый свотч в стиле Miro; у активного — галочка контрастного цвета. */
 let colorMenuController: AbortController | null = null;
 let allColorsCollapsed = false;
+/** «Все цвета» свернула открытая панель «Добавить цвет»: при её закрытии разворачиваем обратно. */
+let allAutoCollapsed = false;
 let draggedColor: { color: string; custom: boolean } | null = null;
 function changeFavorite(c: string, add: boolean): void {
   const rest = loadCustomColors().filter(x => x !== c);
@@ -1193,35 +1196,51 @@ function buildStylePanel(cp: CtxPanel): void {
   const pickerHost = document.createElement('div');
   pickerHost.className = 'ctx-picker';
   pickerHost.hidden = true;
+  let pickerOpen = false;
+  const reposition = () => positionCtxPanel(cp);
   add.addEventListener('click', () => {
-    pickerHost.hidden = !pickerHost.hidden;
-    if (!pickerHost.hidden) {
+    pickerOpen = !pickerOpen;
+    if (pickerOpen) {
       pickerHead = null;
       buildCustomColorPicker(pickerHost, currentPanelColor() || '#ffffff', choosePickedColor, { eyedropper: true });
+      // пикер вместо «Всех цветов»: панель не растягивается на два больших блока
+      if (!allColorsCollapsed) { allAutoCollapsed = true; allColorsCollapsed = true; updateCollapsed(true); }
+    } else if (allAutoCollapsed) {
+      allAutoCollapsed = false; allColorsCollapsed = false; updateCollapsed(true);
     }
-    add.textContent = pickerHost.hidden ? '+ Добавить цвет' : 'Готово';
-    positionCtxPanel(cp);
+    setShown(pickerHost, pickerOpen, reposition);
+    add.textContent = pickerOpen ? 'Готово' : '+ Добавить цвет';
   });
   const custom = document.createElement('div');
   custom.className = 'ctx-swatches custom';
   const all = document.createElement('div');
   all.className = 'ctx-swatches';
   for (const c of PALETTE) all.appendChild(makeSwatch(c, c === currentPanelColor(), chooseColor));
+  // сворачивается обёртка без отступов: у сетки есть padding, высота сетки до нуля не доедет
+  const allWrap = document.createElement('div');
+  allWrap.className = 'ctx-all-colors';
+  allWrap.appendChild(all);
   const myHeader = sectionHead('Мои цвета');
   myHeader.classList.add('ctx-section-row'); myHeader.appendChild(add);
   const allHeader = sectionHead('Все цвета');
   allHeader.classList.add('ctx-section-row');
   const toggle = document.createElement('button'); toggle.className = 'ctx-section-action';
-  const updateCollapsed = () => { all.hidden = allColorsCollapsed; toggle.textContent = allColorsCollapsed ? 'Развернуть' : 'Свернуть'; };
-  toggle.addEventListener('click', () => { allColorsCollapsed = !allColorsCollapsed; updateCollapsed(); positionCtxPanel(cp); });
-  allHeader.appendChild(toggle); updateCollapsed();
+  function updateCollapsed(animate: boolean): void {
+    toggle.textContent = allColorsCollapsed ? 'Развернуть' : 'Свернуть';
+    if (animate) setShown(allWrap, !allColorsCollapsed, reposition);
+    else allWrap.hidden = allColorsCollapsed;
+  }
+  toggle.addEventListener('click', () => { allAutoCollapsed = false; allColorsCollapsed = !allColorsCollapsed; updateCollapsed(true); });
+  // панель пересобрали с открытым пикером (пикер после пересборки закрыт) — «Все цвета» возвращаются
+  if (allAutoCollapsed) { allAutoCollapsed = false; allColorsCollapsed = false; }
+  allHeader.appendChild(toggle); updateCollapsed(false);
   const dropZone = (zone: HTMLElement, addFavorite: boolean) => {
     zone.addEventListener('dragover', e => { if (draggedColor) { e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'; } });
     zone.addEventListener('drop', e => { if (!draggedColor) return; e.preventDefault(); e.stopPropagation(); changeFavorite(draggedColor.color, addFavorite); });
   };
   const mine = document.createElement('div'); mine.className = 'ctx-my-colors';
   mine.append(myHeader, pickerHost, custom); dropZone(mine, true);
-  const allSection = document.createElement('div'); allSection.append(allHeader, all); dropZone(allSection, false);
+  const allSection = document.createElement('div'); allSection.append(allHeader, allWrap); dropZone(allSection, false);
   scroll.append(mine, allSection);
   p.appendChild(scroll);
   renderCustomSwatches();
