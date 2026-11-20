@@ -1046,7 +1046,7 @@ body:not(.no-motion) .ctx-panel[data-kind="shapes"] { animation: none; }
 .ctx-drop-slider { position: relative; flex: none; height: 44px; margin: -6px 0 10px; }
 .qs-track {
   position: absolute;
-  inset: 10px 12px;
+  inset: 10px 0;
   cursor: pointer;
   touch-action: none;
 }
@@ -1068,7 +1068,7 @@ body:not(.no-motion) .ctx-panel[data-kind="shapes"] { animation: none; }
 /* ----- Толщина, прозрачность и скругление: иконка — дорожка — значение ----- */
 .ctx-range { display: flex; align-items: center; gap: 8px; flex: none; height: 28px; margin: -4px 0 8px; }
 /* у толщины дорожка — «капля»: ручка до 24px, строка выше */
-.ctx-range.ctx-width { height: 44px; margin: -10px 0 4px; gap: 1px; }
+.ctx-range.ctx-width { height: 44px; margin: -10px 0 4px; gap: 8px; }
 .ctx-width .ctx-drop-slider { flex: 1; height: 100%; margin: 0; }
 .ctx-range-icon { display: flex; flex: none; color: var(--icon-secondary); }
 .ctx-range-icon svg { width: 18px; height: 18px; }
@@ -1104,7 +1104,7 @@ body:not(.no-motion) .ctx-panel[data-kind="shapes"] { animation: none; }
   transform: translate(-50%, -50%);
   pointer-events: none;
 }
-.ctx-range-val { flex: none; min-width: 34px; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--fg-secondary); }
+.ctx-range-val { flex: none; min-width: 24px; text-align: right; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--fg-secondary); }
 .ctx-frame-off {
   align-self: flex-start;
   margin: -2px 0 12px;
@@ -5215,3 +5215,40 @@ body.no-ui-anim .ctx-drop-hint { transition: none; }
 }
 .eyedropper-hex:empty { display: none; }
 .eyedropper-loupe[hidden] { display: none; }
+
+/* прозрачность стоит в самом низу «Всех цветов» */
+.ctx-scroll .ctx-range.ctx-opacity { margin: 8px 0 2px; }
+
+/* ----- Откреплённая панель инструментов (src/toolbar-float.ts, «Дополнительные») ----- */
+/* место задают left/top в style; у краёвых позиций не остаётся ни right/bottom, ни сдвига и выезда */
+body #toolbar.floating[data-pos] { right: auto; bottom: auto; transform: none; transition: none; }
+/* пристыкованная у шапки панель опускается на высоту ручки: иначе ручка ушла бы под шапку доски */
+body.toolbar-detachable #toolbar:not(.floating):is([data-pos="left"], [data-pos="right"], [data-pos="top"]) { top: 86px; }
+/* ручка над панелью: язычок, выплывает при наведении на панель. Нижняя часть язычка уходит ПОД панель —
+   у скруглённых углов панели не остаётся зазоров. Для этого фон панели рисуют псевдоэлементы:
+   ::before — тень (ниже язычка), ::after — фон и рамка (выше язычка), кнопки — выше всего */
+body.toolbar-detachable #toolbar { background: transparent; border-color: transparent; box-shadow: none; }
+body.toolbar-detachable #toolbar::before, body.toolbar-detachable #toolbar::after {
+  content: ''; position: absolute; inset: -1px; border-radius: 12px;
+}
+/* фон ловит указатель как сама панель: нажатие у верхнего края панели не достаётся спрятанной под ней части ручки */
+body.toolbar-detachable #toolbar::before { z-index: -3; box-shadow: var(--shadow); pointer-events: none; }
+body.toolbar-detachable #toolbar::after { z-index: -1; background: var(--panel); border: 1px solid var(--border); }
+#toolbar .tb-grip { display: none; }
+body.toolbar-detachable #toolbar .tb-grip {
+  display: flex; align-items: flex-start; justify-content: center;
+  position: absolute; left: 50%; bottom: calc(100% - 13px); z-index: -2;
+  width: 40px; height: 29px; padding-top: 2px; box-sizing: border-box;
+  background: var(--panel); border: 1px solid var(--border); border-bottom: none; border-radius: 8px 8px 0 0;
+  color: var(--icon-faint); cursor: grab; touch-action: none;
+  opacity: 0; pointer-events: none; transform: translate(-50%, 6px);
+  transition: opacity .16s ease, transform .2s ease;
+}
+body.toolbar-detachable #toolbar:hover .tb-grip, body.toolbar-detachable #toolbar.tb-dragging .tb-grip {
+  opacity: 1; pointer-events: auto; transform: translate(-50%, 0);
+}
+body.toolbar-detachable #toolbar .tb-grip:hover { color: var(--fg); }
+body.toolbar-detachable #toolbar.tb-dragging .tb-grip { cursor: grabbing; color: var(--fg); }
+#toolbar .tb-grip svg { width: 14px; height: 14px; transform: rotate(90deg); }
+body.no-ui-anim.toolbar-detachable #toolbar .tb-grip { transition: none; }
+@media (prefers-reduced-motion: reduce) { body.toolbar-detachable #toolbar .tb-grip { transition: none; } }

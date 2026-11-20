@@ -7,6 +7,7 @@ import type {
 import { setStickyTool, stickyTool } from './sticky-tool';
 import { resolveAnimationMode } from './motion';
 import { setZoomCounter } from './zoom-counter';
+import { createValueCounter } from './value-counter';
 import { initZoomChevron } from './zoom-chevron';
 import { claimMenu, closeMenu, drillMenu, menuShown, openMenu, releaseMenu } from './menu-motion';
 import { attachOverlayScroll } from './overlay-scroll';
@@ -56,6 +57,7 @@ import {
 } from './settings-dialog';
 import { experimentalHeadIcon, experimentsShown, renderExperimental, setExperimentsShown, setRecursionDiscovered } from './experimental';
 import { renderToolbarEditor } from './toolbar-editor';
+import { GRIP_ROOM, clampFloat, dragFloat, floatSide, orientOfPos, rotateFloat, sanitizeToolbarFloat, type Area, type ToolbarFloat } from './toolbar-float';
 import { renderHotkeysSettings } from './hotkeys-settings';
 import { DEFAULT_NEW_PAGE_KEY, DRAFT_KEY, comboLabel, macKeys, newPageKeyProblem } from './hotkeys';
 import { renderAbout, showToast } from './about';
@@ -73,8 +75,8 @@ import { hideHeldTooltip, showHeldTooltip } from './tooltip';
 import { LIMIT_PROJECTS_TEXT, copyBoardLink, currentBoardLink, registerLinkViewHooks } from './link-view-ui';
 import { canCreateProject, isOverPageLimit, isOverProjectLimit, PLAN_LIMITS } from './limits';
 import { limitsEnforced, userPlan } from './plan';
-import { CONFLICT_TEXT, cloudStorage, openFresh, type ConflictResolution } from './cloud-sync';
 import { pushNotice } from './notify-center';
+import { CONFLICT_TEXT, cloudStorage, openFresh, type ConflictResolution } from './cloud-sync';
 import { clearStarter, isPristineStarterProject, starterId } from './sync-state';
 import { parseProject } from './file';
 import { setPanelActions } from './panel-actions';
@@ -190,6 +192,8 @@ function restoreSettings(): void {
     if (v && pos.includes(v.toolbarPos)) {
       state.settings = {
         toolbarPos: v.toolbarPos as ToolbarPos,
+        toolbarDetachable: v.toolbarDetachable === true,
+        toolbarFloat: v.toolbarDetachable === true ? sanitizeToolbarFloat(v.toolbarFloat) : null,
         snapToGrid: typeof v.snapToGrid === 'boolean' ? v.snapToGrid : false,
         wheelMode: v.wheelMode === 'scroll' ? 'scroll' : 'zoom',
         pageTransition: PAGE_TRANSITIONS.some(t => t.mode === v.pageTransition) ? v.pageTransition : 'slide',
@@ -762,7 +766,7 @@ function openCtxPanel(kind: CtxKind, source: CtxSource): void {
   el.className = 'ctx-panel';
   el.style.zIndex = String(++ctxZ);
   // откуда выплывает при появлении: от панели инструментов или из-под меню выделения
-  el.dataset.from = source === 'quick' ? 'quick' : state.settings.toolbarPos;
+  el.dataset.from = source === 'quick' ? 'quick' : toolbarSide();
   const cp: CtxPanel = { el, kind, source, baseHeight: 0, detached: false };
   ctxPanels.push(cp);
   el.addEventListener('pointerdown', () => { el.style.zIndex = String(++ctxZ); }, { capture: true });
@@ -921,7 +925,7 @@ function positionCtxPanel(cp: CtxPanel): void {
   } else {
     // центр панели — на уровне кнопки инструмента
     const tr = document.getElementById('toolbar')!.getBoundingClientRect();
-    const pos = state.settings.toolbarPos;
+    const pos = toolbarSide();
     if (pos === 'left' || pos === 'right') {
       maxH = wr.height - margin * 2;
       left = pos === 'left' ? tr.right - wr.left + gap : tr.left - wr.left - w - gap;
@@ -1140,8 +1144,8 @@ function buildStylePanel(cp: CtxPanel): void {
     sliderHost.className = 'ctx-drop-slider';
     const val = document.createElement('span');
     val.className = 'ctx-range-val';
-    const show = (v: number) => { val.textContent = formatWidth(v); };
-    show(state.style.width);
+    const counter = createValueCounter(val, formatWidth, 0.05, state.style.width);
+    const show = (v: number) => counter.set(v);
     buildDropSlider(sliderHost, state.style.width, (v, first) => {
       show(v);
       chooseWidth(v, first);
@@ -1178,12 +1182,6 @@ function buildStylePanel(cp: CtxPanel): void {
       tabs.appendChild(button);
     }
     p.appendChild(tabs);
-  }
-  if (styleNeedsOpacity(cp.source)) {
-    p.appendChild(buildRange({
-      kind: 'opacity', title: 'Прозрачность', min: OPACITY_MIN, max: 1, step: 0.01, value: styleColorTab === 'fill' ? ((selected.find((e): e is ShapeEl => e.type === 'shape' && e.shape !== 'line' && e.shape !== 'arrow')?.fillOpacity) ?? (selected.find((e): e is ShapeEl => e.type === 'shape' && e.shape !== 'line' && e.shape !== 'arrow')?.opacity) ?? 1) : (state.style.opacity ?? 1),
-      format: v => `${Math.round(v * 100)}%`, icon: () => OPACITY_ICON, onChange: chooseOpacity,
-    }));
   }
   const scroll = document.createElement('div');
   scroll.className = 'ctx-scroll';
@@ -1250,6 +1248,13 @@ function buildStylePanel(cp: CtxPanel): void {
   const mine = document.createElement('div'); mine.className = 'ctx-my-colors';
   mine.append(myHeader, pickerHost, custom); dropZone(mine, true);
   const allSection = document.createElement('div'); allSection.append(allHeader, allWrap); dropZone(allSection, false);
+  // прозрачность — в самом низу «Всех цветов»; не в сворачиваемой обёртке, чтобы не пропадала при сворачивании
+  if (styleNeedsOpacity(cp.source)) {
+    allSection.appendChild(buildRange({
+      kind: 'opacity', title: 'Прозрачность', min: OPACITY_MIN, max: 1, step: 0.01, value: styleColorTab === 'fill' ? ((selected.find((e): e is ShapeEl => e.type === 'shape' && e.shape !== 'line' && e.shape !== 'arrow')?.fillOpacity) ?? (selected.find((e): e is ShapeEl => e.type === 'shape' && e.shape !== 'line' && e.shape !== 'arrow')?.opacity) ?? 1) : (state.style.opacity ?? 1),
+      format: v => `${Math.round(v * 100)}%`, icon: () => OPACITY_ICON, onChange: chooseOpacity,
+    }));
+  }
   scroll.append(mine, allSection);
   p.appendChild(scroll);
   renderCustomSwatches();
@@ -1276,8 +1281,9 @@ function buildDropSlider(host: HTMLElement, initial: number, onChange: (v: numbe
     const d = 10 + frac * 14;
     thumb.style.width = `${d}px`;
     thumb.style.height = `${d}px`;
-    // центр ручки ходит по треку (отступ 12px = макс. радиус), поэтому ручка не вылезает за края
-    thumb.style.left = `calc(12px + (100% - 24px) * ${frac.toFixed(4)} - ${d / 2}px)`;
+    // центр ручки ходит от 5px (радиус при минимуме) до «ширина − 12px» (радиус при максимуме):
+    // ручка не вылезает за края, а на минимуме закрывает тонкий хвост дорожки
+    thumb.style.left = `calc(5px + (100% - 17px) * ${frac.toFixed(4)} - ${d / 2}px)`;
     if (emit) {
       onChange(Math.round(value * 2) / 2, first);
       first = false;
@@ -1285,7 +1291,8 @@ function buildDropSlider(host: HTMLElement, initial: number, onChange: (v: numbe
   };
   const pointToValue = (e: PointerEvent) => {
     const r = track.getBoundingClientRect();
-    const frac = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+    // центр ручки ходит от 5px до «ширина − 12px» (см. apply)
+    const frac = Math.max(0, Math.min(1, (e.clientX - r.left - 5) / Math.max(1, r.width - 17)));
     value = WIDTH_MIN + frac * (WIDTH_MAX - WIDTH_MIN);
     apply(true);
   };
@@ -1336,15 +1343,19 @@ function buildRange(o: RangeOpts): HTMLElement {
   const val = document.createElement('span');
   val.className = 'ctx-range-val';
   row.append(icon, track, val);
+  // числа меняются так же, как процент масштаба в МВВ: по режиму анимаций (src/value-counter.ts)
+  const counter = createValueCounter(val, o.format, (o.max - o.min) / 200, o.value);
   const snap = (v: number) => Number(Math.min(o.max, Math.max(o.min, Math.round(v / o.step) * o.step)).toFixed(4));
   let value = snap(o.value);
   let fresh = true;
+  let painted = false;
   const paint = () => {
     const frac = (value - o.min) / (o.max - o.min);
     thumb.style.left = `${(frac * 100).toFixed(2)}%`;
     track.setAttribute('aria-valuenow', String(value));
     track.setAttribute('aria-valuetext', o.format(value));
-    val.textContent = o.format(value);
+    counter.set(value, !painted);
+    painted = true;
     icon.innerHTML = o.icon(value);
   };
   const emit = (v: number) => {
@@ -2249,10 +2260,30 @@ export function openAllSettings(section?: string): void {
         editToolKeys: () => openAllSettings('toolbar'),
       }),
     },
+    { id: 'advanced', title: 'Дополнительные', icon: ICONS.advanced, render: host => renderAdvancedSettings(host) },
     { id: 'about', title: 'О проекте', icon: ICONS.info, render: host => renderAbout(host, showExperiments) },
     ...(experimentsShown() ? [EXPERIMENTAL] : []),
     // «Профиль» — первым в списке, но окно без явного раздела по-прежнему открывается на «Доске» (или на последнем)
   ], section ?? (lastSettingsSection() || 'general'));
+}
+
+/** Раздел «Дополнительные»: редкие настройки, которые по умолчанию выключены. */
+function renderAdvancedSettings(host: HTMLElement): void {
+  const box = document.createElement('div');
+  box.className = 'sd-general';
+  const lbl = document.createElement('div');
+  lbl.className = 'ctx-label';
+  lbl.textContent = 'Панель инструментов';
+  box.appendChild(lbl);
+  box.appendChild(settingCheck('toolbarDetachable', 'Разрешить откреплять панель инструментов',
+    'При наведении над панелью появляется ручка: за неё панель переносят по доске (не помещается — поворачивается), '
+    + 'нажатие на ручку поворачивает панель. Выключение возвращает панель на её край',
+    () => {
+      // запрет откреплять — панель возвращается к своему краю
+      if (!state.settings.toolbarDetachable) { setSettings({ toolbarFloat: null }); persistSettings(); }
+      applyToolbarPos();
+    }));
+  host.appendChild(box);
 }
 
 /** Скрытый раздел (см. experimental.ts): открывается, если задержать логотип в «О проекте». */
@@ -2291,9 +2322,10 @@ function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
     const b = document.createElement('button');
     const names: Record<ToolbarPos, string> = { left: 'Слева', top: 'Сверху', right: 'Справа', bottom: 'Снизу' };
     b.textContent = names[pos];
-    b.className = state.settings.toolbarPos === pos ? 'active' : '';
+    // откреплённая панель — ни одна сторона не выбрана; выбор стороны снова пристыковывает её
+    b.className = !state.settings.toolbarFloat && state.settings.toolbarPos === pos ? 'active' : '';
     b.addEventListener('click', () => {
-      setSettings({ toolbarPos: pos });
+      setSettings({ toolbarPos: pos, toolbarFloat: null });
       persistSettings();
       applyToolbarPos();
       rerender();
@@ -2415,7 +2447,7 @@ function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
   pop.appendChild(lbl7);
 }
 
-type BoolSetting = 'alignGuides' | 'closePagesOnPick' | 'thumbViewport' | 'pageLinks' | 'recursionEnabled';
+type BoolSetting = 'toolbarDetachable' | 'alignGuides' | 'closePagesOnPick' | 'thumbViewport' | 'pageLinks' | 'recursionEnabled';
 
 /** Флажок настройки доски: меняет и сразу сохраняет. */
 function settingCheck(key: BoolSetting, text: string, hint?: string, after?: () => void): HTMLElement {
@@ -2450,7 +2482,8 @@ function smoothPanSwitch(className: string, withIcon: boolean): HTMLElement {
 
 function applyToolbarPos(): void {
   const tb = document.getElementById('toolbar')!;
-  tb.dataset.pos = state.settings.toolbarPos;
+  document.body.classList.toggle('toolbar-detachable', state.settings.toolbarDetachable);
+  placeToolbar(tb);
   // панель внизу заняла бы место кнопки страниц: кнопка уходит наверх, список — колонкой под ней
   const dock = document.getElementById('pages-dock')!;
   const top = pagesAtTop();
@@ -2461,7 +2494,116 @@ function applyToolbarPos(): void {
 
 /** Кнопка страниц — слева вверху, список вертикальный (когда панель инструментов внизу). */
 function pagesAtTop(): boolean {
-  return state.settings.toolbarPos === 'bottom';
+  return !state.settings.toolbarFloat && state.settings.toolbarPos === 'bottom';
+}
+
+// ----- Откреплённая панель инструментов (src/toolbar-float.ts) -----
+
+/** Сторона, от которой раскладывается всё, что открывается с панели: у откреплённой — по её месту на холсте. */
+function toolbarSide(): ToolbarPos {
+  return document.getElementById('toolbar')?.dataset.pos as ToolbarPos | undefined ?? state.settings.toolbarPos;
+}
+
+/** Холст для откреплённой панели: сверху — под шапкой доски, с местом под ручку. */
+function canvasArea(): Area {
+  const wrap = document.getElementById('canvas-wrap')!;
+  const bar = document.getElementById('topbar');
+  const under = bar && bar.offsetHeight ? bar.getBoundingClientRect().bottom - wrap.getBoundingClientRect().top + 6 : 8;
+  return { w: wrap.clientWidth, h: wrap.clientHeight, top: Math.max(8, under) + GRIP_ROOM };
+}
+
+/** Пристыкованная — у своего края; откреплённая — в своей точке, повёрнутая как сохранено, в пределах холста. */
+function placeToolbar(tb: HTMLElement): void {
+  const f = state.settings.toolbarFloat;
+  tb.classList.toggle('floating', !!f);
+  if (!f) {
+    tb.style.left = '';
+    tb.style.top = '';
+    tb.dataset.pos = state.settings.toolbarPos;
+    return;
+  }
+  // сначала ориентация (по ней раскладываются кнопки), потом размер и место
+  tb.dataset.pos = f.orient === 'v' ? 'left' : 'top';
+  const area = canvasArea();
+  const size = { w: tb.offsetWidth, h: tb.offsetHeight };
+  const at = area.w > 0 && size.w > 0 ? clampFloat(f, size, area) : f;
+  tb.style.left = `${at.x}px`;
+  tb.style.top = `${at.y}px`;
+  if (area.w > 0) tb.dataset.pos = floatSide(at, size, area);
+}
+
+function setToolbarFloat(f: ToolbarFloat | null): void {
+  setSettings({ toolbarFloat: f });
+  applyToolbarPos();
+}
+
+/**
+ * Ручка над панелью (видна при наведении, если откреплять разрешено): перенос открепляет панель
+ * и поворачивает её, когда она не помещается; простое нажатие — поворачивает на месте;
+ * удержание — возвращает откреплённую панель к её краю.
+ */
+/** Сколько держать ручку, чтобы прикрепить панель обратно (мс). */
+const TOOLBAR_HOLD_MS = 500;
+
+function toolbarGrip(tb: HTMLElement): HTMLElement {
+  const grip = document.createElement('div');
+  grip.className = 'tb-grip';
+  grip.title = 'Перетащите, чтобы переместить панель. Нажмите — повернуть, удерживайте — прикрепить обратно к краю';
+  grip.innerHTML = GRIP_ICON;
+  grip.addEventListener('pointerdown', e => {
+    if (e.button !== 0 || !e.isPrimary || !state.settings.toolbarDetachable) return;
+    e.preventDefault();
+    const wr = document.getElementById('canvas-wrap')!.getBoundingClientRect();
+    const tr = tb.getBoundingClientRect();
+    // ручка — середина верхнего края; запоминаем, где за неё взялись, чтобы панель не прыгнула
+    const offX = e.clientX - (tr.left + tr.width / 2);
+    const offY = e.clientY - tr.top;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let moved = false;
+    let held = false;
+    try { grip.setPointerCapture(e.pointerId); } catch { /* синтетический pointer */ }
+    tb.classList.add('tb-dragging');
+    // удержание без движения: откреплённая панель возвращается к своему краю
+    const holdTimer = window.setTimeout(() => {
+      if (moved || !state.settings.toolbarFloat) return;
+      held = true;
+      tb.classList.remove('tb-dragging');
+      navigator.vibrate?.(10);
+      setToolbarFloat(null);
+      persistSettings();
+    }, TOOLBAR_HOLD_MS);
+    const onMove = (ev: PointerEvent) => {
+      if (held) return;
+      if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) < 3) return;
+      moved = true;
+      clearTimeout(holdTimer);
+      const cur = state.settings.toolbarFloat;
+      const orient = cur?.orient ?? orientOfPos(state.settings.toolbarPos);
+      const size = { w: tb.offsetWidth, h: tb.offsetHeight };
+      setToolbarFloat(dragFloat(ev.clientX - offX - wr.left, ev.clientY - offY - wr.top, orient, size, canvasArea()));
+    };
+    const onUp = (ev: PointerEvent) => {
+      grip.removeEventListener('pointermove', onMove);
+      grip.removeEventListener('pointerup', onUp);
+      grip.removeEventListener('pointercancel', onUp);
+      clearTimeout(holdTimer);
+      tb.classList.remove('tb-dragging');
+      if (held) return;
+      if (!moved && ev.type === 'pointerup') {
+        const r = tb.getBoundingClientRect();
+        const size = { w: tb.offsetWidth, h: tb.offsetHeight };
+        const cur = state.settings.toolbarFloat
+          ?? { x: r.left - wr.left, y: r.top - wr.top, orient: orientOfPos(state.settings.toolbarPos) };
+        setToolbarFloat(rotateFloat(cur, size, canvasArea()));
+      }
+      persistSettings();
+    };
+    grip.addEventListener('pointermove', onMove);
+    grip.addEventListener('pointerup', onUp);
+    grip.addEventListener('pointercancel', onUp);
+  });
+  return grip;
 }
 
 // ----- Экспорт PNG -----
@@ -4721,7 +4863,7 @@ function buildToolbar(): void {
           hideHeldTooltip();
           if (!next) return;
           next.classList.add('gesture-hover');
-          const pos = state.settings.toolbarPos;
+          const pos = toolbarSide();
           showHeldTooltip(next, panel.el, pos === 'right' ? 'left' : pos === 'top' ? 'bottom' : pos === 'bottom' ? 'top' : 'right');
           navigator.vibrate?.(10);
         };
@@ -4765,6 +4907,13 @@ function buildToolbar(): void {
         toggleCtxPanel(groupId, 'toolbar');
         selectShownTool();
       });
+      // двойной щелчок — «залипающий» режим массового добавления (индикатор «+» на кнопке); снимается выбором другого инструмента
+      b.addEventListener('dblclick', () => {
+        selectShownTool();
+        if (state.tool === 'select' || state.tool === 'pan') return;
+        setStickyTool(state.tool);
+        update();
+      });
     } else {
       const id = item.id;
       b.dataset.tool = id;
@@ -4773,13 +4922,6 @@ function buildToolbar(): void {
       // панель стикеров открывается с этим инструментом и встаёт по центру его кнопки
       if (id === 'note') b.dataset.ctx = 'note';
       if (canDropTool(id)) {
-      // двойной щелчок — «залипающий» режим массового добавления (индикатор «+» на кнопке); снимается выбором другого инструмента
-      b.addEventListener('dblclick', () => {
-        selectShownTool();
-        if (state.tool === 'select' || state.tool === 'pan') return;
-        setStickyTool(state.tool);
-        update();
-      });
         b.classList.add('tool-drop');
         b.addEventListener('pointerdown', e => {
           if (e.button === 0 && e.isPrimary) startToolDrop(id, e);
@@ -4815,6 +4957,9 @@ function buildToolbar(): void {
     styleGroup.appendChild(sBtn);
   }
   tb.appendChild(styleGroup);
+  tb.appendChild(toolbarGrip(tb));
+  // набор кнопок изменился — откреплённая панель могла перестать помещаться
+  if (state.settings.toolbarFloat) placeToolbar(tb);
 }
 
 const PRESET_SLOTS = 3;
@@ -5126,6 +5271,10 @@ function wireTopbar(): void {
     if (d && !d.el.contains(t) && !t.closest('[data-ctx]')) closePanel(d);
   }, { capture: true });
   window.addEventListener('resize', () => positionCtxPanels(true));
+  // холст сменил размер (окно, боковая панель) — откреплённая панель остаётся в его пределах
+  if (typeof ResizeObserver !== 'undefined') {
+    new ResizeObserver(() => { if (state.settings.toolbarFloat) applyToolbarPos(); }).observe(document.getElementById('canvas-wrap')!);
+  }
   window.addEventListener('keydown', e => {
     // Esc у открытого окна настроек закрывает только его
     if (settingsDialogOpen() || eyedropperActive()) return;
@@ -5552,6 +5701,7 @@ function refresh(): void {
     const btn = tb.querySelector<HTMLButtonElement>(`[data-ctx="${group.id}"]`);
     if (!btn) continue;
     btn.classList.toggle('active', active);
+    btn.classList.toggle('sticky', active && stickyTool() === state.tool);
     // инструмент могли перенести в другую группу — тогда кнопка показывает первый
     const cur = group.tools.includes(lastGroupTool[group.id]) ? lastGroupTool[group.id] : group.tools[0];
     if (btn.dataset.shape !== cur) {
@@ -5560,7 +5710,6 @@ function refresh(): void {
       btn.title = `${group.name}: ${toolDef(cur).title}`;
     }
   }
-    btn.classList.toggle('sticky', active && stickyTool() === state.tool);
   syncPresetButtons(tb);
   // панель стикеров открывается автоматически с инструментом (если стикер не скрыт с панели)
   const noteOnToolbar = !!tb.querySelector('[data-ctx="note"], [data-tools~="note"]');

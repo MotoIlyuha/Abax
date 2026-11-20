@@ -39,6 +39,8 @@ export const ICONS = {
   toolbar: svg('<rect x="3" y="3" width="7" height="18" rx="2"/><path d="M14 7h7M14 12h7M14 17h7"/>'),
   chevron: svg('<path d="M9 6l6 6-6 6"/>'),
   star: svg('<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/>'),
+  /** Раздел «Дополнительные» в окне настроек: ползунки. */
+  advanced: svg('<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>'),
   info: svg('<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.5v.01"/>'),
   flask: svg('<path d="M9 3h6"/><path d="M10 3v6.2L4.6 18.4A1.7 1.7 0 0 0 6.1 21h11.8a1.7 1.7 0 0 0 1.5-2.6L14 9.2V3"/><path d="M7.3 15h9.4"/>'),
   chevronLeft: svg('<path d="M15 6l-6 6 6 6"/>'),
@@ -169,7 +171,7 @@ export const BACKGROUND_ICON = svg('<path d="M12 3C9.5 6.4 5 10 5 14a7 7 0 0 0 1
 export const BACK_ARROW_ICON = svg('<path d="M19 12H5"/><path d="M11 6l-6 6 6 6"/>');
 
 /** Дорожка ползунка: «клин» от тонкого к толстому. */
-export const SLIDER_TRACK_ICON = `<svg viewBox="0 0 120 24" preserveAspectRatio="none"><path d="M3 12a2.4 2.4 0 0 1 2.4-2.4C40 7.5 70 3.5 103 3.5a8.5 8.5 0 0 1 0 17C70 20.5 40 16.5 5.4 14.4A2.4 2.4 0 0 1 3 12Z"/></svg>`;
+export const SLIDER_TRACK_ICON = `<svg viewBox="3 0 108.5 24" preserveAspectRatio="none"><path d="M3 12a2.4 2.4 0 0 1 2.4-2.4C40 7.5 70 3.5 103 3.5a8.5 8.5 0 0 1 0 17C70 20.5 40 16.5 5.4 14.4A2.4 2.4 0 0 1 3 12Z"/></svg>`;
 
 /** Кнопка «Чат и уведомления» (ЧУ): облачко с точками. */
 export const NOTIFY_ICON = svg('<path d="M3.5 14.2a6.2 6.2 0 1 1 3 5.3L3 20.5z" transform="translate(0 -1)"/><path d="M6.7 12.7h.01M9.5 12.7h.01M12.3 12.7h.01" stroke-width="2.4"/><g transform="translate(11.6 1.2) scale(.58)" stroke-width="2.9"><path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></g>');

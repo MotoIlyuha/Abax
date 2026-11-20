@@ -179,7 +179,7 @@ export const state: AppState = {
   },
   noteColor: '#ffe066',
   settings: {
-    toolbarPos: 'left', snapToGrid: false, wheelMode: 'zoom', pageTransition: 'slide',
+    toolbarPos: 'left', toolbarDetachable: false, toolbarFloat: null, snapToGrid: false, wheelMode: 'zoom', pageTransition: 'slide',
     pageKeyMod: 'alt', mouseMode: 'pages', mouseBindings: { '1': null, '3': null, '4': null }, newPageKey: DEFAULT_NEW_PAGE_KEY, animationMode: 'enhanced', hideUndoRedo: false,
     keepImageAspect: true, smoothPan: true, alignGuides: true, closePagesOnPick: false, thumbViewport: true, pageLinks: false, recursionEnabled: false,
   },

@@ -167,7 +167,9 @@ export function initTooltips(): void {
     if (e.buttons) { hide(); morphLeave(true); return; }
     // панель инструментов: своя подсказка; в щели между кнопками остаётся предыдущая
     // (если «Motion анимации» выключены в настройках — обычный пузырь, как у остальных кнопок)
-    if (!document.body.classList.contains('no-motion') && e.target instanceof Element && e.target.closest(MORPH_SCOPE)) {
+    // ручка откреплённой панели (.tb-grip) — обычный пузырь: подсветка кнопок легла бы поверх неё и спрятала
+    if (!document.body.classList.contains('no-motion') && e.target instanceof Element && e.target.closest(MORPH_SCOPE)
+      && !e.target.closest('.tb-grip')) {
       // меню аватара и «Настройки доступа»: морфятся только свои строки; пункт без подсказки — только подсветка
       const row = e.target.closest<HTMLElement>(MORPH_MENU_ROW);
       if (row) {
