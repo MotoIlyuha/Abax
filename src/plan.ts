@@ -25,17 +25,52 @@ export interface ServerPlanInfo { plan: PlanTier; limitsEnforced: boolean }
 
 let memoryServerInfo: ServerPlanInfo | null = null;
 
+// ----- Смена тарифа -----
+
+/** Что поменялось: тариф (с учётом переопределения разработчика) и признак действующих лимитов. */
+export interface PlanChange { from: PlanTier; to: PlanTier; enforcedFrom: boolean; enforced: boolean }
+
+const planListeners = new Set<(c: PlanChange) => void>();
+let lastSeen: { plan: PlanTier; enforced: boolean } | null = null;
+
+/** Подписка на смену тарифа или лимитов (окно подписки, бейджи Pro, тариф в шапке). */
+export function onPlanChange(fn: (c: PlanChange) => void): () => void {
+  lastSeen ??= { plan: userPlan(), enforced: limitsEnforced() };
+  planListeners.add(fn);
+  return () => { planListeners.delete(fn); };
+}
+
+/** Сообщить подписчикам, если тариф или лимиты изменились с прошлого раза. */
+export function notifyPlanChange(): void {
+  if (!lastSeen) return;
+  const now = { plan: userPlan(), enforced: limitsEnforced() };
+  if (now.plan === lastSeen.plan && now.enforced === lastSeen.enforced) return;
+  const change: PlanChange = { from: lastSeen.plan, to: now.plan, enforcedFrom: lastSeen.enforced, enforced: now.enforced };
+  lastSeen = now;
+  for (const fn of [...planListeners]) {
+    try { fn(change); } catch (e) { console.error(e); }
+  }
+}
+
+/** Для тестов: забыть подписчиков. */
+export function resetPlanListenersForTests(): void {
+  planListeners.clear();
+  lastSeen = null;
+}
+
 /** Запомнить тариф и признак действующих лимитов, полученные с сервера. */
 export function applyServerPlan(info: ServerPlanInfo): void {
   const clean: ServerPlanInfo = { plan: isPlanTier(info.plan) ? info.plan : 'free', limitsEnforced: info.limitsEnforced === true };
   memoryServerInfo = clean;
   try { localStorage.setItem(SERVER_PLAN_KEY, JSON.stringify(clean)); } catch { /* хранилище недоступно: останется в памяти */ }
+  notifyPlanChange();
 }
 
 /** Забыть серверный тариф (выход из аккаунта). */
 export function clearServerPlan(): void {
   memoryServerInfo = null;
   try { localStorage.removeItem(SERVER_PLAN_KEY); } catch { /* хранилище недоступно */ }
+  notifyPlanChange();
 }
 
 function serverInfo(): ServerPlanInfo | null {
@@ -66,6 +101,7 @@ export function userPlan(): PlanTier {
 /** Переопределить тариф на этом устройстве (действует только в dev-режиме). */
 export function setUserPlan(plan: PlanTier): void {
   try { localStorage.setItem(PLAN_KEY, plan); } catch { /* хранилище недоступно */ }
+  notifyPlanChange();
 }
 
 /**
@@ -76,6 +112,19 @@ export function devPlanForCode(code: string): PlanTier | null {
   if (code === 'Minus' || code === 'NumpadSubtract') return 'free';
   if (code === 'Equal' || code === 'NumpadAdd') return 'pro';
   return null;
+}
+
+const TIER_ORDER: readonly PlanTier[] = ['free', 'pro', 'tutor'];
+
+/**
+ * Режим разработки: «+» — на тариф выше (Free → Pro → Tutor), «−» — ниже. null — не эта клавиша;
+ * на краю лестницы тариф не меняется (возвращается тот же).
+ */
+export function devPlanStep(code: string, current: PlanTier): PlanTier | null {
+  const dir = devPlanForCode(code);
+  if (!dir) return null;
+  const i = TIER_ORDER.indexOf(current);
+  return TIER_ORDER[Math.max(0, Math.min(TIER_ORDER.length - 1, i + (dir === 'pro' ? 1 : -1)))];
 }
 
 /** Лимиты тарифа действуют (иначе доска ведёт себя как раньше — без ограничений). */
@@ -91,4 +140,5 @@ export function setLimitsEnforced(on: boolean): void {
     if (on) localStorage.setItem(ENFORCE_LIMITS_KEY, '1');
     else localStorage.removeItem(ENFORCE_LIMITS_KEY);
   } catch { /* хранилище недоступно */ }
+  notifyPlanChange();
 }

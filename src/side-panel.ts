@@ -19,6 +19,7 @@
 // - «Выкл» и «уменьшить движение» — всё сразу.
 // Текст — только textContent; через innerHTML вставляются лишь SVG-константы каталога иконок.
 
+import { featureLocked, requestUpgrade } from './pro-badge';
 import { S, clamp, register, snap, step, tune, wake, type Spring } from './motion';
 import { claimMenu, menuMotion, releaseMenu, type MenuMotion } from './menu-motion';
 import { createSpringSelect, type SelectOption, type SpringSelect } from './spring-select';
@@ -135,7 +136,7 @@ function modeOptions(): SelectOption[] {
   return [...modes.values()].flatMap(({ def }) => {
     const list = entries.get(def.id);
     if (list) return list.map(e => ({ value: e.value, label: e.label, icon: e.icon, badge: e.badge?.() ?? '' }));
-    return [{ value: def.id, label: def.label, icon: def.icon, badge: def.id === 'notify' ? badge : '' }];
+    return [{ value: def.id, label: def.label, icon: def.icon, badge: def.id === 'notify' ? badge : '', ...(def.pro ? { pro: def.pro } : {}) }];
   });
 }
 
@@ -572,8 +573,20 @@ export function onSidePanel(fn: (s: SidePanelState) => void): () => void {
 
 /** Открыть панель (в режиме mode, без него — в последнем; уже открытая — переключается). */
 export function openSidePanel(mode?: PanelMode, opts: { focus?: boolean } = {}): void {
-  const next = mode && modes.has(mode) ? mode : (isOpen ? current : savedMode() ?? (modes.has('notify') ? 'notify' : [...modes.keys()][0]));
+  let next = mode && modes.has(mode) ? mode : (isOpen ? current : savedMode() ?? (modes.has('notify') ? 'notify' : [...modes.keys()][0]));
   if (!next) return;
+  // режим по подписке закрыт тарифом: выбрали его сами — окно подписки (переключатель остаётся на прежнем),
+  // а сохранённый с прошлого раза — тихо заменяется первым режимом
+  const pro = modes.get(next)?.def.pro;
+  if (pro && featureLocked(pro)) {
+    if (mode === next) {
+      if (ui && ui.select.value !== optionValue(current)) ui.select.setValue(optionValue(current), true);
+      requestUpgrade(pro);
+      return;
+    }
+    next = modes.has('notify') ? 'notify' : [...modes.keys()][0];
+    if (!next) return;
+  }
   const u = ensureUi();
   const anim = menuMotion();
   const opening = !isOpen;

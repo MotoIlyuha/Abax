@@ -40,6 +40,8 @@ export interface MeResponse {
   user: MeUser;
   plan: PlanTier;
   planExpiresAt: number | null;
+  /** Действующий тариф — пробный период (старый сервер поле не присылает). */
+  planTrial?: boolean;
   limitsEnforced: boolean;
   limits: ServerLimits;
 }

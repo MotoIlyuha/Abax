@@ -12,10 +12,15 @@ import { PROVIDER_NAMES, button, chooseProvider, emailForm, nameRowWithDice } fr
 import { cursorEntitled, getProfile, setProfile } from './profile';
 import { account, onAccountChange, signedIn } from './profile-sync';
 import type { SectionView } from './settings-dialog';
+import { userPlan } from './plan';
+import { billingState, onBillingChange } from './subscription';
+import { tierSummary } from './subscription-settings';
 
 export interface ProfileSettingsOptions {
   /** Сообщение о входе после возврата от провайдера (показывается один раз). */
   notice?: { text: string; kind: 'error' | 'info' } | null;
+  /** «Подписка»: раздел настроек «Подписка». */
+  openSubscription?: () => void;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -70,6 +75,25 @@ export function renderProfileSettings(host: HTMLElement, rerender: () => void, o
   });
   name.addEventListener('input', () => { picker.setName(name.value.trim() || 'Вы'); avatar.setName(name.value.trim() || 'Вы'); });
   cursorBlock.appendChild(picker.el);
+
+  // ----- тариф: текущий уровень (подробности — в разделе «Подписка») -----
+  const tierBlock = el('div', 'ps-block ps-tier');
+  tierBlock.appendChild(el('div', 'ps-caption', 'Тариф'));
+  const tierRow = el('div', 'ps-tier-row');
+  const tierName = el('span', 'ps-tier-name');
+  const tierStatus = el('span', 'ps-tier-status');
+  const tierBtn = button('ob-btn ob-chip ps-tier-open', 'Подписка');
+  tierBtn.addEventListener('click', () => opts.openSubscription?.());
+  tierRow.append(tierName, tierStatus, tierBtn);
+  tierBlock.appendChild(tierRow);
+  const paintTier = () => {
+    const sum = tierSummary(billingState());
+    tierBlock.dataset.plan = billingState()?.plan ?? userPlan();
+    tierName.textContent = sum.title;
+    tierStatus.textContent = sum.status;
+  };
+  paintTier();
+  const offBilling = onBillingChange(paintTier);
 
   // ----- аккаунт -----
   const acc = el('div', 'ps-block ps-account');
@@ -135,9 +159,9 @@ export function renderProfileSettings(host: HTMLElement, rerender: () => void, o
   acc.appendChild(msg);
   if (opts.notice) say(opts.notice.text, opts.notice.kind);
 
-  box.append(identity, cursorBlock, acc);
+  box.append(identity, tierBlock, cursorBlock, acc);
   host.appendChild(box);
   // вошли / вышли / сменился тариф — раздел перерисовывается
   const off = onAccountChange(() => rerender());
-  return { dispose: () => { off(); limited.destroy(); picker.dispose(); avatar.dispose(); } };
+  return { dispose: () => { off(); offBilling(); limited.destroy(); picker.dispose(); avatar.dispose(); } };
 }

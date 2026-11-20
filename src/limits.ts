@@ -18,6 +18,8 @@ export interface PlanLimits {
   canFollowHost: boolean;
   /** Именной адрес доски /j/<адрес> (SPEC_NIGHT6 §5.3). */
   canSetAlias: boolean;
+  /** Режим «История изменений» боковой панели (история отмены на устройстве; Ctrl+Z работает на всех тарифах). */
+  historyPanel: boolean;
 }
 
 /** Сколько записей именных адресов (активных, бывших и освобождённых) может быть у одного аккаунта. */
@@ -30,17 +32,17 @@ export const PLAN_LIMITS: Record<PlanTier, PlanLimits> = {
   free: {
     maxProjects: 3, maxPagesPerProject: 3, maxP2PGuests: 1, maxEditors: 4,
     canProtectClone: false, canProtectCopy: false, cloudSync24x7: false, tutorFeatures: false,
-    canSetMaxGuests: false, canFollowHost: false, canSetAlias: false,
+    canSetMaxGuests: false, canFollowHost: false, canSetAlias: false, historyPanel: false,
   },
   pro: {
     maxProjects: Infinity, maxPagesPerProject: Infinity, maxP2PGuests: Infinity, maxEditors: Infinity,
     canProtectClone: true, canProtectCopy: true, cloudSync24x7: true, tutorFeatures: false,
-    canSetMaxGuests: true, canFollowHost: true, canSetAlias: true,
+    canSetMaxGuests: true, canFollowHost: true, canSetAlias: true, historyPanel: true,
   },
   tutor: {
     maxProjects: Infinity, maxPagesPerProject: Infinity, maxP2PGuests: Infinity, maxEditors: Infinity,
     canProtectClone: true, canProtectCopy: true, cloudSync24x7: true, tutorFeatures: true,
-    canSetMaxGuests: true, canFollowHost: true, canSetAlias: true,
+    canSetMaxGuests: true, canFollowHost: true, canSetAlias: true, historyPanel: true,
   },
 };
 

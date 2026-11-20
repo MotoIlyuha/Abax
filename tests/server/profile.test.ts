@@ -15,7 +15,7 @@ function tgPayload(now: number, over: Record<string, string | number> = {}) {
 describe('миграция V2', () => {
   it('колонки профиля и таблицы входа; повторное открытие не ломает базу', () => {
     const db = openDb(':memory:');
-    expect(db.pragma('user_version', { simple: true })).toBe(7); // V7 — личные права участника на страницы
+    expect(db.pragma('user_version', { simple: true })).toBe(8); // V8 — подписка: пробный период, платежи, промокоды
     const cols = (db.prepare('PRAGMA table_info(users)').all() as { name: string }[]).map(c => c.name);
     expect(cols).toEqual(expect.arrayContaining(['cursor_id', 'name_custom', 'email', 'google_sub']));
     const tables = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table'").all() as { name: string }[]).map(t => t.name);
@@ -86,7 +86,7 @@ describe('миграция V5 (модерация именных адресов)
     db.prepare("INSERT INTO projects (id, owner_id, title, rev, data_json, created_at, updated_at) VALUES ('p1', 'u1', 'Доска', 1, '{}', 1, 1)").run();
     db.prepare("INSERT INTO public_aliases (alias, project_id, owner_id, created_at, updated_at) VALUES ('geo', 'p1', 'u1', 2, 2)").run();
     migrate(db);
-    expect(db.pragma('user_version', { simple: true })).toBe(7);
+    expect(db.pragma('user_version', { simple: true })).toBe(8);
     expect(db.prepare('SELECT alias, owner_id, state, created_at, blocked_at, blocked_reason FROM public_aliases').get())
       .toEqual({ alias: 'geo', owner_id: 'u1', state: 'active', created_at: 2, blocked_at: null, blocked_reason: null });
     const idx = (db.prepare('PRAGMA index_list(public_aliases)').all() as { name: string }[]).map(i => i.name);
@@ -102,7 +102,7 @@ describe('миграция V6 (свой аватар)', () => {
     migrate(db, 5);
     db.prepare("INSERT INTO users (id, display_name, plan, created_at, updated_at) VALUES ('u1', 'Анна', 'free', 1, 1)").run();
     migrate(db);
-    expect(db.pragma('user_version', { simple: true })).toBe(7);
+    expect(db.pragma('user_version', { simple: true })).toBe(8);
     expect(db.prepare('SELECT display_name, avatar FROM users').get()).toEqual({ display_name: 'Анна', avatar: null });
     db.close();
   });
@@ -208,11 +208,30 @@ describe('миграция V7 (личные права участника на �
     db.prepare("INSERT INTO users (id, display_name, plan, created_at, updated_at) VALUES ('u2', 'Боря', 'free', 1, 1)").run();
     db.prepare("INSERT INTO projects (id, owner_id, title, rev, data_json, created_at, updated_at) VALUES ('p1', 'u1', 'Доска', 1, '{}', 1, 1)").run();
     migrate(db);
-    expect(db.pragma('user_version', { simple: true })).toBe(7);
+    expect(db.pragma('user_version', { simple: true })).toBe(8);
     expect(db.prepare('SELECT title FROM projects').get()).toEqual({ title: 'Доска' });
     db.prepare("INSERT INTO member_page_rights (project_id, user_id, page_rights_json, updated_at) VALUES ('p1', 'u2', '{\"pg\":\"hidden\"}', 2)").run();
     db.prepare("DELETE FROM projects WHERE id = 'p1'").run();
     expect(db.prepare('SELECT COUNT(*) AS n FROM member_page_rights').get()).toEqual({ n: 0 });
+    db.close();
+  });
+});
+
+describe('миграция V8 (подписка)', () => {
+  it('поверх базы V7: тарифы целы, пробный период не взят, платежей и промокодов нет', () => {
+    const db = new Database(':memory:');
+    db.pragma('foreign_keys = ON');
+    migrate(db, 7);
+    db.prepare("INSERT INTO users (id, display_name, plan, plan_expires_at, created_at, updated_at) VALUES ('u1', 'Анна', 'pro', 99, 1, 1)").run();
+    migrate(db);
+    expect(db.pragma('user_version', { simple: true })).toBe(8);
+    expect(db.prepare('SELECT plan, plan_expires_at, plan_trial, trial_used_at FROM users').get()).toEqual({ plan: 'pro', plan_expires_at: 99, plan_trial: 0, trial_used_at: null });
+    for (const t of ['payments', 'promo_codes', 'promo_redemptions']) expect(db.prepare(`SELECT COUNT(*) AS n FROM ${t}`).get()).toEqual({ n: 0 });
+    // один промокод — одна активация на аккаунт
+    db.prepare("INSERT INTO promo_redemptions (user_id, code, plan, days, redeemed_at) VALUES ('u1', 'A-1', 'pro', 7, 1)").run();
+    expect(() => db.prepare("INSERT INTO promo_redemptions (user_id, code, plan, days, redeemed_at) VALUES ('u1', 'A-1', 'pro', 7, 2)").run()).toThrow();
+    db.prepare("DELETE FROM users WHERE id = 'u1'").run();
+    expect(db.prepare('SELECT COUNT(*) AS n FROM promo_redemptions').get()).toEqual({ n: 0 });
     db.close();
   });
 });

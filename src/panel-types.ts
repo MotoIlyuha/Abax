@@ -11,4 +11,8 @@ export interface PanelView {
   /** Куда поставить фокус при открытии. */
   focus?(): void;
 }
-export interface PanelModeDef { id: PanelMode; label: string; icon: string; mount(host: HTMLElement): PanelView }
+export interface PanelModeDef {
+  id: PanelMode; label: string; icon: string; mount(host: HTMLElement): PanelView;
+  /** Режим по подписке: пока закрыт тарифом — в переключателе бейдж Pro, выбор открывает окно подписки. */
+  pro?: import('./pro-badge').ProFeature;
+}

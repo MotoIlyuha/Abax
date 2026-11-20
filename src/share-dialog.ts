@@ -1,3 +1,4 @@
+import { proBadge, refreshProBadges, requestUpgrade, type ProFeature } from './pro-badge';
 import { connectOwnerRoom } from './cloud-room';
 import { collabActive, collabUsers, PRESENCE_EVENT, type CollabUser } from './collab';
 import { getParticipantInitials } from './presence';
@@ -1063,7 +1064,15 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
     s.appendChild(el('h3', 'share-cloud-title', heading));
     return s;
   };
-  const proTag = () => el('span', 'share-pro-tag', 'Pro');
+  // единый бейдж Pro (src/pro-badge.ts): видимость ведёт сам; строка, закрытая тарифом, по нажатию открывает подписку
+  const proTag = (f: ProFeature) => proBadge(f, { className: 'share-pro-tag' });
+  const lockedClick = (row: HTMLElement, f: ProFeature, locked: () => boolean) => {
+    row.addEventListener('click', ev => {
+      if (!locked()) return;
+      ev.preventDefault();
+      requestUpgrade(f);
+    });
+  };
 
   // страницы: «По роли» / «Только просмотр» / «Скрыта»; старое «редактирование для всех» — пока стоит
   const pagesSec = section('share-page-rights', 'Страницы');
@@ -1098,7 +1107,10 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
     on => setPermissionField('forbidClone', on ? undefined : true));
   const linkViewT = toggleRow('linkView', 'Просмотр по ссылке на доску', 'Ссылка на доску или страницу открывает её только для чтения — без приглашения',
     on => setPermissionField('linkView', on ? undefined : false));
-  for (const t of [copyT, cloneT]) t.row.insertBefore(proTag(), t.input);
+  for (const [t, f] of [[copyT, 'copy'], [cloneT, 'clone']] as const) {
+    t.row.insertBefore(proTag(f), t.input);
+    lockedClick(t.row, f, () => t.row.classList.contains('locked'));
+  }
   permCard.append(protectT.row, copyT.row, cloneT.row, linkViewT.row);
 
   // гости: кто зовёт всех к себе (сегменты), максимум гостей (счётчик)
@@ -1125,8 +1137,8 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
   });
   maxStepper.el.dataset.field = 'maxGuests';
   maxStepper.el.dataset.key = 'maxGuests';
-  const maxPro = proTag();
-  maxRow.append(maxLabel, maxPro, maxStepper.el);
+  maxRow.append(maxLabel, proTag('guests'), maxStepper.el);
+  lockedClick(maxRow, 'guests', () => maxRow.classList.contains('locked'));
   guestsCard.append(summonRow, maxRow);
 
   // ссылка: именной адрес, бывшие адреса, сброс
@@ -1134,8 +1146,8 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
   const aliasCard = el('div', 'share-card share-rows');
   const aliasLabelRow = el('div', 'share-setting share-alias-head');
   const aliasLabel = el('span', 'share-setting-label', 'Именной адрес');
-  const aliasPro = proTag();
-  aliasLabelRow.append(aliasLabel, aliasPro);
+  aliasLabelRow.append(aliasLabel, proTag('alias'));
+  lockedClick(aliasCard, 'alias', () => aliasCard.classList.contains('locked'));
   const aliasRow = el('div', 'share-alias-row');
   const aliasField = el('div', 'share-alias-field');
   const aliasPrefix = el('span', 'share-alias-prefix', '/j/');
@@ -1314,21 +1326,20 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
     setToggleChecked(cloneT.input, cloneLocked ? true : perms.forbidClone !== true);
     cloneT.input.disabled = cloneLocked;
     cloneT.row.classList.toggle('locked', cloneLocked);
-    for (const [t, locked] of [[copyT, copyLocked], [cloneT, cloneLocked]] as const) t.row.querySelector<HTMLElement>('.share-pro-tag')!.hidden = !locked;
     setToggleChecked(linkViewT.input, perms.linkView !== false);
     summon.setValue(perms.summon === 'editors' ? 'editors' : 'owner');
     const maxLocked = planLocks('canSetMaxGuests');
     const curMax = perms.maxGuests ?? 0;
     maxStepper.setValue(maxLocked ? 1 : (maxOrder.includes(curMax) ? curMax : 0));
     maxStepper.setDisabled(maxLocked);
-    maxPro.hidden = !maxLocked;
+    maxRow.classList.toggle('locked', maxLocked);
     tip(maxRow, maxLocked ? 'На бесплатном тарифе — один гость. Свой лимит гостей доступен в подписке Pro' : 'Сколько гостей может быть на доске одновременно');
     // ссылка — только для доски в облаке
     const cloud = cloudShareAvailable() && cloudSynced();
     aliasSec.hidden = !cloud;
     if (cloud) {
       const locked = planLocks('canSetAlias');
-      aliasPro.hidden = !locked;
+      aliasCard.classList.toggle('locked', locked);
       tip(aliasLabel, `Короткий адрес вроде /j/physics-9a-2026 ведёт на общую ссылку доски и даёт те же права. Это не секрет: его может набрать любой.${link?.enabled ? '' : ' Работает, пока включена общая ссылка.'}`);
       if (document.activeElement !== aliasInput && aliasInput.value !== aliasUi.draft) aliasInput.value = aliasUi.draft;
       aliasInput.disabled = locked || aliasUi.busy;
@@ -1339,6 +1350,7 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
       renderFormer();
       if (aliasUi.loadedFor !== state.project.id) void loadAlias();
     }
+    refreshProBadges();
   }
 
   // ----- Открытие, клавиатура, закрытие -----

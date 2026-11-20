@@ -4,6 +4,7 @@
 // как «Тип сетки» в «Масштаб и вид»: пункт становится заголовком со стрелкой «назад».
 // Имя и статус приходят от других участников — только textContent; иконки — константы кода.
 
+import { featureLocked, proBadge, requestUpgrade, type ProFeature } from './pro-badge';
 import { createUserAvatar, type AvatarData } from './avatar';
 import { BACK_ARROW_ICON } from './icons';
 import { morphLeave } from './morph-tooltip';
@@ -22,7 +23,11 @@ export type AvatarMenuEntry =
     /** Пометка справа (например, «Скоро»). */
     badge?: string;
   }
-  | { kind: 'switch'; id: string; label: string; icon: string; checked: boolean; onChange: (on: boolean) => void; disabled?: boolean; title?: string; badge?: string }
+  | {
+    kind: 'switch'; id: string; label: string; icon: string; checked: boolean; onChange: (on: boolean) => void; disabled?: boolean; title?: string; badge?: string;
+    /** Возможность подписки: пока закрыта тарифом — вместо переключателя бейдж Pro, нажатие открывает окно подписки. */
+    pro?: ProFeature;
+  }
   /** Подменю в этом же меню: содержимое строится при каждом входе. */
   | { kind: 'submenu'; id: string; label: string; icon: string; title?: string; content: () => AvatarSubmenu }
   | { kind: 'sep' };
@@ -168,10 +173,20 @@ function switchRow(e: Extract<AvatarMenuEntry, { kind: 'switch' }>): HTMLLabelEl
   const input = row.querySelector<HTMLInputElement>('.switch-input')!;
   if (e.disabled) input.disabled = true;
   if (e.badge) {
-    // переключатель скрыт за меткой (например, «Pro»): ввод недоступен
+    // переключатель скрыт за меткой (например, «Скоро»): ввод недоступен
     input.disabled = true;
     row.classList.add('has-badge');
-    row.querySelector('.switch-track')?.replaceWith(el('span', 'avatar-menu-badge avatar-menu-badge-pro', e.badge));
+    row.querySelector('.switch-track')?.replaceWith(el('span', 'avatar-menu-badge', e.badge));
+  }
+  if (e.pro) {
+    // единый бейдж Pro (src/pro-badge.ts): закрыто — вместо переключателя, открылось — раскалывается, когда меню увидят
+    const pro = e.pro;
+    row.appendChild(proBadge(pro, { className: 'avatar-menu-pro' }));
+    if (featureLocked(pro)) {
+      input.disabled = true;
+      row.classList.add('pro-locked');
+      row.addEventListener('click', ev => { ev.preventDefault(); requestUpgrade(pro); });
+    }
   }
   return row;
 }
