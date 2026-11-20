@@ -2365,9 +2365,9 @@ body.collab-guest.readonly-mode #toolbar { display: none; }
   pointer-events: none;
   will-change: transform, width, height, opacity;
 }
-#toolbar .tool, .ctx-shapes .tool, #view-menu .view-page[data-level="interactions"] .view-switch { position: relative; z-index: 1; }
-.ctx-shapes, #view-menu .view-page[data-level="interactions"]:not(.mm-leaving) { position: relative; }
-body:not(.no-motion) :is(#toolbar .tool, .ctx-shapes .tool):hover:not(.active):not(.gesture-hover) { background: transparent; }
+#toolbar .tool, #quick-menu .qm-btn, .ctx-font-chip, .ctx-shapes .tool, #view-menu .view-page[data-level="interactions"] .view-switch { position: relative; z-index: 1; }
+.ctx-font-chips, .ctx-shapes, #view-menu .view-page[data-level="interactions"]:not(.mm-leaving) { position: relative; }
+body:not(.no-motion) :is(#toolbar .tool, #quick-menu .qm-btn, .ctx-font-chip, .ctx-shapes .tool):hover:not(.active):not(.gesture-hover) { background: transparent; }
 /* подменю «Взаимодействия» в МВВ: при «Улучшенных» анимациях вместо своего фона — подсветка панели инструментов */
 body:not(.no-motion) #view-menu .view-page[data-level="interactions"] .view-switch:hover { background: transparent; }
 body.no-motion .mt-hl { display: none; }

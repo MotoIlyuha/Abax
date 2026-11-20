@@ -179,6 +179,8 @@ export function initTooltips(): void {
       }
       if (!e.target.closest('#avatar-menu, #share-dialog')) {
         hide();
+        // панель размера текста: морфятся только готовые значения (ползунок — обычная подсказка)
+        if (e.target.closest('.ctx-panel[data-kind="font"]') && !t?.classList.contains('ctx-font-chip')) { morphLeave(); return; }
         if (t) morphOver(t, t.dataset.tip ?? '');
         // в меню щелей между пунктами нет: курсор на пункте без подсказки («назад») — подсветка уходит
         else if (e.target.closest(MORPH_MENU)) morphLeave();
