@@ -2,10 +2,10 @@
 // Работает через делегирование — подхватывает любой элемент с атрибутом title,
 // включая созданные динамически. title переносится в data-tip, чтобы браузер
 // не показывал свою подсказку поверх нашей.
-// Кнопки панели инструментов (#toolbar) обслуживает «морфящаяся» подсказка — morph-tooltip.ts:
+// Кнопки панели инструментов (#toolbar) и переключатели подменю «Взаимодействия» в МВВ обслуживает «морфящаяся» подсказка — morph-tooltip.ts:
 // одна на всю панель, перетекает от кнопки к кнопке. Остальные элементы — обычный пузырь ниже.
 
-import { MORPH_MENU_ROW, MORPH_SCOPE, morphActive, morphHideTip, morphLeave, morphOver, morphPop, splitTipText } from './morph-tooltip';
+import { MORPH_MENU, MORPH_MENU_ROW, MORPH_SCOPE, morphActive, morphHideTip, morphLeave, morphOver, morphPop, splitTipText } from './morph-tooltip';
 
 type Side = 'top' | 'bottom' | 'left' | 'right';
 
@@ -180,6 +180,8 @@ export function initTooltips(): void {
       if (!e.target.closest('#avatar-menu, #share-dialog')) {
         hide();
         if (t) morphOver(t, t.dataset.tip ?? '');
+        // в меню щелей между пунктами нет: курсор на пункте без подсказки («назад») — подсветка уходит
+        else if (e.target.closest(MORPH_MENU)) morphLeave();
         return;
       }
     }

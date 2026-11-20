@@ -175,6 +175,15 @@ export class Board {
     await expect.poll(async () => (await this.state()).grid).toBe(mode);
   }
 
+  /** Переключатель в подменю «Взаимодействия» меню «Масштаб, вид и взаимодействия»; меню затем закрывается. */
+  async toggleInteraction(text: string): Promise<void> {
+    await this.page.locator('#zoom-label').click();
+    await this.page.locator('#view-menu [data-view="interactions"]').click();
+    await this.page.locator('#view-menu .view-switch', { hasText: text }).click();
+    await this.page.keyboard.press('Escape');
+    await expect(this.page.locator('#view-menu')).toBeHidden();
+  }
+
   /** Домашняя страница проектов — пункт «Домой» в меню логотипа. */
   async home(): Promise<void> {
     await this.page.locator('#btn-home').click();

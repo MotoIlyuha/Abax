@@ -452,6 +452,24 @@ const MIN_NOTE_H = 60;
 const MIN_TASK_W = 220;
 const MIN_TASK_H = 140;
 const ROT_SNAP = Math.PI / 45; // ~4°: примагничивание к кратным 45°
+const ROT_STEP = Math.PI / 12; // 15°: шаг поворота с Shift
+
+/** Угол поворота: с Shift — строго шагами по 15°, без него — примагничивание к кратным 45°; результат в (-π, π]. */
+export function snapRotation(ang: number, stepped = false): number {
+  if (stepped) ang = Math.round(ang / ROT_STEP) * ROT_STEP;
+  else {
+    for (let k = 0; k < 8; k++) {
+      const target = (k * Math.PI) / 4;
+      let diff = ang - target;
+      while (diff > Math.PI) diff -= 2 * Math.PI;
+      while (diff < -Math.PI) diff += 2 * Math.PI;
+      if (Math.abs(diff) < ROT_SNAP) { ang = target; break; }
+    }
+  }
+  while (ang > Math.PI) ang -= 2 * Math.PI;
+  while (ang <= -Math.PI) ang += 2 * Math.PI;
+  return ang;
+}
 
 /** Видимый шаг сетки при данном зуме (LOD как у рендера). */
 export function gridStepFor(zoom: number): number {
@@ -546,6 +564,8 @@ export interface ResizeMods {
   proportional?: boolean;
   /** Alt: изменение размера от центра. */
   fromCenter?: boolean;
+  /** Shift: поворот шагами по 15°. */
+  rotateStep?: boolean;
 }
 
 /**
@@ -603,16 +623,8 @@ export function applyHandle(el: Element, h: Handle, pt: Pt, mods?: ResizeMods, r
     }
     if (h.kind === 'rotate') {
       const cx = s.x + s.w / 2, cy = s.y + s.h / 2;
-      let ang = rotateAngle !== undefined ? rotateAngle : Math.atan2(pt.y - cy, pt.x - cx) - Math.atan2(-s.h, -s.w);
-      for (let k = 0; k < 8; k++) {
-        const target = (k * Math.PI) / 4;
-        let diff = ang - target;
-        while (diff > Math.PI) diff -= 2 * Math.PI;
-        while (diff < -Math.PI) diff += 2 * Math.PI;
-        if (Math.abs(diff) < ROT_SNAP) { ang = target; break; }
-      }
-      while (ang > Math.PI) ang -= 2 * Math.PI;
-      while (ang < -Math.PI) ang += 2 * Math.PI;
+      const ang0 = rotateAngle !== undefined ? rotateAngle : Math.atan2(pt.y - cy, pt.x - cx) - Math.atan2(-s.h, -s.w);
+      const ang = snapRotation(ang0, mods?.rotateStep);
       return { ...s, rot: Math.abs(ang) < 0.002 ? undefined : ang };
     }
     if (h.kind === 'resize') {
@@ -642,16 +654,8 @@ export function applyHandle(el: Element, h: Handle, pt: Pt, mods?: ResizeMods, r
   if (el.type === 'image' && (h.kind === 'resize' || h.kind === 'rotate')) {
     if (h.kind === 'rotate') {
       const cx = el.x + el.w / 2, cy = el.y + el.h / 2;
-      let ang = rotateAngle !== undefined ? rotateAngle : Math.atan2(pt.y - cy, pt.x - cx) - Math.atan2(-el.h, -el.w);
-      for (let k = 0; k < 8; k++) {
-        const target = (k * Math.PI) / 4;
-        let diff = ang - target;
-        while (diff > Math.PI) diff -= 2 * Math.PI;
-        while (diff < -Math.PI) diff += 2 * Math.PI;
-        if (Math.abs(diff) < ROT_SNAP) { ang = target; break; }
-      }
-      while (ang > Math.PI) ang -= 2 * Math.PI;
-      while (ang < -Math.PI) ang += 2 * Math.PI;
+      const ang0 = rotateAngle !== undefined ? rotateAngle : Math.atan2(pt.y - cy, pt.x - cx) - Math.atan2(-el.h, -el.w);
+      const ang = snapRotation(ang0, mods?.rotateStep);
       return { ...el, rot: Math.abs(ang) < 0.002 ? undefined : ang };
     }
     const cx = el.x + el.w / 2, cy = el.y + el.h / 2;

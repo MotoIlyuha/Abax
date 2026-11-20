@@ -387,25 +387,32 @@ test.describe('настройки доски', () => {
     }
   });
 
-  test('привязка к сетке — переключатель в главном меню Abax', async ({ board, page }) => {
-    await page.locator('#btn-home').click();
-    const sw = page.locator('#main-menu .main-switch', { hasText: 'Привязка к сетке' });
-    await expect(sw.locator('.main-menu-icon svg, svg')).not.toHaveCount(0);
+  test('подменю «Взаимодействия» в МВВ: привязка, плавное движение, направляющие — переключатели', async ({ board, page }) => {
+    await page.locator('#zoom-label').click();
+    const menu = page.locator('#view-menu');
+    await menu.locator('[data-view="interactions"]').click();
+    await expect(menu.locator('.view-back')).toHaveText('Взаимодействия›');
+    const switches = menu.locator('.view-switch');
+    await expect(switches).toHaveText(['Привязка к сетке', 'Плавное движение', 'Направляющие']);
+    for (const sw of await switches.all()) await expect(sw.locator('.view-icon svg')).toHaveCount(1);
+    const sw = switches.filter({ hasText: 'Привязка к сетке' });
     const cb = sw.locator('input[role="switch"]');
     await expect(cb).not.toBeChecked();
     await sw.click();
     await expect(cb).toBeChecked();
     // меню не закрывается: можно сразу переключить обратно
-    await expect(page.locator('#main-menu')).toBeVisible();
+    await expect(menu).toBeVisible();
     expect((await board.state()).settings.snapToGrid).toBe(true);
-    // в «Масштаб и вид» пункта больше нет
+    await switches.filter({ hasText: 'Направляющие' }).click();
+    expect((await board.state()).settings.alignGuides).toBe(false);
+    // в настройках этих пунктов больше нет
     await page.keyboard.press('Escape');
-    await page.locator('#zoom-label').click();
-    await expect(page.locator('#view-menu', { hasText: 'Привязка к сетке' })).toHaveCount(0);
-    // та же настройка, что в меню настроек
+    // в главном меню Abax пункта нет
+    await page.locator('#btn-home').click();
+    await expect(page.locator('#main-menu', { hasText: 'Привязка к сетке' })).toHaveCount(0);
     await page.keyboard.press('Escape');
     await page.locator('#btn-settings').dispatchEvent('click');
-    await expect(page.locator('#settings-popover label', { hasText: 'Привязка к сетке' }).locator('input')).toBeChecked();
+    for (const text of ['Привязка к сетке', 'Плавное движение', 'Направляющие']) await expect(page.locator('#settings-popover', { hasText: text })).toHaveCount(0);
   });
 
   test('меню «Скрыть» — переключатели, меню не закрывается', async ({ board, page }) => {
@@ -751,7 +758,7 @@ test.describe('всплывающие меню', () => {
     void board;
   });
 
-  test('«Масштаб и вид»: шириной с группу; «Фон страницы» открывается внутри меню, «назад» возвращает', async ({ board, page }) => {
+  test('«Масштаб, вид и взаимодействия»: шириной с группу; «Фон страницы» открывается внутри меню, «назад» возвращает', async ({ board, page }) => {
     const menu = page.locator('#view-menu');
     await page.locator('#zoom-label').click();
     await expect(menu).toBeVisible();
@@ -859,6 +866,43 @@ test.describe('подсказки', () => {
     await page.mouse.move(900, 500);
     await page.locator('.tool[data-tool="text"]').hover();
     await expect(page.locator('#morph-tip .mt-tip')).toBeVisible();
+  });
+
+  test('подменю «Взаимодействия» в МВВ: подсветка и подсказка как у панели, подсказка слева', async ({ board, page }) => {
+    await page.locator('#zoom-label').click();
+    const menu = page.locator('#view-menu');
+    await menu.locator('[data-view="interactions"]').click();
+    const snap = menu.locator('.view-switch', { hasText: 'Привязка к сетке' });
+    await snap.hover();
+    const tip = page.locator('#morph-tip .mt-tip');
+    await expect(tip).toBeVisible();
+    await expect(tip).toHaveAttribute('data-side', 'left');
+    await expect(page.locator('#morph-tip .mt-lab.cur')).toContainText('узлы сетки');
+    await expect(menu.locator('.view-page > .mt-hl')).toHaveCount(1);
+    // пузырь целиком левее меню
+    await expect.poll(async () => {
+      const t = (await tip.boundingBox())!, m = (await menu.boundingBox())!;
+      return t.x + t.width <= m.x;
+    }).toBe(true);
+    // перетекает к соседнему переключателю
+    await menu.locator('.view-switch', { hasText: 'Направляющие' }).hover();
+    await expect(page.locator('#morph-tip .mt-lab.cur')).toContainText('пунктир');
+    await expect(tip).toHaveAttribute('data-side', 'left');
+    // «назад» — без подсказки: пузырь уходит
+    await menu.locator('.view-back').hover();
+    await expect(tip).toBeHidden();
+
+    // «Обычные» анимации: обычный пузырь, тоже слева
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Control+Comma');
+    await page.locator('.sd-general button', { hasText: /^Обычные$/ }).click();
+    await page.keyboard.press('Escape');
+    await page.locator('#zoom-label').click();
+    await menu.locator('[data-view="interactions"]').click();
+    await snap.hover();
+    await expect(page.locator('#tooltip')).toBeVisible();
+    await expect(page.locator('#tooltip')).toHaveAttribute('data-side', 'left');
+    void board;
   });
 
   test('обычный пузырь вне панели инструментов работает как раньше', async ({ page }) => {

@@ -134,8 +134,10 @@ function remeasure(): void {
   }
 }
 
-/** Где живёт подсказка: панель инструментов или раскрытая панель её группы (кнопки внутри тоже морфятся). */
-export const MORPH_SCOPE = '#toolbar, .ctx-panel[data-kind="shapes"], #avatar-menu, #share-dialog';
+/** Подменю «Взаимодействия» в МВВ: переключатели подсвечиваются и подсказываются так же, как кнопки панели. */
+export const MORPH_MENU = '#view-menu .view-page[data-level="interactions"]';
+/** Где живёт подсказка: панель инструментов, раскрытая панель её группы, подменю «Взаимодействия», меню аватара и «Поделиться». */
+export const MORPH_SCOPE = `#toolbar, .ctx-panel[data-kind="shapes"], ${MORPH_MENU}, #avatar-menu, #share-dialog`;
 /**
  * Строки, которые подсвечиваются и подсказывают так же, как кнопки панели: пункты меню аватара первого уровня
  * и строки «Поделиться» → «Настройки доступа». Остальное в этих окнах — обычные подсказки.
@@ -144,6 +146,9 @@ export const MORPH_MENU_ROW = '#avatar-menu .avatar-menu-page > :is(.avatar-menu
 const barOf = (btn: HTMLElement): HTMLElement | null => btn.closest<HTMLElement>(MORPH_SCOPE);
 
 function preferredSide(bar: HTMLElement): Side {
+  // сторона задана явно (подменю МВВ: справа края окна, сверху и снизу — другие элементы)
+  const explicit = bar.dataset.tipSide;
+  if (explicit === 'top' || explicit === 'bottom' || explicit === 'left' || explicit === 'right') return explicit;
   // меню аватара: подсказка сбоку от меню (не закрывает пункты); слева нет места — справа
   if (bar.id === 'avatar-menu' || bar.id === 'share-dialog') return 'left';
   // у панели группы сторона та же, что у самой панели инструментов: пузырь снаружи, не закрывая кнопки
@@ -162,7 +167,8 @@ interface Geo { side: Side; axis: Axis; l: number; r: number; t: number; b: numb
 function geometry(btn: HTMLElement, lab: Lab): Geo | null {
   const bar = barOf(btn);
   if (!bar) return null;
-  const br = bar.getBoundingClientRect();
+  // у страницы меню пузырь отсчитывается от края самого меню, а не от страницы внутри него
+  const br = (bar.closest<HTMLElement>('.popup-menu') ?? bar).getBoundingClientRect();
   const r = btn.getBoundingClientRect();
   const w = lab.w, h = lab.h;
   const vw = window.innerWidth, vh = window.innerHeight;
