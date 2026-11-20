@@ -23,6 +23,13 @@ async function closeShare(page: Page): Promise<void> {
   await expect(page.locator('#share-dialog')).toHaveCount(0);
 }
 
+/** Меню своего аватара: группа раскрывается по наведению. */
+async function openSelfMenu(page: Page): Promise<void> {
+  await page.locator('#collab-presence .avatar-group').hover();
+  await page.locator('#collab-presence .user-avatar.self').click();
+  await expect(page.locator('#avatar-menu')).toBeVisible();
+}
+
 test.describe('присутствие', () => {
   test('краевой курсор: гость за краем экрана автора — стрелка у края, клик переносит камеру к нему', async ({ browser }) => {
     const { base } = env.get();
@@ -82,7 +89,8 @@ test.describe('присутствие', () => {
     // автор на третьей странице зовёт всех
     await goToPage(a, 2);
     expect(await pageIdOf(g)).toBe(pages[0]);
-    await a.locator('#btn-summon').click();
+    await openSelfMenu(a);
+    await a.locator('#avatar-menu [data-action="summon-all"]').click();
     await expect.poll(() => pageIdOf(g), { timeout: 10000 }).toBe(pages[2]);
     await expect(g.locator('#notify-stack .ns-card', { hasText: 'Автор позвал всех на страницу' })).toBeVisible();
     // аватар гостя — у карточки третьей страницы в доке автора
@@ -90,9 +98,11 @@ test.describe('присутствие', () => {
     await expect(a.locator('#pages-list .page-item').nth(2).locator('.page-avatar')).toHaveCount(1, { timeout: 10000 });
 
     // автопереход: автор включает, уходит на первую — гость следом
-    const follow = a.locator('#btn-follow');
-    await follow.click();
-    await expect(follow).toHaveAttribute('aria-pressed', 'true');
+    await openSelfMenu(a);
+    const follow = a.locator('#avatar-menu [data-action="follow-me"] .switch-input');
+    await follow.click({ force: true });
+    await expect(follow).toBeChecked();
+    await a.keyboard.press('Escape');
     await goToPage(a, 0);
     await expect.poll(() => pageIdOf(g), { timeout: 10000 }).toBe(pages[0]);
 

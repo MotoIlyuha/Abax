@@ -21,7 +21,7 @@ import { myAvatar, myCursorId, onProfileChange, profileName } from './profile';
 import { followWaiting, followingUid, initFollow, onFollowChange, startFollow, stopFollow } from './follow';
 
 // Присутствие участников (SPEC_NIGHT5 §8): краевые курсоры у границы экрана, аватары в шапке и у страниц,
-// кнопки автора «Позвать всех сюда» и «Автопереход участников за мной». Имена и цвета приходят от других
+// пункты автора «Позвать всех к себе» и «Автопереход за мной» в меню аватара. Имена и цвета приходят от других
 // участников — только textContent, setAttribute и свойства style; SVG курсора — константы каталога.
 
 /** Отступ краевого курсора от интерфейса (шапка, панель инструментов, док страниц), px. */
@@ -181,6 +181,16 @@ export function selfMenuEntries(anchor: HTMLElement): AvatarMenuEntry[] {
         if (isHost()) { summonHere(anchor); return; }
         if (sendSummon(state.pageId)) pushNotice({ level: 'ok', title: 'Вы позвали всех на эту страницу', icon: 'summon', quiet: true });
       },
+    });
+  }
+  // автопереход — только автор; на тарифе без него переключатель выключен (тариф проверяет и хаб)
+  if (collabActive() && isHost()) {
+    const locked = followLocked();
+    out.push({
+      kind: 'switch', id: 'follow-me', label: 'Автопереход за мной', icon: FOLLOW_ICON,
+      checked: hostFollowEnabled() && !locked, disabled: locked,
+      title: locked ? 'Автопереход участников за мной — доступно в подписке Pro' : 'Участники будут переходить за вами по страницам',
+      onChange: setFollowMe,
     });
   }
   // чужие курсоры бывают только в совместной работе
@@ -476,23 +486,13 @@ const pageHidden = (pageId: string): boolean => state.project.permissions?.pageR
 
 let hostKey = '';
 
+/** Плашка «страница скрыта — участники остались» у автора с включённым автопереходом. */
 function refreshHostControls(force = false): void {
   const host = collabActive() && isHost();
   const hidden = host && !onDraft() && pageHidden(state.pageId);
-  const key = `${host}|${hostFollowEnabled()}|${followLocked()}|${hidden}|${state.pageId}`;
+  const key = `${host}|${hostFollowEnabled()}|${hidden}|${state.pageId}`;
   if (!force && key === hostKey) return;
   hostKey = key;
-  const summon = document.getElementById('btn-summon');
-  const follow = document.getElementById('btn-follow');
-  if (summon) summon.hidden = !host;
-  if (follow) {
-    follow.hidden = !host;
-    const locked = followLocked();
-    follow.classList.toggle('locked', locked);
-    follow.setAttribute('aria-pressed', String(hostFollowEnabled() && !locked));
-    follow.classList.toggle('active', hostFollowEnabled() && !locked);
-    follow.title = locked ? 'Автопереход участников за мной — доступно в подписке Pro' : hostFollowEnabled() ? 'Автопереход участников за мной: включён' : 'Автопереход участников за мной';
-  }
   const badge = document.getElementById('follow-hidden-badge');
   if (badge) badge.hidden = !(hidden && hostFollowEnabled());
   if (!host) closeSummonPopover();
@@ -591,11 +591,11 @@ export function summonHere(anchor?: HTMLElement | null): void {
   }, 0);
 }
 
-function toggleFollow(): void {
+/** Переключатель «Автопереход за мной» в меню аватара. */
+function setFollowMe(next: boolean): void {
   if (!collabActive() || !isHost()) return;
-  // отклики на мою кнопку «Автопереход» — тихие
+  // отклики на мой переключатель — тихие
   if (followLocked()) { pushNotice({ title: 'Автопереход участников — доступно в подписке Pro', icon: 'follow', quiet: true }); return; }
-  const next = !hostFollowEnabled();
   sendFollowHost(next);
   pushNotice({ title: next ? 'Участники следуют за вами по страницам' : 'Автопереход участников выключен', icon: 'follow', quiet: true });
   refreshHostControls(true);
@@ -613,16 +613,6 @@ export function initCollabPresence(onPageAvatars?: () => void, opts: { openProfi
   if (inited) return;
   inited = true;
   if (opts.openProfile) openProfile = opts.openProfile;
-  const summon = document.getElementById('btn-summon');
-  if (summon) {
-    summon.innerHTML = SUMMON_ICON; // константа модуля
-    summon.addEventListener('click', () => summonHere(summon));
-  }
-  const follow = document.getElementById('btn-follow');
-  if (follow) {
-    follow.innerHTML = FOLLOW_ICON; // константа модуля
-    follow.addEventListener('click', toggleFollow);
-  }
   // мой аватар без комнаты строится по профилю: имя и курсор меняются в настройках
   onProfileChange(() => renderStrip());
   renderStrip();

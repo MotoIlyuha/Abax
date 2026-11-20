@@ -3692,24 +3692,6 @@ body.no-ui-anim :is(.nb-badge, .notify-btn) { transition: none; animation: none;
 @media (prefers-reduced-motion: reduce) { :is(.nb-badge, .notify-btn) { transition: none; animation: none; } }
 
 /* ----- Присутствие участников (SPEC_NIGHT5 §8) ----- */
-#btn-summon[hidden], #btn-follow[hidden] { display: none; }
-#btn-follow { position: relative; }
-#btn-follow.active { background: var(--accent-soft); color: var(--accent); }
-#btn-follow.locked { opacity: 0.55; }
-#btn-follow.locked::after {
-  content: 'Pro';
-  position: absolute;
-  right: -6px;
-  bottom: -3px;
-  padding: 0 3px;
-  border-radius: 4px;
-  background: var(--accent);
-  color: #fff;
-  font-size: 8px;
-  font-weight: 700;
-  line-height: 12px;
-  pointer-events: none;
-}
 /* группа аватаров — слева от «Поделиться», без плашки (index.html); шапка сама не ловит указатель */
 #collab-presence { display: flex; align-items: center; flex: none; pointer-events: auto; }
 /* инициалы — на одной базовой линии с текстом «Поделиться»: по центру они на 2.4 px выше (замер в e2e/avatar-group.spec.ts);
@@ -4694,30 +4676,69 @@ body.no-ui-anim :is(.avatar-crop, .ac-window) { animation: none; }
 .hlp-report:hover { text-decoration: underline; }
 .hlp-report:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-/* Импорт: зона перетаскивания (подсвечивается акцентом, пока над ней файл) */
+/* Импорт: зона перетаскивания «File drop» (src/file-drop.ts). Подсветку (--h), сдвиги и масштабы в «Улучшенных»
+   двигают пружины (инлайн-стили); «Обычные» — те же значения, но плавность даёт CSS ниже; «Выкл» — сразу. */
 .xfer-drop {
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; width: 100%; min-height: 156px; padding: 20px 18px;
-  border: 1.5px dashed var(--border-dashed); border-radius: 14px; background: var(--surface-sunken); color: var(--fg);
-  font: inherit; text-align: center; cursor: pointer; transition: border-color .15s, background-color .15s, color .15s;
+  --h: 0;
+  position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 172px; padding: 14px 18px;
+  overflow: hidden; border: 1.5px dashed color-mix(in srgb, var(--accent) calc(var(--h) * 100%), var(--border-dashed)); border-radius: 14px;
+  background: color-mix(in srgb, var(--accent-soft) calc(var(--h) * 100%), var(--surface-sunken));
+  color: color-mix(in srgb, var(--accent-strong) calc(var(--h) * 100%), var(--fg));
+  font: inherit; text-align: center; cursor: pointer; will-change: transform; -webkit-tap-highlight-color: transparent;
 }
-.xfer-drop:hover { border-color: var(--border-strong); background: var(--hover); }
+.xfer-drop:hover:not(.is-over) { border-color: var(--border-strong); background: var(--hover); }
 .xfer-drop:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.xfer-drop-icon {
-  display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; margin-bottom: 4px; border-radius: 12px;
-  background: var(--panel); color: var(--accent); box-shadow: var(--shadow-segment); transition: transform .2s cubic-bezier(.22, .8, .24, 1);
-}
-.xfer-drop-icon svg { width: 22px; height: 22px; display: block; }
-.xfer-drop-title { max-width: 250px; font-weight: 600; line-height: 1.35; }
-.xfer-drop-hint { font-size: 12px; color: var(--muted); }
-.xfer-drop.is-over { border-color: var(--accent); border-style: solid; background: var(--accent-soft); color: var(--accent-strong); }
-.xfer-drop.is-over .xfer-drop-icon { transform: translateY(-3px) scale(1.06); }
+.xfer-drop.is-over { border-style: solid; }
 .xfer-drop.is-disabled { cursor: default; opacity: .55; }
 .xfer-drop.is-disabled:hover { border-color: var(--border-dashed); background: var(--surface-sunken); }
 
+.xfer-drop-core {
+  position: relative; flex: none; width: 64px; height: 64px; margin-bottom: 14px; border-radius: 50%;
+  background: var(--panel); box-shadow: var(--shadow-segment); will-change: transform;
+}
+.xfer-drop-g { position: absolute; inset: 0; border-radius: 50%; background: var(--success); transform: scale(0); will-change: transform; }
+.xfer-drop-ring { position: absolute; inset: 0; opacity: 0; transform: rotate(-90deg); }
+.xfer-drop-ring svg { display: block; width: 100%; height: 100%; }
+.xfer-drop-trk { stroke: var(--track); }
+.xfer-drop-arc { stroke: var(--accent); }
+.xfer-drop-up, .xfer-drop-pct, .xfer-drop-ok { position: absolute; inset: 0; display: grid; place-items: center; will-change: transform, opacity; }
+.xfer-drop-up { color: var(--accent); }
+.xfer-drop-up svg { width: 24px; height: 24px; display: block; }
+.xfer-drop-pct { color: var(--fg); font-size: 17px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; opacity: 0; }
+.xfer-drop-ok { color: var(--fg-inverse); opacity: 0; }
+.xfer-drop-ok svg { width: 28px; height: 28px; display: block; }
+.xfer-drop-ok path { stroke-dasharray: 24; stroke-dashoffset: 24; }
+
+/* две строки текста: старая уходит вверх, новая поднимается (position: absolute — высота строки фиксирована) */
+.xfer-drop-title, .xfer-drop-hint { position: relative; flex: none; width: 100%; overflow: hidden; pointer-events: none; }
+.xfer-drop-title { height: 22px; font-weight: 600; letter-spacing: -.01em; }
+.xfer-drop-hint { height: 18px; margin-top: 2px; font-size: 12px; color: var(--muted); }
+.xfer-drop-title > span, .xfer-drop-hint > span {
+  position: absolute; left: 0; right: 0; top: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; will-change: transform, opacity;
+}
+.xfer-drop-title > span { line-height: 22px; }
+.xfer-drop-hint > span { line-height: 18px; font-variant-numeric: tabular-nums; }
+
+/* файл, который «проглатывается»: вылетает из точки, где его отпустили */
+.xfer-drop-chip {
+  position: absolute; left: 0; top: 0; z-index: 2; display: flex; align-items: center; gap: 6px; height: 34px; padding: 0 12px 0 10px;
+  border-radius: 10px; background: var(--fg); color: var(--fg-inverse); font-size: 12px; font-weight: 600; white-space: nowrap;
+  opacity: 0; pointer-events: none; will-change: transform, opacity;
+}
+.xfer-drop-chip-icon { display: inline-flex; flex: none; }
+.xfer-drop-chip-icon svg { width: 16px; height: 16px; display: block; }
+
+/* «Улучшенные» — всё двигают пружины; CSS лишь смягчает наведение мышью */
+body:not(.no-motion) .xfer-drop:not(.is-over) { transition: border-color .15s, background-color .15s; }
+/* «Обычные» — пружины встают на цель сразу, а плавность — короткие переходы; «Выкл» (no-ui-anim) — без них */
+body.no-motion:not(.no-ui-anim) .xfer-drop { transition: border-color .15s, background-color .15s, color .15s, transform .2s ease; }
+body.no-motion:not(.no-ui-anim) .xfer-drop :is(.xfer-drop-core, .xfer-drop-g, .xfer-drop-up, .xfer-drop-pct, .xfer-drop-ok, .xfer-drop-ring) { transition: transform .2s ease, opacity .2s ease; }
+body.no-motion:not(.no-ui-anim) .xfer-drop-ok path { transition: stroke-dashoffset .3s ease; }
+
 /* «Выкл» — без переходов; «Обычные» и «Улучшенные» — короткие CSS-переходы выше */
-body.no-ui-anim :is(.pv-row, .pv-row-icon, .hist-btn, .hist-entry, .hist-dot, .hlp-search-field, .xfer-drop, .xfer-drop-icon) { transition: none; }
+body.no-ui-anim :is(.pv-row, .pv-row-icon, .hist-btn, .hist-entry, .hist-dot, .hlp-search-field) { transition: none; }
 @media (prefers-reduced-motion: reduce) {
-  :is(.pv-row, .pv-row-icon, .hist-btn, .hist-entry, .hist-dot, .hlp-search-field, .xfer-drop, .xfer-drop-icon) { transition: none; }
+  :is(.pv-row, .pv-row-icon, .hist-btn, .hist-entry, .hist-dot, .hlp-search-field) { transition: none; }
 }
 
 /* ----- Правая боковая панель (src/side-panel.ts, SPEC_CHAT §5) ----- */
