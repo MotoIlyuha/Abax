@@ -172,10 +172,19 @@ export const BACK_ARROW_ICON = svg('<path d="M19 12H5"/><path d="M11 6l-6 6 6 6"
 export const SLIDER_TRACK_ICON = `<svg viewBox="0 0 120 24" preserveAspectRatio="none"><path d="M3 12a2.4 2.4 0 0 1 2.4-2.4C40 7.5 70 3.5 103 3.5a8.5 8.5 0 0 1 0 17C70 20.5 40 16.5 5.4 14.4A2.4 2.4 0 0 1 3 12Z"/></svg>`;
 
 /** Кнопка «Чат и уведомления» (ЧУ): облачко с точками. */
-export const NOTIFY_ICON = svg('<path d="M20 12.5a7.5 7.5 0 0 1-11.2 6.5L4 20l1.1-4.3A7.5 7.5 0 1 1 20 12.5z"/><path d="M9.2 12.5h.01M12.5 12.5h.01M15.8 12.5h.01" stroke-width="2.6"/>');
+export const NOTIFY_ICON = svg('<path d="M3.5 14.2a6.2 6.2 0 1 1 3 5.3L3 20.5z" transform="translate(0 -1)"/><path d="M6.7 12.7h.01M9.5 12.7h.01M12.3 12.7h.01" stroke-width="2.4"/><g transform="translate(11.6 1.2) scale(.58)" stroke-width="2.9"><path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></g>');
+/** Только чат: круглый пузырь с точками (вкладка «Чат»). */
+export const CHAT_ICON = svg('<path d="M20.5 12A8.5 8.5 0 0 1 8.2 19.6L3.5 20.8l1.3-4.3A8.5 8.5 0 1 1 20.5 12z"/><path d="M8.5 12h.01M12 12h.01M15.5 12h.01" stroke-width="2.6"/>');
+/** Только уведомления: колокольчик (вкладка «Уведомления»). */
+export const BELL_ICON = svg('<path d="M6 16v-5a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/>');
+
+/** Иконка ЧУ по вкладке: «Чат» — пузырь, «Уведомления» — колокольчик, «Все» — колокольчик с пузырём. */
+export function notifyTabIcon(tab: string): string {
+  return tab === 'chat' ? CHAT_ICON : tab === 'notices' ? BELL_ICON : NOTIFY_ICON;
+}
 
 /** «Не беспокоить»: залитый полумесяц (значок у кнопки ЧУ). */
-export const DND_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z" fill="currentColor"/></svg>';
+export const DND_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.3A8.5 8.5 0 0 1 9.7 3.5a8.5 8.5 0 1 0 10.8 10.8z" fill="currentColor"/></svg>';
 
 /** Значки событий в уведомлениях (src/notify-stack.ts): ключи — NoticeIcon центра уведомлений. */
 export const NOTICE_ICONS: Record<NoticeIcon, string> = {

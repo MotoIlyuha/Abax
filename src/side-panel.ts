@@ -142,7 +142,7 @@ function build(): Ui {
   const cloud = document.createElement('span');
   cloud.className = 'spc-icon spc-cloud';
   cloud.setAttribute('aria-hidden', 'true');
-  cloud.innerHTML = NOTIFY_ICON; // константа каталога иконок
+  cloud.innerHTML = tabIcon ?? NOTIFY_ICON; // константа каталога иконок
   const cross = document.createElement('span');
   cross.className = 'spc-icon spc-cross';
   cross.setAttribute('aria-hidden', 'true');
@@ -183,6 +183,13 @@ export function registerPanelMode(def: PanelModeDef): void {
   const prev = modes.get(def.id);
   modes.set(def.id, { def, host: prev?.host ?? null, view: prev?.view ?? null });
   if (ui) ui.select.setOptions(modeOptions(), current);
+}
+
+/** Значок ЧУ на язычке «Свернуть панель» (по вкладке); в переключателе режимов значок общий. */
+let tabIcon: string | null = null;
+export function setPanelTabIcon(icon: string): void {
+  tabIcon = icon;
+  if (ui) ui.cloud.innerHTML = icon; // константа каталога иконок
 }
 
 /** Вид режима: монтируется при первом показе. */

@@ -4831,9 +4831,10 @@ body.no-ui-anim .ss-badge.on { animation: none; }
 .np-act:disabled { color: var(--fg-disabled); cursor: default; }
 .np-act svg { width: 18px; height: 18px; }
 .np-moon { display: inline-flex; will-change: transform; }
-.np-moon svg { width: 19px; height: 19px; fill: transparent; transition: fill .3s ease; }
+.np-moon svg { width: 19px; height: 19px; }
+.np-moon svg path:first-child { fill: transparent; transition: fill .3s ease; }
 .np-dnd.on { color: var(--fg); background: var(--hover-strong); }
-.np-dnd.on .np-moon svg { fill: currentColor; }
+.np-dnd.on .np-moon svg path:first-child { fill: currentColor; }
 .np-moon.np-moon-pop { animation: np-moon-pop .3s cubic-bezier(.23, 1, .32, 1); }
 @keyframes np-moon-pop { 0% { transform: rotate(-18deg) scale(.8); } 100% { transform: none; } }
 
@@ -5012,7 +5013,7 @@ body.no-ui-anim :is(.cf-in, .cf-jump) { animation: none; }
 .composer-foot.on { display: flex; }
 .composer-hint { color: var(--danger); }
 .composer-count { margin-left: auto; font-variant-numeric: tabular-nums; }
-body.no-ui-anim :is(.composer-row, .composer-send, .np-moon svg) { transition: none; }
+body.no-ui-anim :is(.composer-row, .composer-send, .np-moon svg path) { transition: none; }
 
 /* Кнопки вложений и чип (src/chat-attach.ts, SPEC_CHAT §7) */
 .composer-tool {

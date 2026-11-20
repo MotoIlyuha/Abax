@@ -11,7 +11,8 @@
 // открыта на ЧУ — закрывается. aria-expanded — панель открыта в режиме ЧУ. Когда панель закрывается и кнопка
 // закрытия «возвращается» в ЧУ, кнопка принимает её тем же провалом масштаба (событие doska:side-panel-absorb).
 
-import { DND_ICON, NOTIFY_ICON } from './icons';
+import { DND_ICON, notifyTabIcon } from './icons';
+import { notifyTab } from './notify-panel';
 import { createRoll, type Roll } from './roll-text';
 import { S, clamp, register, step, tune, wake, type Spring } from './motion';
 import { menuMotion } from './menu-motion';
@@ -145,6 +146,17 @@ function render(): void {
 
 // ----- API -----
 
+/** Иконка кнопки по выбранной вкладке панели: «Все» — колокольчик с пузырём, «Чат» — пузырь, «Уведомления» — колокольчик. */
+function paintIcon(): void {
+  if (!ui) return;
+  const t = notifyTab();
+  const html = notifyTabIcon(t); // константы каталога иконок
+  if (ui.btn.dataset.icon === t) return;
+  ui.btn.dataset.icon = t;
+  ui.btn.querySelector(':scope > svg')?.remove();
+  ui.btn.insertAdjacentHTML('afterbegin', html);
+}
+
 /** Кнопка ЧУ в шапке: иконка, счётчик, полумесяц «не беспокоить», щелчок. Повторный вызов только обновляет. */
 export function initNotifyButton(): void {
   const btn = document.getElementById('btn-notify') as HTMLButtonElement | null;
@@ -153,11 +165,11 @@ export function initNotifyButton(): void {
     onNotices(() => render());
     onSidePanel(() => render());
     document.addEventListener('doska:side-panel-absorb', () => notifyAbsorb());
+    document.addEventListener('doska:notify-tab', () => paintIcon());
   }
   if (!btn) return;
   if (ui?.btn === btn) { render(); return; }
   btn.type = 'button';
-  btn.innerHTML = NOTIFY_ICON; // константа каталога иконок
   const badge = document.createElement('span');
   badge.className = 'nb-badge';
   badge.setAttribute('aria-hidden', 'true');
@@ -171,6 +183,7 @@ export function initNotifyButton(): void {
   btn.addEventListener('click', onClick);
   ui = { btn, badge, roll };
   shown = -1;
+  paintIcon();
   tune(CH, ...POP);
   tune(CP, ...POP);
   tune(BS, ...POP);

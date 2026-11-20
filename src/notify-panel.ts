@@ -10,7 +10,8 @@
 //    читатель — «Читатели не пишут в чат», поля нет.
 // Имена и тексты участников — только textContent; SVG — константы кода.
 
-import { NOTIFY_ICON, NOTICE_ICONS } from './icons';
+import { NOTIFY_ICON, NOTICE_ICONS, notifyTabIcon } from './icons';
+import { setPanelTabIcon } from './side-panel';
 import {
   clearNotices, doNotDisturb, markNoticeRead, markRead, notices, onNotices, setDoNotDisturb, unreadCount, type Notice,
 } from './notify-center';
@@ -47,7 +48,7 @@ const TABS: readonly { value: NotifyTab; label: string }[] = [
 ];
 
 /** Полумесяц-контур (заливается при включении «Не беспокоить», как луна в образце Focus mode). */
-const MOON_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>';
+const MOON_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19.5 14.6A8 8 0 0 1 9.4 4.5a8 8 0 1 0 10.1 10.1z"/><path d="M17 3.5v3M15.5 5h3"/></svg>';
 /** «Прочитать всё»: двойная галочка. */
 const READ_ALL_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 12.5l4.5 4.5L17 7"/><path d="M12 16.5l.5.5L22 7.5"/></svg>';
 
@@ -88,6 +89,8 @@ export function setNotifyTab(next: NotifyTab): void {
   const changed = next !== tab;
   tab = next;
   saveTab(next);
+  setPanelTabIcon(notifyTabIcon(next));
+  document.dispatchEvent(new CustomEvent('doska:notify-tab'));
   if (!view) return;
   view.pill.setValue(next);
   if (changed || shown) view.openTab();
