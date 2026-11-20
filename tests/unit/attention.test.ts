@@ -80,4 +80,16 @@ describe('привлечь внимание', () => {
     receiveAttention({ pageId: 'нет', elId: 'a', emoji: '❤️', by: 8 });
     expect(notices()).toHaveLength(2);
   });
+
+  it('курсор отправителя краевой — из него ещё маленькие реакции внутрь экрана', async () => {
+    const presence = await import('../../src/collab-presence');
+    const spy = vi.spyOn(presence, 'edgePointerOf').mockImplementation(uid => (uid === 9 ? { x: 0, y: 200, angle: Math.PI } : null));
+    receiveAttention({ pageId: state.pageId, elId: 'a', emoji: '🔥', by: 9 });
+    expect(liveParticles()).toBe(BURST_COUNT_CSS + BURST_COUNT_SMALL);
+    // маленькие летят вправо — от левого края внутрь
+    const small = [...document.querySelectorAll<HTMLElement>('#burst-layer .burst-p')].slice(-BURST_COUNT_SMALL);
+    expect(small.every(p => parseFloat(p.style.getPropertyValue('--dx')) > 0)).toBe(true);
+    spy.mockRestore();
+  });
 });
+

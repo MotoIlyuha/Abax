@@ -230,7 +230,15 @@ function renderRecent(n: RowNode, elId: string): void {
     b.setAttribute('aria-label', b.title);
     // выезжают по очереди от кнопки: ближняя — первой
     b.style.setProperty('--i', String(list.length - 1 - i));
-    b.addEventListener('click', () => addReaction(elId, emoji));
+    b.addEventListener('click', () => {
+      addReaction(elId, emoji);
+      // реакция поставлена — лента уезжает обратно (иначе закрывала бы пилюли слева, пока мышь над ней)
+      const wrap = n.tools;
+      if (!wrap) return;
+      wrap.classList.add('an-picked');
+      b.blur();
+      wrap.addEventListener('mouseleave', () => wrap.classList.remove('an-picked'), { once: true });
+    });
     n.recent!.append(b);
   });
 }

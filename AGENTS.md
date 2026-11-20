@@ -32,7 +32,7 @@
 - Старт ночи (ветка, журнал, первый коммит) — по п. 0.1 Locked Decisions текущей спецификации. Журнал прошлой ночи переименовывается в `NIGHT_LOG_NIGHT<N>.md`.
 
 ## 4. Сервер (`server/`, Ночи №3–6)
-- Каталог `server/` — Node + TypeScript + `better-sqlite3`; он импортирует из `src/` только чистые модули без DOM (`types`, `file`, `delta`, `limits`, `task-element`, `room-host`, `asset-store`, `project-access`, `cursors`, `sync-conflict`, `room-chat`, `board-url`, `comments`, `collab-transport`, `access`, `element-guard`, `avatar-value`). Зеркала для `electron/room.cjs`: `electron/room-access.cjs`, `electron/room-guard.cjs` (паритет — `tests/server/room-pointer.test.ts`), `electron/room-avatar.cjs` (паритет — `tests/unit/avatar-value.test.ts`), `electron/room-chat-att.cjs` (вложения чата, паритет — `tests/server/room-chat-att.test.ts`).
+- Каталог `server/` — Node + TypeScript + `better-sqlite3`; он импортирует из `src/` только чистые модули без DOM (`types`, `file`, `delta`, `limits`, `task-element`, `room-host`, `asset-store`, `project-access`, `cursors`, `sync-conflict`, `room-chat`, `board-url`, `comments`, `collab-transport`, `access`, `element-guard`, `avatar-value`). Паритет пакета `attention` и поля `noteId` хабов — `tests/server/room-attention.test.ts`. Зеркала для `electron/room.cjs`: `electron/room-access.cjs`, `electron/room-guard.cjs` (паритет — `tests/server/room-pointer.test.ts`), `electron/room-avatar.cjs` (паритет — `tests/unit/avatar-value.test.ts`), `electron/room-chat-att.cjs` (вложения чата, паритет — `tests/server/room-chat-att.test.ts`).
 - Клиент без настроенного адреса API (`apiUrl`) не делает сетевых запросов: все старые тесты работают как раньше.
 - Серверные тесты — `tests/server/*.test.ts` (`createAppServer({ dbPath: ':memory:' })`); типы сервера проверяет `npm run typecheck:tests`.
 
@@ -49,9 +49,15 @@
 - Аватар — буквы имени (`null`), смайл или фото `data:image` (проверка — только `src/avatar-value.ts`). Выбор — `src/avatar-editor.ts` (онбординг и «Профиль»), кнопка смайла — общий компонент `src/icon-button.ts` (тот же, что у иконки проекта), обрезка фото — `src/avatar-crop.ts`.
 - В снимке участников — только смайл или `photo:<версия>`; само фото — в `init.photos` и сообщении `{t:'avatar'}` (снимок рассылается на каждое движение курсора). Первое сообщение участника об аватаре не считается сменой (пилюля «сменил аватар» — только на последующие).
 
-## 6.2. Чат и уведомления (ЧУ) и правая боковая панель
-- План и решения — `SPEC_CHAT.md`. Уведомления — только через `src/notify-center.ts` (`pushNotice`; `showPill` — обёртка совместимости); отклик на своё действие — `quiet`. Стопка — `src/notify-stack.ts`, кнопка ЧУ — `src/notify-button.ts`.
-- Панель — `src/side-panel.ts`, режимы регистрируются в `src/panel-modes.ts` по контракту `src/panel-types.ts`; режим ЧУ — `src/notify-panel.ts` (вкладки — `src/tab-pill.ts`, лента — `src/chat-feed.ts`, поле — `src/chat-composer.ts`, вложения — `src/chat-attach.ts` / `src/chat-attach-view.ts`).
+## 6.2. Чат, комментарии и уведомления (ЧКУ) и правая боковая панель
+- План и решения — `SPEC_CHAT.md` и `SPEC_COMMENTS.md` (ЧУ стал ЧКУ). Уведомления — только через `src/notify-center.ts` (`pushNotice`; `showPill` — обёртка совместимости); отклик на своё действие — `quiet`; виды — `chat`, `comment` (комментарии и реакции, с `ref` на объект), `system`; несколько кнопок — `action` + `actions`, эмодзи вместо значка — `emoji`. Стопка — `src/notify-stack.ts`, кнопка ЧКУ — `src/notify-button.ts`.
+- Панель — `src/side-panel.ts`, режимы регистрируются в `src/panel-modes.ts` по контракту `src/panel-types.ts` (несколько пунктов переключателя для одного режима — `setPanelEntries`); режим ЧКУ — `src/notify-panel.ts`: вкладки «Все», «Чат», «Комментарии», «Уведомления» (`src/tab-pill.ts`), лента — `src/chat-feed.ts`, поле — `src/chat-composer.ts`, вложения — `src/chat-attach.ts` / `src/chat-attach-view.ts`, вкладка «Комментарии» — `src/comments-panel.ts`.
+
+## 6.3. Реакции и комментарии к объектам (SPEC_COMMENTS.md)
+- Под объектом — DOM-слой `src/annot-layer.ts` (`#annot-layer`, позиция — по кадру холста `onBoardFrame`), раскладка — только `src/annotations.ts`; на холсте рисуются лишь пины веток без объекта (и всё — в окне демонстрации). В быстром меню выделения реакций и «Комментировать» нет.
+- Обсуждение объекта = все ветки с его `targetElementId` (`src/discussion.ts`); панель — `src/comments-ui.ts`. Реакции и комментарии мимо истории отмены, как раньше.
+- Цвет пилюли — плашка первого поставившего (`src/note-people.ts` по `noteId`: хаб берёт его из `{t:'caps', noteId}` и кладёт в снимок участников). «Привлечь внимание» — пакет `attention` (оба хаба, частота `ATTENTION_RATE_*`), частицы — `src/reaction-burst.ts`, приём — `src/attention.ts`. Пуши о чужих комментариях и реакциях — `src/note-notices.ts`.
+- «Показывать реакции/комментарии» (меню своего аватара) — `src/annot-prefs.ts`, личная настройка устройства.
 - Входящие вложения клиент проверяет той же `cleanChatAttachment`; в `img.src` — только прошедшее `isChatImageUrl`; копии объектов перед вставкой — через `sanitizeElement` и `insertCopies` (pushHistory).
 - Все анимации — в трёх режимах («Улучшенные» — пружины `src/motion.ts`, «Обычные» — CSS, «Выкл» — сразу).
 
