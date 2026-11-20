@@ -43,6 +43,38 @@ test.describe('панель цвета и толщины', () => {
     await expect(panel.locator(`.ctx-swatches.custom [data-c="${color}"]`)).toHaveCount(0);
   });
 
+  test('пипетка в «Добавить цвет»: превью следует за курсором, щелчок добавляет цвет, Esc отменяет', async ({ board, page }) => {
+    await page.locator('#btn-style').click();
+    const panel = page.locator('.ctx-panel[data-kind="style"]');
+    await panel.locator('.ctx-add-color').click();
+    const hex = panel.locator('.picker-hex input');
+    const before = await hex.inputValue();
+    const target = panel.locator('.ctx-swatches:not(.custom) [data-c="#2dc75c"]');
+    const box = (await target.boundingBox())!;
+    // Esc — прежний цвет
+    await panel.getByRole('button', { name: 'Пипетка' }).click();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await expect(hex).toHaveValue('#2dc75c');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.eyedropper-overlay')).toHaveCount(0);
+    await expect(hex).toHaveValue(before);
+    // щелчок по цвету не из палитры — он в «Моих цветах» и текущий
+    await page.evaluate(() => {
+      const d = document.createElement('div');
+      d.style.cssText = 'position:fixed;left:0;bottom:0;width:40px;height:40px;z-index:9999;background:#123456';
+      document.body.appendChild(d);
+    });
+    const vh = page.viewportSize()!.height;
+    await panel.getByRole('button', { name: 'Пипетка' }).click();
+    await page.mouse.move(20, vh - 20);
+    await expect(hex).toHaveValue('#123456');
+    await page.mouse.click(20, vh - 20);
+    await expect(page.locator('.eyedropper-overlay')).toHaveCount(0);
+    await expect(panel.locator('.ctx-swatches.custom [data-c="#123456"]')).toHaveCount(1);
+    expect((await board.state()).style.color).toBe('#123456');
+    await expect(panel.locator('.ctx-drop-hint')).toContainText('Перетащите цвет сюда');
+  });
+
   test('пресеты: три у пера и маркера, один у остальных', async ({ board, page }) => {
     const presets = page.locator('#toolbar .style-btn');
     await expect(presets.locator('visible=true')).toHaveCount(3);

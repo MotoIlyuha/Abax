@@ -5143,15 +5143,47 @@ body.no-ui-anim :is(.chat-lightbox, .clb-img) { animation: none !important; }
 .avatar-menu-switch.has-badge .switch-input { cursor: default; }
 .avatar-menu-badge-pro { background: linear-gradient(135deg, #f59f00, #f76707); color: #fff; font-weight: 700; letter-spacing: 0.02em; }
 
-/* «Мои цвета»: пипетка и подсказка-приёмник в той же сетке */
-.ctx-eyedropper { background: var(--panel); color: var(--fg); }
-.ctx-eyedropper svg { width: 18px; height: 18px; }
-.ctx-eyedropper:disabled { opacity: .45; cursor: default; }
+/* «Мои цвета»: подсказка-приёмник для перетаскивания цвета */
 .ctx-drop-hint {
-  align-self: center;
+  display: flex;
+  align-items: center;
+  min-height: 34px;
+  box-sizing: border-box;
+  padding: 6px 10px;
+  border: 1.5px dashed var(--border);
+  border-radius: 10px;
   font-size: 11px;
   line-height: 1.3;
   color: var(--muted);
-  padding-left: 4px;
 }
 .ctx-drop-hint b { font-weight: 600; color: var(--fg-label); white-space: nowrap; }
+
+/* Пипетка в пикере: квадратная кнопка справа от превью */
+.picker-eyedropper {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--fg);
+  cursor: pointer;
+}
+.picker-eyedropper svg { width: 16px; height: 16px; }
+.picker-eyedropper:hover, .picker-eyedropper.active { border-color: var(--accent); color: var(--accent); }
+.eyedropper-overlay { position: fixed; inset: 0; z-index: 100000; cursor: crosshair; }
+.eyedropper-loupe {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  margin: -42px 0 0 10px;
+  border-radius: 50%;
+  border: 3px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3), 0 2px 6px rgba(0, 0, 0, 0.25);
+  pointer-events: none;
+}
+.eyedropper-loupe[hidden] { display: none; }
