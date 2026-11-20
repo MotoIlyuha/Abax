@@ -2736,12 +2736,13 @@ const PROJECT_FILE = /\.json$/i;
  * Перетащенный файл — на холст или в зону режима «Импорт» боковой панели: изображение, PDF или документ
  * встаёт на доску (нужно право правки), проект .json открывается отдельным проектом.
  */
-export function importDroppedFile(f: File): void {
-  if (PROJECT_FILE.test(f.name) || f.type === 'application/json') { void importProjectFile(f); return; }
-  if (!canEditBoard()) return;
+export function importDroppedFile(f: File): boolean {
+  if (PROJECT_FILE.test(f.name) || f.type === 'application/json') { void importProjectFile(f); return true; }
+  if (!canEditBoard()) return false;
   if (f.type.startsWith('image/')) insertImageFile(f);
   else if (f.type === 'application/pdf' || DOCUMENT_FILE.test(f.name)) void importDocumentFile(f);
-  else showToast('Этот формат не поддерживается: подойдут PDF, изображение, документ или файл проекта');
+  else { showToast('Этот формат не поддерживается: подойдут PDF, изображение, документ или файл проекта'); return false; }
+  return true;
 }
 
 /** «Из буфера обмена»: картинка из системного буфера — тем же путём, что вставка Ctrl+V. */

@@ -208,6 +208,22 @@ describe('Импорт', () => {
     expect(zone.classList.contains('is-over')).toBe(false);
   });
 
+  it('importFile вернул false (формат не принят) — зона не показывает «Файл принят»; иначе показывает', () => {
+    document.body.className = 'no-motion';
+    const a = actions({ importFile: vi.fn(() => false) });
+    setPanelActions(a);
+    const { row, host } = mount(mountImportPanel);
+    const file = new File(['x'], 'вирус.exe');
+    host.querySelector('.pv')!.dispatchEvent(dragEvent('drop', [file]));
+    expect(a.importFile).toHaveBeenCalledWith(file);
+    expect(row('drop').textContent).not.toContain('Файл принят');
+    const b = actions({ importFile: vi.fn(() => true) });
+    setPanelActions(b);
+    host.querySelector('.pv')!.dispatchEvent(dragEvent('drop', [new File(['x'], 'a.png', { type: 'image/png' })]));
+    expect(row('drop').textContent).toContain('Файл принят');
+    document.body.className = '';
+  });
+
   it('перетаскивание не файла (текста) зона не принимает', () => {
     const a = actions();
     setPanelActions(a);

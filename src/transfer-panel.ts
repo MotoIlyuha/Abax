@@ -4,10 +4,11 @@
 // Экспорт: PNG страницы или выделенного, копия картинкой, файл проекта, PDF (скоро), «Открыть в приложении».
 
 import { ICONS, PANEL_ICONS, UPLOAD_ICON } from './icons';
+import { createFileDrop } from './file-drop';
 import { macKeys } from './hotkeys';
 import { panelActions, type PanelActions } from './panel-actions';
 import type { PanelModeDef, PanelView } from './panel-types';
-import { el, iconEl, panelScaffold, rowButton, rowDisabled, setRowDisabled } from './panel-view';
+import { el, panelScaffold, rowButton, rowDisabled, setRowDisabled } from './panel-view';
 import { canCloneCurrentProject, canCopyCurrentBoard, onChange, state } from './state';
 
 export const IMPORT_MODE: Omit<PanelModeDef, 'mount'> = { id: 'import', label: 'Импорт', icon: UPLOAD_ICON };
@@ -15,6 +16,10 @@ export const EXPORT_MODE: Omit<PanelModeDef, 'mount'> = { id: 'export', label: '
 
 /** Что принимает зона перетаскивания и выбор файла в ней. */
 export const IMPORT_ACCEPT = 'application/pdf,.pdf,image/*,.json,application/json,.docx,.xlsx,.odt,.ods,.txt,.csv,.tsv,.md';
+
+const IDLE_TITLE = 'Перетащите файл сюда';
+const IDLE_TITLE_PROJECT = 'Перетащите файл проекта';
+const IDLE_HINT = 'или нажмите, чтобы выбрать файл';
 
 const NO_EDIT = 'Нет права на правку этой страницы';
 const NO_PROJECT = 'Недоступно при просмотре по ссылке и в гостях на чужой доске';
@@ -53,14 +58,12 @@ export function mountImportPanel(host: HTMLElement): PanelView {
   const { root, body } = panelScaffold(host, 'import');
   const inner = el('div', 'pv-inner');
 
-  const drop = el('button', 'xfer-drop');
-  drop.type = 'button';
+  // зона «File drop» (src/file-drop.ts): сам импорт — как раньше, зона лишь показывает приём файла
+  const dropView = createFileDrop({
+    idleTitle: IDLE_TITLE, idleHint: IDLE_HINT, overTitle: 'Отпустите, чтобы добавить', label: 'Импорт файла',
+  });
+  const drop = dropView.el;
   drop.dataset.row = 'drop';
-  drop.append(
-    iconEl('xfer-drop-icon', UPLOAD_ICON),
-    el('span', 'xfer-drop-title', 'Перетащите PDF, изображение или файл проекта'),
-    el('span', 'xfer-drop-hint', 'или нажмите, чтобы выбрать файл'),
-  );
 
   const rows = {
     pdf: rowButton({ id: 'pdf', icon: ICONS.pdf, title: 'Документ PDF', hint: 'Страницы — картинками; также Word, Excel, текст' }),
@@ -76,6 +79,14 @@ export function mountImportPanel(host: HTMLElement): PanelView {
   onRow(rows.clipboard, a => a.pasteFromClipboard());
   onRow(rows.project, a => a.openProjectFile());
 
+  /** Файл — на доску (действие доски), а зона показывает приём; false от действия — файл отклонён (формат, право). */
+  const take = (f: File, at?: { x: number; y: number }) => {
+    const a = panelActions();
+    if (!a) return;
+    if (a.importFile(f) === false) dropView.reject();
+    else dropView.accept(f, at);
+  };
+
   /** Выбор любого поддерживаемого файла — как перетаскивание в зону. */
   const pick = () => {
     const input = document.createElement('input');
@@ -83,7 +94,7 @@ export function mountImportPanel(host: HTMLElement): PanelView {
     input.accept = IMPORT_ACCEPT;
     input.onchange = () => {
       const f = input.files?.[0];
-      if (f) panelActions()?.importFile(f);
+      if (f) take(f);
     };
     input.click();
   };
@@ -91,11 +102,7 @@ export function mountImportPanel(host: HTMLElement): PanelView {
 
   // перетаскивание — на весь вид: подсвечивается зона; счётчик — dragenter/dragleave приходят и от детей
   let depth = 0;
-  const dropHint = drop.querySelector<HTMLElement>('.xfer-drop-hint')!;
-  const setOver = (on: boolean) => {
-    drop.classList.toggle('is-over', on);
-    dropHint.textContent = on ? 'Отпустите, чтобы добавить' : 'или нажмите, чтобы выбрать файл';
-  };
+  const setOver = (on: boolean) => dropView.setOver(on);
   root.addEventListener('dragenter', e => {
     if (!dragsFiles(e)) return;
     e.preventDefault();
@@ -120,10 +127,10 @@ export function mountImportPanel(host: HTMLElement): PanelView {
     depth = 0;
     setOver(false);
     const f = e.dataTransfer?.files?.[0];
-    const a = panelActions();
-    if (f && a && !rowDisabled(drop)) a.importFile(f);
+    if (f && !rowDisabled(drop)) take(f, { x: e.clientX, y: e.clientY });
   });
 
+  let refreshed = false;
   const refresh = () => {
     const a = panelActions();
     const edit = !!a && a.canEdit();
@@ -135,7 +142,8 @@ export function mountImportPanel(host: HTMLElement): PanelView {
     setRowDisabled(rows.project, !project, a ? NO_PROJECT : NOT_READY);
     setRowDisabled(drop, !edit && !project, editWhy);
     // без права правки зона принимает только проект
-    drop.querySelector('.xfer-drop-title')!.textContent = edit ? 'Перетащите PDF, изображение или файл проекта' : 'Перетащите файл проекта';
+    dropView.setIdleText(edit ? IDLE_TITLE : IDLE_TITLE_PROJECT, IDLE_HINT, !refreshed);
+    refreshed = true;
   };
 
   let shown = false;
@@ -144,7 +152,7 @@ export function mountImportPanel(host: HTMLElement): PanelView {
 
   return {
     show() { shown = true; refresh(); },
-    hide() { shown = false; depth = 0; setOver(false); },
+    hide() { shown = false; depth = 0; dropView.reset(); },
     focus() { (rowDisabled(drop) ? root : drop).focus(); },
   };
 }
