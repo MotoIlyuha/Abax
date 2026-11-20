@@ -60,8 +60,8 @@ function host(): HTMLElement | null {
     if (anchor?.parentElement === wrap) anchor.after(layer);
     else wrap.appendChild(layer);
   }
-  // слой и холст никогда не прокручиваются: фокус с клавиатуры на кнопке у края (или автопрокрутка к элементу)
-  // сдвинул бы их содержимое, и плашки разошлись бы с объектами
+  // слой никогда не прокручивается: фокус с клавиатуры на кнопке у края (или автопрокрутка к элементу) сдвинул бы
+  // его содержимое, и плашки разошлись бы с объектами (холст при этом сдвигается вместе со слоем — он его родитель)
   const pin = (n: HTMLElement) => n.addEventListener('scroll', () => {
     if (!n.scrollTop && !n.scrollLeft) return;
     n.scrollTop = 0;
@@ -69,7 +69,6 @@ function host(): HTMLElement | null {
     requestRender(); // панели у плашек встают на место по кадру
   });
   pin(layer);
-  pin(wrap);
   // колесо над плашкой — холсту: масштаб и прокрутка не «застревают» на пилюле
   layer.addEventListener('wheel', e => {
     const canvas = document.getElementById('board');
