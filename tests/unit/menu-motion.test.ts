@@ -65,7 +65,7 @@ describe('уровни анимации', () => {
     expect(menuShown(menu)).toBe(false);
   });
 
-  it('без раскладки (кнопка и меню нулевого размера) — тоже сразу', () => {
+  it('без раскладки (кнопка и меню нулевого размера) - тоже сразу', () => {
     at(menu, 0, 0, 0, 0);
     openMenu(menu, { from: button });
     expect(menu.hidden).toBe(false);
@@ -74,7 +74,7 @@ describe('уровни анимации', () => {
     expect(menu.hidden).toBe(true);
   });
 
-  it('«обычные»: CSS выплывание, при закрытии — угасание и затем hidden', async () => {
+  it('«обычные»: CSS выплывание, при закрытии - угасание и затем hidden', async () => {
     setMode('normal');
     openMenu(menu, { from: button });
     expect(menu.classList.contains('mm-in')).toBe(true);
@@ -181,7 +181,7 @@ describe('переход внутри меню', () => {
     expect(menu.classList.contains('mm-drill')).toBe(false);
   });
 
-  it('«обычные»: новая страница проявляется, высота — CSS-переходом', async () => {
+  it('«обычные»: новая страница проявляется, высота - CSS-переходом', async () => {
     const { root, sub, row, head } = pages();
     setMode('normal');
     openMenu(menu, { from: button });

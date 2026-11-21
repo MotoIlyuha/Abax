@@ -132,7 +132,7 @@ export function mountHistoryPanel(host: HTMLElement): PanelView {
       if (blocked) b.setAttribute('aria-disabled', 'true');
       else b.removeAttribute('aria-disabled');
       setTip(b, blocked ? NO_EDIT_TEXT : '');
-      b.setAttribute('aria-label', `${r.label}, ${times[i]}${r.state === 'current' ? ' — текущее состояние' : r.state === 'undone' ? ' — отменено' : ''}`);
+      b.setAttribute('aria-label', `${r.label}, ${times[i]}${r.state === 'current' ? ' - текущее состояние' : r.state === 'undone' ? ' - отменено' : ''}`);
     }
     scroll.sync();
     // текущее состояние не уезжает из виду (отмена с клавиатуры при открытой ленте)

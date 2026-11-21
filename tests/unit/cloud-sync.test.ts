@@ -140,7 +140,7 @@ describe('отправка на сервер', () => {
     expect(serverRow('a')!.rev).toBe(1);
   });
 
-  it('сервер забыл картинки (базу сбросили): 409 missing-assets — догрузка и повтор', async () => {
+  it('сервер забыл картинки (базу сбросили): 409 missing-assets - догрузка и повтор', async () => {
     const { c } = make();
     await c.save(withImage('a'));
     await c.flush();
@@ -151,7 +151,7 @@ describe('отправка на сервер', () => {
     expect(app.db.prepare('SELECT COUNT(*) n FROM assets').get()).toEqual({ n: 1 });
   });
 
-  it('пока автор в облачной комнате проекта, PUT не отправляется; после выхода — уходит', async () => {
+  it('пока автор в облачной комнате проекта, PUT не отправляется; после выхода - уходит', async () => {
     const { c } = make();
     c.setCloudRoom('a');
     await c.save(proj('a'));
@@ -201,7 +201,7 @@ describe('лимиты и ошибки', () => {
 });
 
 describe('получение с сервера', () => {
-  it('другое устройство: проекта нет на устройстве — он приходит с картинкой и запоминается', async () => {
+  it('другое устройство: проекта нет на устройстве - он приходит с картинкой и запоминается', async () => {
     const a = make();
     await a.c.save(withImage('a'));
     await a.c.flush();
@@ -220,7 +220,7 @@ describe('получение с сервера', () => {
     expect(c2.base.data.size).toBe(0);
   });
 
-  it('сервер новее и своих правок нет — берётся серверная версия (в том числе ответы учеников)', async () => {
+  it('сервер новее и своих правок нет - берётся серверная версия (в том числе ответы учеников)', async () => {
     const { c, base } = make();
     await c.save({ ...proj('a'), pages: [{ id: 'a-p1', name: 'П', grid: 'square', elements: [taskEl()] }] } as Project);
     await c.flush();
@@ -280,7 +280,7 @@ describe('получение с сервера', () => {
     expect(serverRow('a')!.rev).toBe(1);
   });
 
-  it('сервер недоступен при открытии — открывается локальный', async () => {
+  it('сервер недоступен при открытии - открывается локальный', async () => {
     const { c } = make();
     await c.save(proj('a'));
     await c.flush();
@@ -345,7 +345,7 @@ describe('начальная синхронизация', () => {
     expect(notes).toEqual([LIMIT_SYNC_TEXT]);
   });
 
-  it('нет сети — тихо, повтор позже', async () => {
+  it('нет сети - тихо, повтор позже', async () => {
     let up = false;
     api = createApiClient({ base: app.base, fetch: (async (u: string, i: RequestInit) => { if (!up) throw new TypeError('offline'); return fetch(u, i); }) as typeof fetch });
     const { c, base } = make();
@@ -385,7 +385,7 @@ describe('удаление', () => {
     expect(found[0]).toEqual([]);
   });
 
-  it('удаление проекта, которого на сервере нет, — без ошибок', async () => {
+  it('удаление проекта, которого на сервере нет, - без ошибок', async () => {
     const { c, base } = make();
     await base.save(proj('local') as Project);
     await c.remove('local');
@@ -399,12 +399,12 @@ describe('мелочи', () => {
     expect(mergeRemoteMetas([m('a', 5), m('b', 1)], [m('a', 99), m('c', 9)]).map(x => x.id)).toEqual(['c', 'a', 'b']);
   });
 
-  it('openFresh без подключённого облака — обычная загрузка', async () => {
+  it('openFresh без подключённого облака - обычная загрузка', async () => {
     openProject(blankProject('x'));
     expect(await openFresh('нет-такого')).toBeNull();
   });
 
-  it('ошибка без сети — ApiError со статусом 0, а не необработанное исключение', async () => {
+  it('ошибка без сети - ApiError со статусом 0, а не необработанное исключение', async () => {
     const down = createApiClient({ base: 'http://127.0.0.1:1' });
     await expect(down.request('GET', '/api/projects')).rejects.toBeInstanceOf(ApiError);
   });
@@ -473,7 +473,7 @@ describe('статус синхронизации (SPEC_NIGHT5 §2.2)', () => {
     off();
   });
 
-  it('нет сети — офлайн; flushNow отправляет сразу, без паузы повтора', async () => {
+  it('нет сети - офлайн; flushNow отправляет сразу, без паузы повтора', async () => {
     let up = false;
     api = createApiClient({ base: app.base, fetch: (async (u: string, i: RequestInit) => { if (!up) throw new TypeError('offline'); return fetch(u, i); }) as typeof fetch });
     const { c } = make(memStorage(), { retryMs: [60_000] });
@@ -487,7 +487,7 @@ describe('статус синхронизации (SPEC_NIGHT5 §2.2)', () => {
     expect(c.status(p)).toBe('synced');
   });
 
-  it('лимит тарифа — только на устройстве', async () => {
+  it('лимит тарифа - только на устройстве', async () => {
     const { c } = make();
     for (const id of ['a', 'b', 'c', 'd']) await c.save(proj(id));
     await c.flush();
@@ -495,7 +495,7 @@ describe('статус синхронизации (SPEC_NIGHT5 §2.2)', () => {
     expect(c.status(proj(rejected))).toBe('limit');
   });
 
-  it('проект в облачной комнате автора — в облаке', async () => {
+  it('проект в облачной комнате автора - в облаке', async () => {
     const { c } = make();
     const p = proj('a');
     await c.save(p);
@@ -503,7 +503,7 @@ describe('статус синхронизации (SPEC_NIGHT5 §2.2)', () => {
     expect(c.status(p)).toBe('synced');
   });
 
-  it('без облака — скрыт', () => {
+  it('без облака - скрыт', () => {
     const { c } = make(memStorage(), { api: () => null });
     expect(c.status(proj('a'))).toBe('hidden');
   });
@@ -536,7 +536,7 @@ describe('офлайн-конфликт (SPEC_NIGHT5 §2.4)', () => {
     expect(getSyncBase('a')).toBe(contentSignature(opened));
   });
 
-  it('правки автора с обеих сторон: копия с локальными правками, основной — с сервера, уведомление один раз', async () => {
+  it('правки автора с обеих сторон: копия с локальными правками, основной - с сервера, уведомление один раз', async () => {
     const conflicts: ConflictResolution[] = [];
     const { c, base } = make(memStorage(), { onConflict: r => conflicts.push(r) });
     await c.save(proj('a'));
@@ -563,7 +563,7 @@ describe('офлайн-конфликт (SPEC_NIGHT5 §2.4)', () => {
     expect(conflicts).toHaveLength(1);
   });
 
-  it('копию создать нельзя (лимит проектов) — правки в черновике при проекте, нового проекта нет', async () => {
+  it('копию создать нельзя (лимит проектов) - правки в черновике при проекте, нового проекта нет', async () => {
     const conflicts: ConflictResolution[] = [];
     const { c, base } = make(memStorage(), { onConflict: r => conflicts.push(r), canCopyOnConflict: () => false });
     await c.save(proj('a'));
@@ -614,7 +614,7 @@ describe('офлайн-конфликт (SPEC_NIGHT5 §2.4)', () => {
     expect(hasConflictDraft('a')).toBe(false);
   });
 
-  it('на сервере менялись только живые поля — не конфликт, прежнее слияние', async () => {
+  it('на сервере менялись только живые поля - не конфликт, прежнее слияние', async () => {
     const conflicts: ConflictResolution[] = [];
     const { c, base } = make(memStorage(), { onConflict: r => conflicts.push(r) });
     await c.save({ ...proj('a'), pages: [{ id: 'a-p1', name: 'П', grid: 'square', elements: [taskEl(), rectEl('r1')] }] } as Project);

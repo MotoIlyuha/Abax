@@ -20,7 +20,7 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe('слой эффектов курсора', () => {
-  it('шлейф рождает частицы по пути, классический курсор — нет', () => {
+  it('шлейф рождает частицы по пути, классический курсор - нет', () => {
     fxMove('me', 0, 0, 'default');
     fxMove('me', 50, 0, 'default');
     expect(particleCount()).toBe(0);

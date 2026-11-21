@@ -65,7 +65,7 @@ describe('приглашения по почте: автор', () => {
     expect(r.body.error).toBe('mail-disabled');
   });
 
-  it('повтор тому же адресу: роль обновляется, письмо — не чаще раза в 10 минут', async () => {
+  it('повтор тому же адресу: роль обновляется, письмо - не чаще раза в 10 минут', async () => {
     const { app, mailer, owner } = await setup();
     await invite(app, owner.token, { email: 's@ex.ru', role: 'edit' });
     const again = await invite(app, owner.token, { email: 's@ex.ru', role: 'view' });
@@ -145,7 +145,7 @@ describe('приглашения по почте: адресат', () => {
     expect(b).toEqual([expect.objectContaining({ projectId: 'a', role: 'edit' })]);
   });
 
-  it('аноним и чужой адрес — пусто; удалённый проект не показывается', async () => {
+  it('аноним и чужой адрес - пусто; удалённый проект не показывается', async () => {
     const { app, owner } = await setup();
     await invite(app, owner.token, { email: 'student@example.com' });
     const a = await anon(app);
@@ -158,7 +158,7 @@ describe('приглашения по почте: адресат', () => {
     expect((await call(app, 'GET', '/api/me/invites', undefined, { token: s.token })).body.invites).toEqual([]);
   });
 
-  it('принять — токен и статус accepted; отклонить — declined; чужой ответить не может', async () => {
+  it('принять - токен и статус accepted; отклонить - declined; чужой ответить не может', async () => {
     const { app, owner } = await setup();
     const r1 = await invite(app, owner.token, { email: 'student@example.com' });
     const s = await userWith(app, 'email', 'student@example.com');

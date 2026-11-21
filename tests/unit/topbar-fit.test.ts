@@ -51,7 +51,7 @@ describe('адаптивная шапка', () => {
     expect(fitState(base(10_000)).noRoom.size).toBe(0);
   });
 
-  it('элемента нет (гость, просмотр по ссылке) — пункт не блокируется', () => {
+  it('элемента нет (гость, просмотр по ссылке) - пункт не блокируется', () => {
     const input = base(300);
     input.items = input.items.map(i => i.step === 'import' ? { ...i, width: 0 } : i);
     expect(fitState(input).noRoom.has('import')).toBe(false);

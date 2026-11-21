@@ -35,7 +35,7 @@ describe('вкладки Tab pill', () => {
     expect(tp.value).toBe('chat');
   });
 
-  it('щелчок выбирает вкладку и сообщает; повторный — нет', () => {
+  it('щелчок выбирает вкладку и сообщает; повторный - нет', () => {
     tp.tab('notices')!.click();
     expect(tp.value).toBe('notices');
     expect(onChange).toHaveBeenCalledWith('notices');
@@ -69,7 +69,7 @@ describe('вкладки Tab pill', () => {
     expect(tp.value).toBe('all');
   });
 
-  it('счётчики: число, 99+, 0 — скрыт; подпись для чтения с экрана', () => {
+  it('счётчики: число, 99+, 0 - скрыт; подпись для чтения с экрана', () => {
     const count = () => tp.tab('chat')!.querySelector('.tp-count') as HTMLElement;
     const text = () => count().querySelector('.roll-line:not(.roll-leaving) .roll-text')?.textContent ?? '';
     expect(count().classList.contains('on')).toBe(false);
@@ -77,7 +77,7 @@ describe('вкладки Tab pill', () => {
     tp.setCount('chat', 3);
     expect(count().classList.contains('on')).toBe(true);
     expect(text()).toBe('3');
-    expect(tp.tab('chat')!.getAttribute('aria-label')).toBe('Чат: непрочитанных — 3');
+    expect(tp.tab('chat')!.getAttribute('aria-label')).toBe('Чат: непрочитанных - 3');
     tp.setCount('chat', 150);
     expect(text()).toBe('99+');
     tp.setCount('chat', 0);

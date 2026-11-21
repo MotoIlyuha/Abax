@@ -16,7 +16,7 @@ test.describe('откреплённая панель инструментов', 
     await expect(grip).toHaveCSS('opacity', '1');
   });
 
-  test('нажатие на ручку поворачивает панель, перенос вниз — тоже, выключение возвращает к краю', async ({ board, page }) => {
+  test('нажатие на ручку поворачивает панель, перенос вниз - тоже, выключение возвращает к краю', async ({ board, page }) => {
     await page.evaluate(() => localStorage.setItem('doska.settings', JSON.stringify({ toolbarPos: 'left', toolbarDetachable: true })));
     await page.reload();
     await board.ready();
@@ -61,7 +61,7 @@ test.describe('откреплённая панель инструментов', 
     await tb.hover();
     const g3 = (await grip.boundingBox())!;
     await page.mouse.move(g3.x + g3.width / 2, g3.y + 6);
-    await expect(page.locator('#tooltip')).toContainText('удерживайте — прикрепить обратно');
+    await expect(page.locator('#tooltip')).toContainText('удерживайте - прикрепить обратно');
     await expect(page.locator('#toolbar .mt-hl')).toHaveCSS('opacity', '0');
     await page.mouse.down();
     await expect(tb).not.toHaveClass(/floating/);

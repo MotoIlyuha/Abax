@@ -42,11 +42,11 @@ test.describe('режим Electron (doskaAPI)', () => {
     expect(s.project.pages).toEqual([expect.objectContaining({ name: 'Страница 1', grid: 'dots', count: 1 })]);
   });
 
-  test('экспорт PNG — через диалог сохранения', async ({ host, page }) => {
+  test('экспорт PNG - через диалог сохранения', async ({ host, page }) => {
     await host.board.rect(400, 300, 500, 400);
     await page.keyboard.press('Control+e');
     await expect.poll(() => host.exports.length).toBe(1);
-    expect(host.exports[0].name).toBe('Проект 1 — Страница 1.png');
+    expect(host.exports[0].name).toBe('Проект 1 - Страница 1.png');
     expect(host.exports[0].dataUrl).toMatch(/^data:image\/png;base64,/);
   });
 

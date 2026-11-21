@@ -430,7 +430,7 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
   emailInput.spellcheck = false;
   const emailRoleSel = createSpringSelect({
     className: 'share-chip share-email-role', label: 'Роль приглашённого', options: roleOptions(), value: emailRole,
-    title: 'В письме — личная ссылка. Её можно переслать, поэтому не выдавайте роль выше нужной',
+    title: 'В письме - личная ссылка. Её можно переслать, поэтому не выдавайте роль выше нужной',
     onChange: v => { emailRole = v as StoredRole; },
   });
   emailField.append(emailInput, emailRoleSel.el);
@@ -695,9 +695,9 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
       linkRole.el.dataset.opts = JSON.stringify(opts.map(x => x.value));
     } else if (link) linkRole.setValue(link.role);
     linkRole.setDisabled(linkBusy);
-    tip(linkRow, !link ? 'Включите — по ссылке войдёт любой, у кого она есть'
+    tip(linkRow, !link ? 'Включите - по ссылке войдёт любой, у кого она есть'
       : on ? 'По ссылке войдёт любой, у кого она есть'
-        : 'Ссылка выключена: по ней никто не войдёт. Включите снова — заработает тот же адрес');
+        : 'Ссылка выключена: по ней никто не войдёт. Включите снова - заработает тот же адрес');
     renderReset();
     if (link) {
       const url = linkUrlOf(link);
@@ -770,11 +770,11 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
     if (running) {
       wrap.appendChild(el('h3', 'share-cloud-title', 'Через интернет'));
       if (cloud!.url) {
-        const b = copyButton('share-link share-link-cloud', cloud!.url, 'Ссылка откроется на любом устройстве с интернетом. Клик — скопировать');
+        const b = copyButton('share-link share-link-cloud', cloud!.url, 'Ссылка откроется на любом устройстве с интернетом. Клик - скопировать');
         b.dataset.key = 'relay-link';
         wrap.appendChild(b);
       }
-      if (cloud!.state === 'reconnecting') wrap.appendChild(el('div', 'share-cloud-status warn', 'Связь с сервером прервалась — переподключаемся. Гости подождут.'));
+      if (cloud!.state === 'reconnecting') wrap.appendChild(el('div', 'share-cloud-status warn', 'Связь с сервером прервалась - переподключаемся. Гости подождут.'));
       const stop = btn('share-btn-soft danger', 'Закрыть доступ через интернет', async () => {
         await deps.api.shareCloudStop?.();
         cloudUi.error = null;
@@ -892,7 +892,7 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
         if (!r.connected) await deps.startHost(r.port!, r.code!, r.hostKey!);
         await refreshStatus(true);
       });
-      start.title = 'Гости подключаются прямо к этому устройству — без сервера Abax';
+      start.title = 'Гости подключаются прямо к этому устройству - без сервера Abax';
       start.dataset.key = 'p2p-start';
       p2pBox.appendChild(start);
     } else {
@@ -915,7 +915,7 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
         }
         lan.append(sub);
         const where = urls[lanChoice] ? `${urls[lanChoice].iface} ${urls[lanChoice].address}. ` : '';
-        const b = copyButton('share-link', chosen, `${where}Откройте ссылку на другом устройстве или в тестовом окне. Клик — скопировать`);
+        const b = copyButton('share-link', chosen, `${where}Откройте ссылку на другом устройстве или в тестовом окне. Клик - скопировать`);
         b.dataset.key = 'lan-link';
         lan.appendChild(b);
         if (status.localOnly) {
@@ -928,7 +928,7 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
       const actions = el('div', 'share-p2p-actions');
       if (status.url) {
         const testBtn = btn('share-btn-soft', 'Тестовое окно гостя', () => { void deps.api.shareOpenTestWindow(); });
-        testBtn.title = 'Открыть окно гостя на этом компьютере — посмотреть доску его глазами';
+        testBtn.title = 'Открыть окно гостя на этом компьютере - посмотреть доску его глазами';
         testBtn.dataset.key = 'test';
         actions.appendChild(testBtn);
       }
@@ -1095,7 +1095,7 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
     input.dataset.key = field;
     return { row, input };
   };
-  const protectT = toggleRow('protectElements', 'Защита чужих элементов', 'Участники не могут сдвигать, менять и стирать чужие элементы — только свои',
+  const protectT = toggleRow('protectElements', 'Защита чужих элементов', 'Участники не могут сдвигать, менять и стирать чужие элементы - только свои',
     on => setPermissionField('protectElements', on ? true : undefined));
   const copyT = toggleRow('allowCopy', 'Копирование и экспорт', 'Читатели и комментаторы могут копировать и экспортировать. Видимое на экране всё равно можно сфотографировать',
     on => {
@@ -1105,7 +1105,7 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
     });
   const cloneT = toggleRow('allowClone', 'Копия доски себе', 'Участники могут сделать себе копию доски',
     on => setPermissionField('forbidClone', on ? undefined : true));
-  const linkViewT = toggleRow('linkView', 'Просмотр по ссылке на доску', 'Ссылка на доску или страницу открывает её только для чтения — без приглашения',
+  const linkViewT = toggleRow('linkView', 'Просмотр по ссылке на доску', 'Ссылка на доску или страницу открывает её только для чтения - без приглашения',
     on => setPermissionField('linkView', on ? undefined : false));
   for (const [t, f] of [[copyT, 'copy'], [cloneT, 'clone']] as const) {
     t.row.insertBefore(proTag(f), t.input);
@@ -1242,8 +1242,8 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
         warn.textContent = '';
         warn.appendChild(el('span', '', legacyLink
           ? `«${pg.name}»: по старой настройке гости старой ссылки могут её редактировать. Для новых ролей действует роль. `
-          : `«${pg.name}»: старая настройка «редактирование для всех» больше не повышает роль — действует роль. `));
-        const ok = btn('share-inline-btn', 'Понятно', () => { setPageRightInProject(pg.id, ''); renderSettings(); }, `Понятно: страница «${pg.name}» — по роли`);
+          : `«${pg.name}»: старая настройка «редактирование для всех» больше не повышает роль - действует роль. `));
+        const ok = btn('share-inline-btn', 'Понятно', () => { setPageRightInProject(pg.id, ''); renderSettings(); }, `Понятно: страница «${pg.name}» - по роли`);
         ok.dataset.key = `page-ok-${pg.id}`;
         warn.appendChild(ok);
         return warn;
@@ -1333,7 +1333,7 @@ export async function openShareDialog(deps: ShareDialogDeps): Promise<void> {
     maxStepper.setValue(maxLocked ? 1 : (maxOrder.includes(curMax) ? curMax : 0));
     maxStepper.setDisabled(maxLocked);
     maxRow.classList.toggle('locked', maxLocked);
-    tip(maxRow, maxLocked ? 'На бесплатном тарифе — один гость. Свой лимит гостей доступен в подписке Pro' : 'Сколько гостей может быть на доске одновременно');
+    tip(maxRow, maxLocked ? 'На бесплатном тарифе - один гость. Свой лимит гостей доступен в подписке Pro' : 'Сколько гостей может быть на доске одновременно');
     // ссылка — только для доски в облаке
     const cloud = cloudShareAvailable() && cloudSynced();
     aliasSec.hidden = !cloud;

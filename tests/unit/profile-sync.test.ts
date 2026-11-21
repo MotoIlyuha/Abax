@@ -39,7 +39,7 @@ afterEach(async () => {
 const serverUser = async () => (await api.me()).user;
 
 describe('синхронизация профиля', () => {
-  it('без облака: syncAccount — false, ничего не делает', async () => {
+  it('без облака: syncAccount - false, ничего не делает', async () => {
     setApiForTests(null);
     expect(await syncAccount()).toBe(false);
     expect(account()).toBeNull();
@@ -56,14 +56,14 @@ describe('синхронизация профиля', () => {
     expect(await serverUser()).toMatchObject({ cursorId: 'mint', nameCustom: true });
   });
 
-  it('знакомство не пройдено — профиль не отправляется', async () => {
+  it('знакомство не пройдено - профиль не отправляется', async () => {
     setProfile({ name: 'Лемур' });
     await syncAccount();
     await new Promise(r => setTimeout(r, 50));
     expect((await serverUser()).nameCustom).toBe(false);
   });
 
-  it('вошёл и у аккаунта своё имя — сервер главнее', async () => {
+  it('вошёл и у аккаунта своё имя - сервер главнее', async () => {
     setProfile({ name: 'Устройство', cursorId: 'coral', onboarded: true });
     const token = await api.ensureSession();
     await call(app, 'PATCH', '/api/me', { displayName: 'Аккаунт', cursorId: 'lavender' }, { token });

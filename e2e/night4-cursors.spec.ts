@@ -48,7 +48,7 @@ test.describe('персональные курсоры', () => {
     await expect(board.canvas).toHaveCSS('cursor', 'crosshair');
   });
 
-  test('рамка и ручки выделения — цвета курсора пользователя', async ({ host, page }) => {
+  test('рамка и ручки выделения - цвета курсора пользователя', async ({ host, page }) => {
     const board = host.board;
     const el = await board.rect(300, 200, 420, 300);
     await board.tool('v');
@@ -62,7 +62,7 @@ test.describe('персональные курсоры', () => {
     expect(await colorNear(page, board, 420, 300, [50, 115, 245], 8, 25)).toBe(false);
   });
 
-  test('Pro-курсор на free — только примерка: курсор не меняется', async ({ host, page }) => {
+  test('Pro-курсор на free - только примерка: курсор не меняется', async ({ host, page }) => {
     await page.keyboard.press('Control+Comma');
     await page.locator('.sd-nav-item', { hasText: 'Профиль' }).click();
     await expect(page.locator('#settings-dialog [data-cursor="neon"] .cp-pro')).toHaveText('Pro');

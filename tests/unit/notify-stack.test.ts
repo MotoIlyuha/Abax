@@ -40,7 +40,7 @@ describe('стопка уведомлений («Выкл»: всё сразу)'
     document.body.className = '';
   });
 
-  it('новое уведомление — карточка с аватаром участника, значком события и временем; живая область проговаривает', () => {
+  it('новое уведомление - карточка с аватаром участника, значком события и временем; живая область проговаривает', () => {
     pushNotice({ title: 'Капибара', body: 'присоединился к доске', icon: 'join', level: 'ok', user: { userId: 2, name: 'Капибара', cursorId: 'mint' } });
     expect(stackShown()).toBe(true);
     expect(stack().hidden).toBe(false);
@@ -59,7 +59,7 @@ describe('стопка уведомлений («Выкл»: всё сразу)'
     expect(document.getElementById('notify-live')!.getAttribute('aria-live')).toBe('polite');
   });
 
-  it('системное без участника — цветной квадрат с иконкой события', () => {
+  it('системное без участника - цветной квадрат с иконкой события', () => {
     pushNotice({ level: 'warn', title: 'Соединение прервано, переподключаемся…', icon: 'offline' });
     const card = cards()[0];
     expect(card.classList.contains('ns-warn')).toBe(true);
@@ -90,10 +90,10 @@ describe('стопка уведомлений («Выкл»: всё сразу)'
     expect(stack().hidden).toBe(true);
     expect(stackCount()).toBe(2);
     expect(notifyShownCount()).toBe(2);
-    expect(btn().getAttribute('aria-label')).toBe('Чат, комментарии и уведомления: непрочитанных — 2');
+    expect(btn().getAttribute('aria-label')).toBe('Чат, комментарии и уведомления: непрочитанных - 2');
   });
 
-  it('наведение раскрывает и держит стопку; уход мыши — через 600 мс в кнопку', () => {
+  it('наведение раскрывает и держит стопку; уход мыши - через 600 мс в кнопку', () => {
     pushNotice({ title: 'а' });
     pushNotice({ title: 'б' });
     enter(stack());
@@ -111,7 +111,7 @@ describe('стопка уведомлений («Выкл»: всё сразу)'
     expect(stackShown()).toBe(false);
   });
 
-  it('наведение на кнопку ЧУ поднимает ушедшее и раскладывает; уход — обратно через 600 мс', () => {
+  it('наведение на кнопку ЧУ поднимает ушедшее и раскладывает; уход - обратно через 600 мс', () => {
     pushNotice({ title: 'а' });
     pushNotice({ title: 'б' });
     vi.advanceTimersByTime(STACK_IDLE_MS);
@@ -133,7 +133,7 @@ describe('стопка уведомлений («Выкл»: всё сразу)'
     expect(stackShown()).toBe(false);
   });
 
-  it('× и Delete убирают карточку и помечают прочитанной; фокус — на следующую', () => {
+  it('× и Delete убирают карточку и помечают прочитанной; фокус - на следующую', () => {
     pushNotice({ title: 'а' });
     pushNotice({ title: 'б' });
     pushNotice({ title: 'в' });
@@ -175,7 +175,7 @@ describe('стопка уведомлений («Выкл»: всё сразу)'
     expect(notifyShownCount()).toBe(1);
   });
 
-  it('«не беспокоить»: стопка не показывается, уведомление сразу в кнопке; тихие — видны', () => {
+  it('«не беспокоить»: стопка не показывается, уведомление сразу в кнопке; тихие - видны', () => {
     setDoNotDisturb(true);
     pushNotice({ title: 'Капибара', body: 'присоединился к доске', user: { name: 'Капибара' } });
     expect(stackShown()).toBe(false);
@@ -192,7 +192,7 @@ describe('стопка уведомлений («Выкл»: всё сразу)'
     expect(labels()).toEqual(['Капибара присоединился к доске']);
   });
 
-  it('включили «не беспокоить» — стопка сразу уходит в кнопку', () => {
+  it('включили «не беспокоить» - стопка сразу уходит в кнопку', () => {
     pushNotice({ title: 'а' });
     setDoNotDisturb(true);
     expect(stackShown()).toBe(false);
@@ -208,7 +208,7 @@ describe('стопка уведомлений («Выкл»: всё сразу)'
     expect(stackCount()).toBe(0);
   });
 
-  it('щелчок по карточке — её действие, кнопка действия — своё; уведомление прочитано', () => {
+  it('щелчок по карточке - её действие, кнопка действия - своё; уведомление прочитано', () => {
     const onClick = vi.fn();
     const run = vi.fn();
     pushNotice({ title: 'щёлкни', onClick });
@@ -222,7 +222,7 @@ describe('стопка уведомлений («Выкл»: всё сразу)'
     expect(stackCount()).toBe(0);
   });
 
-  it('чужие данные — только текстом; неизвестный значок — колокольчик; фото — только проверенное', () => {
+  it('чужие данные - только текстом; неизвестный значок - колокольчик; фото - только проверенное', () => {
     pushNotice({ title: '<img src=x onerror="alert(1)">', body: '<b>жирный</b>', icon: 'нет-такого' as NoticeIcon });
     const card = front();
     expect(card.querySelector('img, b, script')).toBeNull();
@@ -236,7 +236,7 @@ describe('стопка уведомлений («Выкл»: всё сразу)'
     expect(front().querySelector<HTMLImageElement>('.ua-circle img')!.getAttribute('src')).toBe(photo);
   });
 
-  it('смахивание: дальше 100 px — убрано и прочитано; ближе и медленно — возвращается', () => {
+  it('смахивание: дальше 100 px - убрано и прочитано; ближе и медленно - возвращается', () => {
     pushNotice({ title: 'смахни' });
     const card = front();
     fire(card, 'pointerdown', { button: 0, clientX: 100, clientY: 10 });
@@ -259,7 +259,7 @@ describe('стопка уведомлений («Выкл»: всё сразу)'
     expect(stackCount()).toBe(1);
   });
 
-  it('панель ЧУ открыта — стопка спрятана, новые не показываются, наведение на кнопку её не поднимает', () => {
+  it('панель ЧУ открыта - стопка спрятана, новые не показываются, наведение на кнопку её не поднимает', () => {
     registerPanelMode({ id: 'notify', label: 'Чат и уведомления', icon: '<svg></svg>', mount: () => ({}) });
     pushNotice({ title: 'а' });
     expect(stackShown()).toBe(true);
@@ -272,7 +272,7 @@ describe('стопка уведомлений («Выкл»: всё сразу)'
     resetSidePanelForTests();
   });
 
-  it('щелчок по карточке без своего действия — панель ЧУ', () => {
+  it('щелчок по карточке без своего действия - панель ЧУ', () => {
     registerPanelMode({ id: 'notify', label: 'Чат и уведомления', icon: '<svg></svg>', mount: () => ({}) });
     pushNotice({ kind: 'chat', title: 'Лемур', body: 'привет', chatId: 'm1' });
     fire(front(), 'click');
@@ -311,7 +311,7 @@ describe('стопка уведомлений: «Обычные» и «Улуч�
     document.body.className = '';
   });
 
-  it('«Обычные»: CSS-переходы, уход в кнопку — 300 мс', () => {
+  it('«Обычные»: CSS-переходы, уход в кнопку - 300 мс', () => {
     vi.useFakeTimers();
     setup('no-motion');
     pushNotice({ title: 'а' });

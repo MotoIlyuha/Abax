@@ -17,7 +17,7 @@ describe('подпись содержимого', () => {
     expect(cyrb53('')).toMatch(/^[0-9a-f]{14}$/);
   });
 
-  it('одинаковое содержимое — одинаковая подпись, порядок полей не важен', () => {
+  it('одинаковое содержимое - одинаковая подпись, порядок полей не важен', () => {
     const a = project();
     const b: Project = { pages: a.pages.map(pg => ({ elements: pg.elements.map(e => ({ ...e })), grid: pg.grid, name: pg.name, id: pg.id })), updatedAt: 2, createdAt: 1, name: 'Доска', id: 'p' };
     expect(contentSignature(a)).toBe(contentSignature(b));
@@ -73,7 +73,7 @@ describe('автор элемента не входит в подпись (SPEC_
     id: 'p', name: 'П', createdAt: 1, updatedAt: 1,
     pages: [{ id: 'g', name: 'С', grid: 'none', elements: [{ id: 'r', type: 'shape', shape: 'rect', x: 0, y: 0, w: 1, h: 1, color: '#000', width: 1, ...(by ? { by } : {}) } as never] }],
   });
-  it('с автором и без — одна подпись (старый клиент, потерявший by, не даёт ложного конфликта)', () => {
+  it('с автором и без - одна подпись (старый клиент, потерявший by, не даёт ложного конфликта)', () => {
     expect(contentSignature(base('u:anna'))).toBe(contentSignature(base()));
     expect(contentSignature(base('u:anna'))).toBe(contentSignature(base('c:boris')));
   });

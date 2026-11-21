@@ -86,7 +86,7 @@ describe('гость по приглашению', () => {
     await until(() => (JSON.parse((app.db.prepare('SELECT data_json FROM projects WHERE id = ?').get('a') as { data_json: string }).data_json).pages[0].elements[0].attempts ?? []).length === 1);
   });
 
-  it('бесплатный автор не в сети: комната не открылась — проект для чтения и пояснение', async () => {
+  it('бесплатный автор не в сети: комната не открылась - проект для чтения и пояснение', async () => {
     await setup('free');
     expect(await joinCloudInvite('inv', 'Гость')).toBe('view');
     expect(state.collabRole).toBeNull();
@@ -96,7 +96,7 @@ describe('гость по приглашению', () => {
     expect(JSON.stringify(state.project)).not.toContain('"answer":"42"');
   });
 
-  it('недействительная, отозванная ссылка и сервер без связи — «none» с пояснением', async () => {
+  it('недействительная, отозванная ссылка и сервер без связи - «none» с пояснением', async () => {
     await setup();
     expect(await joinCloudInvite('нет-такой', 'Гость')).toBe('none');
     expect(document.getElementById('collab-notice')?.textContent).toContain('Приглашение недействительно');
@@ -111,7 +111,7 @@ describe('гость по приглашению', () => {
     expect(state.collabRole).toBeNull();
   });
 
-  it('гость по приглашению входит с анонимной сессией устройства — автор его элементов (SPEC_NIGHT6 Решение 16)', async () => {
+  it('гость по приглашению входит с анонимной сессией устройства - автор его элементов (SPEC_NIGHT6 Решение 16)', async () => {
     await setup();
     const before = (app.db.prepare('SELECT COUNT(*) n FROM users').get() as { n: number }).n;
     expect(await joinCloudInvite('inv', 'Гость')).toBe('room');
@@ -142,7 +142,7 @@ describe('комната заполнена (Ночь №5, TASK-07)', () => {
     });
   }
 
-  it('лимит автора: окно «1 из 1», под ним проект для чтения; «Попробовать снова» — повторный вход', async () => {
+  it('лимит автора: окно «1 из 1», под ним проект для чтения; «Попробовать снова» - повторный вход', async () => {
     await setup('pro');
     editStored(app, 'a', p => { p.permissions = { maxGuests: 1 }; });
     const first = await rawGuest('Первый');
@@ -344,7 +344,7 @@ describe('комната автора: найдено в E2E Ночи №5 (по
     }
   });
 
-  it('вошедший автор начал рисовать на новой доске — после первой отправки он сам подключается к комнате', async () => {
+  it('вошедший автор начал рисовать на новой доске - после первой отправки он сам подключается к комнате', async () => {
     leaveOwnerRoom(); // комната автора из прошлых тестов файла
     await setup();
     const api = createApiClient({ base: app.base });

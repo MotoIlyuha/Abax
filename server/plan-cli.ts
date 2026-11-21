@@ -12,7 +12,7 @@ function main(): void {
     process.exit(2);
   }
   const days = daysRaw === undefined ? undefined : Number(daysRaw);
-  if (days !== undefined && !(days > 0)) { console.error('Срок — положительное число дней'); process.exit(2); }
+  if (days !== undefined && !(days > 0)) { console.error('Срок - положительное число дней'); process.exit(2); }
   const db = openDb(join(resolve(process.env.DATA_DIR || '.data'), 'abax.db'));
   const id = who.startsWith('tg:') ? findByTelegram(db, who.slice(3))?.id : who;
   const ok = id ? setUserPlanRow(db, id, plan, Date.now(), days) : false;

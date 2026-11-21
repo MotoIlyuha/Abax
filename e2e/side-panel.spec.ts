@@ -69,7 +69,7 @@ test.describe('боковая панель', () => {
     void board;
   });
 
-  test('узкое окно: панель — лист под шапкой, кнопка закрытия в шапке панели, шапка доски на месте', async ({ board, page }) => {
+  test('узкое окно: панель - лист под шапкой, кнопка закрытия в шапке панели, шапка доски на месте', async ({ board, page }) => {
     await page.setViewportSize({ width: 700, height: 800 });
     const share0 = (await page.locator('#btn-share').boundingBox())!;
     await page.keyboard.press('F1');

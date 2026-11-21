@@ -36,7 +36,7 @@ test.describe('окно «Поделиться»', () => {
     await A.close();
   });
 
-  test('«Настройки доступа»: подсказки и подсветка строк — морфящиеся, сбоку от окна', async ({ browser }) => {
+  test('«Настройки доступа»: подсказки и подсветка строк - морфящиеся, сбоку от окна', async ({ browser }) => {
     const { base } = env.get();
     const A = await device(browser, base, { name: 'Лемур' });
     const a = await openAt(A, `${base}/`, env.errors);
@@ -115,7 +115,7 @@ test.describe('окно «Поделиться»', () => {
 });
 
 boardTest.describe('окно «Поделиться» без облака', () => {
-  boardTest('путь без сервера — на главной: «Включить совместную работу», ссылка во вкладке через интернет', async ({ board }) => {
+  boardTest('путь без сервера - на главной: «Включить совместную работу», ссылка во вкладке через интернет', async ({ board }) => {
     const page = board.page;
     await page.locator('#btn-share').click();
     const dlg = page.locator('#share-dialog');

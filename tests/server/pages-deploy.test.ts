@@ -59,7 +59,7 @@ describe.skipIf(process.platform === 'win32')('scripts/pages-deploy.sh', () => {
     expect(site.commits).toBe(2);
   });
 
-  it('повтор той же версии: без изменений — без коммита; с изменениями — устаревшие файлы удаляются', () => {
+  it('повтор той же версии: без изменений - без коммита; с изменениями - устаревшие файлы удаляются', () => {
     const d = dist({ 'index.html': 'v1', 'assets/old.js': 'old' });
     deploy(d, '1.0.0');
     const again = deploy(d, '1.0.0');
@@ -72,7 +72,7 @@ describe.skipIf(process.platform === 'win32')('scripts/pages-deploy.sh', () => {
     expect(site.commits).toBe(2);
   });
 
-  it('неверная версия и отсутствие сборки — отказ без публикации', () => {
+  it('неверная версия и отсутствие сборки - отказ без публикации', () => {
     const d = dist({ 'index.html': 'x' });
     for (const bad of ['../../etc', '1.0', 'v1.0.0', '1.0.0/..']) {
       const r = deploy(d, bad);

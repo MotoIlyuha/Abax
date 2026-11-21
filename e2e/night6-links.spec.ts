@@ -13,7 +13,7 @@ async function guestAt(browser: Browser, base: string, url: string, ready: 'gues
 }
 
 test.describe('ссылки', () => {
-  test('/j/<токен> ведёт в комнату; пауза закрывает вход, включение — та же ссылка снова работает; сброс — старая мертва', async ({ browser }) => {
+  test('/j/<токен> ведёт в комнату; пауза закрывает вход, включение - та же ссылка снова работает; сброс - старая мертва', async ({ browser }) => {
     const { base } = env.get();
     const teacher = await login(base, 'teacher-links@abax.example');
     const A = await device(browser, base, { session: teacher.token, name: 'Лемур' });
@@ -52,7 +52,7 @@ test.describe('ссылки', () => {
     for (const c of [A, one.G, two.G, three.G, four.G, five.G]) await c.close();
   });
 
-  test('именной адрес: вход, переименование — старый ведёт туда же, освобождение — «больше не используется»', async ({ browser }) => {
+  test('именной адрес: вход, переименование - старый ведёт туда же, освобождение - «больше не используется»', async ({ browser }) => {
     const { base } = env.get();
     const teacher = await login(base, 'teacher-alias@abax.example');
     const A = await device(browser, base, { session: teacher.token, name: 'Лемур' });
@@ -63,7 +63,7 @@ test.describe('ссылки', () => {
     await shareTab(a, 'settings');
     const input = a.locator('#share-dialog .share-alias-input');
     await input.fill('Physics--');
-    await expect(a.locator('#share-dialog .share-alias-problem')).toHaveText('Дефис — только между буквами и цифрами');
+    await expect(a.locator('#share-dialog .share-alias-problem')).toHaveText('Дефис - только между буквами и цифрами');
     await input.fill('physics-9a-2026');
     await a.locator('#share-dialog .share-alias-save').click();
     await expect(a.locator('#share-dialog .share-alias-save')).toHaveText('Изменить', { timeout: 10000 });
@@ -91,7 +91,7 @@ test.describe('ссылки', () => {
     for (const c of [A, one.G, two.G, three.G]) await c.close();
   });
 
-  test('просмотр по ссылке на доску: открыт по умолчанию, выключенный — доска недоступна', async ({ browser }) => {
+  test('просмотр по ссылке на доску: открыт по умолчанию, выключенный - доска недоступна', async ({ browser }) => {
     const { base, srv } = env.get();
     const teacher = await login(base, 'teacher-view@abax.example');
     const A = await device(browser, base, { session: teacher.token, name: 'Лемур' });

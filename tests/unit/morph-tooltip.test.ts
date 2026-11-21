@@ -73,7 +73,7 @@ describe('подсказка панели инструментов', () => {
     expect(layer()!.querySelectorAll('.mt-lab').length).toBe(2);
   });
 
-  it('щель между кнопками не прячет подсказку, уход с панели — прячет после паузы', () => {
+  it('щель между кнопками не прячет подсказку, уход с панели - прячет после паузы', () => {
     const t1 = document.getElementById('t1')!;
     over(t1);
     vi.advanceTimersByTime(200);

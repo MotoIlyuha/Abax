@@ -68,7 +68,7 @@ describe('картинка для чата: подбор размера и ка�
     expect(fitSide(10000, 1, 1280)).toEqual({ w: 1280, h: 1 });
   });
 
-  it('без прозрачности — JPEG: сначала 1280 px и 0.82, затем ниже качество, затем меньше размер', () => {
+  it('без прозрачности - JPEG: сначала 1280 px и 0.82, затем ниже качество, затем меньше размер', () => {
     const steps = chatImageSteps(4000, 3000, false, true);
     expect(steps[0]).toEqual({ w: CHAT_IMAGE_SIDE, h: 960, type: 'image/jpeg', quality: 0.82 });
     expect(steps.slice(0, 3).map(s => s.quality)).toEqual([...CHAT_IMAGE_QUALITIES]);
@@ -78,7 +78,7 @@ describe('картинка для чата: подбор размера и ка�
     for (let i = 1; i < steps.length; i++) expect(steps[i].w).toBeLessThanOrEqual(steps[i - 1].w);
   });
 
-  it('с прозрачностью — WebP, а без поддержки WebP — PNG только уменьшением размера', () => {
+  it('с прозрачностью - WebP, а без поддержки WebP - PNG только уменьшением размера', () => {
     expect(chatImageSteps(800, 600, true, true)[0]).toEqual({ w: 800, h: 600, type: 'image/webp', quality: 0.82 });
     const png = chatImageSteps(2560, 1440, true, false);
     expect(png.map(s => s.type)).toEqual(png.map(() => 'image/png'));
@@ -93,7 +93,7 @@ describe('картинка для чата: подбор размера и ка�
     expect(steps.every(s => s.w === 1 && s.h === 1)).toBe(true);
   });
 
-  it('ошибка подготовки — понятный текст; иначе — черновик «Изображение · W×H»', async () => {
+  it('ошибка подготовки - понятный текст; иначе - черновик «Изображение · W×H»', async () => {
     expect(await attachImageFile(new Blob(['x']), async () => { throw new ChatImageError(IMAGE_TOO_BIG); })).toBe(IMAGE_TOO_BIG);
     expect(await attachImageFile(new Blob(['x']), async () => { throw new Error('сбой'); })).toBe(IMAGE_UNREADABLE);
     expect(chatDraft()).toBeNull();
@@ -101,7 +101,7 @@ describe('картинка для чата: подбор размера и ка�
     expect(chatDraft()).toEqual({ att: { kind: 'image', src: PNG, w: 1280, h: 720 }, label: 'Изображение · 1280×720' });
   });
 
-  it('файл из буфера или перетаскивания — первая картинка', () => {
+  it('файл из буфера или перетаскивания - первая картинка', () => {
     const img = new File(['x'], 'a.png', { type: 'image/png' });
     const txt = new File(['x'], 'a.txt', { type: 'text/plain' });
     const dt = { items: [{ kind: 'file', type: 'text/plain', getAsFile: () => txt }, { kind: 'file', type: 'image/png', getAsFile: () => img }], files: [] };
@@ -112,7 +112,7 @@ describe('картинка для чата: подбор размера и ка�
 });
 
 describe('выделенное во вложение', () => {
-  it('копии: без заданий и без поля by; слишком большие — только просмотр', () => {
+  it('копии: без заданий и без поля by; слишком большие - только просмотр', () => {
     const owned = { ...rect('a'), by: 'u:7' } as ShapeEl;
     const r = boardCopies([owned, task('t')]);
     expect(r.tasks).toBe(1);
@@ -132,7 +132,7 @@ describe('выделенное во вложение', () => {
     expect(pageTitle(state.pageId)).toBe(state.project.pages[0].name.trim() || 'Страница 1');
   });
 
-  it('кнопка недоступна без выделения и при запрете копирования — с подсказкой', () => {
+  it('кнопка недоступна без выделения и при запрете копирования - с подсказкой', () => {
     expect(selectionAttachBlock()).toBe(SELECT_FIRST);
     addElement(rect('a'));
     setSelection(['a']);
@@ -196,7 +196,7 @@ describe('поле ввода: кнопки вложений и чип', () => {
     expect(c.el.querySelector('.cchip img')).toBeNull();
   });
 
-  it('новое вложение заменяет прежнее — одно на сообщение', () => {
+  it('новое вложение заменяет прежнее - одно на сообщение', () => {
     setChatDraft(imageDraft({ src: PNG, w: 10, h: 10 }));
     setChatDraft(imageDraft({ src: PNG, w: 20, h: 10 }));
     expect(c.el.querySelectorAll('.cchip')).toHaveLength(1);
@@ -205,7 +205,7 @@ describe('поле ввода: кнопки вложений и чип', () => {
 });
 
 describe('вложения в ленте', () => {
-  it('картинка: вписана в 240×240, ленивая, с alt; щелчок — просмотр, Esc закрывает', () => {
+  it('картинка: вписана в 240×240, ленивая, с alt; щелчок - просмотр, Esc закрывает', () => {
     const box = renderAttachment({ att: { kind: 'image', src: PNG, w: 1280, h: 720 } })!;
     document.body.append(box);
     const img = box.querySelector('img')!;
@@ -224,7 +224,7 @@ describe('вложения в ленте', () => {
     expect(document.querySelector('.chat-lightbox')).toBeNull();
   });
 
-  it('просмотр: «Вставить на доску» — только с правом правки; щелчок мимо закрывает', () => {
+  it('просмотр: «Вставить на доску» - только с правом правки; щелчок мимо закрывает', () => {
     const box = renderAttachment({ att: { kind: 'image', src: PNG, w: 10, h: 10 } })!;
     document.body.append(box);
     canEdit = false;
@@ -253,7 +253,7 @@ describe('вложения в ленте', () => {
     }
   });
 
-  it('gone и hidden — плашки с текстом', () => {
+  it('gone и hidden - плашки с текстом', () => {
     expect(renderAttachment({ att: { kind: 'gone', was: 'image' } })!.textContent).toBe(GONE_TEXT);
     expect(renderAttachment({ att: { kind: 'gone', was: 'board' } })!.className).toBe('cf-att cf-att-gone');
     const h = renderAttachment({ att: { kind: 'hidden' } })!;
@@ -274,7 +274,7 @@ describe('вложения в ленте', () => {
 });
 
 describe('«Вставить копию»', () => {
-  it('элементы — через sanitizeElement: негодные и задания отброшены, by снят', () => {
+  it('элементы - через sanitizeElement: негодные и задания отброшены, by снят', () => {
     const els = boardCopyElements({ elements: [{ ...rect('a'), by: 'u:3' }, task('t'), { type: 'shape' }, { id: 'z', type: 'нет такого' }, 5] });
     expect(els.map(e => e.id)).toEqual(['a']);
     expect(els[0]).not.toHaveProperty('by');
@@ -294,7 +294,7 @@ describe('«Вставить копию»', () => {
     expect([...state.selection].sort()).toEqual(copies.map(e => e.id).sort());
   });
 
-  it('без права правки или без копий — недоступно, доска не меняется', () => {
+  it('без права правки или без копий - недоступно, доска не меняется', () => {
     canEdit = false;
     expect(copyBlock({ elements: [rect('a')] })).toBe(COPY_NO_EDIT);
     expect(insertBoardCopy({ elements: [rect('a')] })).toBe(false);
@@ -323,7 +323,7 @@ describe('отправка и приём вложений', () => {
     expect(sent).toEqual([{ text: '', att }]);
   });
 
-  it('входящие: строгая форма вложения — неверный data URL и задания отклоняют сообщение', () => {
+  it('входящие: строгая форма вложения - неверный data URL и задания отклоняют сообщение', () => {
     setChatAvailable(true);
     chatReset([], 1);
     const m = (id: string, att: unknown) => ({ id, by: 2, name: 'У2', text: '', ts: Date.now(), att });

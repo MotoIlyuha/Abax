@@ -2,14 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { arrowDirection, arrowStep, isArrowKey } from '../../src/nudge';
 
 describe('перенос стрелками', () => {
-  it('одна стрелка — своё направление, y растёт вниз', () => {
+  it('одна стрелка - своё направление, y растёт вниз', () => {
     expect(arrowDirection(['ArrowLeft'])).toEqual({ x: -1, y: 0 });
     expect(arrowDirection(['ArrowRight'])).toEqual({ x: 1, y: 0 });
     expect(arrowDirection(['ArrowUp'])).toEqual({ x: 0, y: -1 });
     expect(arrowDirection(['ArrowDown'])).toEqual({ x: 0, y: 1 });
   });
 
-  it('две непротивоположные — диагональ единичной длины', () => {
+  it('две непротивоположные - диагональ единичной длины', () => {
     const d = arrowDirection(['ArrowRight', 'ArrowDown']);
     expect(d.x).toBeCloseTo(Math.SQRT1_2);
     expect(d.y).toBeCloseTo(Math.SQRT1_2);

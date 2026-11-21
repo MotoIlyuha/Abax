@@ -44,7 +44,7 @@ export interface ProjectForm {
   destroy(): void;
 }
 
-export const PAGES_NOTE = 'Проект — это набор страниц. Каждая страница — отдельная бесконечная доска: например, тема урока, задание или черновик. Переключаться между страницами можно внизу экрана.';
+export const PAGES_NOTE = 'Проект - это набор страниц. Каждая страница - отдельная бесконечная доска: например, тема урока, задание или черновик. Переключаться между страницами можно внизу экрана.';
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
   const e = document.createElement(tag);

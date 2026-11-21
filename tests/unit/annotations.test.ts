@@ -29,25 +29,25 @@ describe('строка объекта', () => {
     expect(layoutAnnotRows([rect('e', 0, 0, { reactions: { '👍': [] } })], undefined, cam, 800, 600, all)).toEqual([]);
   });
 
-  it('счётчик комментариев — сообщения всех веток объекта; решено — когда решены все', () => {
+  it('счётчик комментариев - сообщения всех веток объекта; решено - когда решены все', () => {
     const comments = [t('t1', 0, 0, { targetElementId: 'a', resolved: true }), t('t2', 0, 0, { targetElementId: 'a', resolved: true }), t('t3', 0, 0)];
     expect(layoutAnnotRows([rect('a', 0, 0)], comments, cam, 800, 600, all)[0]).toMatchObject({ comments: 2, resolved: true });
     expect(layoutAnnotRows([rect('a', 0, 0)], comments, cam, 800, 600, { ...all, showComments: false })).toEqual([]);
   });
 
-  it('кнопки — только у объекта toolsFor, и даже без реакций и комментариев', () => {
+  it('кнопки - только у объекта toolsFor, и даже без реакций и комментариев', () => {
     const rows = layoutAnnotRows([rect('a', 0, 0), rect('b', 200, 0)], undefined, cam, 800, 600, { ...all, toolsFor: 'b' });
     expect(rows.map(r => [r.elId, r.tools])).toEqual([['b', true]]);
   });
 
-  it('«Показывать реакции» выключено — пилюль нет', () => {
+  it('«Показывать реакции» выключено - пилюль нет', () => {
     const el = rect('a', 0, 0, { reactions: { '👍': ['u'] } });
     expect(layoutAnnotRows([el], undefined, cam, 800, 600, { ...all, showReactions: false })).toEqual([]);
   });
 });
 
 describe('сколько реакций видно', () => {
-  it('до трёх; остальные — «+n»; минимум одна', () => {
+  it('до трёх; остальные - «+n»; минимум одна', () => {
     expect(shownReactions([], 500, 0)).toBe(0);
     expect(shownReactions([1, 1], 500, 0)).toBe(2);
     expect(shownReactions([1, 1, 1, 1, 1], 1000, 0)).toBe(MAX_SHOWN);
@@ -70,7 +70,7 @@ describe('сколько реакций видно', () => {
 });
 
 describe('пины веток без объекта', () => {
-  it('в точках ветки, с числом сообщений и признаком «решено»; ветки при объекте — не пины', () => {
+  it('в точках ветки, с числом сообщений и признаком «решено»; ветки при объекте - не пины', () => {
     const list = [t('t1', 100, 50), t('t2', 10, 10, { resolved: true }), t('t3', 0, 0, { targetElementId: 'a' }), t('t4', 30, 30, { targetElementId: 'gone' })];
     const pins = layoutPins(list, [rect('a', 0, 0)], { x: 5, y: 5, zoom: 2 }, 800, 600);
     expect(pins).toEqual([
@@ -100,7 +100,7 @@ describe('идентификатор клиента', () => {
     expect(clientId()).toBe(a);
   });
 
-  it('у тестового окна гостя (?name=…) — с суффиксом, чтобы не слиться с автором', () => {
+  it('у тестового окна гостя (?name=…) - с суффиксом, чтобы не слиться с автором', () => {
     const base = clientId();
     resetClientId();
     history.replaceState(null, '', '/?name=Маша');

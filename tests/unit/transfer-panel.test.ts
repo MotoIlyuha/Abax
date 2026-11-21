@@ -52,7 +52,7 @@ describe('режимы', () => {
 });
 
 describe('Экспорт', () => {
-  it('без выделения — «PNG — выделенное» и «Копировать как изображение» недоступны с подсказкой', () => {
+  it('без выделения - «PNG - выделенное» и «Копировать как изображение» недоступны с подсказкой', () => {
     const a = actions();
     setPanelActions(a);
     state.board.elements = [rect('a')];
@@ -70,7 +70,7 @@ describe('Экспорт', () => {
     expect(a.exportPng).toHaveBeenCalledWith('page');
   });
 
-  it('выделение появилось — строки становятся доступны и делают своё', () => {
+  it('выделение появилось - строки становятся доступны и делают своё', () => {
     const a = actions();
     setPanelActions(a);
     state.board.elements = [rect('a'), rect('b')];
@@ -85,14 +85,14 @@ describe('Экспорт', () => {
     expect(a.copyImage).toHaveBeenCalledTimes(1);
   });
 
-  it('пустая страница — PNG страницы недоступен', () => {
+  it('пустая страница - PNG страницы недоступен', () => {
     setPanelActions(actions());
     const { row } = mount(mountExportPanel);
     expect(disabled(row('png-page'))).toBe(true);
-    expect(tip(row('png-page'))).toBe('Страница пуста — нечего экспортировать');
+    expect(tip(row('png-page'))).toBe('Страница пуста - нечего экспортировать');
   });
 
-  it('автор запретил копирование — картинки недоступны', () => {
+  it('автор запретил копирование - картинки недоступны', () => {
     setPanelActions(actions());
     state.board.elements = [rect('a')];
     setCopyGuard(() => false);
@@ -105,7 +105,7 @@ describe('Экспорт', () => {
     }
   });
 
-  it('файл проекта — скачать; по ссылке на одну страницу — недоступен', () => {
+  it('файл проекта - скачать; по ссылке на одну страницу - недоступен', () => {
     const a = actions();
     setPanelActions(a);
     const { row } = mount(mountExportPanel);
@@ -121,7 +121,7 @@ describe('Экспорт', () => {
     }
   });
 
-  it('PDF — «Скоро» и недоступен; «Открыть в приложении» — только когда пункт есть', () => {
+  it('PDF - «Скоро» и недоступен; «Открыть в приложении» - только когда пункт есть', () => {
     const open = vi.fn();
     setPanelActions(actions({ openInApp: open }));
     const { row, host } = mount(mountExportPanel);
@@ -136,7 +136,7 @@ describe('Экспорт', () => {
     expect(again.row('app').closest('section')!.hidden).toBe(true);
   });
 
-  it('действия доски не заданы — всё недоступно', () => {
+  it('действия доски не заданы - всё недоступно', () => {
     state.board.elements = [rect('a')];
     const { row } = mount(mountExportPanel);
     expect(disabled(row('png-page'))).toBe(true);
@@ -159,7 +159,7 @@ describe('Импорт', () => {
     expect(a.openProjectFile).toHaveBeenCalledTimes(1);
   });
 
-  it('без права правки — доступен только файл проекта', () => {
+  it('без права правки - доступен только файл проекта', () => {
     const a = actions({ canEdit: () => false });
     setPanelActions(a);
     const { row } = mount(mountImportPanel);
@@ -174,7 +174,7 @@ describe('Импорт', () => {
     expect(row('drop').textContent).toContain('Перетащите файл проекта');
   });
 
-  it('гость или просмотр по ссылке — файл проекта недоступен', () => {
+  it('гость или просмотр по ссылке - файл проекта недоступен', () => {
     setPanelActions(actions({ canOpenProject: () => false }));
     const { row } = mount(mountImportPanel);
     expect(disabled(row('project'))).toBe(true);
@@ -208,7 +208,7 @@ describe('Импорт', () => {
     expect(zone.classList.contains('is-over')).toBe(false);
   });
 
-  it('importFile вернул false (формат не принят) — зона не показывает «Файл принят»; иначе показывает', () => {
+  it('importFile вернул false (формат не принят) - зона не показывает «Файл принят»; иначе показывает', () => {
     document.body.className = 'no-motion';
     const a = actions({ importFile: vi.fn(() => false) });
     setPanelActions(a);
@@ -234,7 +234,7 @@ describe('Импорт', () => {
     expect(a.importFile).not.toHaveBeenCalled();
   });
 
-  it('щелчок по зоне — выбор файла с поддерживаемыми форматами', () => {
+  it('щелчок по зоне - выбор файла с поддерживаемыми форматами', () => {
     setPanelActions(actions());
     const { row } = mount(mountImportPanel);
     const click = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(function (this: HTMLInputElement) {

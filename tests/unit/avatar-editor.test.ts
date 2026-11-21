@@ -57,7 +57,7 @@ describe('круг аватара', () => {
 });
 
 describe('кнопка смайла', () => {
-  it('пусто — значок приглашения, выбранное — на кнопке; клик открывает окно выбора', () => {
+  it('пусто - значок приглашения, выбранное - на кнопке; клик открывает окно выбора', () => {
     const host = document.createElement('div');
     paintIcon(host, null);
     expect(host.classList.contains('empty')).toBe(true);
@@ -77,7 +77,7 @@ describe('кнопка смайла', () => {
 });
 
 describe('выбор аватара', () => {
-  it('по умолчанию буквы и «Установить фото»; с фото — «Удалить фото», удаление возвращает буквы', () => {
+  it('по умолчанию буквы и «Установить фото»; с фото - «Удалить фото», удаление возвращает буквы', () => {
     const seen: (string | null)[] = [];
     const ed = createAvatarEditor({ value: null, name: 'Бодрый Енот', cursorId: 'mint', onChange: v => seen.push(v) });
     document.body.appendChild(ed.el);
@@ -136,7 +136,7 @@ describe('выбор аватара', () => {
 });
 
 describe('аватар в выборе курсора', () => {
-  it('в правом верхнем углу — мой аватар с курсором и подсказкой «Это ваш аватар»', () => {
+  it('в правом верхнем углу - мой аватар с курсором и подсказкой «Это ваш аватар»', () => {
     const picker = createCursorPicker({ choice: { saved: 'mint', preview: 'mint' }, entitled: false, name: 'Аня', avatar: null, onChange: () => {} });
     document.body.appendChild(picker.el);
     const face = picker.el.querySelector<HTMLElement>('.cp-preview > .user-avatar.cp-face')!;
@@ -153,7 +153,7 @@ describe('аватар в выборе курсора', () => {
 });
 
 describe('знакомство', () => {
-  it('на шаге 2 — аватар слева от имени; выбранный смайл сохраняется в профиль', async () => {
+  it('на шаге 2 - аватар слева от имени; выбранный смайл сохраняется в профиль', async () => {
     openOnboarding({ step: 2 });
     const ed = document.querySelector<HTMLElement>('#onboarding .ob-identity > .ae')!;
     expect(ed).not.toBeNull();

@@ -31,7 +31,7 @@ test.describe('живая комната', () => {
     await expect(stack.locator('.ns-card', { hasText: 'Капибара покинул доску' })).toBeVisible({ timeout: 10000 });
     // стопка уходит в кнопку «Чат и уведомления» и не закрывает доску; события — в счётчике
     await expect(stack).toBeHidden({ timeout: 10000 });
-    await expect(a.locator('#btn-notify')).toHaveAttribute('aria-label', 'Чат, комментарии и уведомления: непрочитанных — 2');
+    await expect(a.locator('#btn-notify')).toHaveAttribute('aria-label', 'Чат, комментарии и уведомления: непрочитанных - 2');
     await A.close();
   });
 

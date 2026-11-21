@@ -275,7 +275,7 @@ export function parseZoomPercent(text: string): { zoom: number } | { error: stri
   const m = /^\s*(\d+(?:[.,]\d+)?)\s*%?\s*$/.exec(text);
   if (!m) return { error: 'Введите число, например 150' };
   const pct = Number(m[1].replace(',', '.'));
-  if (pct < ZOOM_MIN * 100 || pct > ZOOM_MAX * 100) return { error: `Масштаб — от ${ZOOM_MIN * 100} до ${ZOOM_MAX * 100}%` };
+  if (pct < ZOOM_MIN * 100 || pct > ZOOM_MAX * 100) return { error: `Масштаб - от ${ZOOM_MIN * 100} до ${ZOOM_MAX * 100}%` };
   return { zoom: pct / 100 };
 }
 

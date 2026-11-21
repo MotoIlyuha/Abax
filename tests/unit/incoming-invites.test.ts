@@ -31,7 +31,7 @@ beforeEach(() => {
 afterEach(() => { setApiForTests(undefined); setAccount(null, null); });
 
 describe('входящие приглашения', () => {
-  it('анониму и без облака — ничего не запрашивается', async () => {
+  it('анониму и без облака - ничего не запрашивается', async () => {
     const api = fakeApi(() => ({ invites: [inv()] }));
     await refreshIncomingInvites(true);
     setApiForTests(api);
@@ -67,7 +67,7 @@ describe('входящие приглашения', () => {
     expect(section.querySelector('b')).toBeNull();
   });
 
-  it('«Присоединиться» — ответ серверу и переход по ссылке-приглашению', async () => {
+  it('«Присоединиться» - ответ серверу и переход по ссылке-приглашению', async () => {
     const api = fakeApi((m, p) => (m === 'GET' ? { invites: [inv()] } : p === '/api/me/invites/i1/respond' ? { ok: true, token: 'tok1', projectId: 'p1' } : new ApiError(404, 'x')));
     setApiForTests(api);
     setAccount(me(false), null);
@@ -81,7 +81,7 @@ describe('входящие приглашения', () => {
     expect(incomingInvites()).toEqual([]);
   });
 
-  it('«Отклонить» — карточка уходит, перехода нет', async () => {
+  it('«Отклонить» - карточка уходит, перехода нет', async () => {
     const api = fakeApi(m => (m === 'GET' ? { invites: [inv()] } : { ok: true }));
     setApiForTests(api);
     setAccount(me(false), null);

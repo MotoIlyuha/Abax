@@ -7,7 +7,7 @@ import { createInvite, device, login, openAt, shareTab, stateOf, useNight5Server
 const env = useNight5Server();
 
 test.describe('защита чужих элементов', () => {
-  test('своё — правится и стирается, учителя — нет (подсказка); Undo не трогает учителя; переподключение — своё снова своё', async ({ browser }) => {
+  test('своё - правится и стирается, учителя - нет (подсказка); Undo не трогает учителя; переподключение - своё снова своё', async ({ browser }) => {
     const { base, srv } = env.get();
     const teacher = await login(base, 'teacher-protect@abax.example');
     const A = await device(browser, base, { session: teacher.token, name: 'Лемур' });
@@ -79,7 +79,7 @@ test.describe('защита чужих элементов', () => {
     await S.close();
   });
 
-  test('без защиты — как раньше: редактор стирает фигуру учителя', async ({ browser }) => {
+  test('без защиты - как раньше: редактор стирает фигуру учителя', async ({ browser }) => {
     const { base, srv } = env.get();
     const teacher = await login(base, 'teacher-open@abax.example');
     const A = await device(browser, base, { session: teacher.token, name: 'Лемур' });

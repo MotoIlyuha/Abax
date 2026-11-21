@@ -151,7 +151,7 @@ export function avatarData(u: CollabUser, self = false): AvatarData {
     status: avatarStatus(u),
     self,
     cursorHidden: !self && !cursorShown(u.userId),
-    title: self ? `Вы — ${String(u.name ?? '') || 'Участник'}${u.away ? ' · Отошёл' : ''}` : participantTitle(u),
+    title: self ? `Вы - ${String(u.name ?? '') || 'Участник'}${u.away ? ' · Отошёл' : ''}` : participantTitle(u),
   };
 }
 
@@ -178,7 +178,7 @@ export function selfMenuEntries(anchor: HTMLElement): AvatarMenuEntry[] {
   if (canSummon()) {
     out.push({
       kind: 'action', id: 'summon-all', label: 'Позвать всех к себе', icon: SUMMON_ICON,
-      disabled: onDraft(), title: onDraft() ? 'Черновик виден только вам — позвать на него нельзя' : 'Участники перейдут на вашу страницу и к центру вашего экрана',
+      disabled: onDraft(), title: onDraft() ? 'Черновик виден только вам - позвать на него нельзя' : 'Участники перейдут на вашу страницу и к центру вашего экрана',
       run: () => {
         if (isHost()) { summonHere(anchor); return; }
         if (sendSummon(state.pageId)) pushNotice({ level: 'ok', title: 'Вы позвали всех на эту страницу', icon: 'summon', quiet: true });
@@ -191,7 +191,7 @@ export function selfMenuEntries(anchor: HTMLElement): AvatarMenuEntry[] {
     out.push({
       kind: 'switch', id: 'follow-me', label: 'Автопереход за мной', icon: FOLLOW_ICON,
       checked: hostFollowEnabled() && !locked, disabled: locked, pro: 'follow',
-      title: locked ? 'Автопереход участников за мной — доступно в подписке Pro' : 'Участники будут переходить за вами по страницам',
+      title: locked ? 'Автопереход участников за мной - доступно в подписке Pro' : 'Участники будут переходить за вами по страницам',
       onChange: setFollowMe,
     });
   }
@@ -201,11 +201,11 @@ export function selfMenuEntries(anchor: HTMLElement): AvatarMenuEntry[] {
   out.push(
     {
       kind: 'switch', id: 'show-reactions', label: 'Показывать реакции', icon: REACTION_ICON, checked: showReactions(),
-      onChange: on => setAnnotView({ reactions: on }), title: 'Реакции под объектами и их частицы — только у вас',
+      onChange: on => setAnnotView({ reactions: on }), title: 'Реакции под объектами и их частицы - только у вас',
     },
     {
       kind: 'switch', id: 'show-comments', label: 'Показывать комментарии', icon: COMMENT_ICON, checked: showComments(),
-      onChange: on => setAnnotView({ comments: on }), title: 'Счётчики комментариев под объектами — только у вас',
+      onChange: on => setAnnotView({ comments: on }), title: 'Счётчики комментариев под объектами - только у вас',
     },
   );
   return out;
@@ -245,7 +245,7 @@ export function accessSubmenu(u: CollabUser): AvatarSubmenu {
       onChange: v => {
         if (v === 'edit') return;
         const right = v === 'view' || v === 'hidden' ? v : null;
-        if (!sendPageRights(u.userId, { [pg.id]: right })) pushNotice({ level: 'warn', title: 'Нет связи с доской — доступ не изменён', icon: 'offline', quiet: true });
+        if (!sendPageRights(u.userId, { [pg.id]: right })) pushNotice({ level: 'warn', title: 'Нет связи с доской - доступ не изменён', icon: 'offline', quiet: true });
       },
     });
     sel.el.dataset.key = `access-${pg.id}`;
@@ -270,12 +270,12 @@ export function participantMenuEntries(u: CollabUser): AvatarMenuEntry[] {
     {
       kind: 'switch', id: 'hide-cursor', label: 'Скрыть курсор', icon: ICONS.eyeOff,
       checked: othersCursorsHidden() || userCursorHidden(u.userId), disabled: othersCursorsHidden(),
-      title: othersCursorsHidden() ? 'Скрыты курсоры всех участников — их можно вернуть в меню своего аватара' : 'Только у вас: участник ничего не заметит',
+      title: othersCursorsHidden() ? 'Скрыты курсоры всех участников - их можно вернуть в меню своего аватара' : 'Только у вас: участник ничего не заметит',
       onChange: on => setUserCursorHidden(u.userId, on),
     },
   ];
   if (canSummon() && !u.host) {
-    const reason = onDraft() ? 'Черновик виден только вам — позвать на него нельзя'
+    const reason = onDraft() ? 'Черновик виден только вам - позвать на него нельзя'
       : myPageHiddenFor(u) ? 'Эта страница скрыта от участника' : '';
     out.push({
       kind: 'action', id: 'summon', label: 'Позвать к себе', icon: SUMMON_ICON, disabled: !!reason,
@@ -286,20 +286,20 @@ export function participantMenuEntries(u: CollabUser): AvatarMenuEntry[] {
   const following = followingUid() === u.userId;
   out.push({
     kind: 'action', id: 'follow', label: following ? 'Перестать следить' : 'Следить за участником', icon: FOLLOW_ICON,
-    title: following ? undefined : 'Ваш экран будет повторять страницу и камеру участника. Чтобы выйти — сдвиньте холст. Участник ничего не заметит',
+    title: following ? undefined : 'Ваш экран будет повторять страницу и камеру участника. Чтобы выйти - сдвиньте холст. Участник ничего не заметит',
     run: () => { if (following) stopFollow(); else startFollow(u.userId); },
   });
   if (isHost() && !u.host) {
     out.push({ kind: 'sep' });
     out.push({
       kind: 'submenu', id: 'access', label: 'Настройки доступа', icon: ACCESS_ICON,
-      title: 'Права на страницы только для этого участника — сохраняются за ним и после перезахода',
+      title: 'Права на страницы только для этого участника - сохраняются за ним и после перезахода',
       // свежая запись участника: после смены права и возврата в подменю видно новое значение
       content: () => accessSubmenu(collabUsers().find(x => x.userId === u.userId) ?? u),
     });
     out.push({
       kind: 'action', id: 'remove', label: 'Исключить', icon: ICONS.del, danger: true, confirm: 'Нажмите ещё раз, чтобы исключить',
-      title: 'Отключить участника от доски сейчас. Ссылка или приглашение продолжают действовать — их отзывают в окне «Поделиться»',
+      title: 'Отключить участника от доски сейчас. Ссылка или приглашение продолжают действовать - их отзывают в окне «Поделиться»',
       run: () => { if (sendRemove(u.userId)) pushNotice({ title: `${name} больше не участвует в совместной работе`, icon: 'remove', quiet: true }); },
     });
   }
@@ -562,7 +562,7 @@ export function setProjectPageRight(pageId: string, right: PageRight): void {
 /** «Позвать всех сюда»: скрытая страница — сначала спросить, открыть ли её. */
 export function summonHere(anchor?: HTMLElement | null): void {
   if (!collabActive() || !isHost()) return;
-  if (onDraft()) { pushNotice({ title: 'Черновик виден только вам — позвать на него нельзя', icon: 'draft', quiet: true }); return; }
+  if (onDraft()) { pushNotice({ title: 'Черновик виден только вам - позвать на него нельзя', icon: 'draft', quiet: true }); return; }
   const pageId = state.pageId;
   if (!pageHidden(pageId)) {
     if (sendSummon(pageId)) pushNotice({ level: 'ok', title: 'Вы позвали всех на эту страницу', icon: 'summon', quiet: true });

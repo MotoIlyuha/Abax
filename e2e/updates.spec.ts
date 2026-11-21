@@ -24,7 +24,7 @@ const BODY = [
   '',
   '## Новое',
   '',
-  '- **Обновления** — приложение само предлагает новую версию.',
+  '- **Обновления** - приложение само предлагает новую версию.',
   '- Вторая строка с `кодом`, [ссылкой](https://example.com) и <b>разметкой</b>.',
   '',
   '## Контрольные суммы SHA-256',
@@ -88,7 +88,7 @@ async function openAbout(page: Page): Promise<void> {
 }
 
 test.describe('обновления', () => {
-  test('новая версия: карточка при запуске, что нового; «Позже» — до следующей проверки', async ({ page }) => {
+  test('новая версия: карточка при запуске, что нового; «Позже» - до следующей проверки', async ({ page }) => {
     await startupDone(page);
     const requests = await serveRelease(page, NEXT);
     await reload(page);
@@ -104,7 +104,7 @@ test.describe('обновления', () => {
     await expect(notes.locator('li').first()).toBeHidden();
     await notes.locator('summary').click();
     await expect(notes.locator('li')).toHaveText([
-      'Обновления — приложение само предлагает новую версию.',
+      'Обновления - приложение само предлагает новую версию.',
       'Вторая строка с кодом, ссылкой и <b>разметкой</b>.',
     ]);
     await expect(notes.locator('li').first().locator('strong')).toHaveText('Обновления');
@@ -133,7 +133,7 @@ test.describe('обновления', () => {
     await expect(card).toHaveCount(0);
   });
 
-  test('кнопка на сайте перезагружает страницу — новая версия уже развёрнута', async ({ page }) => {
+  test('кнопка на сайте перезагружает страницу - новая версия уже развёрнута', async ({ page }) => {
     await startupDone(page);
     await serveRelease(page, NEXT);
     await dayPassed(page);
@@ -149,7 +149,7 @@ test.describe('обновления', () => {
     await expect(card).toHaveCount(0);
   });
 
-  test('та же версия или нет сети — карточки нет', async ({ page }) => {
+  test('та же версия или нет сети - карточки нет', async ({ page }) => {
     await startupDone(page);
     let requests = await serveRelease(page, CURRENT);
     await reload(page);
@@ -167,7 +167,7 @@ test.describe('обновления', () => {
     expect(await page.evaluate(() => localStorage.getItem('doska.updates'))).toBeNull();
   });
 
-  test('«Пропустить версию»: о ней не напоминаем, о следующей — да', async ({ page }) => {
+  test('«Пропустить версию»: о ней не напоминаем, о следующей - да', async ({ page }) => {
     await startupDone(page);
     await serveRelease(page, NEXT);
     await reload(page);
@@ -205,7 +205,7 @@ test.describe('обновления', () => {
 
     await serveRelease(page, CURRENT, 403);
     await check.click();
-    await expect(status).toHaveText('Не удалось связаться с GitHub — проверьте интернет и попробуйте ещё раз');
+    await expect(status).toHaveText('Не удалось связаться с GitHub - проверьте интернет и попробуйте ещё раз');
     await expect(status).toHaveClass(/error/);
 
     // вручную показываем и пропущенную версию
@@ -236,7 +236,7 @@ test.describe('обновления', () => {
 });
 
 hostTest.describe('обновления в приложении для Windows', () => {
-  hostTest('установленной версии — установщик, переносной — переносной exe', async ({ host, page }) => {
+  hostTest('установленной версии - установщик, переносной - переносной exe', async ({ host, page }) => {
     await startupDone(page);
     await serveRelease(page, NEXT);
     await reload(page);
@@ -249,7 +249,7 @@ hostTest.describe('обновления в приложении для Windows',
     const popup = page.waitForEvent('popup');
     await download.click();
     await (await popup).close();
-    await expect(card.locator('.uc-hint')).toHaveText('Запустите скачанный установщик — он обновит Abax. Проекты и настройки сохранятся.');
+    await expect(card.locator('.uc-hint')).toHaveText('Запустите скачанный установщик - он обновит Abax. Проекты и настройки сохранятся.');
     await expect(card).toBeVisible();
 
     host.appInfo = { platform: 'win32', portable: true };

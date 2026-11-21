@@ -86,7 +86,7 @@ describe('надпись в фигуре', () => {
     expect(fitShapeText(long.repeat(20), 20, 10).size).toBe(SHAPE_TEXT_MIN);
   });
 
-  it('заданный кегль не подбирается — только переносятся строки', () => {
+  it('заданный кегль не подбирается - только переносятся строки', () => {
     const long = 'один два три четыре пять шесть семь восемь';
     const fit = fitShapeText(long, 120, 60, { size: 30 });
     expect(fit.size).toBe(30);
@@ -108,7 +108,7 @@ describe('надпись в фигуре', () => {
     expect(shapeCaption(s, 'xyz').lines).toEqual(['xyz']);
   });
 
-  it('скругление не больше половины меньшей стороны; рамка картинки — только с цветом и толщиной', () => {
+  it('скругление не больше половины меньшей стороны; рамка картинки - только с цветом и толщиной', () => {
     expect(cornerRadius(rect({ radius: 10 }))).toBe(10);
     expect(cornerRadius(rect({ radius: 80 }))).toBe(25);
     expect(cornerRadius(rect())).toBe(0);
@@ -121,7 +121,7 @@ describe('надпись в фигуре', () => {
 });
 
 describe('кегль текста', () => {
-  it('стрелки — соседние готовые значения; за крайними — без изменений', () => {
+  it('стрелки - соседние готовые значения; за крайними - без изменений', () => {
     expect(TEXT_SIZES).toEqual([10, 12, 14, 18, 24, 36, 80, 144, 288]);
     expect(stepTextSize(24, 1)).toBe(36);
     expect(stepTextSize(24, -1)).toBe(18);
@@ -133,25 +133,25 @@ describe('кегль текста', () => {
     expect(stepTextSize(8, 1)).toBe(10);
   });
 
-  it('ввод вручную: целое в пределах, ошибки — понятным текстом', () => {
+  it('ввод вручную: целое в пределах, ошибки - понятным текстом', () => {
     expect(parseTextSize('50')).toEqual({ size: 50 });
     expect(parseTextSize(' 12,6 ')).toEqual({ size: 13 });
     expect(parseTextSize('abc')).toEqual({ error: 'Введите число, например 24' });
     expect(parseTextSize('')).toEqual({ error: 'Введите число, например 24' });
-    expect(parseTextSize('5')).toEqual({ error: 'Размер — от 6 до 400' });
-    expect(parseTextSize('401')).toEqual({ error: 'Размер — от 6 до 400' });
+    expect(parseTextSize('5')).toEqual({ error: 'Размер - от 6 до 400' });
+    expect(parseTextSize('401')).toEqual({ error: 'Размер - от 6 до 400' });
   });
 });
 
 describe('направляющие выравнивания', () => {
   const box = (x0: number, y0: number, x1: number, y1: number) => ({ x0, y0, x1, y1 });
 
-  it('опорные линии — края и центр', () => {
+  it('опорные линии - края и центр', () => {
     expect(boxAnchors(box(0, 10, 100, 50), 'x')).toEqual([0, 50, 100]);
     expect(boxAnchors(box(0, 10, 100, 50), 'y')).toEqual([10, 30, 50]);
   });
 
-  it('сдвиг — к ближайшей опорной линии соседа в пределах допуска', () => {
+  it('сдвиг - к ближайшей опорной линии соседа в пределах допуска', () => {
     const others = [box(200, 0, 300, 100), box(0, 400, 50, 450)];
     // левый край 203 → 200 (край соседа), правый край 253 → 250 (его центр) — ближе на 3
     expect(alignShift([203, 228, 253], others, 'x', 6)).toBe(-3);
@@ -175,11 +175,11 @@ describe('направляющие выравнивания', () => {
 });
 
 describe('elementAABB', () => {
-  it('штрих — с запасом на толщину', () => {
+  it('штрих - с запасом на толщину', () => {
     expect(elementAABB(stroke([pt(0, 0), pt(10, 20)], 10))).toEqual({ x0: -8, y0: -8, x1: 18, y1: 28 });
   });
 
-  it('пустой штрих — нулевой бокс', () => {
+  it('пустой штрих - нулевой бокс', () => {
     expect(elementAABB(stroke([]))).toEqual({ x0: 0, y0: 0, x1: 0, y1: 0 });
   });
 
@@ -195,7 +195,7 @@ describe('elementAABB', () => {
     expect(a.y1).toBeCloseTo(75);
   });
 
-  it('ломаная — с полутолщиной', () => {
+  it('ломаная - с полутолщиной', () => {
     expect(elementAABB(poly(false, [pt(0, 0), pt(10, 10)]))).toEqual({ x0: -2, y0: -2, x1: 12, y1: 12 });
   });
 
@@ -211,7 +211,7 @@ describe('elementAABB', () => {
     expect(a.y0).toBeCloseTo(-25);
   });
 
-  it('тело — оболочка проекции с запасом на толщину', () => {
+  it('тело - оболочка проекции с запасом на толщину', () => {
     const a = elementAABB(cube);
     expect(a.x0).toBeCloseTo(-2);
     expect(a.y1).toBeCloseTo(102);
@@ -268,13 +268,13 @@ describe('hitTest', () => {
     expect(hitTest(s, 10, 10, 1)).toBe(false);
   });
 
-  it('линия и стрелка — по расстоянию до отрезка', () => {
+  it('линия и стрелка - по расстоянию до отрезка', () => {
     const l = rect({ shape: 'arrow', w: 100, h: 0 });
     expect(hitTest(l, 50, 3, 1)).toBe(true);
     expect(hitTest(l, 50, 10, 1)).toBe(false);
   });
 
-  it('прямоугольник — вся площадь, с учётом поворота', () => {
+  it('прямоугольник - вся площадь, с учётом поворота', () => {
     expect(hitTest(rect(), 50, 25, 0)).toBe(true);
     expect(hitTest(rect(), 150, 25, 0)).toBe(false);
     const r = rect({ rot: Math.PI / 2 });
@@ -319,7 +319,7 @@ describe('hitTest', () => {
     expect(hitTest(image(), 150, 0, 0)).toBe(false);
   });
 
-  it('тело — вся проекция и контур с допуском', () => {
+  it('тело - вся проекция и контур с допуском', () => {
     expect(hitTest(cube, 50, 50, 0)).toBe(true);
     expect(hitTest(cube, -3, 50, 3)).toBe(true);
     expect(hitTest(cube, 500, 500, 3)).toBe(false);
@@ -327,7 +327,7 @@ describe('hitTest', () => {
 });
 
 describe('elementHandles', () => {
-  it('линия — две концевые ручки', () => {
+  it('линия - две концевые ручки', () => {
     const hs = elementHandles(rect({ shape: 'line', x: 1, y: 2, w: 10, h: 20 }), 1);
     expect(hs).toEqual([
       { h: { kind: 'end', i: 0 }, x: 1, y: 2 },
@@ -335,7 +335,7 @@ describe('elementHandles', () => {
     ]);
   });
 
-  it('прямоугольник — 8 ручек размера и ручка поворота у левого верхнего угла', () => {
+  it('прямоугольник - 8 ручек размера и ручка поворота у левого верхнего угла', () => {
     const hs = elementHandles(rect(), 2);
     expect(hs).toHaveLength(9);
     const rot = hs.find(h => h.h.kind === 'rotate')!;
@@ -343,18 +343,18 @@ describe('elementHandles', () => {
     expect(rot.y).toBeCloseTo(-6.5); // и вверх
   });
 
-  it('ломаная — узлы и середины рёбер', () => {
+  it('ломаная - узлы и середины рёбер', () => {
     expect(elementHandles(poly(false), 1).filter(h => h.h.kind === 'node')).toHaveLength(4);
     expect(elementHandles(poly(false), 1).filter(h => h.h.kind === 'insert')).toHaveLength(3);
     expect(elementHandles(poly(true), 1).filter(h => h.h.kind === 'insert')).toHaveLength(4);
   });
 
-  it('стикер — 8 ручек без поворота, картинка — с поворотом', () => {
+  it('стикер - 8 ручек без поворота, картинка - с поворотом', () => {
     expect(elementHandles(note(), 1)).toHaveLength(8);
     expect(elementHandles(image(), 1).some(h => h.h.kind === 'rotate')).toBe(true);
   });
 
-  it('тело и текст имеют ручки, штрих — без ручек', () => {
+  it('тело и текст имеют ручки, штрих - без ручек', () => {
     expect(elementHandles(cube, 1)).toEqual([expect.objectContaining({ h: { kind: 'param', key: 'a' } })]);
     expect(elementHandles(text(), 1)).toHaveLength(6);
     const resized = applyHandle(text(), { kind: 'resize', dx: 1, dy: 0 }, { x: 30, y: 0, p: 0.5 });
@@ -403,7 +403,7 @@ describe('applyHandle', () => {
     expect(r.x).toBe(96);
   });
 
-  it('Shift сохраняет пропорции, Alt — от центра', () => {
+  it('Shift сохраняет пропорции, Alt - от центра', () => {
     const p = applyHandle(rect(), resize(1, 1), pt(200, 60), { proportional: true }) as ShapeEl;
     expect(p.w / p.h).toBeCloseTo(2);
     expect(p.w).toBe(200);
@@ -448,7 +448,7 @@ describe('applyHandle', () => {
     expect(zero.rot).toBeUndefined();
   });
 
-  it('поворот с Shift — шагами по 15°, у фигуры и у картинки', () => {
+  it('поворот с Shift - шагами по 15°, у фигуры и у картинки', () => {
     const deg = (d: number) => (d * Math.PI) / 180;
     const step = { rotateStep: true };
     expect((applyHandle(rect(), { kind: 'rotate' }, pt(0, 0), step, deg(22)) as ShapeEl).rot).toBeCloseTo(deg(15));
@@ -558,12 +558,12 @@ describe('erasePart: ластик для пера и маркера', () => {
   // горизонтальная линия из двух точек: 0…100 по x, толщина 2
   const line = [{ x: 0, y: 0, p: 0.5 }, { x: 100, y: 0, p: 0.5 }];
 
-  it('мимо линии — null', () => {
+  it('мимо линии - null', () => {
     expect(erasePart(line, 2, 50, 40, 5)).toBeNull();
     expect(erasePart(line, 2, 300, 0, 5)).toBeNull();
   });
 
-  it('середина длинного отрезка разрезает линию надвое, край — ровно у ластика', () => {
+  it('середина длинного отрезка разрезает линию надвое, край - ровно у ластика', () => {
     const pieces = erasePart(line, 2, 50, 0, 5)!;
     expect(pieces).toHaveLength(2);
     const [left, right] = pieces;
@@ -577,7 +577,7 @@ describe('erasePart: ластик для пера и маркера', () => {
     expect(right[right.length - 1]).toEqual(line[1]);
   });
 
-  it('конец линии — укорачивает без новых кусков', () => {
+  it('конец линии - укорачивает без новых кусков', () => {
     const pieces = erasePart(line, 2, 100, 0, 5)!;
     expect(pieces).toHaveLength(1);
     expect(pieces[0][0]).toEqual(line[0]);
@@ -588,7 +588,7 @@ describe('erasePart: ластик для пера и маркера', () => {
     expect(erasePart([{ x: 0, y: 0, p: 0.5 }, { x: 4, y: 0, p: 0.5 }], 2, 2, 0, 10)).toEqual([]);
   });
 
-  it('давление в новых точках — по интерполяции', () => {
+  it('давление в новых точках - по интерполяции', () => {
     const ramp = [{ x: 0, y: 0, p: 0 }, { x: 100, y: 0, p: 1 }];
     const [left] = erasePart(ramp, 2, 50, 0, 5)!;
     const last = left[left.length - 1];
@@ -599,7 +599,7 @@ describe('erasePart: ластик для пера и маркера', () => {
 describe('изменение размера общего выделения', () => {
   const box = { x0: 0, y0: 0, x1: 100, y1: 50 };
 
-  it('ручки общего прямоугольника — 8 штук, углы и середины сторон', () => {
+  it('ручки общего прямоугольника - 8 штук, углы и середины сторон', () => {
     const hs = boxHandles(box, 1);
     expect(hs).toHaveLength(8);
     expect(hs.find(h => h.h.kind === 'resize' && h.h.dx === -1 && h.h.dy === -1)).toMatchObject({ x: -4, y: -4 });

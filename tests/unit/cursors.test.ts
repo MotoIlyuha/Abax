@@ -12,7 +12,7 @@ describe('каталог курсоров', () => {
     for (const id of CURSOR_IDS) expect(id).toMatch(/^[a-z][a-z0-9-]{1,23}$/);
   });
 
-  it('классический курсор: белый с тёмным контуром, выделение — фирменный синий', () => {
+  it('классический курсор: белый с тёмным контуром, выделение - фирменный синий', () => {
     const d = cursorPreset(DEFAULT_CURSOR_ID);
     expect(d).toMatchObject({ id: 'default', tier: 'free', fill: '#ffffff', selectionColor: '#3273f5' });
     expect(contrastRatio(d.outline, '#ffffff')).toBeGreaterThan(10);
@@ -28,7 +28,7 @@ describe('каталог курсоров', () => {
     }
   });
 
-  it('у каждого Pro — узор и эффект, у бесплатных эффекта нет', () => {
+  it('у каждого Pro - узор и эффект, у бесплатных эффекта нет', () => {
     for (const p of CURSOR_PRESETS) {
       if (p.tier === 'pro') {
         expect(p.pattern, p.id).toBeTruthy();

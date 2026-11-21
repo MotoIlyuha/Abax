@@ -14,11 +14,11 @@ const BODY = `Удобнее работать с картинками.
 
 | Платформа | Файл |
 |---|---|
-| Windows — установщик | \`Abax.Setup.2.1.0.exe\` |
+| Windows - установщик | \`Abax.Setup.2.1.0.exe\` |
 
 ## Новое
 
-- **Пропорциональный размер** — новая настройка.
+- **Пропорциональный размер** - новая настройка.
 * Пункт со [ссылкой](https://x.y) и \`кодом\`.
 
 ## Исправлено
@@ -38,7 +38,7 @@ const release = (tag: string, o: Partial<Release> = {}): Release => ({
 });
 
 describe('версии', () => {
-  it('parseVersion: с «v» и без, без патча; не версия — null', () => {
+  it('parseVersion: с «v» и без, без патча; не версия - null', () => {
     expect(parseVersion('v2.1.0')).toEqual([2, 1, 0]);
     expect(parseVersion(' 10.20.30 ')).toEqual([10, 20, 30]);
     expect(parseVersion('v3.1')).toEqual([3, 1, 0]);
@@ -59,7 +59,7 @@ describe('версии', () => {
 });
 
 describe('файл релиза под платформу', () => {
-  it('установщик, переносной exe, APK; вебу и прочим — ничего (страница релиза)', () => {
+  it('установщик, переносной exe, APK; вебу и прочим - ничего (страница релиза)', () => {
     expect(pickAsset(ASSETS, 'win-setup')?.name).toBe('Abax.Setup.2.1.0.exe');
     expect(pickAsset(ASSETS, 'win-portable')?.name).toBe('Abax.2.1.0.exe');
     expect(pickAsset(ASSETS, 'android')?.name).toBe('Abax-2.1.0.apk');
@@ -72,10 +72,10 @@ describe('файл релиза под платформу', () => {
 });
 
 describe('описание релиза', () => {
-  it('вступление и пункты; «Что скачать», контрольные суммы и блоки кода — мимо', () => {
+  it('вступление и пункты; «Что скачать», контрольные суммы и блоки кода - мимо', () => {
     expect(releaseNotes(BODY)).toEqual({
       summary: 'Удобнее работать с картинками.',
-      items: ['**Пропорциональный размер** — новая настройка.', 'Пункт со ссылкой и кодом.', 'Ластик не стирает изображения.'],
+      items: ['**Пропорциональный размер** - новая настройка.', 'Пункт со ссылкой и кодом.', 'Ластик не стирает изображения.'],
     });
     expect(releaseNotes(null)).toEqual({ summary: '', items: [] });
     expect(releaseNotes('Строка один\r\nи два')).toEqual({ summary: 'Строка один и два', items: [] });
@@ -91,7 +91,7 @@ describe('описание релиза', () => {
 });
 
 describe('обновление из релиза', () => {
-  it('новее — версия, файл, дата и что нового; не новее — null', () => {
+  it('новее - версия, файл, дата и что нового; не новее - null', () => {
     const u = updateFromRelease(release('v2.2.0'), '2.1.0', 'android')!;
     expect(u).toMatchObject({
       version: '2.2.0', page: 'https://github.com/r/v2.2.0', download: 'https://dl/Abax-2.1.0.apk', file: 'Abax-2.1.0.apk',
@@ -101,7 +101,7 @@ describe('обновление из релиза', () => {
     expect(updateFromRelease(release('v2.1.0'), '2.1.0', 'android')).toBeNull();
   });
 
-  it('нет файла под платформу или даты — страница релиза, без даты', () => {
+  it('нет файла под платформу или даты - страница релиза, без даты', () => {
     const u = updateFromRelease(release('v2.2.0', { assets: undefined, published_at: null, body: undefined }), '2.1.0', 'win-setup')!;
     expect(u).toMatchObject({ download: 'https://github.com/r/v2.2.0', file: null, publishedAt: null, notes: { summary: '', items: [] } });
   });
@@ -120,7 +120,7 @@ describe('запрос к GitHub', () => {
     expect(init.signal).toBeInstanceOf(AbortSignal);
   });
 
-  it('релизов нет (404) — null; лимит, ошибка сервера, странный ответ, нет сети — исключение', async () => {
+  it('релизов нет (404) - null; лимит, ошибка сервера, странный ответ, нет сети - исключение', async () => {
     expect(await fetchUpdate('2.1.0', 'web', reply(404, { message: 'Not Found' }) as unknown as typeof fetch)).toBeNull();
     await expect(fetchUpdate('2.1.0', 'web', reply(403, { message: 'rate limit' }) as unknown as typeof fetch)).rejects.toThrow('403');
     await expect(fetchUpdate('2.1.0', 'web', reply(500, {}) as unknown as typeof fetch)).rejects.toThrow('500');
@@ -133,7 +133,7 @@ describe('запрос к GitHub', () => {
 describe('настройки и память проверки', () => {
   beforeEach(() => localStorage.clear());
 
-  it('по умолчанию проверяем; изменения сохраняются; битые данные — по умолчанию', () => {
+  it('по умолчанию проверяем; изменения сохраняются; битые данные - по умолчанию', () => {
     expect(updatePrefs()).toEqual({ auto: true });
     setUpdatePrefs({ checkedAt: 5 });
     setUpdatePrefs({ skip: '2.2.0' });
@@ -146,7 +146,7 @@ describe('настройки и память проверки', () => {
     expect(updatePrefs()).toEqual({ auto: true });
   });
 
-  it('autoCheckDue: раз в сутки и только если включено; часы назад — проверяем', () => {
+  it('autoCheckDue: раз в сутки и только если включено; часы назад - проверяем', () => {
     const now = 10 * CHECK_EVERY_MS;
     expect(autoCheckDue({ auto: true }, now)).toBe(true);
     expect(autoCheckDue({ auto: true, checkedAt: now - 1000 }, now)).toBe(false);
@@ -155,7 +155,7 @@ describe('настройки и память проверки', () => {
     expect(autoCheckDue({ auto: true, checkedAt: now + CHECK_EVERY_MS }, now)).toBe(true);
   });
 
-  it('shouldNotify: пропущенную и более старые — нет, более новые — да', () => {
+  it('shouldNotify: пропущенную и более старые - нет, более новые - да', () => {
     const u = updateFromRelease(release('v2.2.0'), '2.1.0', 'web')!;
     expect(shouldNotify(u, { auto: true })).toBe(true);
     expect(shouldNotify(u, { auto: true, skip: '2.2.0' })).toBe(false);

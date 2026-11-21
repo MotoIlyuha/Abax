@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { capitalize, dayLabel, pagesLabel, plural } from '../../src/format';
 
 describe('подписи домашней страницы', () => {
-  it('dayLabel: сегодня, вчера, дата; другой год — с годом', () => {
+  it('dayLabel: сегодня, вчера, дата; другой год - с годом', () => {
     const now = new Date(2026, 9, 26, 10, 0).getTime();
     expect(dayLabel(new Date(2026, 9, 26, 0, 5).getTime(), now)).toBe('сегодня');
     expect(dayLabel(new Date(2026, 9, 26, 23, 59).getTime(), now)).toBe('сегодня');
@@ -14,7 +14,7 @@ describe('подписи домашней страницы', () => {
     expect(old).toContain('31');
   });
 
-  it('plural: одна, две–четыре, пять и больше; 11–14 — как пять', () => {
+  it('plural: одна, две–четыре, пять и больше; 11–14 - как пять', () => {
     const forms: [string, string, string] = ['страница', 'страницы', 'страниц'];
     const cases: [number, string][] = [
       [0, 'страниц'], [1, 'страница'], [2, 'страницы'], [4, 'страницы'], [5, 'страниц'],

@@ -16,7 +16,7 @@ const START_DELAY_MS = 2000;
 
 /** Что сделать со скачанным файлом — подсказка после «Скачать». */
 const AFTER_DOWNLOAD: Partial<Record<UpdatePlatform, string>> = {
-  'win-setup': 'Запустите скачанный установщик — он обновит Abax. Проекты и настройки сохранятся.',
+  'win-setup': 'Запустите скачанный установщик - он обновит Abax. Проекты и настройки сохранятся.',
   'win-portable': 'Запускайте теперь скачанный файл вместо этого. Проекты и настройки сохранятся.',
   android: 'Откройте скачанный файл, чтобы установить обновление. Проекты и настройки сохранятся.',
 };
@@ -172,12 +172,12 @@ export function showUpdateCard(info: UpdateInfo, platform: UpdatePlatform): void
   const later = document.createElement('button');
   later.className = 'uc-later';
   later.textContent = 'Позже';
-  later.title = 'Напомним при следующей проверке — через сутки';
+  later.title = 'Напомним при следующей проверке - через сутки';
   later.addEventListener('click', closeUpdateCard);
   const skip = document.createElement('button');
   skip.className = 'uc-skip';
   skip.textContent = 'Пропустить';
-  skip.title = `Не напоминать о версии ${info.version} — только о следующих`;
+  skip.title = `Не напоминать о версии ${info.version} - только о следующих`;
   skip.addEventListener('click', () => {
     setUpdatePrefs({ skip: info.version });
     closeUpdateCard();
@@ -236,7 +236,7 @@ export function renderUpdateSettings(host: HTMLElement): void {
           found.hidden = false;
         }
       } catch {
-        status.textContent = 'Не удалось связаться с GitHub — проверьте интернет и попробуйте ещё раз';
+        status.textContent = 'Не удалось связаться с GitHub - проверьте интернет и попробуйте ещё раз';
         status.classList.add('error');
       } finally {
         btn.disabled = false;

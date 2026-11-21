@@ -118,7 +118,7 @@ describe('смена тарифа', () => {
 });
 
 describe('бейдж Pro', () => {
-  it('один вид везде; виден, только пока возможность закрыта; нажатие — окно подписки', () => {
+  it('один вид везде; виден, только пока возможность закрыта; нажатие - окно подписки', () => {
     const upgrade = vi.fn();
     setUpgradeHandler(upgrade);
     const b = proBadge('history');
@@ -137,7 +137,7 @@ describe('бейдж Pro', () => {
     expect(b.hidden).toBe(true);
   });
 
-  it('после оплаты бейдж ждёт, пока его увидят, и раскалывается; невидимый — ждёт дальше', async () => {
+  it('после оплаты бейдж ждёт, пока его увидят, и раскалывается; невидимый - ждёт дальше', async () => {
     setLimitsEnforced(true);
     startProBadges();
     expect(JSON.parse(localStorage.getItem(LOCKED_KEY)!)).toContain('copy');
@@ -160,7 +160,7 @@ describe('бейдж Pro', () => {
     expect(breakPending('alias')).toBe(true);
   });
 
-  it('вернулся бесплатный тариф — бейджи снова на месте; первый запуск ничего не ломает', () => {
+  it('вернулся бесплатный тариф - бейджи снова на месте; первый запуск ничего не ломает', () => {
     applyServerPlan({ plan: 'pro', limitsEnforced: true });
     startProBadges();
     expect(breakPending('history')).toBe(false); // снимка не было — ломать нечего
@@ -174,7 +174,7 @@ describe('бейдж Pro', () => {
 });
 
 describe('окно подписки', () => {
-  it('три тарифа, срок по умолчанию — год; переключение срока меняет цену и строку оплаты', () => {
+  it('три тарифа, срок по умолчанию - год; переключение срока меняет цену и строку оплаты', () => {
     openPlansDialog('history');
     expect(plansDialogOpen()).toBe(true);
     const root = document.getElementById('plans-dialog')!;
@@ -199,7 +199,7 @@ describe('окно подписки', () => {
     expect(plansDialogOpen()).toBe(false);
   });
 
-  it('без входа купить нельзя: вместо оплаты — «Войти»', async () => {
+  it('без входа купить нельзя: вместо оплаты - «Войти»', async () => {
     const api = fakeApi(() => billing());
     setApiForTests(api);
     setAccount(me('free', true), api);
@@ -218,7 +218,7 @@ describe('окно подписки', () => {
     expect(plansDialogOpen()).toBe(false);
   });
 
-  it('после входа оплата идёт через сервер; тариф меняется, кнопка — «Вы на Pro»', async () => {
+  it('после входа оплата идёт через сервер; тариф меняется, кнопка - «Вы на Pro»', async () => {
     const api = fakeApi((m, p, body) => {
       if (p === '/api/billing' && m === 'GET') return billing();
       if (p === '/api/billing/checkout') {
@@ -315,7 +315,7 @@ describe('раздел «Подписка»', () => {
     view.dispose?.();
   });
 
-  it('без входа поле промокода закрыто, рядом — «Войти»', () => {
+  it('без входа поле промокода закрыто, рядом - «Войти»', () => {
     const api = fakeApi(() => billing());
     setApiForTests(api);
     setAccount(me('free', true), api);

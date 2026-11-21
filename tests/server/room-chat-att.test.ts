@@ -167,7 +167,7 @@ describe.each(kinds)('вложения чата: $name', kind => {
     expect(host.all('chat')).toHaveLength(0);
   });
 
-  it('пустой текст без вложения — отказ; старые сообщения без вложений — как раньше', () => {
+  it('пустой текст без вложения - отказ; старые сообщения без вложений - как раньше', () => {
     const { host, join } = room(kind.make());
     const g = join();
     for (const m of [{ text: '' }, { text: '   ' }, {}, { text: '', att: null }, { text: undefined, att: undefined }]) g.s.recv({ t: 'chat', ...m });
@@ -178,7 +178,7 @@ describe.each(kinds)('вложения чата: $name', kind => {
     expect('att' in join().s.last('init')!.chat[0]).toBe(false);
   });
 
-  it('объекты доски: копии без by, только известные поля; слишком большие копии — только просмотр', () => {
+  it('объекты доски: копии без by, только известные поля; слишком большие копии - только просмотр', () => {
     const { host, join } = room(kind.make());
     const g = join();
     host.recv({ t: 'chat', text: '', att: board({ junk: 1, pageName: 'я'.repeat(200) }) });
@@ -192,7 +192,7 @@ describe.each(kinds)('вложения чата: $name', kind => {
     expect(g.s.last('chat')!.att.elements).toBeUndefined();
   });
 
-  it('задание среди объектов — сообщение отклоняется, даже от автора', () => {
+  it('задание среди объектов - сообщение отклоняется, даже от автора', () => {
     const { host, join } = room(kind.make());
     const g = join();
     host.recv({ t: 'chat', text: 'ответы', att: board({ elements: [shape('a'), task] }) });
@@ -215,7 +215,7 @@ describe.each(kinds)('вложения чата: $name', kind => {
     expect(host.last('chat')!.att).toMatchObject({ kind: 'board', pageId: 'pg1', elements: [shape('a'), shape('b')] });
   });
 
-  it('объекты со скрытой страницы: гостю — hidden, автору и тем, кому видна, — полностью; в init — так же', () => {
+  it('объекты со скрытой страницы: гостю - hidden, автору и тем, кому видна, - полностью; в init - так же', () => {
     const { hub, host, join } = room(kind.make());
     const a = join('Аня');
     const b = join('Боря');
@@ -245,7 +245,7 @@ describe.each(kinds)('вложения чата: $name', kind => {
     expect(host2.last('init')!.chat[0].att).toMatchObject({ kind: 'board', pageId: 'pg2', elements: [shape('a'), shape('b')] });
   });
 
-  it('бюджет: у самых старых вложений — gone, текст остаётся; новым участникам — так же', () => {
+  it('бюджет: у самых старых вложений - gone, текст остаётся; новым участникам - так же', () => {
     const { hub, host, join } = room(kind.make());
     const g = join();
     host.recv({ t: 'chat', text: 'без вложения' });

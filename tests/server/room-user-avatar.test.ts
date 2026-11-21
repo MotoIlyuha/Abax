@@ -48,7 +48,7 @@ function room(hub: any) {
 }
 
 describe.each(kinds)('$name', kind => {
-  it('пока участник не сообщил об аватаре, поля нет; буквы — null', () => {
+  it('пока участник не сообщил об аватаре, поля нет; буквы - null', () => {
     const { host, join } = room(kind.make());
     const a = join('Аня');
     expect(host.me(a.uid)).not.toHaveProperty('avatar');
@@ -64,7 +64,7 @@ describe.each(kinds)('$name', kind => {
     expect(a.s.me(a.uid).avatar).toBe('🦊');
   });
 
-  it('фото — отдельным сообщением до снимка; в снимке только версия', () => {
+  it('фото - отдельным сообщением до снимка; в снимке только версия', () => {
     const { host, join } = room(kind.make());
     const a = join('Аня');
     const b = join('Боря');
@@ -96,7 +96,7 @@ describe.each(kinds)('$name', kind => {
     expect(init.users.find((u: Msg) => u.userId === a.uid).avatar).toBe('photo:1');
   });
 
-  it('то же значение — без рассылки; неподходящее — не принимается', () => {
+  it('то же значение - без рассылки; неподходящее - не принимается', () => {
     const { host, join } = room(kind.make());
     const a = join('Аня');
     a.s.recv({ t: 'profile', avatar: '🦊' });

@@ -12,7 +12,7 @@ const sid = Buffer.from(web.randomBytes(16));
 const otherSid = Buffer.from(web.randomBytes(16));
 
 describe('формат кадра', () => {
-  it('браузер шифрует — автор расшифровывает, и обратно; текст с кириллицей и эмодзи', async () => {
+  it('браузер шифрует - автор расшифровывает, и обратно; текст с кириллицей и эмодзи', async () => {
     const wk = await web.importRoomKey(new Uint8Array(key));
     const text = JSON.stringify({ t: 'project', name: 'Доска 📐', pages: [] });
     const fromGuest = await web.seal(wk, 'g2h', new Uint8Array(sid), 7, text);
@@ -29,7 +29,7 @@ describe('формат кадра', () => {
     expect(a.subarray(0, 12).equals(b.subarray(0, 12))).toBe(false);
   });
 
-  it('чужой ключ, другой сеанс, другое направление, подмена seq или байта — не расшифровывается', async () => {
+  it('чужой ключ, другой сеанс, другое направление, подмена seq или байта - не расшифровывается', async () => {
     const frame = node.seal(key, 'g2h', sid, 5, 'секрет');
     const wk = await web.importRoomKey(new Uint8Array(key));
     expect(node.open(node.newKey(), 'g2h', sid, frame)).toBeNull();
@@ -44,7 +44,7 @@ describe('формат кадра', () => {
     expect(await web.open(wk, 'g2h', new Uint8Array(sid), new Uint8Array(4))).toBeNull();
   });
 
-  it('hello — с нулевым сеансом', async () => {
+  it('hello - с нулевым сеансом', async () => {
     const wk = await web.importRoomKey(new Uint8Array(key));
     const hello = await web.seal(wk, 'hello', web.ZERO_SID, 0, '{"t":"hello"}');
     expect(node.open(key, 'hello', node.ZERO_SID, Buffer.from(hello))!.text).toBe('{"t":"hello"}');

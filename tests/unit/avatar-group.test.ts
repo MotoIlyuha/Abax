@@ -41,7 +41,7 @@ afterEach(() => {
 });
 
 describe('аватар', () => {
-  it('инициалы, цвета, курсор каталога, статус и подпись; имя — только текстом', () => {
+  it('инициалы, цвета, курсор каталога, статус и подпись; имя - только текстом', () => {
     const b = createUserAvatar(data({ name: '<img src=x onerror=alert(1)> Енот' }), 'presence-avatar');
     expect(b.querySelector('.ua-circle')!.textContent).toBe('IS');
     expect(b.querySelector('img')).toBeNull();
@@ -51,7 +51,7 @@ describe('аватар', () => {
     expect(b.getAttribute('aria-label')).toBe('<img src=x onerror=alert(1)> Енот');
   });
 
-  it('обновление на месте: «Отошёл» — серый круг и значок; скрытый курсор и скрытая страница — классы', () => {
+  it('обновление на месте: «Отошёл» - серый круг и значок; скрытый курсор и скрытая страница - классы', () => {
     const b = createUserAvatar(data());
     const circle = b.querySelector('.ua-circle');
     updateUserAvatar(b, data({ status: 'away', cursorHidden: true, title: 'Капибара · Отошёл' }));
@@ -72,7 +72,7 @@ describe('группа аватаров', () => {
   const items = (n: number, onActivate?: (b: HTMLElement) => void): AvatarGroupItem[] =>
     Array.from({ length: n }, (_, i) => ({ key: `u${i}`, data: data({ name: `Участник ${i}` }), onActivate }));
 
-  it('свёрнутая — тесно и без перекрытия; наведение мышью раскрывает, уход — сворачивает', () => {
+  it('свёрнутая - тесно и без перекрытия; наведение мышью раскрывает, уход - сворачивает', () => {
     vi.useFakeTimers();
     try {
       const g = createAvatarGroup({ size: 26, tight: 3, open: 10 });
@@ -91,7 +91,7 @@ describe('группа аватаров', () => {
     } finally { vi.useRealTimers(); }
   });
 
-  it('нажатие по свёрнутой (планшет) только раскрывает; второе — действие аватара', () => {
+  it('нажатие по свёрнутой (планшет) только раскрывает; второе - действие аватара', () => {
     const got: string[] = [];
     const g = createAvatarGroup();
     document.body.append(g.el);
@@ -107,7 +107,7 @@ describe('группа аватаров', () => {
     expect(g.interactive()).toBe(false);
   });
 
-  it('один аватар — действие сразу; hold не даёт свернуться, пока открыто меню', () => {
+  it('один аватар - действие сразу; hold не даёт свернуться, пока открыто меню', () => {
     const got: number[] = [];
     const g = createAvatarGroup();
     document.body.append(g.el);
@@ -124,7 +124,7 @@ describe('группа аватаров', () => {
     expect(g.interactive()).toBe(false);
   });
 
-  it('обновление по ключу не пересоздаёт узел; счётчик «+N»; ушедший удаляется («Выкл» — сразу)', () => {
+  it('обновление по ключу не пересоздаёт узел; счётчик «+N»; ушедший удаляется («Выкл» - сразу)', () => {
     const g = createAvatarGroup();
     document.body.append(g.el);
     g.set(items(2));
@@ -137,7 +137,7 @@ describe('группа аватаров', () => {
     expect(g.el.querySelectorAll('.ag-item')).toHaveLength(1);
   });
 
-  it('«Обычные»: CSS-переходы, новый — ag-enter, ушедший уходит анимацией', () => {
+  it('«Обычные»: CSS-переходы, новый - ag-enter, ушедший уходит анимацией', () => {
     vi.useFakeTimers();
     try {
       setMode('normal');
@@ -192,7 +192,7 @@ describe('меню аватара', () => {
     setUserCursorHidden(2, true);
     expect(avatarData(user()).cursorHidden).toBe(true);
     expect(avatarData(user(), true).cursorHidden).toBe(false);
-    expect(avatarData(user(), true).title).toBe('Вы — Капибара');
+    expect(avatarData(user(), true).title).toBe('Вы - Капибара');
   });
 
   it('состав группы: я первым, потом другие и «+N»', () => {
@@ -241,7 +241,7 @@ describe('меню аватара', () => {
     expect(strip.querySelector('.ua-circle')!.textContent).toBe('К');
   });
 
-  it('чужой аватар без прав автора: перейти, скрыть курсор, следить; убрать и позвать — нет', () => {
+  it('чужой аватар без прав автора: перейти, скрыть курсор, следить; убрать и позвать - нет', () => {
     const entries = participantMenuEntries(user());
     expect(entries.map(e => (e.kind === 'sep' ? '-' : e.id))).toEqual(['goto', 'hide-cursor', 'follow']);
     const follow = entries.find(e => e.kind !== 'sep' && e.id === 'follow');
@@ -254,7 +254,7 @@ describe('меню аватара', () => {
     expect(participantMenuEntries(user({ hiddenPage: true, pageId: null }))[0]).toMatchObject({ id: 'goto', disabled: true });
   });
 
-  it('разметка: шапка с именем текстом, опасный пункт — с подтверждением, Escape закрывает', () => {
+  it('разметка: шапка с именем текстом, опасный пункт - с подтверждением, Escape закрывает', () => {
     const anchor = document.createElement('button');
     document.body.append(anchor);
     const run = vi.fn();
@@ -286,7 +286,7 @@ describe('меню аватара', () => {
     expect(closed).toHaveBeenCalledTimes(2);
   });
 
-  it('подменю в этом же меню: пункт → заголовок «назад» и содержимое; Esc — назад, затем закрыть; список не закрывает меню', async () => {
+  it('подменю в этом же меню: пункт → заголовок «назад» и содержимое; Esc - назад, затем закрыть; список не закрывает меню', async () => {
     const anchor = document.createElement('button');
     document.body.append(anchor);
     const close = vi.fn();
@@ -321,7 +321,7 @@ describe('меню аватара', () => {
     expect(avatarMenuOpen()).toBe(false);
   });
 
-  it('«Настройки доступа»: строка на каждую страницу, значение — личное право участника, имя страницы — текстом', () => {
+  it('«Настройки доступа»: строка на каждую страницу, значение - личное право участника, имя страницы - текстом', () => {
     state.project.pages.push({ id: 'p2', name: '<i>Геометрия</i>', grid: 'square', elements: [] });
     const sub = accessSubmenu(user({ access: { role: 'editor', source: 'link', personal: { p2: 'hidden' } } }));
     const rows = [...sub.el.querySelectorAll<HTMLElement>('.avatar-access-row')];

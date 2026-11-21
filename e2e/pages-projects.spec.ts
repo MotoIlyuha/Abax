@@ -481,7 +481,7 @@ test.describe('домашняя страница: проекты', () => {
     expect((await board.state()).project.name).toBe('Алгебра 7Б');
   });
 
-  test('окно «Создать проект»: название, страница и смайл; в шапке — 18 символов, полное — в подсказке и при правке', async ({ board, page }) => {
+  test('окно «Создать проект»: название, страница и смайл; в шапке - 18 символов, полное - в подсказке и при правке', async ({ board, page }) => {
     await board.home();
     await page.locator('#home .new-project').click();
     const dlg = page.locator('#project-dialog');
@@ -733,7 +733,7 @@ test.describe('домашняя страница: проекты', () => {
     await board.ready();
     await board.home();
     await expect(home.locator('.home-list')).toBeVisible();
-    await expect(home.locator('.project-row', { hasText: 'Проект 2' }).locator('.project-opened')).toHaveText('—');
+    await expect(home.locator('.project-row', { hasText: 'Проект 2' }).locator('.project-opened')).toHaveText('-');
     await expect(home.locator('.project-row', { hasText: 'Геометрия' }).locator('.project-opened')).toHaveText('Сегодня');
 
     // удаление из списка
@@ -823,7 +823,7 @@ test.describe('домашняя страница: проекты', () => {
     await expect(page.locator('#home')).toBeVisible();
   });
 
-  test('иконка неоткрытого проекта сохраняется; в шапке доски — у открытого', async ({ board, page }) => {
+  test('иконка неоткрытого проекта сохраняется; в шапке доски - у открытого', async ({ board, page }) => {
     await board.home();
     await newProject(page);
     await board.home();

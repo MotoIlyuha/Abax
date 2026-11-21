@@ -21,7 +21,7 @@ describe('скрытые страницы', () => {
 });
 
 describe('маскировка', () => {
-  it('maskPagesForGuest: ответ и закрытое решение убраны, страницы без заданий — те же объекты', () => {
+  it('maskPagesForGuest: ответ и закрытое решение убраны, страницы без заданий - те же объекты', () => {
     const plain = page('plain');
     const [a, b] = maskPagesForGuest([page('t', [task]), plain]);
     expect(a.elements[0]).toMatchObject({ answer: '' });

@@ -43,7 +43,7 @@ test.describe('панель цвета и толщины', () => {
     await expect(panel.locator(`.ctx-swatches.custom [data-c="${color}"]`)).toHaveCount(0);
   });
 
-  test('перетаскивание в «Мои цвета»: приёмник синеет над зоной, текст — только без своих цветов', async ({ board, page }) => {
+  test('перетаскивание в «Мои цвета»: приёмник синеет над зоной, текст - только без своих цветов', async ({ board, page }) => {
     await page.locator('#btn-style').click();
     const panel = page.locator('.ctx-panel[data-kind="style"]');
     const hint = panel.locator('.ctx-drop-hint');
@@ -388,7 +388,7 @@ test.describe('настройки доски', () => {
     }
   });
 
-  test('подменю «Взаимодействия» в МВВ: привязка, плавное движение, направляющие — переключатели', async ({ board, page }) => {
+  test('подменю «Взаимодействия» в МВВ: привязка, плавное движение, направляющие - переключатели', async ({ board, page }) => {
     await page.locator('#zoom-label').click();
     const menu = page.locator('#view-menu');
     await menu.locator('[data-view="interactions"]').click();
@@ -416,7 +416,7 @@ test.describe('настройки доски', () => {
     for (const text of ['Привязка к сетке', 'Плавное движение', 'Направляющие']) await expect(page.locator('#settings-popover', { hasText: text })).toHaveCount(0);
   });
 
-  test('меню «Скрыть» — переключатели, меню не закрывается', async ({ board, page }) => {
+  test('меню «Скрыть» - переключатели, меню не закрывается', async ({ board, page }) => {
     await page.locator('#btn-home').click();
     await page.locator('#main-menu [data-section="hide"]').click();
     const undo = page.locator('#menu-hide .main-switch', { hasText: 'Кнопки отмены и повтора' });
@@ -438,7 +438,7 @@ test.describe('настройки доски', () => {
     await expect(imports.locator('input')).not.toBeChecked();
   });
 
-  test('«Скрыть»: при улучшенных анимациях группа уезжает влево и растворяется, без анимаций — сразу', async ({ board, page }) => {
+  test('«Скрыть»: при улучшенных анимациях группа уезжает влево и растворяется, без анимаций - сразу', async ({ board, page }) => {
     const undoGroup = page.locator('.undo-group');
     const importGroup = page.locator('.import-group');
     const importX = async () => (await importGroup.boundingBox())!.x;
@@ -466,7 +466,7 @@ test.describe('настройки доски', () => {
     void board;
   });
 
-  test('подписи координатной плоскости — переключатель в меню фона', async ({ board, page }) => {
+  test('подписи координатной плоскости - переключатель в меню фона', async ({ board, page }) => {
     // в настройках такого пункта больше нет
     await page.locator('#btn-settings').dispatchEvent('click');
     await expect(page.locator('#settings-popover label', { hasText: 'Деления' })).toHaveCount(0);
@@ -695,7 +695,7 @@ test.describe('страница', () => {
 });
 
 test.describe('вёрстка шапки', () => {
-  test('«Поделиться» — текстом, «Вид и масштаб» и помощь внизу справа, F1 открывает помощь, экспорт скрывается из меню', async ({ board, page }) => {
+  test('«Поделиться» - текстом, «Вид и масштаб» и помощь внизу справа, F1 открывает помощь, экспорт скрывается из меню', async ({ board, page }) => {
     await expect(page.locator('#btn-share')).toHaveText('Поделиться');
     await expect(page.locator('#btn-share .share-icon')).toBeHidden();
     await expect(page.locator('#btn-settings')).toBeHidden();
@@ -801,7 +801,7 @@ test.describe('адаптивная шапка', () => {
     void board;
   });
 
-  test('при сужении уходят экспорт, импорт, отмена/повтор переезжают под панель, «Поделиться» — иконкой; пункты «Скрыть» без места недоступны', async ({ board, page }) => {
+  test('при сужении уходят экспорт, импорт, отмена/повтор переезжают под панель, «Поделиться» - иконкой; пункты «Скрыть» без места недоступны', async ({ board, page }) => {
     const fit = () => page.evaluate(() => [...document.body.classList].filter(c => c.startsWith('fit-')).sort().join(' '));
     await page.setViewportSize({ width: 1280, height: 800 });
     await expect.poll(fit).toBe('');
@@ -959,10 +959,10 @@ test.describe('экспорт PNG', () => {
     expect(await page.evaluate(() => (window as any).__downloads)).toHaveLength(2);
   });
 
-  test('пустая страница — предупреждение', async ({ board, page }) => {
+  test('пустая страница - предупреждение', async ({ board, page }) => {
     const msg = new Promise<string>(resolve => page.once('dialog', d => { resolve(d.message()); void d.dismiss(); }));
     await board.exportPng();
-    expect(await msg).toBe('Страница пуста — нечего экспортировать');
+    expect(await msg).toBe('Страница пуста - нечего экспортировать');
   });
 });
 
@@ -1074,7 +1074,7 @@ test.describe('изображения', () => {
     expect((await board.state()).settings.keepImageAspect).toBe(false);
   });
 
-  test('битый файл — сообщение об ошибке', async ({ board, page }) => {
+  test('битый файл - сообщение об ошибке', async ({ board, page }) => {
     const msg = new Promise<string>(resolve => page.once('dialog', d => { resolve(d.message()); void d.dismiss(); }));
     const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.locator('#btn-image').click()]);
     await chooser.setFiles({ name: 'bad.png', mimeType: 'image/png', buffer: Buffer.from('not an image') });
@@ -1137,7 +1137,7 @@ test.describe('импорт PDF', () => {
     expect(await board.count()).toBe(0); // весь импорт — один шаг истории
   });
 
-  test('битый PDF — сообщение об ошибке', async ({ board, page }) => {
+  test('битый PDF - сообщение об ошибке', async ({ board, page }) => {
     const msg = new Promise<string>(resolve => page.once('dialog', d => { resolve(d.message()); void d.dismiss(); }));
     const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.locator('#btn-import').click()]);
     await chooser.setFiles({ name: 'bad.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-broken') });

@@ -97,7 +97,7 @@ export function billingErrorText(code: string): string {
     case 'payment-canceled': return 'Платёж отменён. Вы можете начать оплату заново';
     case 'trial-used': return 'Пробный период уже был на этом аккаунте';
     case 'plan-active': return 'Пробный период можно взять, только пока у вас бесплатный тариф';
-    case 'bad-promo': return 'Промокод — это латинские буквы, цифры и дефис, от 3 до 32 символов';
+    case 'bad-promo': return 'Промокод - это латинские буквы, цифры и дефис, от 3 до 32 символов';
     case 'promo-not-found': return 'Такого промокода нет или он больше не действует';
     case 'promo-used': return 'Этот промокод уже введён на вашем аккаунте';
     case 'rate-limited': return 'Слишком много попыток. Попробуйте через час';

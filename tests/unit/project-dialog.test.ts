@@ -24,7 +24,7 @@ beforeEach(() => { document.body.innerHTML = ''; });
 afterEach(() => { closeProjectDialog(); });
 
 describe('окно «Создать проект»', () => {
-  it('заголовок, смайл слева от поля названия, подсказки, текст тарифа; фокус — в названии', () => {
+  it('заголовок, смайл слева от поля названия, подсказки, текст тарифа; фокус - в названии', () => {
     open();
     expect(projectDialogOpen()).toBe(true);
     expect($('.pd-title').textContent).toBe('Создать проект');
@@ -41,7 +41,7 @@ describe('окно «Создать проект»', () => {
     expect(document.querySelector('.pd-pages-note')).toBeNull();
   });
 
-  it('«Создать» с пустыми полями — имена из подсказок; окно закрыто', () => {
+  it('«Создать» с пустыми полями - имена из подсказок; окно закрыто', () => {
     const submit = open();
     $('.pd-create').click();
     expect(submit).toHaveBeenCalledWith({ name: 'Проект 4', page: 'Страница 1', icon: null });
@@ -49,7 +49,7 @@ describe('окно «Создать проект»', () => {
     expect(document.getElementById('project-dialog')).toBeNull();
   });
 
-  it('введённое обрезается по лимиту символов; Enter — «Создать»', () => {
+  it('введённое обрезается по лимиту символов; Enter - «Создать»', () => {
     const submit = open();
     type($<HTMLInputElement>('.pd-name'), '  Дроби  ');
     type($<HTMLInputElement>('.pd-page'), 'я'.repeat(100));
@@ -78,7 +78,7 @@ describe('окно «Создать проект»', () => {
     window.removeEventListener('keydown', board);
   });
 
-  it('без пояснения тарифа — абзаца нет', () => {
+  it('без пояснения тарифа - абзаца нет', () => {
     open(vi.fn(), null);
     expect(document.querySelector('.pd-plan')).toBeNull();
   });

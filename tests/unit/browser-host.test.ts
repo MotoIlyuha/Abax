@@ -105,7 +105,7 @@ describe('соседние вкладки (BroadcastChannel)', () => {
     await until(() => hub.users().every(u => u.name !== 'Маша'));
   });
 
-  it('нет автора — через время закрытие «автор не в сети»', async () => {
+  it('нет автора - через время закрытие «автор не в сети»', async () => {
     const g = client(localGuestTransport('nobody', 'Маша', 60));
     await until(() => g.closed);
     expect(g.closed!.code).toBe(4503);
@@ -133,7 +133,7 @@ describe('ретранслятор: кадры и адреса', () => {
     expect([...encodeFrame(5, 'ab', false)]).toEqual([0, 0, 0, 0, 5, 97, 98]);
   });
 
-  it('адрес ретранслятора: wss всегда, ws — только для своей машины', () => {
+  it('адрес ретранслятора: wss всегда, ws - только для своей машины', () => {
     expect(normalizeRelayUrl(' wss://r.example.com/ ')).toBe('wss://r.example.com');
     expect(normalizeRelayUrl('wss://r.example.com/path/?x=1#y')).toBe('wss://r.example.com/path');
     expect(normalizeRelayUrl('ws://127.0.0.1:8080')).toBe('ws://127.0.0.1:8080');
@@ -204,7 +204,7 @@ describe('автор в браузере через настоящий ретр�
     await until(() => hub.room.project!.pages[0].elements.length === 1);
   });
 
-  it('автор шлёт патч — гость, объявивший caps, получает его расшифрованным', async () => {
+  it('автор шлёт патч - гость, объявивший caps, получает его расшифрованным', async () => {
     const { hub, guest } = await setup();
     const g = guest('Ученик');
     await until(() => g.last('init'));
@@ -226,7 +226,7 @@ describe('автор в браузере через настоящий ретр�
     expect(first.closed).toBeNull();
   });
 
-  it('чужой ключ — гость отклонён, остановка закрывает комнату кодом 4410', async () => {
+  it('чужой ключ - гость отклонён, остановка закрывает комнату кодом 4410', async () => {
     const { guest, relayUrl } = await setup();
     const st = host!.status();
     const wrong = cloudTransport(relayUrl, st.room!, new Uint8Array(32).fill(7), 'Взломщик');

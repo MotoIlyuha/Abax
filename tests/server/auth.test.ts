@@ -22,7 +22,7 @@ function tgPayload(now: number, over: Record<string, string | number> = {}, toke
 
 describe('сессионные токены', () => {
   const now = 1_700_000_000_000;
-  it('подписанный токен проверяется; чужой секрет, порча и срок — нет', () => {
+  it('подписанный токен проверяется; чужой секрет, порча и срок - нет', () => {
     const t = signSession('s1', 'user-1', now);
     expect(verifySession('s1', t, now)).toEqual({ sub: 'user-1' });
     expect(verifySession('s2', t, now)).toBeNull();
@@ -56,7 +56,7 @@ describe('анонимный вход', () => {
     expect(cookie).toMatch(/Path=\//);
   });
 
-  it('тот же токен устройства — тот же пользователь; в базе только хэш токена', async () => {
+  it('тот же токен устройства - тот же пользователь; в базе только хэш токена', async () => {
     const app = await makeApp();
     const a = await anon(app, 'b'.repeat(43));
     const again = await anon(app, 'b'.repeat(43));
@@ -68,7 +68,7 @@ describe('анонимный вход', () => {
     expect(JSON.stringify(app.db.prepare('SELECT * FROM users').all())).not.toContain('b'.repeat(43));
   });
 
-  it('негодный токен устройства — 400', async () => {
+  it('негодный токен устройства - 400', async () => {
     const app = await makeApp();
     for (const deviceToken of [undefined, '', 'короткий', 'x'.repeat(31), 'x'.repeat(129), 'нельзя русские буквы!!!!!!!!!!!!!!!!!!!!!!!!!!!', 5]) {
       expect((await call(app, 'POST', '/api/auth/anon', { deviceToken })).status).toBe(400);
@@ -91,7 +91,7 @@ describe('анонимный вход', () => {
 });
 
 describe('GET /api/me', () => {
-  it('Bearer и cookie принимаются; без сессии — 401 и пользователь не создаётся', async () => {
+  it('Bearer и cookie принимаются; без сессии - 401 и пользователь не создаётся', async () => {
     const app = await makeApp();
     expect((await call(app, 'GET', '/api/me')).status).toBe(401);
     expect(app.db.prepare('SELECT COUNT(*) n FROM users').get()).toEqual({ n: 0 });
@@ -103,7 +103,7 @@ describe('GET /api/me', () => {
     expect(cookie.body.user.id).toBe(a.id);
   });
 
-  it('поддельный и просроченный токены — 401', async () => {
+  it('поддельный и просроченный токены - 401', async () => {
     const app = await makeApp();
     const a = await anon(app);
     expect((await call(app, 'GET', '/api/me', undefined, { token: a.token + 'x' })).status).toBe(401);
@@ -111,14 +111,14 @@ describe('GET /api/me', () => {
     expect((await call(app, 'GET', '/api/me', undefined, { token: a.token })).status).toBe(401);
   });
 
-  it('токен удалённого пользователя — 401', async () => {
+  it('токен удалённого пользователя - 401', async () => {
     const app = await makeApp();
     const a = await anon(app);
     app.db.prepare('DELETE FROM users WHERE id = ?').run(a.id);
     expect((await call(app, 'GET', '/api/me', undefined, { token: a.token })).status).toBe(401);
   });
 
-  it('pro и tutor: лимиты без ограничений (null); истёкший plan_expires_at — free', async () => {
+  it('pro и tutor: лимиты без ограничений (null); истёкший plan_expires_at - free', async () => {
     const app = await makeApp();
     const a = await anon(app);
     setPlan(app, a.id, 'pro', app.clock.t + DAY);
@@ -157,7 +157,7 @@ describe('вход через Telegram', () => {
     expect((await call(app, 'GET', '/api/me', undefined, { token: r.body.token })).status).toBe(200);
   });
 
-  it('неверная подпись, чужой бот, изменённое поле, отсутствующий hash — 401', async () => {
+  it('неверная подпись, чужой бот, изменённое поле, отсутствующий hash - 401', async () => {
     const app = await makeApp();
     const good = tgPayload(app.clock.t);
     expect((await call(app, 'POST', '/api/auth/telegram', { ...good, hash: '0'.repeat(64) })).status).toBe(401);
@@ -172,7 +172,7 @@ describe('вход через Telegram', () => {
     expect(app.db.prepare('SELECT COUNT(*) n FROM users').get()).toEqual({ n: 0 });
   });
 
-  it('просроченный (старше суток) и «из будущего» auth_date — 401', async () => {
+  it('просроченный (старше суток) и «из будущего» auth_date - 401', async () => {
     const app = await makeApp();
     const sec = Math.floor(app.clock.t / 1000);
     expect((await call(app, 'POST', '/api/auth/telegram', tgPayload(app.clock.t, { auth_date: sec - 24 * 3600 - 10 }))).status).toBe(401);
@@ -190,7 +190,7 @@ describe('вход через Telegram', () => {
     expect(verifyTelegramLogin(null, BOT_TOKEN, now)).toBe(false);
   });
 
-  it('без токена бота вход через Telegram отключён — 503', async () => {
+  it('без токена бота вход через Telegram отключён - 503', async () => {
     const app = await makeApp({ telegramBotToken: null });
     expect((await call(app, 'POST', '/api/auth/telegram', tgPayload(app.clock.t))).status).toBe(503);
   });
@@ -284,7 +284,7 @@ describe('выход, CORS и общие ответы', () => {
     expect(r.headers.get('x-content-type-options')).toBe('nosniff');
   });
 
-  it('неизвестный путь API — 404, неверный метод — 405, слишком большое тело — 413', async () => {
+  it('неизвестный путь API - 404, неверный метод - 405, слишком большое тело - 413', async () => {
     const app = await makeApp();
     expect((await call(app, 'GET', '/api/нет')).status).toBe(404);
     expect((await call(app, 'GET', '/api/auth/anon')).status).toBe(405);

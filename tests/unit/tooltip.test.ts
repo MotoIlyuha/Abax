@@ -146,7 +146,7 @@ describe('подсказки', () => {
     expect(shown()).toBe(false);
   });
 
-  it('элемент удалён до показа — подсказки нет', () => {
+  it('элемент удалён до показа - подсказки нет', () => {
     const b = document.getElementById('plain')!;
     over(b);
     b.remove();

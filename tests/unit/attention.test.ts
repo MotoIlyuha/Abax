@@ -24,7 +24,7 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); document.body.className = ''; });
 
 describe('частицы', () => {
-  it('«Обычные» — CSS-частицы с эмодзи текстом; «Выкл» — без частиц; маленькие — свой счёт', () => {
+  it('«Обычные» - CSS-частицы с эмодзи текстом; «Выкл» - без частиц; маленькие - свой счёт', () => {
     expect(burst('<b>👍</b>', { x: 10, y: 10 })).toBe(true);
     const ps = document.querySelectorAll('#burst-layer .burst-p.burst-css');
     expect(ps).toHaveLength(BURST_COUNT_CSS);
@@ -49,7 +49,7 @@ describe('частицы', () => {
 });
 
 describe('привлечь внимание', () => {
-  it('щелчок — частицы из объекта; скрытые реакции — без частиц; повтор сразу — без новых', () => {
+  it('щелчок - частицы из объекта; скрытые реакции - без частиц; повтор сразу - без новых', () => {
     attractAttention('a', '👍');
     expect(liveParticles()).toBe(BURST_COUNT_CSS);
     attractAttention('a', '👍');
@@ -61,7 +61,7 @@ describe('привлечь внимание', () => {
     setAnnotView({ reactions: true });
   });
 
-  it('получатель: частицы на своей странице, уведомление с эмодзи и «Перейти»; повтор от того же — без нового уведомления', () => {
+  it('получатель: частицы на своей странице, уведомление с эмодзи и «Перейти»; повтор от того же - без нового уведомления', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(1_000_000);
     receiveAttention({ pageId: state.pageId, elId: 'a', emoji: '👍', by: 7 });
@@ -81,7 +81,7 @@ describe('привлечь внимание', () => {
     expect(notices()).toHaveLength(2);
   });
 
-  it('курсор отправителя краевой — из него ещё маленькие реакции внутрь экрана', async () => {
+  it('курсор отправителя краевой - из него ещё маленькие реакции внутрь экрана', async () => {
     const presence = await import('../../src/collab-presence');
     const spy = vi.spyOn(presence, 'edgePointerOf').mockImplementation(uid => (uid === 9 ? { x: 0, y: 200, angle: Math.PI } : null));
     receiveAttention({ pageId: state.pageId, elId: 'a', emoji: '🔥', by: 9 });

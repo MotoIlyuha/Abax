@@ -73,7 +73,7 @@ describe('боковая панель («Выкл»)', () => {
     expect(close.querySelectorAll('svg')).toHaveLength(2);
   });
 
-  it('открытие и закрытие: сдвиг шапки, события, режим по умолчанию — ЧУ', () => {
+  it('открытие и закрытие: сдвиг шапки, события, режим по умолчанию - ЧУ', () => {
     const seen: string[] = [];
     onSidePanel(s => seen.push(`${s.open}:${s.mode}`));
     openSidePanel();
@@ -92,7 +92,7 @@ describe('боковая панель («Выкл»)', () => {
     expect(seen).toEqual(['true:notify', 'false:notify']);
   });
 
-  it('режимы монтируются при первом показе; смена режима — hide старого и show нового; действия — в шапку', () => {
+  it('режимы монтируются при первом показе; смена режима - hide старого и show нового; действия - в шапку', () => {
     const actions = document.createElement('button');
     actions.className = 'hist-act';
     spies.history.view.actions = actions;
@@ -127,7 +127,7 @@ describe('боковая панель («Выкл»)', () => {
     expect(sidePanelPref()).toEqual({});
   });
 
-  it('кнопка ЧУ скрыта в режиме ЧУ («влилась» в кнопку закрытия) и видна в других; aria-expanded — только ЧУ', () => {
+  it('кнопка ЧУ скрыта в режиме ЧУ («влилась» в кнопку закрытия) и видна в других; aria-expanded - только ЧУ', () => {
     btn().click();
     expect(sidePanelMode()).toBe('notify');
     expect(btn().classList.contains('sp-merged')).toBe(true);
@@ -145,7 +145,7 @@ describe('боковая панель («Выкл»)', () => {
     expect(btn().classList.contains('sp-merged')).toBe(false);
   });
 
-  it('toggleSidePanel: тот же режим закрывает, другой — переключает', () => {
+  it('toggleSidePanel: тот же режим закрывает, другой - переключает', () => {
     toggleSidePanel('help');
     expect(sidePanelMode()).toBe('help');
     toggleSidePanel('history');
@@ -155,7 +155,7 @@ describe('боковая панель («Выкл»)', () => {
     expect(sidePanelOpen()).toBe(false);
   });
 
-  it('фокус: при открытии — в вид (focus() вида или первый фокусируемый), при закрытии — на кнопку ЧУ', () => {
+  it('фокус: при открытии - в вид (focus() вида или первый фокусируемый), при закрытии - на кнопку ЧУ', () => {
     openSidePanel('history');
     expect(document.activeElement?.className).toBe('view-history');
     const focus = vi.fn(() => (panel().querySelector('.view-help') as HTMLElement).focus());
@@ -193,7 +193,7 @@ describe('боковая панель («Выкл»)', () => {
     expect(trigger().querySelector('.roll-icon .ic-help')).not.toBeNull();
   });
 
-  it('пункты режима: «Чат и уведомления» и «Комментарии» открывают один режим; выбранный — по активному пункту', () => {
+  it('пункты режима: «Чат и уведомления» и «Комментарии» открывают один режим; выбранный - по активному пункту', () => {
     let tab = 'all';
     const opened: string[] = [];
     setPanelEntries('notify', [
@@ -256,7 +256,7 @@ describe('F1 и кнопка «Помощь»', () => {
     document.body.className = '';
   });
 
-  it('F1 открывает и закрывает «Справку» — так же, как toggleSidePanel(«help») из app.ts', () => {
+  it('F1 открывает и закрывает «Справку» - так же, как toggleSidePanel(«help») из app.ts', () => {
     // разводка из app.ts (wireHelpButton): F1 → toggleSidePanel('help'); F1 в панели не гасится
     const onF1 = (e: KeyboardEvent) => { if (e.code === 'F1') toggleSidePanel('help'); };
     document.addEventListener('keydown', onF1);

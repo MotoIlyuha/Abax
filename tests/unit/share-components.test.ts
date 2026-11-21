@@ -40,7 +40,7 @@ function select(onChange = (_v: string) => {}) {
 }
 
 describe('выпадающий список (Spring dropdown)', () => {
-  it('иконки и счётчики пунктов: иконка выбранного на кнопке, setBadge без пересоздания меню, счётчик невыбранного — на кнопке', () => {
+  it('иконки и счётчики пунктов: иконка выбранного на кнопке, setBadge без пересоздания меню, счётчик невыбранного - на кнопке', () => {
     document.body.className = 'no-ui-anim';
     const host = dialogHost();
     const s = createSpringSelect({
@@ -66,7 +66,7 @@ describe('выпадающий список (Spring dropdown)', () => {
     expect(s.el.querySelector('.ss-badge')!.classList.contains('on')).toBe(false);
   });
 
-  it('разметка: кнопка listbox с подписью значения; меню — внутри окна, с выбранной строкой', () => {
+  it('разметка: кнопка listbox с подписью значения; меню - внутри окна, с выбранной строкой', () => {
     document.body.className = 'no-ui-anim';
     const { s, menu } = select();
     expect(s.el.getAttribute('aria-haspopup')).toBe('listbox');
@@ -225,7 +225,7 @@ describe('счётчик (Number stepper)', () => {
 });
 
 describe('сегменты (Smooth tab)', () => {
-  it('radiogroup: щелчок и стрелки меняют выбор; «Обычные» — CSS-переход, «Выкл» — без него', () => {
+  it('radiogroup: щелчок и стрелки меняют выбор; «Обычные» - CSS-переход, «Выкл» - без него', () => {
     const got: string[] = [];
     const seg = createSegmented({ label: 'Кто зовёт', value: 'owner', options: [{ value: 'owner', label: 'Только я' }, { value: 'editors', label: 'И редакторы' }], onChange: v => got.push(v) });
     document.body.append(seg.el);
@@ -260,7 +260,7 @@ describe('вкладки (Smooth tab в режиме tabs)', () => {
     return { t, paints, got, tabs: [...t.el.querySelectorAll<HTMLButtonElement>('[role="tab"]')] };
   };
 
-  it('role="tablist"/"tab", aria-selected и aria-controls; «Выкл» — панели сразу на месте', () => {
+  it('role="tablist"/"tab", aria-selected и aria-controls; «Выкл» - панели сразу на месте', () => {
     document.body.className = 'no-ui-anim';
     const { t, paints, got, tabs } = make();
     expect(t.el.getAttribute('role')).toBe('tablist');
@@ -300,7 +300,7 @@ describe('спойлер', () => {
     return { d, summary: d.querySelector('summary')!, body: d.querySelector<HTMLElement>('.spoiler-body')!, toggles };
   };
 
-  it('«Выкл»: открывается и закрывается сразу; подсказка — у заголовка', () => {
+  it('«Выкл»: открывается и закрывается сразу; подсказка - у заголовка', () => {
     document.body.className = 'no-ui-anim';
     const { d, summary, toggles } = make();
     expect(summary.title).toBe('Подсказка');
@@ -311,7 +311,7 @@ describe('спойлер', () => {
     expect(toggles).toEqual([true, false]);
   });
 
-  it('«Улучшенные»: высота едет пружиной, закрытый details — когда доехала', async () => {
+  it('«Улучшенные»: высота едет пружиной, закрытый details - когда доехала', async () => {
     const { d, summary, body } = make();
     summary.click();
     expect(d.open).toBe(true);
@@ -348,7 +348,7 @@ describe('своя полоса прокрутки', () => {
     return { host, sc };
   }
 
-  it('ползунок поверх, родная полоса скрыта; размер и положение — по прокрутке, при прокрутке появляется и гаснет', () => {
+  it('ползунок поверх, родная полоса скрыта; размер и положение - по прокрутке, при прокрутке появляется и гаснет', () => {
     vi.useFakeTimers();
     const { host, sc } = scroller(400, 100);
     const o = attachOverlayScroll(sc, { axis: 'y' });
@@ -367,7 +367,7 @@ describe('своя полоса прокрутки', () => {
     expect(host.querySelector('.oscroll-thumb')).toBeNull();
   });
 
-  it('края: тень у края, за которым есть ещё (shadow), растворение — переменными маски (fade)', () => {
+  it('края: тень у края, за которым есть ещё (shadow), растворение - переменными маски (fade)', () => {
     const { host, sc } = scroller(400, 100);
     attachOverlayScroll(sc, { axis: 'y', edges: 'shadow' }).sync();
     expect(host.querySelectorAll('.oscroll-shade')).toHaveLength(2);
@@ -383,7 +383,7 @@ describe('своя полоса прокрутки', () => {
     expect(f.sc.style.getPropertyValue('--oscroll-fs')).toBe('0');
   });
 
-  it('ось на лету: лента страниц вверху — колонка, внизу — ряд', () => {
+  it('ось на лету: лента страниц вверху - колонка, внизу - ряд', () => {
     let axis: 'x' | 'y' = 'x';
     const { sc } = scroller(400, 100);
     const o = attachOverlayScroll(sc, { axis: () => axis, edges: 'fade' });
@@ -395,7 +395,7 @@ describe('своя полоса прокрутки', () => {
     expect(sc.classList.contains('oscroll-fade-x')).toBe(false);
   });
 
-  it('содержимое помещается — ползунка нет', () => {
+  it('содержимое помещается - ползунка нет', () => {
     const { sc } = scroller(100, 100);
     const o = attachOverlayScroll(sc, { axis: 'y' });
     o.sync();
@@ -418,7 +418,7 @@ describe('перекатывающаяся надпись', () => {
     expect(r.el.textContent).toBe('Готово');
   });
 
-  it('«Обычные» — одна строка с CSS-проявлением; «Выкл» — сразу', () => {
+  it('«Обычные» - одна строка с CSS-проявлением; «Выкл» - сразу', () => {
     const r = createRoll('x', 18);
     document.body.append(r.el);
     r.set('А');
@@ -434,7 +434,7 @@ describe('перекатывающаяся надпись', () => {
 });
 
 describe('форма приглашения (Invite people)', () => {
-  it('неверный адрес: поле краснеет; «Улучшенные» — качается пружиной, «Обычные» — CSS', async () => {
+  it('неверный адрес: поле краснеет; «Улучшенные» - качается пружиной, «Обычные» - CSS', async () => {
     const field = document.createElement('div');
     document.body.append(field);
     shakeField(field);

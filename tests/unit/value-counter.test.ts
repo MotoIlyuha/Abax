@@ -40,7 +40,7 @@ describe('число у ползунка', () => {
     expect(el.textContent).toBe('12');
   });
 
-  it('«улучшенные»: цифры — колёсики, запятая и «%» стоят на месте, textContent — значение', () => {
+  it('«улучшенные»: цифры - колёсики, запятая и «%» стоят на месте, textContent - значение', () => {
     const frames: ((t: number) => void)[] = [];
     vi.stubGlobal('requestAnimationFrame', (cb: (t: number) => void) => { frames.push(cb); return frames.length; });
     const el = mount();

@@ -15,7 +15,7 @@ function main(): void {
   }
   const maxUses = usesRaw === undefined ? null : Number(usesRaw);
   const valid = validRaw === undefined ? null : Number(validRaw);
-  if ((maxUses !== null && !(maxUses >= 1)) || (valid !== null && !(valid > 0))) { console.error('Активаций и срок — положительные числа'); process.exit(2); }
+  if ((maxUses !== null && !(maxUses >= 1)) || (valid !== null && !(valid > 0))) { console.error('Активаций и срок - положительные числа'); process.exit(2); }
   const now = Date.now();
   const db = openDb(join(resolve(process.env.DATA_DIR || '.data'), 'abax.db'));
   const ok = createPromoCode(db, code, { plan, days }, now, { maxUses, expiresAt: valid === null ? null : now + valid * DAY_MS });

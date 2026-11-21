@@ -96,7 +96,7 @@ test.describe('список страниц', () => {
     await expect.poll(async () => (await board.state()).pageId).toBe((await board.state()).project.pages[1].id);
   });
 
-  test('на превью текущей страницы — рамка видимой области', async ({ board, page }) => {
+  test('на превью текущей страницы - рамка видимой области', async ({ board, page }) => {
     await board.rect(400, 300, 600, 450);
     await board.addPage();
     await page.locator('#pages-list .page-item').nth(0).click();

@@ -56,7 +56,7 @@ describe('ветки комментариев', () => {
     }]);
   });
 
-  it('привязка к отсутствующему элементу отбрасывается; без привязки — свободная ветка', () => {
+  it('привязка к отсутствующему элементу отбрасывается; без привязки - свободная ветка', () => {
     const p = createCommentThread(page(), { x: 1, y: 2, targetElementId: 'нет', ...author, text: 'Привет' });
     expect(p.comments![0]).not.toHaveProperty('targetElementId');
     expect(p.comments![0].id).toBeTruthy();
@@ -106,7 +106,7 @@ describe('syncCommentsWithMovedElements', () => {
     expect(p.comments![0]).toMatchObject({ x: 110, y: 40 }); // исходная страница не менялась
   });
 
-  it('свободная ветка и неподвижный элемент — без изменений', () => {
+  it('свободная ветка и неподвижный элемент - без изменений', () => {
     const free = withThread();
     expect(syncCommentsWithMovedElements(free, free.elements, [translateElement(free.elements[0], 5, 5)])).toBe(free);
     const p = withThread('a');
@@ -195,7 +195,7 @@ describe('preserveElementReactions / preserveLiveFields', () => {
     expect(out[1]).not.toHaveProperty('reactions');
   });
 
-  it('нет изменений — тот же массив и те же объекты; элементы без пары не меняются', () => {
+  it('нет изменений - тот же массив и те же объекты; элементы без пары не меняются', () => {
     const a = toggleElementReaction(rect('a'), '👍', 'u1');
     const snap = [a, rect('gone')];
     expect(preserveElementReactions(snap, [toggleElementReaction(rect('a', 5, 5), '👍', 'u1')])).toBe(snap);
@@ -205,7 +205,7 @@ describe('preserveElementReactions / preserveLiveFields', () => {
     expect(changed[0].reactions).toEqual({ '❤️': ['u1'] });
   });
 
-  it('ввод ученика в задании переживает откат; остальные поля — из снимка', () => {
+  it('ввод ученика в задании переживает откат; остальные поля - из снимка', () => {
     const base = createTaskElement({ x: 0, y: 0, taskId: 't', statementMd: 'Условие', answer: '5', id: 'k' });
     const now = submitTaskAttempt(updateStudentDraft(base, '5'), '5', 100).updated;
     const snap = { ...base, statementMd: 'Старое условие' };

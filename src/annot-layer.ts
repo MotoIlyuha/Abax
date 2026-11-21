@@ -98,7 +98,7 @@ function toolsTarget(): string | null {
 
 function pillTitle(users: readonly string[], mine: boolean): string {
   const who = peopleLabel(users);
-  return mine ? `${who}. Нажмите — привлечь внимание, × или удержание — убрать` : `${who}. Нажмите — привлечь внимание`;
+  return mine ? `${who}. Нажмите - привлечь внимание, × или удержание - убрать` : `${who}. Нажмите - привлечь внимание`;
 }
 
 function pill(elId: string, emoji: string, users: readonly string[]): HTMLButtonElement {

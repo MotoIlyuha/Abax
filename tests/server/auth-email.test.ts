@@ -20,7 +20,7 @@ describe('вход по почте', () => {
     for (const bad of ['', 'nope', 'a@b', 'a b@c.ru', 'a@b.ru\r\nBcc:x@y.ru', 5, 'x'.repeat(250) + '@a.ru']) expect(normalizeEmail(bad)).toBeNull();
   });
 
-  it('код приходит письмом; верный код — вход, аноним получает почту на месте', async () => {
+  it('код приходит письмом; верный код - вход, аноним получает почту на месте', async () => {
     const { app, mailer } = await setup();
     const a = await anon(app);
     await putProject(app, a.token, proj('p1'));
@@ -56,7 +56,7 @@ describe('вход по почте', () => {
     expect(app.db.prepare('SELECT COUNT(*) n FROM users WHERE id = ?').get(second.id)).toEqual({ n: 0 });
   });
 
-  it('привязка почты к аккаунту; почта другого аккаунта — 409 identity-taken', async () => {
+  it('привязка почты к аккаунту; почта другого аккаунта - 409 identity-taken', async () => {
     const { app, mailer } = await setup();
     const a = await anon(app);
     await call(app, 'POST', '/api/auth/email/start', { email: 'a@b.ru' });
@@ -71,7 +71,7 @@ describe('вход по почте', () => {
     expect((await call(app, 'POST', '/api/auth/email/verify', { email: 'a@b.ru', code: '000000', mode: 'link' })).status).toBe(401);
   });
 
-  it('5 неверных попыток — код сгорает; просроченный код — code-expired', async () => {
+  it('5 неверных попыток - код сгорает; просроченный код - code-expired', async () => {
     const { app, mailer } = await setup();
     await call(app, 'POST', '/api/auth/email/start', { email: 'a@b.ru' });
     const right = codeOf(mailer.outbox[0].text);
@@ -92,7 +92,7 @@ describe('вход по почте', () => {
     expect((await call(app, 'POST', '/api/auth/email/start', { email: 'a@b.ru' })).status).toBe(429);
   });
 
-  it('неверный адрес — 400; почта не настроена — 503; ошибка отправки — 502', async () => {
+  it('неверный адрес - 400; почта не настроена - 503; ошибка отправки - 502', async () => {
     const { app } = await setup();
     expect((await call(app, 'POST', '/api/auth/email/start', { email: 'nope' })).body.error).toBe('bad-email');
     const off = await makeApp();

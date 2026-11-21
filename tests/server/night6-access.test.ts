@@ -50,7 +50,7 @@ function joinRoom(app: TestApp, hello: Record<string, unknown>) {
 }
 
 describe('роли общей ссылки', () => {
-  it('новые роли принимаются; ответ — роль как хранится и старый синоним для прежних клиентов', async () => {
+  it('новые роли принимаются; ответ - роль как хранится и старый синоним для прежних клиентов', async () => {
     const { app, owner } = await setup();
     const r = await link(app, owner.token, { defaultRole: 'reader' });
     expect(r.status).toBe(201);
@@ -68,7 +68,7 @@ describe('роли общей ссылки', () => {
     expect((await link(app, owner.token, { defaultRole: 'edit' })).body.role).toBe('edit');
   });
 
-  it('гость по ссылке видит роль: старый синоним в role, новую — в accessRole', async () => {
+  it('гость по ссылке видит роль: старый синоним в role, новую - в accessRole', async () => {
     const { app, owner } = await setup();
     const { body } = await link(app, owner.token, { defaultRole: 'reader' });
     const v = await open(app, body.token);
@@ -80,7 +80,7 @@ describe('роли общей ссылки', () => {
 });
 
 describe('пауза и сброс общей ссылки', () => {
-  it('пауза: ссылка не открывается (link-paused), владелец её видит; включение — тот же токен снова работает', async () => {
+  it('пауза: ссылка не открывается (link-paused), владелец её видит; включение - тот же токен снова работает', async () => {
     const { app, owner } = await setup();
     const { body } = await link(app, owner.token);
     const paused = await link(app, owner.token, { enabled: false });
@@ -101,7 +101,7 @@ describe('пауза и сброс общей ссылки', () => {
     expect(await g.closed).toBe(4403);
   });
 
-  it('сброс: новый токен с теми же ролью и копированием, старый мёртв; чужой сброс — 404', async () => {
+  it('сброс: новый токен с теми же ролью и копированием, старый мёртв; чужой сброс - 404', async () => {
     const { app, owner } = await setup();
     const { body } = await link(app, owner.token, { defaultRole: 'reader', allowCopy: false });
     const r = await call(app, 'POST', `/api/invites/${body.token}/reset`, undefined, { token: owner.token });
@@ -117,7 +117,7 @@ describe('пауза и сброс общей ссылки', () => {
 });
 
 describe('/j/:x', () => {
-  it('JSON — как /api/invites/:x; HTML — 302 на адрес с параметрами; не токен и не адрес — 404', async () => {
+  it('JSON - как /api/invites/:x; HTML - 302 на адрес с параметрами; не токен и не адрес - 404', async () => {
     const { app, owner } = await setup();
     const { body } = await link(app, owner.token);
     const json = await call(app, 'GET', `/j/${body.token}`, undefined, { headers: { Accept: 'application/json' } });
@@ -131,7 +131,7 @@ describe('/j/:x', () => {
     expect(junk.status).toBe(404);
   });
 
-  it('чистая ссылка prettyUrl — только когда клиента раздаёт этот сервер', async () => {
+  it('чистая ссылка prettyUrl - только когда клиента раздаёт этот сервер', async () => {
     const plain = await setup();
     expect((await link(plain.app, plain.owner.token)).body.prettyUrl).toBeNull();
     const pretty = await setup('pro', { prettyLinks: true });
@@ -143,7 +143,7 @@ describe('/j/:x', () => {
 });
 
 describe('именной адрес', () => {
-  it('формат, резерв и тариф: bad-alias, Free — plan-limit-alias', async () => {
+  it('формат, резерв и тариф: bad-alias, Free - plan-limit-alias', async () => {
     const { app, owner } = await setup('free');
     for (const bad of ['ab', 'geo', 'fizika', 'fizika-2026', 'Physics', '9a-x', 'a--b', 'api', 'x'.repeat(24)]) expect((await setAlias(app, owner.token, bad)).body.error).toBe('bad-alias');
     expect(await setAlias(app, owner.token, 'physics-9a-2026')).toMatchObject({ status: 403, body: { error: 'plan-limit-alias' } });
@@ -160,7 +160,7 @@ describe('именной адрес', () => {
     expect((await call(app, 'GET', '/api/projects/a/alias', undefined, { token: owner.token })).body).toMatchObject({ alias: 'physics-9a-2026', former: [] });
   });
 
-  it('переименование: старый адрес — бывший и ведёт туда же; освобождение — «больше не используется»', async () => {
+  it('переименование: старый адрес - бывший и ведёт туда же; освобождение - «больше не используется»', async () => {
     const { app, owner } = await setup();
     await link(app, owner.token);
     await setAlias(app, owner.token, 'physics-9a-2026');
@@ -185,7 +185,7 @@ describe('именной адрес', () => {
     expect(await setAlias(app, other.token, 'physics-9a-2026', 'b')).toMatchObject({ status: 409, body: { error: 'alias-taken' } });
   });
 
-  it('ссылка на паузе или нет ссылки — link-paused; Free — alias-inactive; доска удалена — board-deleted', async () => {
+  it('ссылка на паузе или нет ссылки - link-paused; Free - alias-inactive; доска удалена - board-deleted', async () => {
     const { app, owner } = await setup();
     await setAlias(app, owner.token, 'physics-9a-2026');
     expect((await open(app, 'physics-9a-2026')).body.error).toBe('link-paused'); // общей ссылки ещё нет
@@ -200,7 +200,7 @@ describe('именной адрес', () => {
     expect((await open(app, 'physics-9a-2026')).body.error).toBe('board-deleted');
   });
 
-  it('новый адрес — не короче 12 символов; свой старый короткий адрес работает и возвращается', async () => {
+  it('новый адрес - не короче 12 символов; свой старый короткий адрес работает и возвращается', async () => {
     const { app, owner } = await setup();
     await link(app, owner.token);
     for (const short of ['geo', 'fizika', 'fizika-2026']) expect(await setAlias(app, owner.token, short)).toMatchObject({ status: 400, body: { error: 'bad-alias' } });
@@ -212,7 +212,7 @@ describe('именной адрес', () => {
     expect((await setAlias(app, owner.token, 'geo')).body).toMatchObject({ alias: 'geo', former: ['geography-9a'] });
   });
 
-  it('занятый адрес: свободные похожие — ни разу никем не занятые', async () => {
+  it('занятый адрес: свободные похожие - ни разу никем не занятые', async () => {
     const { app, owner } = await setup();
     await setAlias(app, owner.token, 'fizika-shkola');
     await setAlias(app, owner.token, 'fizika-shkola-2026'); // ближайшая подсказка уже занята (бывший адрес владельца)
@@ -233,7 +233,7 @@ describe('именной адрес', () => {
     expect((await setAlias(app, other.token, sug[0], 'b')).status).toBe(200);
   });
 
-  it('проверка на лету: свободен, свой, занят, короток — без записи в базу; только владельцу', async () => {
+  it('проверка на лету: свободен, свой, занят, короток - без записи в базу; только владельцу', async () => {
     const { app, owner } = await setup();
     await setAlias(app, owner.token, 'fizika-shkola');
     const check = (token: string, alias: string, projectId = 'a') =>
@@ -258,7 +258,7 @@ describe('именной адрес', () => {
     expect((await check(owner.token, 'fizika-shkola')).body.status).toBe('blocked');
   });
 
-  it('модерация: кто и когда занял адрес; блокировка закрывает вход и не даёт занять адрес даже владельцу; снятие — как было', async () => {
+  it('модерация: кто и когда занял адрес; блокировка закрывает вход и не даёт занять адрес даже владельцу; снятие - как было', async () => {
     const { app, owner } = await setup();
     await link(app, owner.token);
     await setAlias(app, owner.token, 'physics-9a-2026');
@@ -305,7 +305,7 @@ describe('именной адрес', () => {
 });
 
 describe('просмотр по ссылке на доску (D2) и клонирование (D7)', () => {
-  it('linkView: false — без приглашения доска неотличима от несуществующей; с приглашением и владельцу — видна', async () => {
+  it('linkView: false - без приглашения доска неотличима от несуществующей; с приглашением и владельцу - видна', async () => {
     const { app, owner } = await setup();
     expect((await call(app, 'GET', '/api/projects/a')).status).toBe(200);
     await putProject(app, owner.token, proj('a', { permissions: { linkView: false } }), 1);
@@ -317,7 +317,7 @@ describe('просмотр по ссылке на доску (D2) и клони�
     expect((await call(app, 'GET', '/api/projects/a', undefined, { token: owner.token })).status).toBe(200);
   });
 
-  it('клон по приглашению — по праву копирования роли: старая ссылка с запретом — 403, новый редактор — можно', async () => {
+  it('клон по приглашению - по праву копирования роли: старая ссылка с запретом - 403, новый редактор - можно', async () => {
     const { app, owner } = await setup();
     addInvite(app, 'old-view', 'a', owner.id, { defaultRole: 'view', allowCopy: 0 });
     const viewer = await anon(app);
@@ -360,7 +360,7 @@ describe('копирование в облачной комнате на уча�
 });
 
 describe('приглашения по почте: роли и последний вход', () => {
-  it('роль по умолчанию — редактор, принимаются новые роли и синонимы; lastUsedAt — после входа по ссылке', async () => {
+  it('роль по умолчанию - редактор, принимаются новые роли и синонимы; lastUsedAt - после входа по ссылке', async () => {
     const mailer = memoryMailer();
     const { app, owner } = await setup('pro', { mailer });
     const a = await call(app, 'POST', '/api/projects/a/email-invites', { email: 'one@example.com' }, { token: owner.token });
@@ -389,7 +389,7 @@ describe('защита чужих элементов на сервере (SPEC_N
   const stored = (app: TestApp) => JSON.parse((app.db.prepare("SELECT data_json FROM projects WHERE id = 'a'").get() as { data_json: string }).data_json);
   const patch = (ops: unknown[]) => ({ t: 'patch', pageId: 'a-p1', rev: 1, ops });
 
-  it('REST-патч: свой элемент — с автором из сессии, элемент учителя не стирается и не меняется (refused)', async () => {
+  it('REST-патч: свой элемент - с автором из сессии, элемент учителя не стирается и не меняется (refused)', async () => {
     const { app } = await lesson();
     const guest = await anon(app);
     const a = await call(app, 'POST', '/api/projects/a/patch?invite=inv-ed', patch([{ op: 'put', el: { ...rectEl('mine'), by: 'u:teacher' } }]), { token: guest.token });
@@ -422,7 +422,7 @@ describe('защита чужих элементов на сервере (SPEC_N
     expect(stored(app).pages[0].elements.find((e: any) => e.id === 'mine')).toMatchObject({ x: 2, by: `u:${guest.id}` });
   });
 
-  it('облачная комната: два устройства одного аккаунта — один автор; переподключение анонимного гостя — тот же автор', async () => {
+  it('облачная комната: два устройства одного аккаунта - один автор; переподключение анонимного гостя - тот же автор', async () => {
     const { app } = await lesson();
     const guest = await anon(app);
     const d1 = joinRoom(app, { invite: 'inv-ed', session: guest.token });

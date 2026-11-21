@@ -23,7 +23,7 @@ describe('кнопка «Чат и уведомления»', () => {
     document.body.className = '';
   });
 
-  it('иконка — константа каталога, подпись без непрочитанных', () => {
+  it('иконка - константа каталога, подпись без непрочитанных', () => {
     expect(btn().querySelector('svg')).not.toBeNull();
     expect(btn().getAttribute('aria-label')).toBe('Чат, комментарии и уведомления');
     expect(btn().title).toBe('Чат, комментарии и уведомления');
@@ -32,21 +32,21 @@ describe('кнопка «Чат и уведомления»', () => {
     expect(badge().getAttribute('aria-hidden')).toBe('true');
   });
 
-  it('счётчик — непрочитанные чата и системные; тихие не считаются', () => {
+  it('счётчик - непрочитанные чата и системные; тихие не считаются', () => {
     pushNotice({ title: 'Капибара', body: 'присоединился к доске' });
     pushNotice({ kind: 'chat', title: 'Лемур', body: 'привет' });
     pushNotice({ title: 'Вы позвали всех на эту страницу', quiet: true });
     expect(badge().classList.contains('on')).toBe(true);
     expect(badgeText()).toBe('2');
     expect(notifyShownCount()).toBe(2);
-    expect(btn().getAttribute('aria-label')).toBe('Чат, комментарии и уведомления: непрочитанных — 2');
-    expect(btn().title).toBe('Чат, комментарии и уведомления: непрочитанных — 2');
+    expect(btn().getAttribute('aria-label')).toBe('Чат, комментарии и уведомления: непрочитанных - 2');
+    expect(btn().title).toBe('Чат, комментарии и уведомления: непрочитанных - 2');
   });
 
   it('99+ и исчезновение при нуле', () => {
     for (let i = 0; i < 120; i++) pushNotice({ title: `№${i}` });
     expect(badgeText()).toBe('99+');
-    expect(btn().getAttribute('aria-label')).toBe('Чат, комментарии и уведомления: непрочитанных — 99+');
+    expect(btn().getAttribute('aria-label')).toBe('Чат, комментарии и уведомления: непрочитанных - 99+');
     clearNotices();
     expect(badge().classList.contains('on')).toBe(false);
     expect(btn().getAttribute('aria-label')).toBe('Чат, комментарии и уведомления');
@@ -57,7 +57,7 @@ describe('кнопка «Чат и уведомления»', () => {
     setDoNotDisturb(true);
     expect(btn().classList.contains('dnd')).toBe(true);
     expect(btn().querySelector('.nb-moon svg')).not.toBeNull();
-    expect(btn().title).toBe('Чат, комментарии и уведомления: непрочитанных — 1 · Не беспокоить включено');
+    expect(btn().title).toBe('Чат, комментарии и уведомления: непрочитанных - 1 · Не беспокоить включено');
     setDoNotDisturb(false);
     expect(btn().classList.contains('dnd')).toBe(false);
     expect(notifyLabel(0, true)).toBe('Чат, комментарии и уведомления · Не беспокоить включено');
@@ -72,7 +72,7 @@ describe('кнопка «Чат и уведомления»', () => {
     expect(badgeText()).toBe('2');
   });
 
-  it('щелчок — боковая панель в режиме ЧУ (aria-expanded), повторный — закрывает; в другом режиме — переключает на ЧУ', () => {
+  it('щелчок - боковая панель в режиме ЧУ (aria-expanded), повторный - закрывает; в другом режиме - переключает на ЧУ', () => {
     registerPanelMode({ id: 'notify', label: 'Чат и уведомления', icon: '<svg></svg>', mount: () => ({}) });
     registerPanelMode({ id: 'help', label: 'Справка', icon: '<svg></svg>', mount: () => ({}) });
     btn().click();

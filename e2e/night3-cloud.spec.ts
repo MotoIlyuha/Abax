@@ -93,7 +93,7 @@ const userIdOf = async (page: Page): Promise<string> => {
 };
 
 test.describe('облако', () => {
-  test('чужой проект по ссылке: с пустого устройства видна картинка, ответа в сети нет, клон — своя копия', async ({ browser }) => {
+  test('чужой проект по ссылке: с пустого устройства видна картинка, ответа в сети нет, клон - своя копия', async ({ browser }) => {
     // Автор (устройство А): картинка и задание с ответом 42
     const A = await device(browser);
     const a = await openAt(A, `${base}/`);
@@ -156,7 +156,7 @@ test.describe('облако', () => {
     await B.close();
   });
 
-  test('приглашение: Pro-автор закрыл вкладку, ученик в комнате отвечает «42» — автор потом видит попытку', async ({ browser }) => {
+  test('приглашение: Pro-автор закрыл вкладку, ученик в комнате отвечает «42» - автор потом видит попытку', async ({ browser }) => {
     const A = await device(browser);
     const a = await openAt(A, `${base}/`);
     await addTask(a, 'Сколько будет 6×7?', '42');
@@ -207,7 +207,7 @@ test.describe('облако', () => {
     await B.close();
   });
 
-  test('сервер сам держит лимиты бесплатного тарифа: четвёртый проект и четвёртая страница — отказ 403', async ({ browser }) => {
+  test('сервер сам держит лимиты бесплатного тарифа: четвёртый проект и четвёртая страница - отказ 403', async ({ browser }) => {
     const A = await device(browser);
     const a = await openAt(A, `${base}/`);
     await userIdOf(a);

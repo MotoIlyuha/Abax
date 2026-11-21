@@ -36,8 +36,8 @@ let hooks: PlansDialogHooks = { openLogin: () => {}, openPromo: () => {} };
 export function setPlansDialogHooks(h: PlansDialogHooks): void { hooks = h; }
 
 const REASONS: Record<ProFeature, string> = {
-  pages: 'На бесплатном тарифе — до 3 страниц в проекте. В Pro страниц сколько угодно',
-  projects: 'На бесплатном тарифе — до 3 проектов. В Pro проектов сколько угодно',
+  pages: 'На бесплатном тарифе - до 3 страниц в проекте. В Pro страниц сколько угодно',
+  projects: 'На бесплатном тарифе - до 3 проектов. В Pro проектов сколько угодно',
   history: 'История изменений доступна в подписке Pro',
   follow: 'Автопереход участников за вами доступен в подписке Pro',
   copy: 'Запрет копирования и экспорта доступен в подписке Pro',

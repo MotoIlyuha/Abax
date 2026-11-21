@@ -15,7 +15,7 @@ describe('preserveForeign', () => {
     expect(out.find(e => e.id === 't')).toBe(before[0]);
     expect(out.find(e => e.id === 'm')).toBe(prev[1]);
   });
-  it('удалённый автором чужой элемент не воскресает; созданный после снимка чужой — остаётся', () => {
+  it('удалённый автором чужой элемент не воскресает; созданный после снимка чужой - остаётся', () => {
     const prev = [el('t'), el('m', 'c:me')];
     const before = [el('m', 'c:me'), el('n', 'c:other')];
     expect(ids(preserveForeign(prev, before, mine))).toEqual(['m', 'n']);
@@ -25,14 +25,14 @@ describe('preserveForeign', () => {
     const before = [el('t'), el('x', 'c:me')];
     expect(ids(preserveForeign(prev, before, mine))).toEqual(['t', 'm']);
   });
-  it('взаимный порядок чужих — как сейчас', () => {
+  it('взаимный порядок чужих - как сейчас', () => {
     const prev = [el('a'), el('m', 'c:me'), el('b', 'c:o')];
     const before = [el('b', 'c:o'), el('m', 'c:me'), el('a')];
     const out = preserveForeign(prev, before, mine);
     expect(ids(out.filter(e => !mine(e)))).toEqual(['b', 'a']);
     expect(out).toHaveLength(3);
   });
-  it('без чужих — тот же снимок по содержимому', () => {
+  it('без чужих - тот же снимок по содержимому', () => {
     const prev = [el('m', 'c:me'), el('k', 'c:me')];
     expect(preserveForeign(prev, [], mine)).toEqual(prev);
   });

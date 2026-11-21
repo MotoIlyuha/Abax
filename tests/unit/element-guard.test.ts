@@ -21,7 +21,7 @@ describe('guardElementPut', () => {
     expect(guardElementPut(undefined, rect('n'), { ...anna, principal: null })).toBeNull(); // при защите без автора — нет
     expect(guardElementPut(undefined, rect('n', 'u:x'), { ...annaOpen, principal: null })).not.toHaveProperty('by'); // без защиты — элемент владельца
   });
-  it('свой элемент правится, автор не меняется; чужой при защите — нет, без защиты — да', () => {
+  it('свой элемент правится, автор не меняется; чужой при защите - нет, без защиты - да', () => {
     expect(guardElementPut(rect('a', 'u:anna'), rect('a', 'u:boris', 5), anna)).toMatchObject({ x: 5, by: 'u:anna' });
     expect(guardElementPut(rect('a'), rect('a', undefined, 5), anna)).toBeNull(); // элемент владельца (нет by)
     expect(guardElementPut(rect('a', 'u:boris'), rect('a', 'u:boris', 5), anna)).toBeNull();
@@ -35,7 +35,7 @@ describe('guardElementPut', () => {
     expect(t.studentDraft).toBe('мой ответ');
     expect(t).not.toHaveProperty('by');
   });
-  it('владелец правит всё; автор известного элемента остаётся, ввод ученика — у хаба', () => {
+  it('владелец правит всё; автор известного элемента остаётся, ввод ученика - у хаба', () => {
     expect(guardElementPut(rect('a', 'u:anna'), rect('a', undefined, 7), owner)).toMatchObject({ x: 7, by: 'u:anna' });
     const known = { ...task(), studentDraft: 'черновик' } as Element;
     expect(guardElementPut(known, { ...task(), statementMd: 'Новое' } as unknown as Element, owner)).toMatchObject({ statementMd: 'Новое', studentDraft: 'черновик' });
@@ -54,11 +54,11 @@ describe('guardPatch', () => {
     expect(r.refused.ids).toEqual(['t1', 'b1']);
     expect(r.patch.ops).toEqual([{ op: 'del', id: 'a1' }, { op: 'put', el: rect('n', 'u:anna') }]);
   });
-  it('порядок: свой элемент можно поднять, взаимный порядок чужих — нельзя', () => {
+  it('порядок: свой элемент можно поднять, взаимный порядок чужих - нельзя', () => {
     expect(guardPatch(known, patch([{ op: 'order', ids: ['t1', 'b1', 'a1'] }]), anna).refused.order).toBe(false);
     expect(guardPatch(known, patch([{ op: 'order', ids: ['b1', 't1', 'a1'] }]), anna).refused.order).toBe(true);
   });
-  it('настройки страницы при защите отклоняются; без защиты и у владельца — проходят', () => {
+  it('настройки страницы при защите отклоняются; без защиты и у владельца - проходят', () => {
     const r = guardPatch(known, patch([], { grid: 'none', backgroundColor: '#fff' }), anna);
     expect(r.refused.page).toBe(true);
     expect(r.patch).not.toHaveProperty('grid');
@@ -93,7 +93,7 @@ describe('guardPageReplace', () => {
     expect(foreign).toEqual(['t1', 't2', 'b1']);
     expect(r.refused).toBe(true);
   });
-  it('без защиты — страница участника (кроме заданий и авторов)', () => {
+  it('без защиты - страница участника (кроме заданий и авторов)', () => {
     const incoming = page([rect('b1', undefined, 2)], { name: 'Новое имя' });
     const r = guardPageReplace(known, incoming, annaOpen);
     expect(r.page.name).toBe('Новое имя');

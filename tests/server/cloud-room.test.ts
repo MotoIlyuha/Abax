@@ -247,7 +247,7 @@ describe('права по приглашению', () => {
 });
 
 describe('вход и отказы', () => {
-  it('неверное, отозванное, чужое и просроченное приглашения — закрытие 4403', async () => {
+  it('неверное, отозванное, чужое и просроченное приглашения - закрытие 4403', async () => {
     const { app, owner } = await setup();
     await putProject(app, owner.token, proj('b'));
     addInvite(app, 'inv-rev', 'a', owner.id, { revoked: 1 });
@@ -270,7 +270,7 @@ describe('вход и отказы', () => {
     expect((await fake.closed).code).toBe(4403);
   });
 
-  it('неизвестный и удалённый проект — 4404; версия протокола, первое сообщение — свои коды', async () => {
+  it('неизвестный и удалённый проект - 4404; версия протокола, первое сообщение - свои коды', async () => {
     const { app, owner } = await setup();
     expect((await join(app, 'нет', { invite: 'inv-edit' }).closed).code).toBe(4404);
     expect((await join(app, 'a', { invite: 'inv-edit', proto: 99 }).closed).code).toBe(4426);
@@ -361,7 +361,7 @@ describe('бесплатный тариф', () => {
     expect(app.rooms.count()).toBe(0);
   });
 
-  it('с автором — один гость; второй получает отказ (4402); автор ушёл — гость отключён (4503), всё сохранено', async () => {
+  it('с автором - один гость; второй получает отказ (4402); автор ушёл - гость отключён (4503), всё сохранено', async () => {
     const { app, owner } = await setup('free');
     const h = join(app, 'a', { session: owner.token });
     await until(() => h.last('init'));
@@ -463,7 +463,7 @@ describe('картинки, REST и закрытие сервера', () => {
 describe('персональные курсоры в облачной комнате (Ночь №4)', () => {
   const cursorOf = (p: Peer, name: string) => p.last('users')?.users.find((u: Msg) => u.name === name)?.cursorId;
 
-  it('Pro-курсор — только при тарифе pro/tutor по сессии; без сессии и на free — классический', async () => {
+  it('Pro-курсор - только при тарифе pro/tutor по сессии; без сессии и на free - классический', async () => {
     const { app, owner } = await setup();
     const host = join(app, 'a', { session: owner.token, name: 'Автор', cursorId: 'neon' });
     await until(() => host.last('init'));

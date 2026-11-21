@@ -5,7 +5,7 @@ import { createLetterLimit } from '../../src/letter-limit';
 import { NAME_LIMIT, NAME_NEAR, limitState, splitAtLimit } from '../../src/onboarding-logic';
 
 describe('лимит символов: чистая логика', () => {
-  it('лимит имени — 32 символа', () => {
+  it('лимит имени - 32 символа', () => {
     expect(NAME_LIMIT).toBe(32);
   });
 

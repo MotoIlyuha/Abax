@@ -67,7 +67,7 @@ const task = { id: 't1', type: 'task', x: 0, y: 0, w: 100, h: 50, taskId: 'tk', 
 
 describe.each(kinds)('$name', kind => {
   describe('роль и возможности в init и rights', () => {
-    it('гость по умолчанию — комментатор старой ссылки (как раньше: комментирует, пишет в чат, указка)', () => {
+    it('гость по умолчанию - комментатор старой ссылки (как раньше: комментирует, пишет в чат, указка)', () => {
       const { host, join } = room(kind.make());
       const g = join();
       const init = g.s.last('init')!;
@@ -78,7 +78,7 @@ describe.each(kinds)('$name', kind => {
       expect(host.last('init')!.caps).toEqual({ comment: true, chat: true, pointer: true, copy: true, summon: true });
     });
 
-    it('читатель: не пишет в чат, не комментирует, без реакций, указки и ответа в задании — но чат читает', () => {
+    it('читатель: не пишет в чат, не комментирует, без реакций, указки и ответа в задании - но чат читает', () => {
       const { hub, host, join } = room(kind.make(), demo({ pages: [{ id: 'pg1', name: 'П', grid: 'none', elements: [task, { id: 'r', type: 'shape', shape: 'rect', x: 0, y: 0, w: 5, h: 5, color: '#000', width: 1 }] }] }));
       const g = join('Пётр');
       expect(hub.setRights(g.uid, { role: 'reader' }).ok).toBe(true);
@@ -109,7 +109,7 @@ describe.each(kinds)('$name', kind => {
       expect(host.last('comments')!.comments).toHaveLength(1);
     });
 
-    it('редактор новой роли — edit на страницах без права; patch принимается', () => {
+    it('редактор новой роли - edit на страницах без права; patch принимается', () => {
       const { hub, host, join } = room(kind.make());
       host.recv({ t: 'caps', patches: true });
       const g = join();
@@ -161,7 +161,7 @@ describe.each(kinds)('$name', kind => {
 
   describe('копирование на участника', () => {
     const paid = (perms: Msg) => demo({ ownerPlan: 'pro', permissions: perms });
-    it('доска запрещает: комментатор и старый редактор — нет, новый редактор — да', () => {
+    it('доска запрещает: комментатор и старый редактор - нет, новый редактор - да', () => {
       const { hub, join } = room(kind.make(), paid({ allowCopy: false }));
       const c = join('К');
       const oldEd = join('С');
@@ -172,7 +172,7 @@ describe.each(kinds)('$name', kind => {
       expect(oldEd.s.last('rights')!.allowCopy).toBe(false);
       expect(ed.s.last('rights')).toMatchObject({ allowCopy: true, caps: { copy: true } });
     });
-    it('автор разрешил копирование — гостям сразу уходят новые права', () => {
+    it('автор разрешил копирование - гостям сразу уходят новые права', () => {
       const { host, join } = room(kind.make(), paid({ allowCopy: false }));
       const g = join();
       host.recv({ t: 'project', project: paid({ allowCopy: true }) });
@@ -181,7 +181,7 @@ describe.each(kinds)('$name', kind => {
   });
 
   describe('«Позвать всех» по настройке доски', () => {
-    it('редактор зовёт только при summon: editors; комментатор — никогда', () => {
+    it('редактор зовёт только при summon: editors; комментатор - никогда', () => {
       const { hub, host, join } = room(kind.make());
       const ed = join('Ред');
       const other = join('Другой');
@@ -198,8 +198,8 @@ describe.each(kinds)('$name', kind => {
     });
   });
 
-  describe('сведения о доступе в users — только автору', () => {
-    it('автор видит роль и источник, гость — нет', () => {
+  describe('сведения о доступе в users - только автору', () => {
+    it('автор видит роль и источник, гость - нет', () => {
       const { hub, host, join } = room(kind.make());
       const g = join();
       hub.setRights(g.uid, { role: 'reader' });
@@ -239,7 +239,7 @@ describe('src/room-host.ts: доступ из параметров подклю�
     expect(hub.room.access.get(g.uid!)!.principal).toBe('u:anna'); // автор элементов при смене доступа не меняется
     expect(hub.setAccess(0, { role: 'reader' })).toBe(false);
   });
-  it('неизвестная роль в access — старые права или по умолчанию', () => {
+  it('неизвестная роль в access - старые права или по умолчанию', () => {
     const hub = createTsHub({ code: 'R', plan: 'pro' });
     const { join } = room(hub);
     const g = join('X', { access: { role: 'admin' }, rights: { default: 'edit', pages: {} } });
@@ -265,7 +265,7 @@ describe.each(kinds)('$name: защита чужих элементов (SPEC_NI
   }
   const p = (ops: unknown[], extra: Msg = {}) => ({ t: 'patch', pageId: 'pg1', rev: 1, ops, ...extra });
 
-  it('хаб выдаёт гостю автора элементов; свой новый элемент — его, чужой автор не принимается', () => {
+  it('хаб выдаёт гостю автора элементов; свой новый элемент - его, чужой автор не принимается', () => {
     const { g, by, els } = setup();
     expect(by).toMatch(/^c:[0-9a-f]{12}$/);
     g.s.recv(p([{ op: 'put', el: { ...rectEl('mine'), by: 'c:someone' } }]));
@@ -276,7 +276,7 @@ describe.each(kinds)('$name: защита чужих элементов (SPEC_NI
     expect(fix.ops.find((o: Msg) => o.op === 'put').el).toMatchObject({ id: 'mine', by });
   });
 
-  it('свой штрих правится и стирается; элемент учителя — нет, отправителю — исправление', () => {
+  it('свой штрих правится и стирается; элемент учителя - нет, отправителю - исправление', () => {
     const { host, g, by, els } = setup();
     g.s.recv(p([{ op: 'put', el: { ...rectEl('mine'), by } }]));
     g.s.recv(p([{ op: 'put', el: { ...rectEl('mine', 7), by } }]));
@@ -293,14 +293,14 @@ describe.each(kinds)('$name: защита чужих элементов (SPEC_NI
     expect(els().some((e: Msg) => e.id === 'mine')).toBe(false);
   });
 
-  it('ответ в чужом задании принимается, условие и положение — нет', () => {
+  it('ответ в чужом задании принимается, условие и положение - нет', () => {
     const { g, els } = setup();
     g.s.recv(p([{ op: 'put', el: { ...task, statementMd: 'Подмена', x: 300, studentDraft: 'черновик' } }]));
     const t = els().find((e: Msg) => e.id === 't1');
     expect(t).toMatchObject({ statementMd: 'Сколько?', x: 0, studentDraft: 'черновик' });
   });
 
-  it('порядок чужих и настройки страницы не меняются; свои слои — да', () => {
+  it('порядок чужих и настройки страницы не меняются; свои слои - да', () => {
     const { g, by, els, hub } = setup();
     g.s.recv(p([{ op: 'put', el: { ...rectEl('mine'), by } }]));
     g.s.recv(p([{ op: 'order', ids: ['mine', 'teacher', 't1'] }]));
@@ -312,7 +312,7 @@ describe.each(kinds)('$name: защита чужих элементов (SPEC_NI
     expect(g.s.last('patch')).toMatchObject({ grid: 'square', backgroundColor: null, by: -1 });
   });
 
-  it('полный проект от гостя: чужое остаётся, удалённое возвращается, страниц не добавить; отправителю — проект хаба', () => {
+  it('полный проект от гостя: чужое остаётся, удалённое возвращается, страниц не добавить; отправителю - проект хаба', () => {
     const { g, by, els, hub } = setup();
     const n = g.s.all('project').length;
     g.s.recv({ t: 'project', project: demo({
@@ -328,7 +328,7 @@ describe.each(kinds)('$name: защита чужих элементов (SPEC_NI
     expect(g.s.all('project').length).toBe(n + 1);
   });
 
-  it('без защиты — как раньше: гость правит и стирает элемент учителя', () => {
+  it('без защиты - как раньше: гость правит и стирает элемент учителя', () => {
     const { g, els } = setup(false);
     g.s.recv(p([{ op: 'put', el: rectEl('teacher', 9) }]));
     expect(els().find((e: Msg) => e.id === 'teacher').x).toBe(9);
@@ -345,7 +345,7 @@ describe.each(kinds)('$name: защита чужих элементов (SPEC_NI
     expect(els().some((e: Msg) => e.id === 'teacher')).toBe(false);
   });
 
-  it('секрет возобновления: переподключившийся гость снова автор своих элементов; чужой и после правки — нет', () => {
+  it('секрет возобновления: переподключившийся гость снова автор своих элементов; чужой и после правки - нет', () => {
     const { hub, g, by, els } = setup();
     const secret = g.s.last('init')!.resume as string;
     expect(typeof secret).toBe('string');

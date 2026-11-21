@@ -220,7 +220,7 @@ describe('окно', () => {
 describe('сведения о приложении', () => {
   beforeEach(() => loadMain({ packaged: true }));
 
-  it('ОС и переносная ли версия — для выбора файла обновления', async () => {
+  it('ОС и переносная ли версия - для выбора файла обновления', async () => {
     const was = process.env.PORTABLE_EXECUTABLE_FILE;
     try {
       delete process.env.PORTABLE_EXECUTABLE_FILE;
@@ -238,7 +238,7 @@ describe('сведения о приложении', () => {
 describe('иконка окна', () => {
   beforeEach(() => loadMain({ packaged: true }));
 
-  it('свои цвета логотипа: PNG ставится всем окнам и тем, что откроются потом; не PNG — отказ', async () => {
+  it('свои цвета логотипа: PNG ставится всем окнам и тем, что откроются потом; не PNG - отказ', async () => {
     const win = FakeWindow.all[0];
     expect(await invoke('app:setIcon', 'data:image/png;base64,AAAA')).toBe(true);
     expect(win.icon).toEqual(expect.objectContaining({ url: 'data:image/png;base64,AAAA' }));
@@ -284,7 +284,7 @@ describe('хранение проектов', () => {
     ]);
   });
 
-  it('иконка проекта — в списке; пустая или не строка не попадает', async () => {
+  it('иконка проекта - в списке; пустая или не строка не попадает', async () => {
     await invoke('boards:save', { ...project('a', 1), icon: '🚀' });
     await invoke('boards:save', { ...project('b', 2), icon: '' });
     await invoke('boards:save', { ...project('c', 3), icon: 42 });
@@ -321,7 +321,7 @@ describe('хранение проектов', () => {
 describe('диалоги файлов', () => {
   beforeEach(() => loadMain());
 
-  it('pdf:pick — отмена и выбор', async () => {
+  it('pdf:pick - отмена и выбор', async () => {
     dialog.showOpenDialog.mockResolvedValueOnce({ canceled: true, filePaths: [] });
     expect(await invoke('pdf:pick')).toBeNull();
     const f = path.join(userData, 'hw.pdf');
@@ -331,7 +331,7 @@ describe('диалоги файлов', () => {
     expect(dialog.showOpenDialog.mock.calls[1][0].filters[0].extensions).toEqual(['pdf']);
   });
 
-  it('image:pick — mime по расширению (jpg → jpeg)', async () => {
+  it('image:pick - mime по расширению (jpg → jpeg)', async () => {
     dialog.showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: [] });
     expect(await invoke('image:pick')).toBeNull();
     for (const [ext, mime] of [['JPG', 'jpeg'], ['png', 'png'], ['webp', 'webp']]) {
@@ -342,7 +342,7 @@ describe('диалоги файлов', () => {
     }
   });
 
-  it('export:png — отмена и запись файла', async () => {
+  it('export:png - отмена и запись файла', async () => {
     const dataUrl = 'data:image/png;base64,' + Buffer.from('PNGDATA').toString('base64');
     dialog.showSaveDialog.mockResolvedValueOnce({ canceled: true });
     expect(await invoke('export:png', { dataUrl, name: 'a.png' })).toBe(false);
@@ -392,7 +392,7 @@ describe('совместная работа', () => {
     expect(await invoke('share:status')).toEqual({ active: false });
   });
 
-  it('занятый порт — берётся следующий свободный', async () => {
+  it('занятый порт - берётся следующий свободный', async () => {
     const busy = Number(process.env.DOSKA_SHARE_PORT);
     // порт мог уже занять чужой соединяющийся сокет (параллельные тесты) — для проверки это то же самое «занят»
     const blocker = net.createServer();
@@ -420,7 +420,7 @@ describe('совместная работа через интернет', () => 
   });
   afterAll(async () => { await relay?.close(); delete process.env.DOSKA_RELAY_URL; });
 
-  it('без запущенной совместной работы и без адреса ретранслятора — понятные ошибки', async () => {
+  it('без запущенной совместной работы и без адреса ретранслятора - понятные ошибки', async () => {
     expect(await invoke('share:cloudStart')).toEqual({ ok: false, error: 'Совместная работа выключена' });
     await invoke('share:start');
     expect(await invoke('share:cloudStart')).toEqual({ ok: false, error: 'Не указан адрес ретранслятора' });
@@ -428,7 +428,7 @@ describe('совместная работа через интернет', () => 
     expect((await invoke('share:status')).cloud).toBeNull();
   });
 
-  it('ретранслятор недоступен — ошибка, облако не запущено', async () => {
+  it('ретранслятор недоступен - ошибка, облако не запущено', async () => {
     await invoke('share:start');
     expect(await invoke('share:cloudStart', { relayUrl: 'ws://127.0.0.1:1' })).toEqual({ ok: false, error: 'Не удалось подключиться к ретранслятору' });
     expect((await invoke('share:status')).cloud).toBeNull();
@@ -459,7 +459,7 @@ describe('совместная работа через интернет', () => 
     await new Promise<void>(res => { const t = setInterval(() => { if (relay.stats().rooms === 0) { clearInterval(t); res(); } }, 10); });
   });
 
-  it('адрес по умолчанию — из DOSKA_RELAY_URL; share:cloudStop закрывает только облачную комнату', async () => {
+  it('адрес по умолчанию - из DOSKA_RELAY_URL; share:cloudStop закрывает только облачную комнату', async () => {
     relay ??= await createRelay({ port: 0, host: '127.0.0.1', statsIntervalMs: 0, log: () => {} });
     process.env.DOSKA_RELAY_URL = `ws://127.0.0.1:${relay.port}`;
     await loadMain();
@@ -508,7 +508,7 @@ describe('preload', () => {
 
 describe('адреса комнаты в локальной сети и код комнаты (Ночь №6, D4/D5)', () => {
   const lan = require('../../electron/lan.cjs');
-  it('обычная сеть — первой, виртуальные адаптеры и 169.254 — после, loopback не выдаётся за адрес для гостей', () => {
+  it('обычная сеть - первой, виртуальные адаптеры и 169.254 - после, loopback не выдаётся за адрес для гостей', () => {
     const ifaces = {
       'vEthernet (WSL)': [{ family: 'IPv4', address: '172.20.0.1', internal: false }],
       lo: [{ family: 'IPv4', address: '127.0.0.1', internal: true }],
@@ -522,7 +522,7 @@ describe('адреса комнаты в локальной сети и код �
     expect(r).toMatchObject({ url: 'http://192.168.1.23:4826/?room=ABCD1234', localOnly: false });
     expect(r.urls.map((u: any) => u.address)).toEqual(['192.168.1.23', '172.20.0.1', '169.254.3.4']);
   });
-  it('без сети — localOnly: 127.0.0.1 только для этого компьютера', () => {
+  it('без сети - localOnly: 127.0.0.1 только для этого компьютера', () => {
     expect(lan.shareUrls({ lo: [{ family: 'IPv4', address: '127.0.0.1', internal: true }] }, 4826, 'X'))
       .toEqual({ url: 'http://127.0.0.1:4826/?room=X', urls: [], localOnly: true });
   });

@@ -43,7 +43,7 @@ describe('реакции у автора без комнаты', () => {
     expect(reactions('a')).toBeUndefined();
   });
 
-  it('«поставить» не снимает уже свою, «убрать» не ставит; можно несколько разных; недавние — свежая первой', () => {
+  it('«поставить» не снимает уже свою, «убрать» не ставит; можно несколько разных; недавние - свежая первой', () => {
     addReaction('a', '🔥');
     addReaction('a', '🔥');
     expect(reactions('a')).toEqual({ '🔥': [mine()] });
@@ -77,7 +77,7 @@ describe('обсуждение объекта у автора без комна�
     i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
   };
 
-  it('новое обсуждение: «Новый комментарий», первое сообщение — новая ветка у объекта; панель остаётся открытой', () => {
+  it('новое обсуждение: «Новый комментарий», первое сообщение - новая ветка у объекта; панель остаётся открытой', () => {
     startComment(state.board.elements[0]);
     expect(pop()!.querySelector('.cp-title')!.textContent).toBe('Новый комментарий');
     expect(pop()!.querySelector('.cp-sub')!.textContent).toBe('Фигура');
@@ -100,7 +100,7 @@ describe('обсуждение объекта у автора без комна�
     expect(pop()!.querySelectorAll('.cp-msg.grouped')).toHaveLength(1);
   });
 
-  it('чужие сообщения — текстом, слева с именем; «Решено» закрывает все ветки, новое сообщение — новая ветка', () => {
+  it('чужие сообщения - текстом, слева с именем; «Решено» закрывает все ветки, новое сообщение - новая ветка', () => {
     let page = createCommentThread(state.board, { x: 0, y: 0, targetElementId: 'a', authorId: 'u1', authorName: '<b>Маша</b>', text: '<img src=x onerror=1>' });
     page = createCommentThread(page, { x: 0, y: 0, targetElementId: 'a', authorId: 'u2', authorName: 'Вова', text: 'второй' });
     state.board.comments = page.comments;
@@ -120,7 +120,7 @@ describe('обсуждение объекта у автора без комна�
     expect(pop()!.classList.contains('resolved')).toBe(false);
   });
 
-  it('пин ветки без объекта открывает её; повторное открытие того же обсуждения — закрывает; Esc закрывает', () => {
+  it('пин ветки без объекта открывает её; повторное открытие того же обсуждения - закрывает; Esc закрывает', () => {
     state.board.comments = createCommentThread(state.board, { x: 50, y: 60, authorId: 'u1', authorName: 'А', text: 'т' }).comments;
     const pin = layoutPins(state.board.comments, state.board.elements, state.camera, 800, 600)[0];
     expect(annotationClick(pin.x, pin.y)).toBe(true);
@@ -135,7 +135,7 @@ describe('обсуждение объекта у автора без комна�
     expect(threadOpen()).toBe(false);
   });
 
-  it('объект удалён — панель закрывается сама', () => {
+  it('объект удалён - панель закрывается сама', () => {
     openDiscussion('b');
     expect(threadOpen()).toBe(true);
     state.board.elements = state.board.elements.filter(e => e.id !== 'b');

@@ -1698,8 +1698,8 @@ function buildLayerControl(sel: Element[], moves: { up: boolean; down: boolean }
     const b = document.createElement('button');
     b.className = 'qm-layer-arrow';
     b.title = direction === 'top'
-      ? 'Выше на слой; двойной клик — наверх; удержание — закрепить наверху'
-      : 'Ниже на слой; двойной клик — вниз; удержание — закрепить внизу';
+      ? 'Выше на слой; двойной клик - наверх; удержание - закрепить наверху'
+      : 'Ниже на слой; двойной клик - вниз; удержание - закрепить внизу';
     b.setAttribute('aria-label', b.title);
     b.innerHTML = (direction === 'top' ? ICONS.layerTop : ICONS.layerBottom);
     let hold = 0, held = false;
@@ -2321,7 +2321,7 @@ function renderAdvancedSettings(host: HTMLElement): void {
   lbl.textContent = 'Панель инструментов';
   box.appendChild(lbl);
   box.appendChild(settingCheck('toolbarDetachable', 'Разрешить откреплять панель инструментов',
-    'При наведении над панелью появляется ручка: за неё панель переносят по доске (не помещается — поворачивается), '
+    'При наведении над панелью появляется ручка: за неё панель переносят по доске (не помещается - поворачивается), '
     + 'нажатие на ручку поворачивает панель. Выключение возвращает панель на её край',
     () => {
       // запрет откреплять — панель возвращается к своему краю
@@ -2381,7 +2381,7 @@ function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
   pop.appendChild(row);
   const lbl8 = document.createElement('label');
   lbl8.className = 'ctx-check';
-  lbl8.title = macKeys('Изображения и страницы PDF не искажаются при изменении размера — Ctrl или Shift зажимать не нужно');
+  lbl8.title = macKeys('Изображения и страницы PDF не искажаются при изменении размера - Ctrl или Shift зажимать не нужно');
   const cb8 = document.createElement('input');
   cb8.type = 'checkbox';
   cb8.checked = state.settings.keepImageAspect;
@@ -2400,8 +2400,8 @@ function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
   const wheelRow = document.createElement('div');
   wheelRow.className = 'ctx-toolbar-pos';
   const wheelModes: { mode: WheelMode; name: string; hint: string }[] = [
-    { mode: 'scroll', name: 'Прокрутка', hint: 'Колёсико прокручивает, Shift — по горизонтали, Ctrl — масштаб' },
-    { mode: 'zoom', name: 'Масштаб', hint: 'Колёсико масштабирует, Shift — прокрутка по горизонтали, Ctrl+Shift — по вертикали. Настройка также действует на тачпад' },
+    { mode: 'scroll', name: 'Прокрутка', hint: 'Колёсико прокручивает, Shift - по горизонтали, Ctrl - масштаб' },
+    { mode: 'zoom', name: 'Масштаб', hint: 'Колёсико масштабирует, Shift - прокрутка по горизонтали, Ctrl+Shift - по вертикали. Настройка также действует на тачпад' },
   ];
   for (const { mode, name, hint } of wheelModes) {
     const b = document.createElement('button');
@@ -2566,7 +2566,7 @@ const TOOLBAR_HOLD_MS = 500;
 function toolbarGrip(tb: HTMLElement): HTMLElement {
   const grip = document.createElement('div');
   grip.className = 'tb-grip';
-  grip.title = 'Перетащите, чтобы переместить панель. Нажмите — повернуть, удерживайте — прикрепить обратно к краю';
+  grip.title = 'Перетащите, чтобы переместить панель. Нажмите - повернуть, удерживайте - прикрепить обратно к краю';
   grip.innerHTML = GRIP_ICON;
   grip.addEventListener('pointerdown', e => {
     if (e.button !== 0 || !e.isPrimary || !state.settings.toolbarDetachable) return;
@@ -2671,7 +2671,7 @@ export async function exportPng(scope: 'auto' | 'page' | 'selection' = 'auto'): 
     : state.board.elements;
   if (els.length === 0) {
     if (scope === 'selection') showToast('Сначала выделите объекты на доске');
-    else alert('Страница пуста — нечего экспортировать');
+    else alert('Страница пуста - нечего экспортировать');
     return;
   }
   const bb = contentBBox(els);
@@ -2952,7 +2952,7 @@ export async function pasteImageFromClipboard(): Promise<void> {
   try {
     items = await navigator.clipboard.read();
   } catch {
-    showToast(macKeys('Нет доступа к буферу обмена — нажмите Ctrl+V на доске'));
+    showToast(macKeys('Нет доступа к буферу обмена - нажмите Ctrl+V на доске'));
     return;
   }
   for (const it of items) {
@@ -3588,7 +3588,7 @@ function makePageCard(pageId: string, draft = false): PageCard {
   grid.title = 'Фон страницы';
   const name = document.createElement('span');
   name.className = 'page-name';
-  name.title = 'Двойной клик — переименовать';
+  name.title = 'Двойной клик - переименовать';
   row.append(grid, name);
   const del = document.createElement('button');
   del.className = 'page-del';
@@ -3629,7 +3629,7 @@ function makeDraftDivider(): HTMLElement {
   const d = document.createElement('div');
   d.className = 'page-divider';
   d.setAttribute('role', 'separator');
-  d.title = 'Справа — черновики: их видите только вы';
+  d.title = 'Справа - черновики: их видите только вы';
   return d;
 }
 
@@ -4633,7 +4633,7 @@ function projectCard(meta: ProjectMeta, seen: Set<string>): HTMLElement {
   const name = document.createElement('span');
   name.className = 'project-name';
   name.textContent = meta.name;
-  name.title = 'Двойной клик — переименовать';
+  name.title = 'Двойной клик - переименовать';
   title.append(name, ...projectActions(meta));
   const info = document.createElement('div');
   info.className = 'project-info';
@@ -4654,7 +4654,7 @@ function projectRow(meta: ProjectMeta): HTMLElement {
   const name = document.createElement('span');
   name.className = 'project-name';
   name.textContent = meta.name;
-  name.title = 'Двойной клик — переименовать';
+  name.title = 'Двойной клик - переименовать';
   const info = document.createElement('span');
   info.className = 'project-info';
   info.textContent = `Изменён ${dayLabel(meta.updatedAt)}`;
@@ -4665,7 +4665,7 @@ function projectRow(meta: ProjectMeta): HTMLElement {
   const last = openedMap()[meta.id];
   const openedCell = document.createElement('span');
   openedCell.className = 'project-cell project-opened';
-  openedCell.textContent = last ? capitalize(dayLabel(last.at)) : '—';
+  openedCell.textContent = last ? capitalize(dayLabel(last.at)) : '-';
   const actions = document.createElement('div');
   actions.className = 'project-actions';
   actions.append(...projectActions(meta));
@@ -4702,7 +4702,7 @@ function buildCarousel(preview: HTMLElement, project: Project, seen: Set<string>
   });
   const label = document.createElement('div');
   label.className = 'carousel-page';
-  label.title = 'Двойной клик — переименовать страницу';
+  label.title = 'Двойной клик - переименовать страницу';
   const num = document.createElement('span');
   num.className = 'page-num';
   const pageName = document.createElement('span');
@@ -5121,7 +5121,7 @@ function syncPresetButtons(tb: HTMLElement): void {
     b.classList.toggle('current', multi && current);
     if (current) { b.dataset.ctx = 'style'; b.id = 'btn-style'; }
     else { delete b.dataset.ctx; b.removeAttribute('id'); }
-    b.title = multi ? `${title}: пресет ${i + 1}${current ? ' — цвет и толщина' : ''}` : 'Цвет и толщина';
+    b.title = multi ? `${title}: пресет ${i + 1}${current ? ' - цвет и толщина' : ''}` : 'Цвет и толщина';
     // текущий показывает живой стиль (в т.ч. подхваченный из выделения)
     paintStyleIndicator(b.querySelector<HTMLElement>('.style-ind')!, kind !== 'laser', current ? state.style : preset);
   }
@@ -5576,7 +5576,7 @@ function wireZoomInput(): void {
       // в просмотре по ссылке доску не правят: остаётся только «Плавное движение»
       if (state.linkMode === null) p.append(settingSwitch('snapToGrid', 'Привязка к сетке', SNAP_ICON, 'Точки, фигуры и рамки при перемещении встают на узлы сетки'));
       p.append(settingSwitch('smoothPan', 'Плавное движение', SMOOTH_PAN_ICON, 'Небольшая инерция при перемещении по доске: после отпускания камера плавно останавливается'));
-      if (state.linkMode === null) p.append(settingSwitch('alignGuides', 'Направляющие', GUIDES_ICON, 'При переносе и изменении размера — пунктир от соседних объектов, к их краям и центрам объект примагничивается'));
+      if (state.linkMode === null) p.append(settingSwitch('alignGuides', 'Направляющие', GUIDES_ICON, 'При переносе и изменении размера - пунктир от соседних объектов, к их краям и центрам объект примагничивается'));
     } else {
       const current = state.board.backgroundColor ?? '#ffffff';
       for (const [name, color] of PAGE_BACKGROUNDS) {

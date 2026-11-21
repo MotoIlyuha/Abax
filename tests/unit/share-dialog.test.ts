@@ -75,7 +75,7 @@ beforeEach(() => {
 afterEach(() => { closeShareDialog(); setApiForTests(undefined); document.body.className = ''; });
 
 describe('доступность и вкладки', () => {
-  it('диалог с заголовком; вкладки в шапке с aria-selected, стрелки и Home/End переключают, неактивная панель — inert', async () => {
+  it('диалог с заголовком; вкладки в шапке с aria-selected, стрелки и Home/End переключают, неактивная панель - inert', async () => {
     document.getElementById('btn-share')!.focus();
     await openShareDialog(deps());
     expect(dlg().getAttribute('role')).toBe('dialog');
@@ -114,7 +114,7 @@ describe('доступность и вкладки', () => {
     expect(dlg().querySelectorAll('.share-pages-card > .oscroll-shade')).toHaveLength(2);
   });
 
-  it('Esc закрывает окно и возвращает фокус на кнопку «Поделиться»; повторное открытие — переключатель', async () => {
+  it('Esc закрывает окно и возвращает фокус на кнопку «Поделиться»; повторное открытие - переключатель', async () => {
     const opener = document.getElementById('btn-share')!;
     opener.focus();
     await openShareDialog(deps());
@@ -140,7 +140,7 @@ describe('доступность и вкладки', () => {
 });
 
 describe('без облака', () => {
-  it('путь без сервера — на главной и первым: «Включить совместную работу» запускает комнату, ссылка — кнопка', async () => {
+  it('путь без сервера - на главной и первым: «Включить совместную работу» запускает комнату, ссылка - кнопка', async () => {
     const api = shareApi();
     await openShareDialog(deps(api));
     expect(q('.share-invite').hidden).toBe(true);
@@ -156,13 +156,13 @@ describe('без облака', () => {
     expect(link.textContent).toBe('http://192.168.1.5:4826/?room=ABCDEFGH');
   });
 
-  it('только 127.0.0.1 — предупреждение «только на этом компьютере»', async () => {
+  it('только 127.0.0.1 - предупреждение «только на этом компьютере»', async () => {
     await openShareDialog(deps(shareApi({ active: true, url: 'http://127.0.0.1:4826/?room=X', urls: [], localOnly: true, users: [] })));
     expect(dlg().textContent).toContain('Только на этом компьютере');
     expect(dlg().textContent).toContain('работает только на этом компьютере');
   });
 
-  it('права гостя по страницам и роль — в выпадающих списках строки участника', async () => {
+  it('права гостя по страницам и роль - в выпадающих списках строки участника', async () => {
     const calls: unknown[] = [];
     const api = shareApi({ active: true, url: 'http://192.168.1.5:4826/?room=X', urls: [], users: [{ userId: 7, name: 'Аня', color: '#f00', rights: { default: 'view' } }] });
     api.shareSetRights = async (uid, patch) => { calls.push([uid, patch]); return { ok: true }; };
@@ -206,7 +206,7 @@ describe('с облаком', () => {
     return api;
   }
 
-  it('«Есть доступ»: владелец и приглашения со статусом, роль — в выпадающем списке строки; «Сейчас на доске» в окне нет', async () => {
+  it('«Есть доступ»: владелец и приглашения со статусом, роль - в выпадающем списке строки; «Сейчас на доске» в окне нет', async () => {
     cloud({ emails: [inv({ lastUsedAt: Date.now() }), inv({ id: 'e3', email: 'petr@mail.ru', role: 'reader' })] });
     await openShareDialog(deps());
     await flush(6);
@@ -249,7 +249,7 @@ describe('с облаком', () => {
     expect(document.activeElement).toBe(input);
   });
 
-  it('приглашение по почте с ролью; «Отозвать приглашение» — в списке роли, при включённой ссылке честно говорит про неё', async () => {
+  it('приглашение по почте с ролью; «Отозвать приглашение» - в списке роли, при включённой ссылке честно говорит про неё', async () => {
     const api = cloud({ link: { token: 'TOK', url: 'https://abax.example/?route=collab&token=TOK', prettyUrl: null, defaultRole: 'edit', role: 'editor', allowCopy: true, pageRights: {}, enabled: true, alias: null } });
     await openShareDialog(deps());
     await flush(6);
@@ -277,7 +277,7 @@ describe('с облаком', () => {
     expect(dlg().textContent).not.toContain('Отозвать доступ');
   });
 
-  it('пустой адрес — поле качается и краснеет, запроса нет', async () => {
+  it('пустой адрес - поле качается и краснеет, запроса нет', async () => {
     const api = cloud();
     await openShareDialog(deps());
     await flush(6);
@@ -287,7 +287,7 @@ describe('с облаком', () => {
     expect(api.calls.some(c => c[0] === 'POST')).toBe(false);
   });
 
-  it('общая ссылка: выключатель создаёт и ставит на паузу; адрес и «Копировать» — только у включённой', async () => {
+  it('общая ссылка: выключатель создаёт и ставит на паузу; адрес и «Копировать» - только у включённой', async () => {
     const api = cloud();
     await openShareDialog(deps());
     await flush(6);
@@ -309,7 +309,7 @@ describe('с облаком', () => {
     expect(q('.share-link-row').title).toContain('Ссылка выключена');
   });
 
-  it('«Сбросить ссылку…» — кнопка рядом с общей ссылкой; подтверждение встаёт на место адреса, кнопки — в одну линию', async () => {
+  it('«Сбросить ссылку…» - кнопка рядом с общей ссылкой; подтверждение встаёт на место адреса, кнопки - в одну линию', async () => {
     const api = cloud({ link: { token: 'TOK', url: 'https://abax.example/?route=collab&token=TOK', prettyUrl: null, defaultRole: 'edit', role: 'editor', allowCopy: true, pageRights: {}, enabled: true, alias: null } });
     await openShareDialog(deps());
     await flush(6);
@@ -339,7 +339,7 @@ describe('с облаком', () => {
     expect(q<HTMLInputElement>('.share-url').value).toContain('token=NEWTOKEN');
   });
 
-  it('адрес из ответа сервера — только текст', async () => {
+  it('адрес из ответа сервера - только текст', async () => {
     cloud({ emails: [inv({ email: '<img src=x onerror=alert(1)>@x.ru' })] });
     await openShareDialog(deps());
     await flush(6);
@@ -347,7 +347,7 @@ describe('с облаком', () => {
     expect(q('.share-email-addr').textContent).toBe('<img src=x onerror=alert(1)>@x.ru');
   });
 
-  it('проект не в облаке — блока почты нет', async () => {
+  it('проект не в облаке - блока почты нет', async () => {
     setApiForTests(fakeApi(() => ({ invite: null })));
     await openShareDialog(deps());
     await flush(4);
@@ -384,7 +384,7 @@ describe('страница «Настройки доступа»', () => {
     expect(state.project.permissions?.pageRights).toEqual({ g2: 'hidden' });
   });
 
-  it('максимум гостей — счётчик: стрелки и кнопки идут по списку, «∞» — без ограничений', async () => {
+  it('максимум гостей - счётчик: стрелки и кнопки идут по списку, «∞» - без ограничений', async () => {
     await openShareDialog(deps());
     toSettings();
     const stepper = field<HTMLElement>('maxGuests');
@@ -411,7 +411,7 @@ describe('страница «Настройки доступа»', () => {
     expect(sel.dataset.value).toBe('');
   });
 
-  it('на Free защита копирования и клонирования и лимит гостей — с меткой Pro', async () => {
+  it('на Free защита копирования и клонирования и лимит гостей - с меткой Pro', async () => {
     const { applyServerPlan } = await import('../../src/plan');
     applyServerPlan({ plan: 'free', limitsEnforced: true });
     await openShareDialog(deps());
@@ -424,7 +424,7 @@ describe('страница «Настройки доступа»', () => {
     expect(field('protectElements').disabled).toBe(false); // защита элементов — на всех тарифах
   });
 
-  it('именной адрес: свободные похожие — сразу при вводе, без «Сохранить»; ответ на устаревший ввод не показывается', async () => {
+  it('именной адрес: свободные похожие - сразу при вводе, без «Сохранить»; ответ на устаревший ввод не показывается', async () => {
     setSyncedRev('p1', 3);
     const api = fakeApi((m, p) => {
       if (m === 'GET' && p.startsWith('/api/invites?')) return { invite: null };

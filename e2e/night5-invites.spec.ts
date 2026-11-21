@@ -7,7 +7,7 @@ import { createInvite, device, login, openAt, shareTab, stateOf, useNight5Server
 const env = useNight5Server();
 
 test.describe('приглашения', () => {
-  test('автор скрывает страницу под гостем — гость уходит на открытую; скрыты все — баннер ожидания; открыл — баннер ушёл', async ({ browser }) => {
+  test('автор скрывает страницу под гостем - гость уходит на открытую; скрыты все - баннер ожидания; открыл - баннер ушёл', async ({ browser }) => {
     const { base } = env.get();
     const A = await device(browser, base, { name: 'Лемур' });
     const a = await openAt(A, `${base}/`, env.errors);
@@ -56,7 +56,7 @@ test.describe('приглашения', () => {
     await G.close();
   });
 
-  test('«Комната заполнена»: Pro-автор пускает одного гостя — второй видит «1 из 1» и открывает доску только для чтения', async ({ browser }) => {
+  test('«Комната заполнена»: Pro-автор пускает одного гостя - второй видит «1 из 1» и открывает доску только для чтения', async ({ browser }) => {
     const { srv, base } = env.get();
     const A = await device(browser, base, { name: 'Лемур' });
     const a = await openAt(A, `${base}/`, env.errors);
@@ -93,7 +93,7 @@ test.describe('приглашения', () => {
     await G2.close();
   });
 
-  test('приглашение по почте: письмо со ссылкой, у адресата — карточка на домашнем экране, «Присоединиться» ведёт в комнату', async ({ browser }) => {
+  test('приглашение по почте: письмо со ссылкой, у адресата - карточка на домашнем экране, «Присоединиться» ведёт в комнату', async ({ browser }) => {
     const { srv, base, outbox } = env.get();
     const host = await login(base, 'mail-host@abax.example');
     const A = await device(browser, base, { session: host.token, name: 'Лемур' });

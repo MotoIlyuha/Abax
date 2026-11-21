@@ -39,7 +39,7 @@ describe('spreadElements', () => {
     expect(out[1]).toMatchObject({ id: 'b', x: 0, y: 150 });
   });
 
-  it('без сдвига — тот же массив', () => {
+  it('без сдвига - тот же массив', () => {
     const els: Element[] = [rect('a', 0)];
     expect(spreadElements(els, new Set(['a']), 0)).toBe(els);
   });

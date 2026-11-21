@@ -14,7 +14,7 @@ const ev = (id: string, title: string, ts = T0, extra: Partial<Notice> = {}): Fe
   ({ kind: 'event', id, ts, n: { id, kind: 'system', level: 'info', title, ts, read: true, ...extra } });
 
 describe('лента: чистые правила', () => {
-  it('эмодзи-сообщение — 1–3 эмодзи без другого текста', () => {
+  it('эмодзи-сообщение - 1–3 эмодзи без другого текста', () => {
     expect(isEmojiOnly('👍')).toBe(true);
     expect(isEmojiOnly(' 🙏🔥 ')).toBe(true);
     expect(isEmojiOnly('👨‍👩‍👧')).toBe(true); // склейка ZWJ — одно
@@ -45,7 +45,7 @@ describe('лента: чистые правила', () => {
     expect(fullTime(new Date(2026, 10, 19, 9, 5).getTime())).toBe('19 ноября 2026, 09:05');
   });
 
-  it('цвет имени — плашка курсора; светлая плашка (янтарь) — цвет выделения', () => {
+  it('цвет имени - плашка курсора; светлая плашка (янтарь) - цвет выделения', () => {
     expect(nameColor('mint')).toBe('#087f5b');
     expect(nameColor('amber')).toBe('#cc6a00');
     expect(nameColor('нет такого')).toBe('#2160dd');
@@ -83,7 +83,7 @@ describe('лента: разметка', () => {
 
   const groups = () => [...feed.el.querySelectorAll<HTMLElement>('.cf-group')];
 
-  it('группировка по автору и 3 минутам: аватар и имя — у первого сообщения группы, свои — без аватара', () => {
+  it('группировка по автору и 3 минутам: аватар и имя - у первого сообщения группы, свои - без аватара', () => {
     items = [
       msg('1', 2, 'раз', T0, { cursorId: 'mint' }),
       msg('2', 2, 'два', T0 + MIN),
@@ -119,7 +119,7 @@ describe('лента: разметка', () => {
     expect(row.querySelector('.cf-ev-icon svg')).not.toBeNull();
   });
 
-  it('событие участника — мини-аватар; имя с разметкой — текст', () => {
+  it('событие участника - мини-аватар; имя с разметкой - текст', () => {
     items = [ev('e', '<b>Лемур</b>', T0, { body: 'присоединился к доске', user: { name: '<b>Лемур</b>', cursorId: 'mint' } })];
     feed.render();
     const row = feed.el.querySelector<HTMLElement>('.cf-event')!;
@@ -128,7 +128,7 @@ describe('лента: разметка', () => {
     expect(row.querySelector('.cf-ev-text')!.textContent).toBe('<b>Лемур</b> присоединился к доске');
   });
 
-  it('эмодзи-сообщение — крупно, без пузыря', () => {
+  it('эмодзи-сообщение - крупно, без пузыря', () => {
     items = [msg('1', 2, '🙏🔥'), msg('2', 2, 'ок 👍', T0 + 1)];
     feed.render();
     const rows = feed.el.querySelectorAll('.cf-msg');
@@ -138,7 +138,7 @@ describe('лента: разметка', () => {
     expect(rows[1].querySelector('.cf-bubble')).not.toBeNull();
   });
 
-  it('ссылки — только https, с target и rel; разметка в тексте — текстом', () => {
+  it('ссылки - только https, с target и rel; разметка в тексте - текстом', () => {
     items = [msg('1', 2, '<img src=x onerror="alert(1)"> https://abax.app/a javascript:alert(1) http://x.ru')];
     feed.render();
     const bubble = feed.el.querySelector('.cf-bubble')!;
@@ -152,7 +152,7 @@ describe('лента: разметка', () => {
     expect(bubble.textContent).toBe('<img src=x onerror="alert(1)"> https://abax.app/a javascript:alert(1) http://x.ru');
   });
 
-  it('имя участника с разметкой — текст', () => {
+  it('имя участника с разметкой - текст', () => {
     items = [msg('1', 2, 'x', T0, { name: '<b onclick="x">Лемур</b>' })];
     feed.render();
     expect(feed.el.querySelector('.cf-name b')).toBeNull();
@@ -171,7 +171,7 @@ describe('лента: разметка', () => {
     expect(groups()).toHaveLength(3);
   });
 
-  it('линия «Новые» — над первым непрочитанным и разрывает группу', () => {
+  it('линия «Новые» - над первым непрочитанным и разрывает группу', () => {
     items = [msg('1', 2, 'раз'), msg('2', 2, 'два', T0 + 10), msg('3', 2, 'три', T0 + 20)];
     feed.render('2');
     const list = feed.el.querySelector('.cf-list')!;
@@ -205,7 +205,7 @@ describe('лента: разметка', () => {
     expect(groups()[1].classList.contains('cf-in')).toBe(true);
   });
 
-  it('пользователь не внизу — кнопка «↓ Новые сообщения»; щелчок — вниз', () => {
+  it('пользователь не внизу - кнопка «↓ Новые сообщения»; щелчок - вниз', () => {
     items = [msg('1', 2, 'раз')];
     feed.render();
     const scroller = feed.el.querySelector<HTMLElement>('.cf-scroll')!;
@@ -227,7 +227,7 @@ describe('лента: разметка', () => {
     expect(feed.jumpShown).toBe(false);
   });
 
-  it('пустая лента — пустое состояние', () => {
+  it('пустая лента - пустое состояние', () => {
     const empty = document.createElement('div');
     empty.textContent = 'пусто';
     feed.setEmpty(empty);
@@ -239,7 +239,7 @@ describe('лента: разметка', () => {
     expect(feed.el.querySelector<HTMLElement>('.cf-empty')!.hidden).toBe(true);
   });
 
-  it('reveal — подсветка сообщения; неизвестное — false', () => {
+  it('reveal - подсветка сообщения; неизвестное - false', () => {
     items = [msg('1', 2, 'раз'), msg('2', 2, 'два', T0 + 1)];
     feed.render();
     expect(feed.reveal('2')).toBe(true);
@@ -247,7 +247,7 @@ describe('лента: разметка', () => {
     expect(feed.reveal('нет')).toBe(false);
   });
 
-  it('сообщение с вложением — плашка, текст под ней', () => {
+  it('сообщение с вложением - плашка, текст под ней', () => {
     items = [msg('1', 2, 'смотрите', T0, { att: { kind: 'gone', was: 'image' } })];
     feed.render();
     const row = feed.el.querySelector('.cf-msg')!;

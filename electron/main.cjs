@@ -61,7 +61,7 @@ async function createWindow() {
   } else {
     win.loadFile(path.join(__dirname, '..', 'dist', 'index.html')).catch(err => {
       console.error('[doska] loadFile failed:', err);
-      dialog.showErrorBox('Abax — ошибка загрузки', String(err));
+      dialog.showErrorBox('Abax - ошибка загрузки', String(err));
     });
   }
   // окно демонстрации: без меню и без троттлинга — оно почти всегда в фоне

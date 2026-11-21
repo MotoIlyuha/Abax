@@ -13,7 +13,7 @@ const rect = (id: string, x: number, y: number, w: number, h: number): ShapeEl =
 const BASE = 'https://abax.example/app/';
 
 describe('parseBoardUrl', () => {
-  it('обычный адрес — без маршрута', () => {
+  it('обычный адрес - без маршрута', () => {
     expect(parseBoardUrl(BASE)).toEqual({ mode: 'none' });
     expect(parseBoardUrl('мусор без схемы')).toEqual({ mode: 'none' });
     expect(parseBoardUrl('file:///C:/Abax/index.html')).toEqual({ mode: 'none' });
@@ -56,7 +56,7 @@ describe('parseBoardUrl', () => {
     }
   });
 
-  it('испорченное приглашение и пустые id — не маршрут', () => {
+  it('испорченное приглашение и пустые id - не маршрут', () => {
     expect(parseBoardUrl('https://abax.example/#relay=wss://relay.example&r=short&k=zzz')).toEqual({ mode: 'none' });
     expect(parseBoardUrl('https://abax.example/p/')).toEqual({ mode: 'none' });
     expect(parseBoardUrl('https://abax.example/?route=project')).toEqual({ mode: 'none' });
@@ -78,7 +78,7 @@ describe('buildBoardUrl', () => {
     { mode: 'collab', roomCode: 'ROOM1' },
   ];
 
-  it('по умолчанию — параметры, и разбор возвращает тот же маршрут', () => {
+  it('по умолчанию - параметры, и разбор возвращает тот же маршрут', () => {
     for (const r of routes) {
       const url = buildBoardUrl(BASE, r);
       expect(url).toContain('?');
@@ -87,7 +87,7 @@ describe('buildBoardUrl', () => {
     expect(buildBoardUrl('file:///C:/Abax/index.html', routes[0])).toBe('file:///C:/Abax/index.html?route=project&projectId=abc');
   });
 
-  it('в виде путей — /p/… и /j/…', () => {
+  it('в виде путей - /p/… и /j/…', () => {
     expect(buildBoardUrl('https://abax.example/', routes[0], { style: 'path' })).toBe('https://abax.example/p/abc');
     expect(buildBoardUrl('https://abax.example/app/index.html', routes[2], { style: 'path' }))
       .toBe('https://abax.example/app/p/abc/pg1?focus=e1%2Ce2');
@@ -104,7 +104,7 @@ describe('buildBoardUrl', () => {
     expect(back.mode === 'collab' && back.invite?.relayUrl).toBe('wss://relay.example');
   });
 
-  it('без маршрута — только база', () => {
+  it('без маршрута - только база', () => {
     expect(buildBoardUrl(`${BASE}?route=project&projectId=x`, { mode: 'none' })).toBe(BASE);
   });
 });
@@ -137,7 +137,7 @@ describe('computeFocusCamera', () => {
     expect(computeFocusCamera([rect('a', 0, 0, 1, 1)], 0, 800)).toBeNull();
   });
 
-  it('холст меньше двух отступов — считаем без отступа', () => {
+  it('холст меньше двух отступов - считаем без отступа', () => {
     const cam = computeFocusCamera([rect('a', 0, 0, 100, 100)], 100, 100)!;
     expect(cam.zoom).toBeCloseTo(1);
   });
@@ -166,7 +166,7 @@ describe('focusElementsOnBoard', () => {
     expect(state.flashes[0].ms).toBe(2000);
   });
 
-  it('ни одного элемента — камера на месте', () => {
+  it('ни одного элемента - камера на месте', () => {
     expect(focusElementsOnBoard(['нет'], 1000, 800)).toBe(false);
     expect(state.camera).toEqual({ x: 0, y: 0, zoom: 1 });
     expect(state.flashes).toEqual([]);
@@ -181,7 +181,7 @@ describe('режимы ссылок', () => {
     return p;
   };
 
-  it('проект: все не скрытые страницы; страница — только она', () => {
+  it('проект: все не скрытые страницы; страница - только она', () => {
     expect(pagesVisibleForRoute({ mode: 'view-project', projectId: 'p' }, project()).map(p => p.id)).toEqual(['a', 'c']);
     expect(pagesVisibleForRoute({ mode: 'view-page', projectId: 'p', pageId: 'c' }, project()).map(p => p.id)).toEqual(['c']);
     // скрытую страницу по прямой ссылке не показываем

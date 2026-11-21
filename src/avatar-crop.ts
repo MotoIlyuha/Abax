@@ -125,7 +125,7 @@ export async function openAvatarCrop(file: File): Promise<string | null> {
   const stage = el('div', 'ac-stage');
   stage.tabIndex = 0;
   stage.title = 'Перетащите фото, чтобы выбрать, что попадёт в круг';
-  stage.setAttribute('aria-label', 'Положение фото: стрелки — сдвиг, плюс и минус — масштаб');
+  stage.setAttribute('aria-label', 'Положение фото: стрелки - сдвиг, плюс и минус - масштаб');
   const canvas = el('canvas', 'ac-canvas');
   canvas.setAttribute('aria-hidden', 'true');
   stage.appendChild(canvas);

@@ -83,7 +83,7 @@ describe('вход на клиенте', () => {
     expect(location.hash).toBe('');
   });
 
-  it('поток другой вкладки (другой id) — ошибка bad-flow', async () => {
+  it('поток другой вкладки (другой id) - ошибка bad-flow', async () => {
     sessionStorage.setItem(PENDING_KEY, JSON.stringify({ flowId: 'x'.repeat(24), secret: 's', provider: 'google', mode: 'login', resume: null }));
     history.replaceState(null, '', '/#abaxAuth=yyyyyyyyyyyyyyyyyyyyyyyy');
     expect(await completePendingAuth()).toMatchObject({ ok: false, error: 'bad-flow' });
@@ -99,7 +99,7 @@ describe('вход на клиенте', () => {
     expect(localStorage.getItem('doska.profile')).toContain('Енот');
   });
 
-  it('canRedirectAuth: обычная веб-страница — да', () => {
+  it('canRedirectAuth: обычная веб-страница - да', () => {
     expect(canRedirectAuth()).toBe(true);
   });
 });

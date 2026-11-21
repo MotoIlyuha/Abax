@@ -257,7 +257,7 @@ test.describe('настройка панели инструментов', () => 
     await expect(status).toHaveClass(/error/);
     await page.keyboard.press('r');
     await expect(penKey).toHaveText('R');
-    await expect(row(page, 'rect').locator('.tbe-key')).toHaveText('—');
+    await expect(row(page, 'rect').locator('.tbe-key')).toHaveText('-');
     await expect(status).toContainText('Прямоугольник');
 
     // клавиша для инструмента, у которого её не было
@@ -268,7 +268,7 @@ test.describe('настройка панели инструментов', () => 
     // Backspace снимает, Esc отменяет назначение
     await row(page, 'eraser').locator('.tbe-key').click();
     await page.keyboard.press('Backspace');
-    await expect(row(page, 'eraser').locator('.tbe-key')).toHaveText('—');
+    await expect(row(page, 'eraser').locator('.tbe-key')).toHaveText('-');
     await row(page, 'text').locator('.tbe-key').click();
     await page.keyboard.press('Escape');
     await expect(row(page, 'text').locator('.tbe-key')).toHaveText('T');

@@ -179,7 +179,7 @@ export function aliasProblem(s: string): string | null {
   // сначала — что не исправить дописыванием (недопустимые символы видны с первой буквы), затем длина
   if (!/^[a-z0-9-]*$/.test(s)) return 'Только строчные латинские буквы, цифры и дефис';
   if (s && !/^[a-z]/.test(s)) return 'Начните с буквы';
-  if (/--/.test(s) || s.endsWith('-')) return 'Дефис — только между буквами и цифрами';
+  if (/--/.test(s) || s.endsWith('-')) return 'Дефис - только между буквами и цифрами';
   if (RESERVED_ALIASES.has(s)) return 'Этот адрес занят системой';
   if (s.length < ALIAS_MIN) return `Не короче ${ALIAS_MIN} символов`;
   if (s.length > ALIAS_MAX) return `Не длиннее ${ALIAS_MAX} символов`;

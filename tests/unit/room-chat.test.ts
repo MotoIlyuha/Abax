@@ -35,7 +35,7 @@ const board = (extra: Record<string, unknown> = {}) => ({
 const ok = { copy: true };
 
 describe('вложения чата (SPEC_CHAT §7)', () => {
-  it('нет вложения — undefined; не объект и чужие виды — отказ сообщения', () => {
+  it('нет вложения - undefined; не объект и чужие виды - отказ сообщения', () => {
     expect(cleanChatAttachment(undefined, ok)).toBeUndefined();
     expect(cleanChatAttachment(null, ok)).toBeUndefined();
     for (const bad of [5, 'x', [], {}, { kind: 'gone', was: 'image' }, { kind: 'hidden' }, { kind: 'video', src: jpeg, w: 1, h: 1 }]) {
@@ -43,7 +43,7 @@ describe('вложения чата (SPEC_CHAT §7)', () => {
     }
   });
 
-  it('картинка: только data URL jpeg/png/webp в base64 до предела, стороны — целые 1…4096', () => {
+  it('картинка: только data URL jpeg/png/webp в base64 до предела, стороны - целые 1…4096', () => {
     expect(cleanChatAttachment({ kind: 'image', src: jpeg, w: 10, h: 20, extra: 1 }, { copy: false })).toEqual({ kind: 'image', src: jpeg, w: 10, h: 20 });
     expect(cleanChatAttachment({ kind: 'image', src: 'data:image/webp;base64,UklGR', w: 4096, h: 1 }, ok)).not.toBeNull();
     for (const src of ['data:image/svg+xml;base64,PHN2Zz4=', 'data:image/gif;base64,R0lGOD', 'data:image/png;base64,<b>', 'https://a.ru/x.png',
@@ -53,7 +53,7 @@ describe('вложения чата (SPEC_CHAT §7)', () => {
     for (const [w, h] of [[0, 1], [1, 4097], [1.5, 1], ['1', 1], [Number.NaN, 1]]) expect(cleanChatAttachment({ kind: 'image', src: jpeg, w, h }, ok)).toBeNull();
   });
 
-  it('объекты доски: без права copy — отказ целиком; задание — отказ; by вырезается', () => {
+  it('объекты доски: без права copy - отказ целиком; задание - отказ; by вырезается', () => {
     expect(cleanChatAttachment(board(), { copy: false })).toBeNull();
     expect(cleanChatAttachment(board({ elements: undefined }), { copy: false })).toBeNull();
     expect(cleanChatAttachment(board({ elements: [shape('a'), { id: 't', type: 'task', answer: '4' }] }), ok)).toBeNull();
@@ -62,7 +62,7 @@ describe('вложения чата (SPEC_CHAT §7)', () => {
     });
   });
 
-  it('объекты доски: строгие поля, длинное название обрезается, большие копии — только просмотр', () => {
+  it('объекты доски: строгие поля, длинное название обрезается, большие копии - только просмотр', () => {
     expect(cleanChatAttachment(board({ pageName: '😀'.repeat(CHAT_PAGE_NAME_MAX + 5) }), ok)).toMatchObject({ pageName: '😀'.repeat(CHAT_PAGE_NAME_MAX) });
     const big = cleanChatAttachment(board({ elements: [shape('a', { text: 'я'.repeat(CHAT_BOARD_JSON_MAX) })] }), ok);
     expect(big).toMatchObject({ kind: 'board', pageId: 'pg' });
@@ -77,7 +77,7 @@ describe('вложения чата (SPEC_CHAT §7)', () => {
 
   const m = (id: string, att?: ChatAttachment): ChatMessage => ({ id, by: 1, name: 'А', text: '', ts: 1, ...(att ? { att } : {}) });
 
-  it('бюджет буфера: у самых старых вложений — gone, без лишних копий списка', () => {
+  it('бюджет буфера: у самых старых вложений - gone, без лишних копий списка', () => {
     const src = `data:image/jpeg;base64,${'A'.repeat(CHAT_IMAGE_MAX - 1000)}`;
     const img = (): ChatAttachment => ({ kind: 'image', src, w: 1, h: 1 });
     const fits = Array.from({ length: 15 }, (_, i) => m(`m${i}`, img()));
@@ -92,7 +92,7 @@ describe('вложения чата (SPEC_CHAT §7)', () => {
     expect(chatAttachmentSize({ kind: 'hidden' })).toBe(0);
   });
 
-  it('снимок на получателя: объекты со скрытой страницы — hidden, остальное как есть', () => {
+  it('снимок на получателя: объекты со скрытой страницы - hidden, остальное как есть', () => {
     const b = m('b', cleanChatAttachment(board(), ok)!);
     expect(chatMessageFor(b, id => id !== 'pg')).toEqual({ ...b, att: { kind: 'hidden' } });
     expect(chatMessageFor(b, () => true)).toBe(b);
@@ -114,14 +114,14 @@ describe('ограничитель частоты', () => {
 });
 
 describe('ссылки в чате', () => {
-  it('только https, хвостовая пунктуация — текст', () => {
+  it('только https, хвостовая пунктуация - текст', () => {
     expect(tokenizeChat('смотри https://abax.app/x?y=1, ок')).toEqual([
       { kind: 'text', value: 'смотри ' },
       { kind: 'link', value: 'https://abax.app/x?y=1' },
       { kind: 'text', value: ', ок' },
     ]);
   });
-  it('http, javascript: и голый https:// — не ссылки', () => {
+  it('http, javascript: и голый https:// - не ссылки', () => {
     expect(tokenizeChat('http://a.b javascript:alert(1)')).toEqual([{ kind: 'text', value: 'http://a.b javascript:alert(1)' }]);
     expect(tokenizeChat('https:// пусто')).toEqual([{ kind: 'text', value: 'https:// пусто' }]);
   });

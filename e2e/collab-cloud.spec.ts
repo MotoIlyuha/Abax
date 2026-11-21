@@ -28,7 +28,7 @@ test.describe('совместная работа через интернет', (
     await host.dialog.screenshot({ path: test.info().outputPath('share-dialog-cloud.png') });
   });
 
-  test('гости из локальной сети и из интернета — в одной комнате', async ({ host, join }) => {
+  test('гости из локальной сети и из интернета - в одной комнате', async ({ host, join }) => {
     const lanUrl = await host.share();
     const cloudUrl = await host.shareCloud();
     const lan = await join(lanUrl, 'Рядом');
@@ -43,7 +43,7 @@ test.describe('совместная работа через интернет', (
     await expect(far.page.locator('.remote-cursor span', { hasText: 'Рядом' })).toBeVisible();
   });
 
-  test('автор закрывает доступ через интернет — гость видит сообщение, локальная сеть работает', async ({ host, join }) => {
+  test('автор закрывает доступ через интернет - гость видит сообщение, локальная сеть работает', async ({ host, join }) => {
     const lanUrl = await host.share();
     const url = await host.shareCloud();
     const far = await join(url, 'Далеко');
@@ -58,7 +58,7 @@ test.describe('совместная работа через интернет', (
     await expect.poll(() => lan.board.count('shape')).toBe(1);
   });
 
-  test('связь автора с сервером прервалась — гость ждёт, доска обновляется после возвращения', async ({ host, join }) => {
+  test('связь автора с сервером прервалась - гость ждёт, доска обновляется после возвращения', async ({ host, join }) => {
     await host.share();
     const url = await host.shareCloud();
     const guest = await join(url, 'Ждущий');
@@ -74,7 +74,7 @@ test.describe('совместная работа через интернет', (
     await expect(host.dialog.locator('.share-link-cloud')).toHaveText(url);
   });
 
-  test('ссылка на закрытую или несуществующую доску — понятное сообщение', async ({ host, join }) => {
+  test('ссылка на закрытую или несуществующую доску - понятное сообщение', async ({ host, join }) => {
     await host.share();
     await host.shareCloud();
     const relay = await host.relayUrl();
@@ -84,7 +84,7 @@ test.describe('совместная работа через интернет', (
     await expect(guest.page.locator('#startup')).toBeHidden();
   });
 
-  test('ссылка с чужим ключом или без ключа — «Неверная ссылка», доска автора не видна', async ({ host, join }) => {
+  test('ссылка с чужим ключом или без ключа - «Неверная ссылка», доска автора не видна', async ({ host, join }) => {
     await host.board.rect(400, 300, 500, 400);
     await host.share();
     const url = await host.shareCloud();
@@ -98,7 +98,7 @@ test.describe('совместная работа через интернет', (
     await expect(host.userRow('С чужим ключом')).toHaveCount(0);
   });
 
-  test('адрес ретранслятора не задан — поле для адреса, после ввода ссылка готова', async ({ host }) => {
+  test('адрес ретранслятора не задан - поле для адреса, после ввода ссылка готова', async ({ host }) => {
     host.defaultRelay = '';
     await host.share();
     await host.dialog.locator('button', { hasText: 'Пригласить через интернет' }).click();

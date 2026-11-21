@@ -108,8 +108,8 @@ test.describe('выделение и перемещение', () => {
     const b = await board.rect(450, 350, 550, 450);
     await board.rect(800, 300, 850, 350);
     await board.tool('v');
-    const up = byTip(board.quickMenu, 'Выше на слой; двойной клик — наверх; удержание — закрепить наверху');
-    const down = byTip(board.quickMenu, 'Ниже на слой; двойной клик — вниз; удержание — закрепить внизу');
+    const up = byTip(board.quickMenu, 'Выше на слой; двойной клик - наверх; удержание - закрепить наверху');
+    const down = byTip(board.quickMenu, 'Ниже на слой; двойной клик - вниз; удержание - закрепить внизу');
     const order = async () => (await board.elements()).slice(0, 2).map(e => e.id);
     await board.click({ x: 420, y: 320 });
     await expect(up).toBeVisible();
@@ -144,7 +144,7 @@ test.describe('выделение и перемещение', () => {
 });
 
 test.describe('ручки редактирования', () => {
-  test('угловая ручка меняет размер, Shift — с пропорциями', async ({ board }) => {
+  test('угловая ручка меняет размер, Shift - с пропорциями', async ({ board }) => {
     await board.rect(400, 300, 600, 400);
     await board.tool('v');
     await board.click({ x: 500, y: 350 });
@@ -227,7 +227,7 @@ test.describe('камера', () => {
     expect((await board.state()).settings.wheelMode).toBe('zoom');
   });
 
-  test('режим «Прокрутка»: колёсико прокручивает, Ctrl+колёсико — масштаб под курсором', async ({ board, page }) => {
+  test('режим «Прокрутка»: колёсико прокручивает, Ctrl+колёсико - масштаб под курсором', async ({ board, page }) => {
     await page.evaluate(() => localStorage.setItem('doska.settings', JSON.stringify({ toolbarPos: 'left', wheelMode: 'scroll' })));
     await page.reload();
     await board.ready();
@@ -412,7 +412,7 @@ test.describe('буфер обмена и дублирование', () => {
 });
 
 test.describe('перенос выделенного стрелками', () => {
-  test('нажатие — шаг, Shift — крупный шаг; без выделения ничего не двигается; отмена — одним шагом', async ({ board, page }) => {
+  test('нажатие - шаг, Shift - крупный шаг; без выделения ничего не двигается; отмена - одним шагом', async ({ board, page }) => {
     await board.rect(400, 300, 550, 400);
     await board.tool('v');
     await page.keyboard.press('ArrowRight');
@@ -427,7 +427,7 @@ test.describe('перенос выделенного стрелками', () => 
     expect((await board.elements())[0]).toMatchObject({ x: 401, y: 301 });
   });
 
-  test('удержание: после паузы едет плавно, отпускание — один шаг истории', async ({ board, page }) => {
+  test('удержание: после паузы едет плавно, отпускание - один шаг истории', async ({ board, page }) => {
     await board.rect(400, 300, 550, 400);
     await board.tool('v');
     await board.click({ x: 470, y: 350 });
@@ -443,7 +443,7 @@ test.describe('перенос выделенного стрелками', () => 
     expect((await board.elements())[0]).toMatchObject({ x: 400, y: 300 });
   });
 
-  test('две соседние стрелки — по диагонали, противоположные — стоят на месте', async ({ board, page }) => {
+  test('две соседние стрелки - по диагонали, противоположные - стоят на месте', async ({ board, page }) => {
     await board.rect(400, 300, 550, 400);
     await board.tool('v');
     await board.click({ x: 470, y: 350 });

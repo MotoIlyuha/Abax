@@ -17,7 +17,7 @@ describe('обёртка пилюль', () => {
     document.body.className = '';
   });
 
-  it('showPill — уведомление центра (kind → level, text → title, cursorId → user)', () => {
+  it('showPill - уведомление центра (kind → level, text → title, cursorId → user)', () => {
     showPill({ kind: 'warn', text: 'Соединение прервано', icon: 'offline' });
     showPill({ text: 'Вы позвали всех', quiet: true });
     expect(notices().map(n => [n.level, n.title, n.icon, n.read])).toEqual([['warn', 'Соединение прервано', 'offline', false], ['info', 'Вы позвали всех', undefined, true]]);
@@ -33,12 +33,12 @@ describe('обёртка пилюль', () => {
     expect(unreadCount()).toBe(1);
   });
 
-  it('события состава — уведомления одной фразой', () => {
+  it('события состава - уведомления одной фразой', () => {
     showUserEvents([{ kind: 'join', user: { userId: 2, name: 'Капибара', cursorId: 'mint' } }]);
     expect(notices().map(noticeText)).toEqual(['Капибара присоединился к доске']);
   });
 
-  it('события состава — структурные: имя, что случилось, значок, участник с аватаром', () => {
+  it('события состава - структурные: имя, что случилось, значок, участник с аватаром', () => {
     const user = { userId: 2, name: 'Капибара', cursorId: 'mint', avatar: 'photo:3' };
     const photo = 'data:image/png;base64,AAAA';
     expect(userEventNotice({ kind: 'join', user }, () => photo)).toEqual({
@@ -68,7 +68,7 @@ describe('изменения состава комнаты', () => {
     expect(diffUsers([], [a], 1)).toEqual([]);
   });
 
-  it('нет курсора и default — одно и то же; ничего не изменилось — пусто', () => {
+  it('нет курсора и default - одно и то же; ничего не изменилось - пусто', () => {
     expect(diffUsers([c], [{ ...c, cursorId: 'default' }], 1)).toEqual([]);
     expect(diffUsers([a, b], [a, b], 1)).toEqual([]);
   });

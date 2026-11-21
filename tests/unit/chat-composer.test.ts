@@ -49,7 +49,7 @@ describe('поле ввода чата', () => {
     expect(c.el.querySelector<HTMLElement>('.composer-chip')!.hidden).toBe(true);
   });
 
-  it('Enter отправляет и очищает; Shift+Enter — перенос; пустое не уходит', () => {
+  it('Enter отправляет и очищает; Shift+Enter - перенос; пустое не уходит', () => {
     type('   ');
     enter();
     expect(sent).toEqual([]);
@@ -78,7 +78,7 @@ describe('поле ввода чата', () => {
     expect(c.el.querySelector<HTMLElement>('.composer-chip')!.hidden).toBe(true);
   });
 
-  it('флуд — подсказка, текст остаётся; ввод убирает подсказку', () => {
+  it('флуд - подсказка, текст остаётся; ввод убирает подсказку', () => {
     result = 'rate';
     type('m5');
     enter();
@@ -88,7 +88,7 @@ describe('поле ввода чата', () => {
     expect(hint()).toBe('');
   });
 
-  it('нет соединения — подсказка, текст остаётся', () => {
+  it('нет соединения - подсказка, текст остаётся', () => {
     result = 'offline';
     type('привет');
     send().click();
@@ -96,7 +96,7 @@ describe('поле ввода чата', () => {
     expect(c.input.value).toBe('привет');
   });
 
-  it('счётчик символов — после 400', () => {
+  it('счётчик символов - после 400', () => {
     type('я'.repeat(400));
     expect(c.el.querySelector('.composer-count')!.textContent).toBe('');
     type('я'.repeat(401));

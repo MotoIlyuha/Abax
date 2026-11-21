@@ -34,11 +34,11 @@ afterEach(() => {
 });
 
 describe('historyTimeline', () => {
-  it('после открытия — одна запись «Начало сеанса», она же текущая', () => {
+  it('после открытия - одна запись «Начало сеанса», она же текущая', () => {
     expect(historyTimeline()).toEqual([{ label: 'Начало сеанса', ts: Date.now(), state: 'current' }]);
   });
 
-  it('сделанное, текущее и отменённое; подписи — между соседними снимками', () => {
+  it('сделанное, текущее и отменённое; подписи - между соседними снимками', () => {
     addElement(rect('a'));
     addElement(rect('b', { shape: 'ellipse' }));
     pushHistory(state.board.elements);
@@ -59,7 +59,7 @@ describe('historyTimeline', () => {
     ]);
   });
 
-  it('время записи — когда сделана правка; переезжает со стека на стек при отмене и повторе', () => {
+  it('время записи - когда сделана правка; переезжает со стека на стек при отмене и повторе', () => {
     const t0 = Date.now();
     vi.setSystemTime(t0 + 60_000);
     addElement(rect('a'));
@@ -92,7 +92,7 @@ describe('historyTimeline', () => {
     expect(canUndo()).toBe(false);
   });
 
-  it('при переполнении (200 правок) начало — «Самое раннее сохранённое состояние»', () => {
+  it('при переполнении (200 правок) начало - «Самое раннее сохранённое состояние»', () => {
     for (let i = 0; i < 205; i++) addElement(rect(`r${i}`));
     const tl = historyTimeline();
     expect(tl).toHaveLength(201);
@@ -102,7 +102,7 @@ describe('historyTimeline', () => {
 });
 
 describe('jumpToHistory', () => {
-  it('назад и вперёд повторными undo/redo; за пределами — к краю; дробный индекс — ничего', () => {
+  it('назад и вперёд повторными undo/redo; за пределами - к краю; дробный индекс - ничего', () => {
     addElement(rect('a'));
     addElement(rect('b'));
     addElement(rect('c'));
@@ -144,7 +144,7 @@ describe('вид «История изменений»', () => {
     expect(HISTORY_MODE.icon).toContain('<svg');
   });
 
-  it('пусто — подсказка; кнопки недоступны', () => {
+  it('пусто - подсказка; кнопки недоступны', () => {
     const { host } = mount();
     expect(host.querySelector<HTMLElement>('.hist-empty')!.hidden).toBe(false);
     expect(host.querySelector('.hist-empty')!.textContent).toContain('Изменений пока нет');
@@ -173,7 +173,7 @@ describe('вид «История изменений»', () => {
     expect(ids()).toEqual(['a', 'b']);
   });
 
-  it('«Отменить» и «Повторить» — как кнопки шапки', async () => {
+  it('«Отменить» и «Повторить» - как кнопки шапки', async () => {
     const { host } = mount();
     addElement(rect('a'));
     await frame();
@@ -188,7 +188,7 @@ describe('вид «История изменений»', () => {
     expect(ids()).toEqual(['a']);
   });
 
-  it('без права правки — записи и кнопки недоступны, щелчок ничего не делает', async () => {
+  it('без права правки - записи и кнопки недоступны, щелчок ничего не делает', async () => {
     setPanelActions(actions({ canEdit: () => false }));
     const { host } = mount();
     addElement(rect('a'));
@@ -201,7 +201,7 @@ describe('вид «История изменений»', () => {
     expect(host.querySelector<HTMLButtonElement>('[data-act="undo"]')!.disabled).toBe(true);
   });
 
-  it('скрытый вид не перерисовывается; показ — сразу актуален', async () => {
+  it('скрытый вид не перерисовывается; показ - сразу актуален', async () => {
     const { host, view } = mount();
     view.hide?.();
     addElement(rect('a'));

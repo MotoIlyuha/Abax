@@ -57,7 +57,7 @@ describe('keepalive автора', () => {
     expect(ws.sent.filter(d => typeof d === 'string' && JSON.parse(d).t === 'ping').length).toBeGreaterThanOrEqual(3);
   });
 
-  it('ретранслятор перестал отвечать на pong — соединение закрыто и открыто заново', async () => {
+  it('ретранслятор перестал отвечать на pong - соединение закрыто и открыто заново', async () => {
     const ws = await startHost();
     await until(() => ws.pings() >= 1);
     ws.recv({ t: 'pong' }); // ретранслятор отвечать умеет
@@ -66,7 +66,7 @@ describe('keepalive автора', () => {
     expect(FakeWS.all[1].url).toContain('/host');
   });
 
-  it('старый ретранслятор не отвечает на ping вовсе — соединение не трогаем', async () => {
+  it('старый ретранслятор не отвечает на ping вовсе - соединение не трогаем', async () => {
     const ws = await startHost();
     await until(() => ws.pings() >= 8);
     expect(FakeWS.all).toHaveLength(1);

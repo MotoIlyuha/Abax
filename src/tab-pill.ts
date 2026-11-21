@@ -199,7 +199,7 @@ export function createTabPill(o: TabPillOptions): TabPill {
       c.box.classList.toggle('on', k > 0);
       const b = btns[o.tabs.findIndex(t => t.value === v)];
       const base = o.tabs.find(t => t.value === v)?.label ?? '';
-      b.setAttribute('aria-label', k > 0 ? `${base}: непрочитанных — ${text}` : base);
+      b.setAttribute('aria-label', k > 0 ? `${base}: непрочитанных - ${text}` : base);
     },
     tab(v) { return btns[o.tabs.findIndex(t => t.value === v)] ?? null; },
   };

@@ -67,7 +67,7 @@ describe('способы входа сервера', () => {
     expect((await call(app, 'POST', '/api/auth/flow/complete', { flowId: g.body.flowId, secret: g.body.secret })).body.error).toBe('flow-expired');
   });
 
-  it('привязка: второй способ к тому же аккаунту; чужой способ — identity-taken', async () => {
+  it('привязка: второй способ к тому же аккаунту; чужой способ - identity-taken', async () => {
     const app = await makeApp({ devAuth: true, telegramBotToken: null });
     // аккаунт A входит через dev-Google
     const a = await anon(app);
@@ -93,7 +93,7 @@ describe('способы входа сервера', () => {
     expect((await flow(app, { provider: 'telegram', mode: 'link' })).status).toBe(401);
   });
 
-  it('dev-маршрут без dev-режима — 404', async () => {
+  it('dev-маршрут без dev-режима - 404', async () => {
     const app = await makeApp();
     expect((await fetch(`${app.base}/api/auth/dev/start?flow=${'a'.repeat(24)}`, { redirect: 'manual' })).status).toBe(404);
   });
@@ -153,7 +153,7 @@ describe('способы входа сервера', () => {
     expect((await call(app, 'POST', '/api/auth/flow/complete', { flowId: h.body.flowId, secret: h.body.secret })).body.error).toBe('cancelled');
   });
 
-  it('Telegram без Client Secret — выключен (без dev-режима)', async () => {
+  it('Telegram без Client Secret - выключен (без dev-режима)', async () => {
     const app = await makeApp();
     expect((await call(app, 'GET', '/api/auth/providers')).body.telegram).toBe(false);
     expect((await flow(app, { provider: 'telegram' })).status).toBe(503);

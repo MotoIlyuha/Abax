@@ -41,7 +41,7 @@ test.describe('облако без швов', () => {
     await B.close();
   });
 
-  test('индикатор: «Сохранено в облаке», без сети — офлайн, клик после возвращения сети — снова в облаке', async ({ browser }) => {
+  test('индикатор: «Сохранено в облаке», без сети - офлайн, клик после возвращения сети - снова в облаке', async ({ browser }) => {
     const { base } = env.get();
     const C = await device(browser, base);
     const page = await openAt(C, `${base}/`, env.errors);
@@ -70,7 +70,7 @@ test.describe('облако без швов', () => {
     await C.close();
   });
 
-  test('офлайн-конфликт: проект ушёл вперёд с другого устройства — правки этого сохраняются копией', async ({ browser }) => {
+  test('офлайн-конфликт: проект ушёл вперёд с другого устройства - правки этого сохраняются копией', async ({ browser }) => {
     const { srv, base } = env.get();
     const D = await device(browser, base);
     const page = await openAt(D, `${base}/`, env.errors);
