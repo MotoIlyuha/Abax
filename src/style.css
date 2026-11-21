@@ -4252,6 +4252,8 @@ body.no-ui-anim #bottombar, body:not(.no-motion) #bottombar { transition: none; 
 
 /* ----- Адаптивная шапка (src/topbar-fit.ts): по очереди уходят экспорт, импорт, «Отменить / Повторить»
    переезжают под панель инструментов, «Поделиться» сжимается до иконки ----- */
+/* Замеряем естественную ширину обеих сторон, включая тариф: тесная шапка не должна сжимать кнопки при замере. */
+body.fit-measure .topbar-side,
 body.fit-measure .project-group { flex-shrink: 0; }
 body.fit-export .export-group,
 body.fit-import .import-group { display: none; }

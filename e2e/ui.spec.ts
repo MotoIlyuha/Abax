@@ -780,13 +780,33 @@ test.describe('всплывающие меню', () => {
 });
 
 test.describe('адаптивная шапка', () => {
+  test('тариф занимает место: его ширина и скрытие меняют порог ужатия', async ({ board, page }) => {
+    await page.setViewportSize({ width: 820, height: 800 });
+    await page.locator('#project-name').fill('Длинное название учебного проекта');
+    await page.locator('#page-name').fill('Длинное название страницы занятия');
+    await page.locator('#page-name').blur();
+    const label = page.locator('#btn-tier .tier-label');
+    await expect(label).toBeVisible();
+    await expect(page.locator('body')).toHaveClass(/fit-export/);
+    for (const title of ['Pro', 'Tutor', 'Бесплатный']) {
+      await label.evaluate((e, text) => { e.textContent = text; }, title);
+      if (title === 'Бесплатный') await expect(page.locator('body')).toHaveClass(/fit-export/);
+      else await expect(page.locator('body')).not.toHaveClass(/fit-export/);
+    }
+    await page.evaluate(() => document.body.classList.add('hide-tier-button'));
+    await expect(page.locator('body')).not.toHaveClass(/fit-export/);
+    await page.evaluate(() => document.body.classList.remove('hide-tier-button'));
+    await expect(page.locator('body')).toHaveClass(/fit-export/);
+    void board;
+  });
+
   test('при сужении уходят экспорт, импорт, отмена/повтор переезжают под панель, «Поделиться» — иконкой; пункты «Скрыть» без места недоступны', async ({ board, page }) => {
     const fit = () => page.evaluate(() => [...document.body.classList].filter(c => c.startsWith('fit-')).sort().join(' '));
     await page.setViewportSize({ width: 1280, height: 800 });
     await expect.poll(fit).toBe('');
     // слева от «Поделиться» всегда есть мой аватар (группа аватаров: 48 px и промежуток),
     // справа — кнопка «Чат и уведомления» (48 px и промежуток): она не уходит из шапки
-    await page.setViewportSize({ width: 680, height: 800 });
+    await page.setViewportSize({ width: 640, height: 800 });
     await expect.poll(fit).toBe('fit-export');
     await expect(page.locator('#btn-export')).toBeHidden();
     await expect(page.locator('#btn-import')).toBeVisible();
