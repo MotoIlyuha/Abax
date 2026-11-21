@@ -64,7 +64,7 @@ describe('цены и сроки', () => {
     expect(monthlyPrice('pro', 'quarter')).toBe(333);
     expect(monthlyPrice('pro', 'year')).toBe(292);
     expect(monthlyPrice('tutor', 'quarter')).toBe(500);
-    expect(monthlyPrice('tutor', 'year')).toBe(500);
+    expect(monthlyPrice('tutor', 'year')).toBe(458);
     expect(savingsRub('pro', 'year')).toBe(399 * 12 - 3499);
     expect(savingsPct('pro', 'month')).toBe(0);
     expect(savingsPct('pro', 'year')).toBe(27);
