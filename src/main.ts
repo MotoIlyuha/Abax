@@ -204,11 +204,11 @@ function startOnboarding(outcome: AuthOutcome | null): void {
 void boot().then(() => {
   // Дождаться отрисовки холста, прежде чем открывать готовый интерфейс.
   requestAnimationFrame(() => requestAnimationFrame(() => {
-    document.getElementById('startup')!.hidden = true;
     const next = afterStartup;
     afterStartup = null;
     if (next) next();
     else showAnalyticsBanner();
+    document.getElementById('startup')!.hidden = true;
   }));
 }).catch((error: unknown) => {
   console.error('Не удалось запустить приложение', error);
