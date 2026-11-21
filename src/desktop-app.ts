@@ -8,7 +8,7 @@
 
 /** Схема из electron/main.cjs: команда «открыть окно». */
 export const DESKTOP_PROTOCOL_URL = 'abax://open';
-export const RELEASES_URL = 'https://github.com/MotoIlyuha/Abax/releases/latest';
+export const RELEASES_URL = 'https://abaxboard.ru/downloads/';
 
 /** Переходит по схеме abax:// — браузер передаёт ссылку системе (или спрашивает разрешение). */
 export function openDesktopApp(): void {

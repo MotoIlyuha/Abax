@@ -1,4 +1,4 @@
-// Предложение обновиться: при запуске (раз в сутки) спрашиваем GitHub о последнем релизе и,
+// Предложение обновиться: при запуске (раз в сутки) спрашиваем сервер Abax о последнем релизе и,
 // если он новее, показываем карточку «Вышла Abax X» со ссылкой на файл для своей платформы.
 // В разделе «О проекте» — проверка вручную и выключатель автопроверки.
 
@@ -74,10 +74,11 @@ function downloadLink(info: UpdateInfo, cls: string): HTMLAnchorElement {
   const a = document.createElement('a');
   a.className = cls;
   a.href = info.download;
-  a.target = '_blank';
+  // Android передаёт переход из WebView системному обработчику через Capacitor.
+  a.target = isNativeApp() ? '_self' : '_blank';
   a.rel = 'noopener noreferrer';
-  a.textContent = info.file ? 'Скачать' : 'Открыть релиз';
-  a.title = info.file ?? 'Страница релиза на GitHub';
+  a.textContent = info.file ? 'Скачать' : 'Страница загрузок';
+  a.title = info.file ?? 'Файл для этой платформы пока недоступен';
   return a;
 }
 
@@ -224,9 +225,9 @@ export function renderUpdateSettings(host: HTMLElement): void {
           const page = document.createElement('a');
           page.className = 'sd-btn sd-about-link';
           page.href = info.page;
-          page.target = '_blank';
+          page.target = isNativeApp() ? '_self' : '_blank';
           page.rel = 'noopener noreferrer';
-          page.textContent = 'Что нового';
+          page.textContent = 'Страница загрузок';
           found.append(
             platform === 'web'
               ? reloadPageButton('sd-btn sd-about-link sd-updates-download sd-updates-reload')
@@ -236,7 +237,7 @@ export function renderUpdateSettings(host: HTMLElement): void {
           found.hidden = false;
         }
       } catch {
-        status.textContent = 'Не удалось связаться с GitHub - проверьте интернет и попробуйте ещё раз';
+        status.textContent = 'Не удалось связаться с сервером обновлений - проверьте интернет и попробуйте ещё раз';
         status.classList.add('error');
       } finally {
         btn.disabled = false;
@@ -247,7 +248,7 @@ export function renderUpdateSettings(host: HTMLElement): void {
 
   const auto = document.createElement('label');
   auto.className = 'ctx-check';
-  auto.title = 'Раз в сутки при запуске спрашиваем у GitHub, вышла ли новая версия. Больше ничего не отправляется';
+  auto.title = 'Раз в сутки при запуске спрашиваем сервер Abax, вышла ли новая версия. Больше ничего не отправляется';
   const cb = document.createElement('input');
   cb.type = 'checkbox';
   cb.className = 'sd-updates-auto';

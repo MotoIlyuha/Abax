@@ -34,7 +34,7 @@ e8e9  Abax.Setup.2.1.0.exe
 `;
 
 const release = (tag: string, o: Partial<Release> = {}): Release => ({
-  tag_name: tag, html_url: `https://github.com/r/${tag}`, body: BODY, published_at: '2026-10-24T13:25:28Z', assets: ASSETS, ...o,
+  tag_name: tag, html_url: 'https://abaxboard.ru/downloads/', body: BODY, published_at: '2026-10-24T13:25:28Z', assets: ASSETS.map(a => ({ ...a, name: a.name.replace('2.1.0', tag.replace(/^v/, '')) })), ...o,
 });
 
 describe('версии', () => {
@@ -94,34 +94,41 @@ describe('обновление из релиза', () => {
   it('новее - версия, файл, дата и что нового; не новее - null', () => {
     const u = updateFromRelease(release('v2.2.0'), '2.1.0', 'android')!;
     expect(u).toMatchObject({
-      version: '2.2.0', page: 'https://github.com/r/v2.2.0', download: 'https://dl/Abax-2.1.0.apk', file: 'Abax-2.1.0.apk',
+      version: '2.2.0', page: 'https://abaxboard.ru/downloads/', download: 'https://abaxboard.ru/downloads/versions/2.2.0/Abax-2.2.0.apk', file: 'Abax-2.2.0.apk',
       publishedAt: Date.parse('2026-10-24T13:25:28Z'),
     });
     expect(u.notes.items).toHaveLength(3);
     expect(updateFromRelease(release('v2.1.0'), '2.1.0', 'android')).toBeNull();
   });
 
+  it('не доверяет адресам из манифеста и игнорирует файл другой версии', () => {
+    const r = release('v2.2.0', { assets: [{ name: 'Abax-2.2.0.apk', browser_download_url: 'https://evil.example/file' }] });
+    expect(updateFromRelease(r, '2.1.0', 'android')?.download).toBe('https://abaxboard.ru/downloads/versions/2.2.0/Abax-2.2.0.apk');
+    r.assets = [asset('Abax-2.1.0.apk')];
+    expect(updateFromRelease(r, '2.1.0', 'android')?.file).toBeNull();
+  });
+
   it('нет файла под платформу или даты - страница релиза, без даты', () => {
     const u = updateFromRelease(release('v2.2.0', { assets: undefined, published_at: null, body: undefined }), '2.1.0', 'win-setup')!;
-    expect(u).toMatchObject({ download: 'https://github.com/r/v2.2.0', file: null, publishedAt: null, notes: { summary: '', items: [] } });
+    expect(u).toMatchObject({ download: 'https://abaxboard.ru/downloads/', file: null, publishedAt: null, notes: { summary: '', items: [] } });
   });
 });
 
-describe('запрос к GitHub', () => {
+describe('запрос к серверу обновлений', () => {
   const reply = (status: number, body: unknown) => vi.fn(async () => new Response(JSON.stringify(body), { status }));
 
-  it('последний релиз; заголовок API GitHub', async () => {
+  it('последний релиз; запрос без кеша', async () => {
     const f = reply(200, release('v9.0.0'));
     const u = await fetchUpdate('2.1.0', 'win-setup', f as unknown as typeof fetch);
-    expect(u?.file).toBe('Abax.Setup.2.1.0.exe');
+    expect(u?.file).toBe('Abax.Setup.9.0.0.exe');
     const [url, init] = f.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe(LATEST_RELEASE_API);
-    expect(init.headers).toEqual({ Accept: 'application/vnd.github+json' });
+    expect(init.cache).toBe('no-store');
     expect(init.signal).toBeInstanceOf(AbortSignal);
   });
 
   it('релизов нет (404) - null; лимит, ошибка сервера, странный ответ, нет сети - исключение', async () => {
-    expect(await fetchUpdate('2.1.0', 'web', reply(404, { message: 'Not Found' }) as unknown as typeof fetch)).toBeNull();
+    await expect(fetchUpdate('2.1.0', 'web', reply(404, {}) as unknown as typeof fetch)).rejects.toThrow();
     await expect(fetchUpdate('2.1.0', 'web', reply(403, { message: 'rate limit' }) as unknown as typeof fetch)).rejects.toThrow('403');
     await expect(fetchUpdate('2.1.0', 'web', reply(500, {}) as unknown as typeof fetch)).rejects.toThrow('500');
     await expect(fetchUpdate('2.1.0', 'web', reply(200, { hello: 1 }) as unknown as typeof fetch)).rejects.toThrow('неожиданный');

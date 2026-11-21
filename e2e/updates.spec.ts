@@ -4,7 +4,7 @@ import type { Page } from '@playwright/test';
 import { expect, test } from './fixtures';
 import { test as hostTest } from './host';
 
-const API = 'https://api.github.com/repos/MotoIlyuha/Abax/releases/latest';
+const API = 'https://abaxboard.ru/downloads/latest.json';
 const CURRENT: string = JSON.parse(readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8')).version;
 const [MAJOR] = CURRENT.split('.').map(Number);
 /** Версии новее текущей. */
@@ -46,14 +46,14 @@ function release(version: string) {
   };
 }
 
-/** Ответ GitHub на «последний релиз» (null — сеть недоступна); возвращает счётчик запросов. */
+/** Ответ сервера Abax на «последний релиз» (null — сеть недоступна); возвращает счётчик запросов. */
 async function serveRelease(page: Page, version: string | null, status = 200): Promise<() => number> {
   let n = 0;
   await page.unroute(API);
   await page.route(API, route => {
     n++;
     if (version === null) return route.abort();
-    return route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(status === 200 ? release(version) : { message: 'error' }) });
+    return route.fulfill({ status, headers: { 'access-control-allow-origin': '*' }, contentType: 'application/json', body: JSON.stringify(status === 200 ? release(version) : { message: 'error' }) });
   });
   return () => n;
 }
@@ -69,7 +69,7 @@ async function dayPassed(page: Page): Promise<void> {
 
 /**
  * Проверка при запуске, начатая ещё при открытии доски фикстурой, прошла («нет сети»):
- * дальше GitHub спрашивают только перезагрузки и кнопки теста.
+ * дальше сервер Abax спрашивают только перезагрузки и кнопки теста.
  */
 async function startupDone(page: Page): Promise<void> {
   const requests = await serveRelease(page, null);
@@ -119,7 +119,7 @@ test.describe('обновления', () => {
     await card.locator('.uc-later').click();
     await expect(card).toHaveCount(0);
     expect(requests()).toBe(1);
-    // при следующем запуске в тот же день GitHub не спрашиваем
+    // при следующем запуске в тот же день сервер Abax не спрашиваем
     await reload(page);
     await page.waitForTimeout(3000);
     await expect(card).toHaveCount(0);
@@ -205,7 +205,7 @@ test.describe('обновления', () => {
 
     await serveRelease(page, CURRENT, 403);
     await check.click();
-    await expect(status).toHaveText('Не удалось связаться с GitHub - проверьте интернет и попробуйте ещё раз');
+    await expect(status).toHaveText('Не удалось связаться с сервером обновлений - проверьте интернет и попробуйте ещё раз');
     await expect(status).toHaveClass(/error/);
 
     // вручную показываем и пропущенную версию
@@ -215,11 +215,11 @@ test.describe('обновления', () => {
     await expect(status).toHaveText(`Вышла версия ${NEXT}`);
     await expect(status).not.toHaveClass(/error/);
     const found = box.locator('.sd-updates-found :is(a, button)');
-    await expect(found).toHaveText(['Обновить страницу для установки новой версии', 'Что нового']);
+    await expect(found).toHaveText(['Обновить страницу для установки новой версии', 'Страница загрузок']);
     await expect(found.nth(0)).toHaveRole('button');
-    await expect(found.nth(1)).toHaveAttribute('href', `https://github.com/MotoIlyuha/Abax/releases/tag/v${NEXT}`);
+    await expect(found.nth(1)).toHaveAttribute('href', 'https://abaxboard.ru/downloads/');
 
-    // автопроверку выключили — при запуске GitHub не спрашиваем
+    // автопроверку выключили — при запуске сервер Abax не спрашиваем
     const auto = box.locator('.sd-updates-auto');
     await expect(auto).toBeChecked();
     await auto.uncheck();
@@ -244,8 +244,9 @@ hostTest.describe('обновления в приложении для Windows',
     const download = card.locator('.uc-download');
     await expect(card).toBeVisible(SHOWN);
     await expect(download).toHaveText('Скачать');
-    await expect(download).toHaveAttribute('href', `https://github.com/MotoIlyuha/Abax/releases/download/v${NEXT}/Abax.Setup.${NEXT}.exe`);
+    await expect(download).toHaveAttribute('href', `https://abaxboard.ru/downloads/versions/${NEXT}/Abax.Setup.${NEXT}.exe`);
     // ссылка уходит в браузер (в Electron — системный); в карточке — что делать с файлом
+    await page.context().route('https://abaxboard.ru/downloads/versions/**', route => route.fulfill({ contentType: 'text/html', body: 'OK' }));
     const popup = page.waitForEvent('popup');
     await download.click();
     await (await popup).close();
@@ -256,7 +257,7 @@ hostTest.describe('обновления в приложении для Windows',
     await dayPassed(page);
     await reload(page);
     await expect(card).toBeVisible(SHOWN);
-    await expect(download).toHaveAttribute('href', `https://github.com/MotoIlyuha/Abax/releases/download/v${NEXT}/Abax.${NEXT}.exe`);
+    await expect(download).toHaveAttribute('href', `https://abaxboard.ru/downloads/versions/${NEXT}/Abax.${NEXT}.exe`);
     // подсказка — имя файла (title уходит в data-tip при наведении)
     expect(await download.evaluate(a => (a as HTMLElement).title || (a as HTMLElement).dataset.tip)).toBe(`Abax.${NEXT}.exe`);
   });
