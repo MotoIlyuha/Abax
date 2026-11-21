@@ -44,6 +44,8 @@ jobs:
   windows:
     needs: version
     runs-on: windows-latest
+    env:
+      DOSKA_API_URL: https://board.abaxboard.ru
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -101,6 +103,7 @@ jobs:
     env:
       ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
       KEYSTORE_BASE64: ${{ secrets.ABAX_KEYSTORE_BASE64 }}
+      DOSKA_API_URL: https://board.abaxboard.ru
     steps:
       - id: key
         name: Ключ подписи

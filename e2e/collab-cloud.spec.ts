@@ -19,6 +19,7 @@ test.describe('совместная работа через интернет', (
     await expect(host.userRow('Из облака')).toBeVisible({ timeout: 5000 });
     await host.setRight('Из облака', 0, 'edit');
     await expect(guest.page.locator('body')).not.toHaveClass(/readonly-mode/);
+    await guest.board.tool('p');
     await guest.board.drag([{ x: 300, y: 300 }, { x: 500, y: 350 }, { x: 600, y: 300 }]);
     await expect.poll(() => host.board.count('stroke'), { timeout: 5000 }).toBe(1);
 
