@@ -153,7 +153,7 @@ function renderDetails(p: Panel, el: TaskEl, teacher: boolean): void {
   if (teacher) {
     const live = make(d, 'div', 'task-live');
     make(live, 'span', 'task-live-label', 'Ученик вводит: ');
-    make(live, 'span', 'task-live-value', el.studentDraft || '—');
+    make(live, 'span', 'task-live-value', el.studentDraft || '-');
     const attempts = (el.attempts ?? []).slice(-ATTEMPTS_SHOWN).reverse();
     if (attempts.length > 0) {
       const list = make(d, 'ul', 'task-attempts');

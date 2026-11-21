@@ -51,7 +51,7 @@ describe('создание приглашения', () => {
     expect(keep.body.defaultRole).toBe('view');
   });
 
-  it('на free запрет копирования недоступен — права проходят поправку на тариф владельца', async () => {
+  it('на free запрет копирования недоступен - права проходят поправку на тариф владельца', async () => {
     const { app, owner } = await setup();
     const r = await call(app, 'POST', '/api/invites', { projectId: 'a', allowCopy: false }, { token: owner.token });
     expect(r.body.allowCopy).toBe(true);
@@ -67,7 +67,7 @@ describe('создание приглашения', () => {
     expect(second.body.token).not.toBe(first.body.token);
   });
 
-  it('только владелец своего живого проекта; плохие параметры — 400', async () => {
+  it('только владелец своего живого проекта; плохие параметры - 400', async () => {
     const { app, owner } = await setup('pro');
     const other = await anon(app);
     expect((await call(app, 'POST', '/api/invites', { projectId: 'a' })).status).toBe(401);
@@ -122,7 +122,7 @@ describe('открытие по токену', () => {
     expect(r.body.project.pages[0].elements[0].answer).toBe('42');
   });
 
-  it('GET /j/:token с Accept: application/json — тот же ответ', async () => {
+  it('GET /j/:token с Accept: application/json - тот же ответ', async () => {
     const { app, token } = await invited();
     const viaApi = await call(app, 'GET', `/api/invites/${token}`);
     const viaJ = await call(app, 'GET', `/j/${token}`, undefined, { headers: { Accept: 'application/json' } });
@@ -131,7 +131,7 @@ describe('открытие по токену', () => {
     expect((await call(app, 'GET', '/j/нет', undefined, { headers: { Accept: 'application/json' } })).status).toBe(404);
   });
 
-  it('отозванное, просроченное, неизвестное и приглашение удалённого проекта — 404 invite-not-found', async () => {
+  it('отозванное, просроченное, неизвестное и приглашение удалённого проекта - 404 invite-not-found', async () => {
     const { app, owner, token } = await invited();
     const exp = await call(app, 'POST', '/api/projects/a/clone', undefined, { token: owner.token });
     await putProject(app, owner.token, proj('b'));
@@ -183,7 +183,7 @@ describe('отзыв приглашения', () => {
 });
 
 describe('раздача клиента тем же сервером', () => {
-  it('файлы из staticDir отдаются, выход за каталог и неизвестное — 404', async () => {
+  it('файлы из staticDir отдаются, выход за каталог и неизвестное - 404', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'abax-static-'));
     try {
       mkdirSync(join(dir, 'assets'));

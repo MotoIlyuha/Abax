@@ -51,7 +51,7 @@ export function createChatComposer(o: ChatComposerOptions): ChatComposer {
   const max = o.maxLength ?? CHAT_MAX_LEN;
   input.maxLength = max;
   input.placeholder = o.placeholder ?? 'Сообщение';
-  input.title = 'Enter — отправить, Shift+Enter — новая строка';
+  input.title = 'Enter - отправить, Shift+Enter - новая строка';
   input.setAttribute('aria-label', o.label ?? 'Сообщение в чат');
   const send = document.createElement('button');
   send.type = 'button';

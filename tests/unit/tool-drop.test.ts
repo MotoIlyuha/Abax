@@ -6,7 +6,7 @@ const style = { color: '#123456', width: 3 };
 const at = { x: 200, y: 150 };
 
 describe('перетаскивание инструментов на холст', () => {
-  it('бросать можно фигуры, тела и стикер; рисующие инструменты — нет', () => {
+  it('бросать можно фигуры, тела и стикер; рисующие инструменты - нет', () => {
     for (const id of ['rect', 'ellipse', 'triangle', 'line', 'arrow', 'poly', 'cube', 'box', 'prism', 'pyramid', 'truncPyramid', 'cylinder', 'cone', 'truncCone', 'sphere', 'note'] as const) {
       expect(canDropTool(id)).toBe(true);
     }
@@ -41,7 +41,7 @@ describe('перетаскивание инструментов на холст'
     expect(line.h).toBeLessThan(0);
   });
 
-  it('ломаная — зигзаг из иконки инструмента', () => {
+  it('ломаная - зигзаг из иконки инструмента', () => {
     const el = toolDropElement('poly', 'p1', at, 1, style, '#ffe066');
     expect(el).toMatchObject({ type: 'poly', closed: false, color: '#123456' });
     if (el?.type !== 'poly') throw new Error('ожидалась ломаная');

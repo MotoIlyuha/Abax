@@ -161,6 +161,8 @@ export function playIntro(parts: IntroParts): () => void {
   }
 
   intros.add(it);
+  // Первый кадр должен быть готов до показа окна, а не после следующего кадра анимации.
+  it.render();
   wake();
   timer = window.setTimeout(start, INTRO_HOLD * 1000);
   card.addEventListener('pointerdown', start);

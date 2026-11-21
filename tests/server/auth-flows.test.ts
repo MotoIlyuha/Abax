@@ -1,6 +1,6 @@
 // Вход через Telegram и Google с переходом на сайт провайдера, dev-провайдеры, привязка (SPEC_NIGHT4 §7.3).
 import { createHash, generateKeyPairSync, sign as cryptoSign } from 'node:crypto';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { signTelegramPayload } from '../../server/auth';
 import { allowedReturn, DEV_GOOGLE, DEV_TELEGRAM, googleNonce } from '../../server/auth-flows';
 import { BOT_TOKEN, anon, call, closeApps, makeApp, putProject, proj, type TestApp } from './helpers';
@@ -67,7 +67,7 @@ describe('способы входа сервера', () => {
     expect((await call(app, 'POST', '/api/auth/flow/complete', { flowId: g.body.flowId, secret: g.body.secret })).body.error).toBe('flow-expired');
   });
 
-  it('привязка: второй способ к тому же аккаунту; чужой способ — identity-taken', async () => {
+  it('привязка: второй способ к тому же аккаунту; чужой способ - identity-taken', async () => {
     const app = await makeApp({ devAuth: true, telegramBotToken: null });
     // аккаунт A входит через dev-Google
     const a = await anon(app);
@@ -93,7 +93,7 @@ describe('способы входа сервера', () => {
     expect((await flow(app, { provider: 'telegram', mode: 'link' })).status).toBe(401);
   });
 
-  it('dev-маршрут без dev-режима — 404', async () => {
+  it('dev-маршрут без dev-режима - 404', async () => {
     const app = await makeApp();
     expect((await fetch(`${app.base}/api/auth/dev/start?flow=${'a'.repeat(24)}`, { redirect: 'manual' })).status).toBe(404);
   });
@@ -113,7 +113,7 @@ describe('способы входа сервера', () => {
       if (url === 'https://oauth.telegram.org/.well-known/jwks.json') return new Response(JSON.stringify({ keys: [jwk] }), { status: 200 });
       return new Response(JSON.stringify({ access_token: 'a', token_type: 'Bearer', expires_in: 3600, id_token: idToken }), { status: 200 });
     }) as unknown as typeof fetch;
-    const app = await makeApp({ telegramClientSecret: 'tg-secret', publicApiUrl: 'https://api.abax.example', fetch: fakeFetch });
+    const app = await makeApp({ telegramClientSecret: 'tg-secret', publicApiUrl: 'https://api.abax.example', publicWebUrl: 'https://abax.example', fetch: fakeFetch });
     expect((await call(app, 'GET', '/api/auth/providers')).body).toMatchObject({ telegram: true, telegramBotId: '123456' });
     const exp = Math.floor(app.clock.t / 1000) + 600;
     const good = { iss: 'https://oauth.telegram.org', aud: '123456', sub: '777', iat: exp - 600, exp, id: 4242, name: 'Тг Пользователь', preferred_username: 'tg_user', picture: 'https://cdn.telesco.pe/a.jpg' };
@@ -123,7 +123,7 @@ describe('способы входа сервера', () => {
     const toTg = new URL(await follow(`${app.base}/api/auth/telegram/start?flow=${f.body.flowId}`));
     expect(toTg.origin + toTg.pathname).toBe('https://oauth.telegram.org/auth');
     expect(Object.fromEntries(toTg.searchParams)).toMatchObject({
-      client_id: '123456', redirect_uri: 'https://api.abax.example/api/auth/telegram/callback', response_type: 'code',
+      client_id: '123456', origin: 'https://abax.example', redirect_uri: 'https://api.abax.example/api/auth/telegram/callback', response_type: 'code',
       scope: 'openid profile', state: f.body.flowId, code_challenge_method: 'S256',
     });
     idToken = sign(good);
@@ -153,7 +153,7 @@ describe('способы входа сервера', () => {
     expect((await call(app, 'POST', '/api/auth/flow/complete', { flowId: h.body.flowId, secret: h.body.secret })).body.error).toBe('cancelled');
   });
 
-  it('Telegram без Client Secret — выключен (без dev-режима)', async () => {
+  it('Telegram без Client Secret - выключен (без dev-режима)', async () => {
     const app = await makeApp();
     expect((await call(app, 'GET', '/api/auth/providers')).body.telegram).toBe(false);
     expect((await flow(app, { provider: 'telegram' })).status).toBe(503);
@@ -180,12 +180,12 @@ describe('способы входа сервера', () => {
     // nonce (обязателен по документации Google) — в запросе и обратно в id_token
     const nonce = toGoogle.searchParams.get('nonce');
     expect(nonce).toBe(googleNonce(app.app, f.body.flowId));
-    claims = { iss: 'https://accounts.google.com', aud: 'gid', sub: 'g-123', exp, nonce, name: 'Гугл Пользователь', email: 'g@gmail.com' };
+    claims = { iss: 'https://accounts.google.com', aud: 'gid', sub: 'g-123', exp, nonce, name: 'Гугл Пользователь', email: 'g@gmail.com', picture: 'https://lh3.googleusercontent.com/photo' };
     expect(await follow(`${app.base}/api/auth/google/callback?state=${f.body.flowId}&code=c0de`)).toBe(`${RETURN}#abaxAuth=${f.body.flowId}`);
     expect(calls[0].body.get('code_verifier')).toBeTruthy();
     expect(calls[0].body.get('client_secret')).toBe('gsecret');
     const done = await call(app, 'POST', '/api/auth/flow/complete', { flowId: f.body.flowId, secret: f.body.secret });
-    expect(done.body.user).toMatchObject({ google: true, displayName: 'Гугл Пользователь', email: null });
+    expect(done.body.user).toMatchObject({ google: true, displayName: 'Гугл Пользователь', email: null, avatarUrl: 'https://lh3.googleusercontent.com/photo' });
     // адрес Google без email_verified не сохраняется; подтверждённый — сохраняется (приглашения по почте, SPEC_NIGHT5 §4.1)
     const gEmail = () => (app.db.prepare("SELECT google_email FROM users WHERE google_sub = 'g-123'").get() as { google_email: string | null }).google_email;
     expect(gEmail()).toBeNull();
@@ -208,6 +208,23 @@ describe('способы входа сервера', () => {
     const h = await flow(app, { provider: 'google' });
     await follow(`${app.base}/api/auth/google/callback?state=${h.body.flowId}&error=access_denied`);
     expect((await call(app, 'POST', '/api/auth/flow/complete', { flowId: h.body.flowId, secret: h.body.secret })).body.error).toBe('cancelled');
+  });
+
+  it('фото провайдера доступно только из разрешённого источника и с ограничением размера', async () => {
+    const fakeFetch = vi.fn(async (_url: string, _init: RequestInit) => new Response('photo', { headers: { 'content-type': 'image/jpeg' } }));
+    const app = await makeApp({ fetch: fakeFetch as unknown as typeof fetch });
+    const user = await anon(app);
+    expect((await call(app, 'GET', '/api/me/provider-avatar')).status).toBe(401);
+    app.db.prepare('UPDATE users SET avatar_url = ? WHERE id = ?').run('https://lh3.googleusercontent.com/photo', user.id);
+    const photo = await call(app, 'GET', '/api/me/provider-avatar', undefined, { token: user.token });
+    expect(photo.body.photo).toBe(`data:image/jpeg;base64,${Buffer.from('photo').toString('base64')}`);
+    expect(fakeFetch.mock.calls[0][1]).toMatchObject({ redirect: 'error' });
+    app.db.prepare('UPDATE users SET avatar_url = ? WHERE id = ?').run('https://googleusercontent.com.evil.example/photo', user.id);
+    expect((await call(app, 'GET', '/api/me/provider-avatar', undefined, { token: user.token })).status).toBe(404);
+    expect(fakeFetch).toHaveBeenCalledTimes(1);
+    app.db.prepare('UPDATE users SET avatar_url = ? WHERE id = ?').run('https://cdn.telesco.pe/photo', user.id);
+    fakeFetch.mockResolvedValueOnce(new Response(new Uint8Array(2_000_001), { headers: { 'content-type': 'image/png' } }));
+    expect((await call(app, 'GET', '/api/me/provider-avatar', undefined, { token: user.token })).status).toBe(502);
   });
 
   it('старый POST /api/auth/telegram по-прежнему входит (режим login)', async () => {

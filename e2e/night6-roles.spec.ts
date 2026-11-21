@@ -72,7 +72,7 @@ test.describe('роли', () => {
     for (const ctx of [A, S, P]) await ctx.close();
   });
 
-  test('старая ссылка «смотрят» (view) — комментатор, как раньше: пишет в чат и ставит реакции, но не рисует', async ({ browser }) => {
+  test('старая ссылка «смотрят» (view) - комментатор, как раньше: пишет в чат и ставит реакции, но не рисует', async ({ browser }) => {
     const { base, srv } = env.get();
     const teacher = await login(base, 'teacher-legacy@abax.example');
     const A = await device(browser, base, { session: teacher.token, name: 'Лемур' });

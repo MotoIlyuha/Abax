@@ -47,7 +47,7 @@ export class Board {
     this.quickMenu = page.locator('#quick-menu');
   }
 
-  async open(path = '/'): Promise<void> {
+  async open(path = '/', initialTool: 'pen' | 'select' | null = 'pen'): Promise<void> {
     // в сеть тесты не ходят: проверка обновлений при запуске видит «нет связи»
     // (тесты обновлений подставляют свой ответ GitHub, см. e2e/updates.spec.ts); на весь контекст —
     // и ссылки «Скачать», открытые в новой вкладке
@@ -55,11 +55,22 @@ export class Board {
     await skipOnboarding(this.page.context());
     await this.page.goto(path);
     await this.ready();
+    if (initialTool) await this.tool(initialTool === 'pen' ? 'p' : 'v');
   }
 
   async ready(): Promise<void> {
     await this.page.waitForFunction(() => !!(window as any).__doska);
     await expect(this.page.locator('#toolbar .tool').first()).toBeVisible();
+  }
+
+  /** Загружает сохранённое расположение панели из прежних настроек. */
+  async loadToolbarPosition(pos: 'left' | 'top' | 'right' | 'bottom'): Promise<void> {
+    await this.page.evaluate(toolbarPos => {
+      const saved = JSON.parse(localStorage.getItem('doska.settings') ?? '{}');
+      localStorage.setItem('doska.settings', JSON.stringify({ ...saved, toolbarPos, toolbarFloat: null }));
+    }, pos);
+    await this.page.reload();
+    await this.ready();
   }
 
   elements(): Promise<El[]> {
@@ -257,13 +268,14 @@ export function byTip(scope: Page | Locator, tip: string): Locator {
   return scope.locator(`[title="${tip}"], [data-tip="${tip}"]`);
 }
 
-export const test = base.extend<{ board: Board }>({
+export const test = base.extend<{ board: Board; initialTool: 'pen' | 'select' | null }>({
+  initialTool: ['pen', { option: true }],
   // auto: страница открыта в каждом тесте, даже если он работает только с page
-  board: [async ({ page }, use) => {
+  board: [async ({ page, initialTool }, use) => {
     const errors: string[] = [];
     page.on('pageerror', e => errors.push(String(e)));
     const board = new Board(page);
-    await board.open();
+    await board.open('/', initialTool);
     await use(board);
     expect(errors, 'ошибки JS на странице').toEqual([]);
   }, { auto: true }],

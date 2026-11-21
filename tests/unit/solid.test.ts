@@ -24,7 +24,7 @@ describe('классификация тел', () => {
 });
 
 describe('solidSides', () => {
-  it('значения по умолчанию: призма — треугольная, пирамиды — четырёхугольные', () => {
+  it('значения по умолчанию: призма - треугольная, пирамиды - четырёхугольные', () => {
     expect(solidSides(solid('prism'))).toBe(3);
     expect(solidSides(solid('pyramid'))).toBe(4);
     expect(solidSides(solid('truncPyramid'))).toBe(4);
@@ -89,7 +89,7 @@ describe('solidGeometry', () => {
     expect(g.prims.filter(p => p.k === 'arc')).toHaveLength(2);
   });
 
-  it('приплюснутый конус: вершина внутри основания — контур = эллипс', () => {
+  it('приплюснутый конус: вершина внутри основания - контур = эллипс', () => {
     const g = solidGeometry(solid('cone', { h: 10, d: 80 }));
     expect(g.prims.filter(p => p.k === 'seg')).toHaveLength(0);
     // вершина всё равно входит в оболочку
@@ -104,7 +104,7 @@ describe('solidGeometry', () => {
 });
 
 describe('ручки параметров', () => {
-  it('куб — одна ручка ребра', () => {
+  it('куб - одна ручка ребра', () => {
     expect(solidHandles(solid('cube')).map(h => h.h)).toEqual([{ kind: 'param', key: 'a' }]);
   });
 
@@ -113,7 +113,7 @@ describe('ручки параметров', () => {
     expect(solidHandles(solid('truncPyramid')).map(h => (h.h as { key: string }).key)).toEqual(['w', 'd', 'h', 't']);
   });
 
-  it('тела вращения: w, d, h; усечённый конус ещё и t; шар — w, d', () => {
+  it('тела вращения: w, d, h; усечённый конус ещё и t; шар - w, d', () => {
     expect(solidHandles(solid('cylinder')).map(h => (h.h as { key: string }).key)).toEqual(['w', 'd', 'h']);
     expect(solidHandles(solid('truncCone')).map(h => (h.h as { key: string }).key)).toEqual(['w', 'd', 'h', 't']);
     expect(solidHandles(solid('sphere')).map(h => (h.h as { key: string }).key)).toEqual(['w', 'd']);
@@ -145,7 +145,7 @@ describe('ручки параметров', () => {
     expect(applySolidParam(solid('cube'), 'a', { x: 200, y: -200 })).toMatchObject({ w: 200, d: 200, h: 200 });
   });
 
-  it('неизвестная ручка — элемент без изменений', () => {
+  it('неизвестная ручка - элемент без изменений', () => {
     const el = solid('cube');
     expect(applySolidParam(el, 'w', { x: 0, y: 0 })).toBe(el);
   });

@@ -57,7 +57,7 @@ test.describe('раздел «Экспериментальные»', () => {
     await expect(nav(page)).toHaveCount(7);
   });
 
-  test('цвета иконки: выбор показывается у заголовка, «Сохранить» меняет иконку приложения, «Сбросить» — обратно', async ({ board, page }) => {
+  test('цвета иконки: выбор показывается у заголовка, «Сохранить» меняет иконку приложения, «Сбросить» - обратно', async ({ board, page }) => {
     await unlock(page);
     await openSection(page, 'experimental');
     const head = page.locator('#sd-title .sd-head-icon img');
@@ -111,7 +111,7 @@ test.describe('раздел «Экспериментальные»', () => {
   });
 });
 
-hostTest('приложение для компьютера: свои цвета — и иконка окна', async ({ host, page }) => {
+hostTest('приложение для компьютера: свои цвета - и иконка окна', async ({ host, page }) => {
   await page.evaluate(() => localStorage.setItem('doska.experiments', '1'));
   await openSection(page, 'experimental');
   await page.locator('.sd-exp-color[data-color="accent"] .sd-exp-swatch').click();
@@ -153,7 +153,7 @@ async function enablePageLinks(page: Page): Promise<void> {
 }
 
 test.describe('страницы на холсте', () => {
-  test('без настройки карточку на холст не вынести; с ней — превью страницы там, где отпустили', async ({ board, page }) => {
+  test('без настройки карточку на холст не вынести; с ней - превью страницы там, где отпустили', async ({ board, page }) => {
     const second = await twoPages(board);
     const box = (await board.canvas.boundingBox())!;
     await dragCard(page, 1, box.x + 700, box.y + 250);
@@ -203,7 +203,7 @@ test.describe('страницы на холсте', () => {
     expect((await board.state()).pageId).toBe(recursive.page);
   });
 
-  test('клик по превью — приближение и переход на страницу, ввод на это время заблокирован; перенос — не переход', async ({ board, page }) => {
+  test('клик по превью - приближение и переход на страницу, ввод на это время заблокирован; перенос - не переход', async ({ board, page }) => {
     const second = await twoPages(board);
     await enablePageLinks(page);
     const box = (await board.canvas.boundingBox())!;

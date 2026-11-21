@@ -1000,7 +1000,7 @@ export function sendAttention(pageId: string, elId: string, emoji: string): bool
 }
 
 export type CommentRequest =
-  | { op: 'create'; x: number; y: number; targetElementId?: string; text: string }
+  | { op: 'create'; x: number; y: number; targetElementId: string; text: string }
   | { op: 'reply'; threadId: string; text: string }
   | { op: 'resolve'; threadId: string; resolved: boolean };
 
@@ -1179,7 +1179,7 @@ const CLOSED_GENERIC = {
 
 const CLOSED_NO_CONNECT = {
   title: 'Не удалось подключиться к серверу',
-  text: 'Сервер недоступен или не пускает с этого адреса сайта. Проверьте интернет и ссылку; если не помогает — сообщите автору: возможно, адрес сайта не разрешён на ретрансляторе (RELAY_ALLOWED_ORIGINS).',
+  text: 'Сервер недоступен или не пускает с этого адреса сайта. Проверьте интернет и ссылку; если не помогает - сообщите автору: возможно, адрес сайта не разрешён на ретрансляторе (RELAY_ALLOWED_ORIGINS).',
 };
 
 /**

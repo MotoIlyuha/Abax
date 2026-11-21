@@ -1,22 +1,24 @@
 import { expect, test } from './fixtures';
 
-test.describe('загрузка', () => {
+test.describe('новый пользователь', () => {
+  test.use({ initialTool: null });
+
   test('новый пользователь получает проект с одной страницей', async ({ board, page }) => {
     await expect(page).toHaveTitle('Abax');
     const s = await board.state();
     expect(s.project.name).toBe('Проект 1');
     expect(s.project.pages.map(p => p.name)).toEqual(['Страница 1']);
-    expect(s.tool).toBe('pen');
+    expect(s.tool).toBe('select');
     await expect(page.locator('#page-name')).toHaveValue('Страница 1');
     await expect(page.locator('#project-name')).toHaveValue('Проект 1');
-    // перо — в группе «Рисование», её кнопка показывает перо
-    await expect(page.locator('#btn-draw')).toHaveClass(/active/);
-    await expect(page.locator('#btn-draw')).toHaveAttribute('data-shape', 'pen');
+    await expect(page.locator('#toolbar .tool[data-tool="select"]')).toHaveClass(/active/);
     await expect(page.locator('#btn-undo')).toBeDisabled();
     await expect(page.locator('#btn-redo')).toBeDisabled();
     await expect(page.locator('#zoom-label')).toHaveText('100%');
   });
+});
 
+test.describe('загрузка', () => {
   test('последний открытый проект восстанавливается после перезагрузки', async ({ board, page }) => {
     await board.drag([{ x: 400, y: 300 }, { x: 500, y: 350 }]);
     await board.saved();
@@ -62,7 +64,7 @@ test.describe('перо и маркер', () => {
     expect(s.pts).toHaveLength(1);
   });
 
-  test('маркер — широкий полупрозрачный штрих', async ({ board, page }) => {
+  test('маркер - широкий полупрозрачный штрих', async ({ board, page }) => {
     await board.tool('m');
     await expect(page.locator('#btn-draw')).toHaveAttribute('data-shape', 'highlighter');
     await board.drag([{ x: 400, y: 300 }, { x: 600, y: 300 }]);
@@ -270,7 +272,7 @@ test.describe('ластик', () => {
     expect(await board.count()).toBe(0);
   });
 
-  test('объектный ластик маленький, курсор — его иконка', async ({ board, page }) => {
+  test('объектный ластик маленький, курсор - его иконка', async ({ board, page }) => {
     await board.drag([{ x: 400, y: 300 }, { x: 600, y: 300 }]);
     await board.tool('e');
     await expect(board.canvas).toHaveCSS('cursor', /^url\("data:image\/svg\+xml.*\) 6 18, crosshair$/);
@@ -304,7 +306,7 @@ test.describe('ластик', () => {
     expect(await board.count()).toBe(4);
   });
 
-  test('ластик для пера и маркера: спокойная рука — маленький, быстрая — крупный', async ({ board, page }) => {
+  test('ластик для пера и маркера: спокойная рука - маленький, быстрая - крупный', async ({ board, page }) => {
     await board.drag([{ x: 300, y: 300 }, { x: 700, y: 300 }]);
     await board.tool('x');
     // медленно: кружок в 14 px от линии её не задевает
@@ -354,7 +356,7 @@ test.describe('ластик', () => {
 });
 
 test.describe('текст и стикеры', () => {
-  test('текст: ввод, Enter — сохранить; Shift+Enter — новая строка', async ({ board, page }) => {
+  test('текст: ввод, Enter - сохранить; Shift+Enter - новая строка', async ({ board, page }) => {
     await board.tool('t');
     await board.click({ x: 400, y: 300 });
     const ta = page.locator('#overlay textarea.inplace-edit');
@@ -381,7 +383,7 @@ test.describe('текст и стикеры', () => {
     expect(await board.count()).toBe(0);
   });
 
-  test('двойной клик редактирует текст, очистка — удаляет', async ({ board, page }) => {
+  test('двойной клик редактирует текст, очистка - удаляет', async ({ board, page }) => {
     await board.tool('t');
     await board.click({ x: 400, y: 300 });
     await page.keyboard.type('abc');
@@ -424,7 +426,7 @@ test.describe('текст и стикеры', () => {
     expect(n).toMatchObject({ type: 'note', text: 'Домашка: №5', color: '#a9def9', w: 216, h: 168, x: 500 - 108, y: 400 - 84 });
   });
 
-  test('двойной клик по стикеру — редактирование', async ({ board, page }) => {
+  test('двойной клик по стикеру - редактирование', async ({ board, page }) => {
     await board.tool('n');
     await board.click({ x: 500, y: 400 });
     await page.keyboard.type('1');

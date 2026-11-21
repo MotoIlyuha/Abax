@@ -13,7 +13,6 @@ import {
 } from './geom';
 import { collabActive, foreignElementHint, noteCursor, protectionActive, sendFadeStroke, sendFlash, sendLaser } from './collab';
 import { addGestureProbe } from './gesture';
-import { annotationClick } from './comments-ui';
 import { isNativeApp } from './native';
 import { cursorCss } from './cursors';
 import { myCursorId, onProfileChange } from './profile';
@@ -636,9 +635,6 @@ export function initController(canvas: HTMLCanvasElement): void {
     // открытый редактор текста фиксируем до разбора нажатия: перенос и ручки должны видеть новый текст
     closeEditor(true);
 
-    // пилюли реакций и пины комментариев нажимаются всегда — и читателем, у которого править доску нельзя
-    const anyTool = !canEditBoard() || activeTool() === 'select' || activeTool() === 'pan';
-    if (e.button === 0 && anyTool && !gesture && !action && annotationClick(lp.x, lp.y)) return;
 
     // совместный режим: на странице без права edit правки запрещены
     if (!canEditBoard() && activeTool() !== 'pan' && !POINTER_TOOLS.has(activeTool()) && e.button !== 1) {

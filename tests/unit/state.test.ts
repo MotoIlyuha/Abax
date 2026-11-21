@@ -42,7 +42,7 @@ describe('uid', () => {
 });
 
 describe('проекты и страницы', () => {
-  it('blankProject — одна пустая страница с клеткой', () => {
+  it('blankProject - одна пустая страница с клеткой', () => {
     const p = blankProject('X');
     expect(p.name).toBe('X');
     expect(p.pages).toHaveLength(1);
@@ -234,7 +234,7 @@ describe('выделение и стиль', () => {
     expect(state.style.color).toBe('#1f2329');
   });
 
-  it('стикер без цвета пера — стиль не трогаем', () => {
+  it('стикер без цвета пера - стиль не трогаем', () => {
     replaceElements([{ id: 'n', type: 'note', x: 0, y: 0, w: 10, h: 10, text: 'x', color: '#ffe066' }]);
     setSelection(['n']);
     expect(state.style.color).toBe('#1f2329');
@@ -264,7 +264,7 @@ describe('выделение и стиль', () => {
     expect(canUndo()).toBe(true);
   });
 
-  it('у картинки цвет, толщина и прозрачность — рамка; недостающее берётся из текущего стиля', () => {
+  it('у картинки цвет, толщина и прозрачность - рамка; недостающее берётся из текущего стиля', () => {
     const img: ImageEl = { id: 'i', type: 'image', x: 0, y: 0, w: 10, h: 10, src: 'data:' };
     replaceElements([img]);
     setSelection(['i']);
@@ -279,7 +279,7 @@ describe('выделение и стиль', () => {
     expect(state.board.elements[0]).toMatchObject({ color: '#305bab', width: 6 });
   });
 
-  it('removeImageFrames без рамок — без записи в историю', () => {
+  it('removeImageFrames без рамок - без записи в историю', () => {
     replaceElements([{ id: 'i', type: 'image', x: 0, y: 0, w: 10, h: 10, src: 'data:' }, rect('a')]);
     setSelection(['i', 'a']);
     removeImageFrames();
@@ -338,7 +338,7 @@ describe('выделение и стиль', () => {
     expect(state.board.elements[0]).not.toHaveProperty('opacity');
   });
 
-  it('скругление — только у прямоугольников и картинок; 0 не хранится', () => {
+  it('скругление - только у прямоугольников и картинок; 0 не хранится', () => {
     replaceElements([
       rect('a'), rect('e', { shape: 'ellipse' }), { id: 'i', type: 'image', x: 0, y: 0, w: 10, h: 10, src: 'data:' },
     ]);
@@ -353,7 +353,7 @@ describe('выделение и стиль', () => {
     expect(state.board.elements[0]).not.toHaveProperty('radius');
   });
 
-  it('applyStyleToSelection: ничего не подошло — без записи в историю; history=false — продолжение жеста', () => {
+  it('applyStyleToSelection: ничего не подошло - без записи в историю; history=false - продолжение жеста', () => {
     replaceElements([rect('e', { shape: 'ellipse' })]);
     setSelection(['e']);
     applyStyleToSelection({ radius: 10 });
@@ -400,7 +400,7 @@ describe('выделение и стиль', () => {
     expect(opacityField(undefined)).toEqual({});
   });
 
-  it('applyStyleToSelection без подходящих элементов — без записи в историю', () => {
+  it('applyStyleToSelection без подходящих элементов - без записи в историю', () => {
     replaceElements([{ id: 'n', type: 'note', x: 0, y: 0, w: 10, h: 10, text: 'x', color: '#ffe066' }]);
     setSelection(['n']);
     applyStyleToSelection({ color: '#ff0000' });
@@ -517,7 +517,7 @@ describe('инструменты и живые объекты', () => {
     expect(state.board.elements[0]).toMatchObject({ tool: 'highlighter', width: 4 * 3.2 });
   });
 
-  it('extendStroke/endStroke без начатого штриха — без эффекта', () => {
+  it('extendStroke/endStroke без начатого штриха - без эффекта', () => {
     extendStroke({ x: 1, y: 1, p: 0.5 });
     endStroke();
     expect(state.board.elements).toHaveLength(0);
@@ -593,7 +593,7 @@ describe('масштаб', () => {
     expect(state.camera.zoom).toBe(ZOOM_MIN);
   });
 
-  it('parseZoomPercent: число, проценты, запятая; ошибки — понятным текстом', () => {
+  it('parseZoomPercent: число, проценты, запятая; ошибки - понятным текстом', () => {
     expect(parseZoomPercent('150')).toEqual({ zoom: 1.5 });
     expect(parseZoomPercent(' 80 % ')).toEqual({ zoom: 0.8 });
     expect(parseZoomPercent('87,5')).toEqual({ zoom: 0.875 });
@@ -603,8 +603,8 @@ describe('масштаб', () => {
     expect(parseZoomPercent('')).toEqual({ error: 'Введите число, например 150' });
     expect(parseZoomPercent('-20')).toHaveProperty('error');
     expect(parseZoomPercent('1e3')).toHaveProperty('error');
-    expect(parseZoomPercent('4')).toEqual({ error: 'Масштаб — от 5 до 3200%' });
-    expect(parseZoomPercent('3201')).toEqual({ error: 'Масштаб — от 5 до 3200%' });
+    expect(parseZoomPercent('4')).toEqual({ error: 'Масштаб - от 5 до 3200%' });
+    expect(parseZoomPercent('3201')).toEqual({ error: 'Масштаб - от 5 до 3200%' });
   });
 });
 
@@ -804,7 +804,7 @@ describe('выбор инструмента и указка', () => {
     }
   });
 
-  it('повторный выбор того же инструмента и «Задание» выделения не трогают, программный setTool — тоже', () => {
+  it('повторный выбор того же инструмента и «Задание» выделения не трогают, программный setTool - тоже', () => {
     setTool('select');
     addElement(rect('a'));
     setSelection(['a']);

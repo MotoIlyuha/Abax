@@ -14,7 +14,7 @@ const favicon = () => document.querySelector<HTMLLinkElement>('link[rel="icon"]'
 const logo = () => document.querySelector<HTMLImageElement>('img.app-logo')!.getAttribute('src');
 
 describe('цвета иконки приложения', () => {
-  it('логотип: круг и треугольник — основным цветом, точка — акцентом, фон — своим, рамка — светлый оттенок основного', () => {
+  it('логотип: круг и треугольник - основным цветом, точка - акцентом, фон - своим, рамка - светлый оттенок основного', () => {
     const svg = logoSvg({ main: '#7a2bd6', accent: '#00aa55', bg: '#112233' });
     expect(svg.match(/stroke="#7a2bd6"/g)).toHaveLength(2);
     expect(svg).toContain('fill="#00aa55"');
@@ -26,7 +26,7 @@ describe('цвета иконки приложения', () => {
     expect(decodeURIComponent(logoDataUrl(DEFAULT_ICON_COLORS).split(',')[1])).toBe(logoSvg(DEFAULT_ICON_COLORS));
   });
 
-  it('по умолчанию — исходные цвета и файл logo.svg; битые сохранённые — тоже по умолчанию', () => {
+  it('по умолчанию - исходные цвета и файл logo.svg; битые сохранённые - тоже по умолчанию', () => {
     expect(iconColors()).toEqual(DEFAULT_ICON_COLORS);
     expect(logoSrc()).toBe('logo.svg');
     localStorage.setItem('doska.iconColors', JSON.stringify({ main: 'red', accent: '#000000' }));
@@ -40,7 +40,7 @@ describe('цвета иконки приложения', () => {
     expect(iconColors()).toEqual(DEFAULT_ICON_COLORS);
   });
 
-  it('сохранение меняет значок вкладки и логотипы; исходные цвета не хранятся; сброс — обратно', () => {
+  it('сохранение меняет значок вкладки и логотипы; исходные цвета не хранятся; сброс - обратно', () => {
     saveIconColors({ main: '#7A2BD6', accent: '#00AA55', bg: '#FFEEDD' });
     expect(iconColors()).toEqual({ main: '#7a2bd6', accent: '#00aa55', bg: '#ffeedd' });
     expect(favicon()).toBe(logoDataUrl({ main: '#7a2bd6', accent: '#00aa55', bg: '#ffeedd' }));
@@ -76,7 +76,7 @@ describe('цвета иконки приложения', () => {
 });
 
 describe('скрытый раздел «Экспериментальные»', () => {
-  it('по умолчанию спрятан; показ запоминается, скрытие — тоже', () => {
+  it('по умолчанию спрятан; показ запоминается, скрытие - тоже', () => {
     expect(experimentsShown()).toBe(false);
     setExperimentsShown(true);
     expect(experimentsShown()).toBe(true);

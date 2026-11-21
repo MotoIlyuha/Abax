@@ -18,18 +18,18 @@ describe('widthAt', () => {
 });
 
 describe('ribbonPath', () => {
-  it('пустой штрих — пустой контур', () => {
+  it('пустой штрих - пустой контур', () => {
     expect(opsOf(ribbonPath([], 4))).toEqual([]);
   });
 
-  it('одна точка — круг радиусом в полширины', () => {
+  it('одна точка - круг радиусом в полширины', () => {
     const ops = opsOf(ribbonPath([{ x: 10, y: 20, p: 0.5 }], 4));
     expect(ops[0]).toEqual(['moveTo', 12, 20]);
     expect(ops[1][0]).toBe('arc');
     expect(ops[1].slice(1, 4)).toEqual([10, 20, 2]);
   });
 
-  it('отрезок — замкнутая лента с полудугами на концах', () => {
+  it('отрезок - замкнутая лента с полудугами на концах', () => {
     const ops = opsOf(ribbonPath([{ x: 0, y: 0, p: 0.5 }, { x: 10, y: 0, p: 0.5 }], 4));
     const kinds = ops.map(o => o[0]);
     expect(kinds).toEqual(['moveTo', 'lineTo', 'arc', 'lineTo', 'arc', 'closePath']);

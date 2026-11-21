@@ -113,7 +113,7 @@ export function preserveLiveFields(snapshotElements: readonly Element[], current
 export interface CreateThreadParams {
   x: number;
   y: number;
-  targetElementId?: string;
+  targetElementId: string;
   authorId: string;
   authorName: string;
   text: string;
@@ -128,18 +128,18 @@ function withComments(page: Page, comments: CommentThread[]): Page {
 }
 
 /**
- * Новая ветка с первым сообщением. Пустой текст или неверные координаты — страница без изменений.
- * Если элемента targetElementId на странице нет, ветка создаётся без привязки.
+ * Новая ветка с первым сообщением у существующего объекта.
+ * При неверных данных или отсутствии объекта страница остаётся без изменений.
  */
 export function createCommentThread(page: Page, params: CreateThreadParams): Page {
   const text = cleanCommentText(params.text);
   if (!text || !Number.isFinite(params.x) || !Number.isFinite(params.y) || !isUserId(params.authorId)) return page;
-  const target = params.targetElementId && page.elements.some(e => e.id === params.targetElementId) ? params.targetElementId : undefined;
+  if (!params.targetElementId || !page.elements.some(e => e.id === params.targetElementId)) return page;
   const thread: CommentThread = {
     id: params.id ?? newId(),
     x: params.x,
     y: params.y,
-    ...(target ? { targetElementId: target } : {}),
+    targetElementId: params.targetElementId,
     messages: [{
       id: params.messageId ?? newId(), authorId: params.authorId, authorName: cleanAuthorName(params.authorName), text,
       createdAt: params.now ?? Date.now(),

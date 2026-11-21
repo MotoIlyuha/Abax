@@ -56,6 +56,7 @@ export interface PromoCodeRow {
   uses: number;
   expires_at: number | null;
   created_at: number;
+  disabled_at: number | null;
 }
 
 export interface PromoRedemptionRow {
@@ -380,7 +381,31 @@ CREATE TABLE yookassa_checkouts (
 );
 `;
 
-const MIGRATIONS: string[] = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8, SCHEMA_V9];
+const SCHEMA_V10 = `
+ALTER TABLE promo_codes ADD COLUMN disabled_at INTEGER;
+ALTER TABLE payments ADD COLUMN resolved_at INTEGER;
+
+CREATE TABLE admin_sessions (
+  token_hash TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at INTEGER NOT NULL
+);
+CREATE INDEX idx_admin_sessions_expires ON admin_sessions(expires_at);
+
+CREATE TABLE admin_audit (
+  id INTEGER PRIMARY KEY,
+  admin_id TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  operation TEXT NOT NULL,
+  object_id TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  change_json TEXT NOT NULL
+);
+CREATE INDEX idx_admin_audit_operation ON admin_audit(operation, id);
+CREATE INDEX idx_admin_audit_admin ON admin_audit(admin_id, id);
+`;
+
+const MIGRATIONS: string[] = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10];
 
 /** target — до какой версии (по умолчанию — до последней; меньше — только в тестах миграций). */
 export function migrate(db: Db, target = MIGRATIONS.length): void {

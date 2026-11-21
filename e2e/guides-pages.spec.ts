@@ -17,13 +17,6 @@ async function holdDrag(board: Board, a: Pt, b: Pt): Promise<void> {
   await board.page.mouse.move(sb.x, sb.y, { steps: 4 });
 }
 
-/** Флажок настройки в поповере «Настройки доски». */
-async function toggleSetting(board: Board, text: string): Promise<void> {
-  await board.page.locator('#btn-settings').dispatchEvent('click');
-  await board.page.locator('#settings-popover label', { hasText: text }).locator('input').click();
-  await board.page.keyboard.press('Escape');
-}
-
 test.describe('направляющие выравнивания', () => {
   test('при переносе объект примагничивается к краю соседа, видна линия; настройкой выключается', async ({ board, page }) => {
     await board.rect(200, 200, 350, 300);
@@ -88,7 +81,10 @@ test.describe('список страниц', () => {
     await expect(dock).toHaveClass(/open/); // по умолчанию остаётся открытым
 
     expect((await board.state()).settings.closePagesOnPick).toBe(false);
-    await toggleSetting(board, 'Закрывать после выбора страницы');
+    await page.keyboard.press('Control+Comma');
+    await page.locator('.sd-nav-item[data-section="advanced"]').click();
+    await page.getByLabel('Закрывать после выбора страницы').check();
+    await page.keyboard.press('Escape');
     expect((await board.state()).settings.closePagesOnPick).toBe(true);
     await board.openPages();
     await cards.nth(1).click();
@@ -96,7 +92,7 @@ test.describe('список страниц', () => {
     await expect.poll(async () => (await board.state()).pageId).toBe((await board.state()).project.pages[1].id);
   });
 
-  test('на превью текущей страницы — рамка видимой области', async ({ board, page }) => {
+  test('на превью текущей страницы - рамка видимой области', async ({ board, page }) => {
     await board.rect(400, 300, 600, 450);
     await board.addPage();
     await page.locator('#pages-list .page-item').nth(0).click();

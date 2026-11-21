@@ -186,14 +186,14 @@ describe('гость из интернета в комнате автора', ()
 });
 
 describe('hello', () => {
-  it('другая версия протокола комнаты — гость отключается с 4426', async () => {
+  it('другая версия протокола комнаты - гость отключается с 4426', async () => {
     await setup();
     const g = await cloudGuest('x', { t: 'hello', proto: PROTO + 1, name: 'x' });
     expect(await g.closed).toEqual({ code: KICK.PROTOCOL_MISMATCH, reason: 'protocol mismatch' });
     expect(share.users()).toHaveLength(1);
   });
 
-  it('первое сообщение не hello — 4400; молчание — 4400 по таймауту', async () => {
+  it('первое сообщение не hello - 4400; молчание - 4400 по таймауту', async () => {
     await setup({ link: { helloTimeoutMs: 80 } });
     const a = await cloudGuest('a', { t: 'cursor', x: 1, y: 1 });
     const b = await cloudGuest('b', null);
@@ -202,7 +202,7 @@ describe('hello', () => {
     expect(share.users()).toHaveLength(1);
   });
 
-  it('открытый текст вместо зашифрованного hello игнорируется; молчание — 4400', async () => {
+  it('открытый текст вместо зашифрованного hello игнорируется; молчание - 4400', async () => {
     await setup({ link: { helloTimeoutMs: 80 } });
     const g = await peer(`${relayUrl}/g/${link.status().room}`);
     g.ws.send(JSON.stringify({ t: 'hello', proto: PROTO, name: 'без ключа' }));
@@ -213,14 +213,14 @@ describe('hello', () => {
     await until(() => last(ok, 'init'));
   });
 
-  it('чужой ключ (испорченная ссылка) — 4403, в комнату не попадает', async () => {
+  it('чужой ключ (испорченная ссылка) - 4403, в комнату не попадает', async () => {
     await setup();
     const g = await cloudGuest('Чужой', { t: 'hello', proto: PROTO, name: 'Чужой' }, rc.newKey());
     expect(await g.closed).toEqual({ code: KICK.BAD_KEY, reason: 'bad key' });
     expect(share.users()).toHaveLength(1);
   });
 
-  it('hello без sid или с повтором уже занятого сеанса — 4400', async () => {
+  it('hello без sid или с повтором уже занятого сеанса - 4400', async () => {
     await setup();
     const a = await cloudGuest('Без sid', { t: 'hello', proto: PROTO, name: 'x', sid: 'короткий' });
     expect((await a.closed).code).toBe(KICK.HELLO_EXPECTED);
@@ -306,7 +306,7 @@ describe('обрыв связи с ретранслятором', () => {
     await until(() => g.inbox.some(m => m.event === 'host-back'));
   });
 
-  it('ретранслятор перезапустился — открывается новая комната, прежние гости отключаются', async () => {
+  it('ретранслятор перезапустился - открывается новая комната, прежние гости отключаются', async () => {
     await setup();
     const g = await cloudGuest('Старый');
     await until(() => last(g, 'init'));
@@ -343,21 +343,21 @@ describe('запуск и остановка', () => {
     await until(() => relay.stats().rooms === 0);
   });
 
-  it('ретранслятор недоступен — start отклоняется без фоновых повторов', async () => {
+  it('ретранслятор недоступен - start отклоняется без фоновых повторов', async () => {
     share = await createShareServer({ port: 0, code: 'X' });
     link = createCloudLink({ relayUrl: 'ws://127.0.0.1:1', attach: share.attach, refresh: share.refresh });
     await expect(link.start()).rejects.toThrow('Не удалось подключиться к ретранслятору');
     expect(link.status()).toMatchObject({ state: 'failed', error: 'Не удалось подключиться к ретранслятору' });
   });
 
-  it('ретранслятор перегружен — понятная ошибка', async () => {
+  it('ретранслятор перегружен - понятная ошибка', async () => {
     relay = await createRelay({ port: 0, host: '127.0.0.1', statsIntervalMs: 0, log: () => {}, maxRooms: 0 });
     share = await createShareServer({ port: 0, code: 'X' });
     link = createCloudLink({ relayUrl: `ws://127.0.0.1:${relay.port}`, attach: share.attach, refresh: share.refresh });
     await expect(link.start()).rejects.toThrow('Ретранслятор перегружен');
   });
 
-  it('повторный start — ошибка', async () => {
+  it('повторный start - ошибка', async () => {
     await setup();
     await expect(link.start()).rejects.toThrow('Уже запущено');
   });
@@ -384,7 +384,7 @@ describe('адреса', () => {
     expect(hash.get('k')).toBe('KEY_b64');
   });
 
-  it('ключ: 32 байта в base64url; при возвращении в ту же комнату прежний, в новой — новый', async () => {
+  it('ключ: 32 байта в base64url; при возвращении в ту же комнату прежний, в новой - новый', async () => {
     await setup();
     const k1 = link.status().key;
     expect(Buffer.from(k1, 'base64url')).toHaveLength(32);

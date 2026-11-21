@@ -35,7 +35,7 @@ describe('настройка по умолчанию', () => {
     expect(cfg.keys.cube).toBeUndefined();
   });
 
-  it('«Раздвинуть» — за стикером, с клавишей S', () => {
+  it('«Раздвинуть» - за стикером, с клавишей S', () => {
     const cfg = defaultToolbar();
     expect(layout(cfg).indexOf('spread')).toBe(layout(cfg).indexOf('note') + 1);
     expect(cfg.keys.spread).toBe('KeyS');
@@ -50,7 +50,7 @@ describe('панорама по умолчанию', () => {
     expect(cfg.keys.pan).toBe('KeyH');
   });
 
-  it('сохранённая настройка без «Панорамы» — она остаётся скрытой, а не пропадает', () => {
+  it('сохранённая настройка без «Панорамы» - она остаётся скрытой, а не пропадает', () => {
     const cfg = sanitizeToolbar({ items: [{ type: 'tool', id: 'select' }], hidden: [] });
     expect(allTools(cfg).sort()).toEqual(TOOL_DEFS.map(t => t.id).sort());
     expect(layout(cfg, 'hidden')).toContain('pan');
@@ -70,7 +70,20 @@ describe('toolUsesColor', () => {
 });
 
 describe('sanitizeToolbar', () => {
-  it('мусор — настройка по умолчанию', () => {
+  it('удаляет задание из сохранённой панели, групп и горячих клавиш', () => {
+    const cfg = sanitizeToolbar({
+      items: [{ type: 'tool', id: 'task' }, { type: 'group', id: 'custom', name: 'Мои', tools: ['task', 'text'] }],
+      hidden: [{ type: 'tool', id: 'task' }],
+      keys: { task: 'Digit1', text: 'KeyT' },
+    });
+    expect(allTools(defaultToolbar())).not.toContain('task');
+    expect(allTools(cfg)).not.toContain('task');
+    expect(cfg.items.find(it => it.type === 'group' && it.id === 'custom')).toMatchObject({ tools: ['text'] });
+    expect(cfg.keys.task).toBeUndefined();
+    expect(cfg.keys.text).toBe('KeyT');
+  });
+
+  it('мусор - настройка по умолчанию', () => {
     for (const raw of [null, 42, 'x', [], { items: 'нет' }]) {
       expect(allTools(sanitizeToolbar(raw)).sort()).toEqual(TOOL_DEFS.map(t => t.id).sort());
     }
@@ -96,7 +109,7 @@ describe('sanitizeToolbar', () => {
     expect(layout(cfg)).toContain('laser');
   });
 
-  it('опасные и повторяющиеся id групп заменяются, пустое имя — «Группа»', () => {
+  it('опасные и повторяющиеся id групп заменяются, пустое имя - «Группа»', () => {
     const cfg = sanitizeToolbar({
       items: [
         { type: 'group', id: 'a"]x', name: '', tools: ['pen'] },
@@ -195,11 +208,11 @@ describe('операции', () => {
     expect(moveEntry(base, { tool: 'pen' }, { list: 'items', before: { tool: 'pen' } })).toBe(base);
   });
 
-  it('combineTools: два инструмента — новая группа на месте цели', () => {
+  it('combineTools: два инструмента - новая группа на месте цели', () => {
     const base = defaultToolbar();
     const r = combineTools(base, 'text', 'spread', 'Макет');
     expect(r.group).toBeTruthy();
-    expect(layout(r.cfg).slice(0, 5)).toEqual(['select', 'draw[pen,highlighter,eraser,partEraser]', `${r.group}[text,spread]`, 'note', 'task']);
+    expect(layout(r.cfg).slice(0, 4)).toEqual(['select', 'draw[pen,highlighter,eraser,partEraser]', `${r.group}[text,spread]`, 'note']);
     expect(r.cfg.items.find(it => it.type === 'group' && it.id === r.group)).toMatchObject({ name: 'Макет' });
     // из группы тоже можно
     const r2 = combineTools(base, 'select', 'ellipse', 'Г');
@@ -262,7 +275,7 @@ describe('текущая настройка', () => {
     expect(layout(again.toolbarConfig(), 'hidden')).toEqual(['pan', 'pen']);
   });
 
-  it('битое значение в localStorage — настройка по умолчанию', async () => {
+  it('битое значение в localStorage - настройка по умолчанию', async () => {
     localStorage.setItem('doska.toolbar', '{oops');
     const m = await load();
     m.restoreToolbar();
@@ -270,7 +283,7 @@ describe('текущая настройка', () => {
     expect(layout(m.toolbarConfig())).toEqual(layout(defaultToolbar()));
   });
 
-  it('та же настройка — без уведомления и записи', async () => {
+  it('та же настройка - без уведомления и записи', async () => {
     const m = await load();
     const seen = vi.fn();
     m.onToolbarChange(seen);

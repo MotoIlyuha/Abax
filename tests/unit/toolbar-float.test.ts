@@ -8,7 +8,7 @@ const area = { w: 1000, h: 600, top: 24 };
 const col = { w: 46, h: 450 };
 
 describe('откреплённая панель инструментов', () => {
-  it('сохранённое значение: битое — null, координаты округляются', () => {
+  it('сохранённое значение: битое - null, координаты округляются', () => {
     expect(sanitizeToolbarFloat(null)).toBeNull();
     expect(sanitizeToolbarFloat({ x: 1, y: 2, orient: 'd' })).toBeNull();
     expect(sanitizeToolbarFloat({ x: 'a', y: 2, orient: 'v' })).toBeNull();
@@ -25,7 +25,7 @@ describe('откреплённая панель инструментов', () =>
     expect(sizeIn(col, 'v', 'v')).toBe(col);
   });
 
-  it('держится в пределах холста, сверху — место под ручку', () => {
+  it('держится в пределах холста, сверху - место под ручку', () => {
     expect(clampFloat({ x: -50, y: -50, orient: 'v' }, col, area)).toEqual({ x: FLOAT_MARGIN, y: area.top, orient: 'v' });
     expect(clampFloat({ x: 2000, y: 2000, orient: 'v' }, col, area))
       .toEqual({ x: area.w - col.w - FLOAT_MARGIN, y: area.h - col.h - FLOAT_MARGIN, orient: 'v' });
@@ -36,20 +36,20 @@ describe('откреплённая панель инструментов', () =>
     expect(f).toEqual({ x: 300 - col.w / 2, y: 50, orient: 'v' });
   });
 
-  it('колонку опустили низко — не помещается и становится строкой', () => {
+  it('колонку опустили низко - не помещается и становится строкой', () => {
     const f = dragFloat(500, 400, 'v', col, area);
     expect(f.orient).toBe('h');
     expect(f).toEqual({ x: 500 - 450 / 2, y: 400, orient: 'h' });
   });
 
-  it('строку потащили к боковому краю — становится колонкой', () => {
+  it('строку потащили к боковому краю - становится колонкой', () => {
     const row = sizeIn(col, 'v', 'h');
     const f = dragFloat(40, 100, 'h', row, area);
     expect(f.orient).toBe('v');
     expect(f.x).toBe(40 - col.w / 2);
   });
 
-  it('не помещается ни так, ни так — та ориентация, что вылезает меньше, прижатая к краю', () => {
+  it('не помещается ни так, ни так - та ориентация, что вылезает меньше, прижатая к краю', () => {
     const f = dragFloat(990, 590, 'v', col, area);
     expect(f.orient).toBe('h');
     expect(f).toEqual(clampFloat(f, sizeIn(col, 'v', 'h'), area));
@@ -65,7 +65,7 @@ describe('откреплённая панель инструментов', () =>
     expect(rotateFloat(f, sizeIn(col, 'v', 'h'), area)).toEqual({ x: 400, y: 50, orient: 'v' });
   });
 
-  it('поворот у края — в пределах холста', () => {
+  it('поворот у края - в пределах холста', () => {
     const f = rotateFloat({ x: FLOAT_MARGIN, y: 100, orient: 'v' }, col, area);
     expect(f).toEqual({ x: FLOAT_MARGIN, y: 100, orient: 'h' });
   });
@@ -75,7 +75,7 @@ describe('откреплённая панель инструментов', () =>
     expect(dragFloat(300, 10, 'v', col, high).y).toBe(86);
   });
 
-  it('сторона для панелей групп и подсказок — по месту на холсте', () => {
+  it('сторона для панелей групп и подсказок - по месту на холсте', () => {
     expect(floatSide({ x: 100, y: 50, orient: 'v' }, col, area)).toBe('left');
     expect(floatSide({ x: 800, y: 50, orient: 'v' }, col, area)).toBe('right');
     const row = sizeIn(col, 'v', 'h');

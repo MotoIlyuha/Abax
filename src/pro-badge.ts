@@ -122,7 +122,7 @@ export interface ProBadgeOptions {
   needed?: boolean;
 }
 
-const BADGE_TITLE = 'Доступно в подписке Pro — нажмите, чтобы посмотреть тарифы';
+const BADGE_TITLE = 'Доступно в подписке Pro - нажмите, чтобы посмотреть тарифы';
 
 /** Бейдж «Pro» возможности f; видимость ведёт сам (refreshProBadges), место — needed. */
 export function proBadge(f: ProFeature, o: ProBadgeOptions = {}): HTMLElement {

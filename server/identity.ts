@@ -38,6 +38,9 @@ function refreshProfile(db: Db, userId: string, id: Identity, now: number): void
   if (id.provider === 'telegram') {
     db.prepare('UPDATE users SET tg_username = ?, avatar_url = ?, updated_at = ? WHERE id = ?').run(id.tgUsername ?? null, id.avatarUrl ?? null, now, userId);
   }
+  if (id.provider === 'google' && id.avatarUrl !== undefined) {
+    db.prepare('UPDATE users SET avatar_url = ?, updated_at = ? WHERE id = ?').run(id.avatarUrl, now, userId);
+  }
   if (id.provider === 'google' && id.verifiedEmail !== undefined) {
     db.prepare('UPDATE users SET google_email = ?, updated_at = ? WHERE id = ?').run(id.verifiedEmail, now, userId);
   }

@@ -49,7 +49,7 @@ describe('почта', () => {
     expect(m.outbox).toEqual([{ to: 'a@b.ru', subject: 'Тема', text: 'Текст' }]);
   });
 
-  it('webhookMailer шлёт JSON с токеном; ошибка сервиса — исключение', async () => {
+  it('webhookMailer шлёт JSON с токеном; ошибка сервиса - исключение', async () => {
     const calls: { url: string; init: RequestInit }[] = [];
     const ok = webhookMailer('https://mail.example/send', 'tok', (async (url: string, init: RequestInit) => { calls.push({ url, init }); return new Response('{}', { status: 200 }); }) as unknown as typeof fetch);
     await ok.send({ to: 'a@b.ru', subject: 'S', text: 'T' });
@@ -77,7 +77,7 @@ describe('почта', () => {
     expect(Buffer.from(body, 'base64').toString('utf8')).toBe('Ваш код: 123456\n.строка с точкой');
   });
 
-  it('SMTP: отказ сервера — исключение с кодом', async () => {
+  it('SMTP: отказ сервера - исключение с кодом', async () => {
     const s = await fakeSmtp({ rejectAuth: true });
     servers.push(s.server);
     await expect(smtpMailer({ host: '127.0.0.1', port: s.port, user: 'u', pass: 'x', from: 'a@b.ru' }).send({ to: 'c@d.ru', subject: 'S', text: 'T' })).rejects.toThrow('535');
@@ -90,7 +90,7 @@ describe('почта', () => {
     await expect(smtpMailer({ host: '127.0.0.1', port: 1, from: 'a@b.ru' }).send({ to: 'x@y.ru\r\nBcc: z@w.ru', subject: 'S', text: 'T' })).rejects.toThrow('перевод строки');
   });
 
-  it('SMTP: требуется STARTTLS, а сервер его не предлагает — отказ', async () => {
+  it('SMTP: требуется STARTTLS, а сервер его не предлагает - отказ', async () => {
     const s = await fakeSmtp();
     servers.push(s.server);
     await expect(smtpMailer({ host: '127.0.0.1', port: s.port, from: 'a@b.ru', requireTls: true }).send({ to: 'c@d.ru', subject: 'S', text: 'T' })).rejects.toThrow('STARTTLS');

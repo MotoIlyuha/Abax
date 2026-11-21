@@ -12,7 +12,7 @@ async function openHotkeys(board: Board): Promise<void> {
 const keysOf = (page: Page, selector: string) => page.locator(`${selector} kbd`);
 
 test.describe('горячие клавиши страниц', () => {
-  test('Alt + номер (по умолчанию) — переход на страницу с этим номером', async ({ board, page }) => {
+  test('Alt + номер (по умолчанию) - переход на страницу с этим номером', async ({ board, page }) => {
     await board.addPage();
     await board.addPage();
     await expect(page.locator('#page-name')).toHaveValue('Страница 3');
@@ -29,7 +29,7 @@ test.describe('горячие клавиши страниц', () => {
     expect((await board.state()).project.pages).toHaveLength(3);
   });
 
-  test('Ctrl + номер — после выбора в настройках; выбор сохраняется', async ({ board, page }) => {
+  test('Ctrl + номер - после выбора в настройках; выбор сохраняется', async ({ board, page }) => {
     await board.addPage();
     await openHotkeys(board);
     await expect(page.locator('.hk-mods button', { hasText: 'Alt' })).toHaveClass(/active/);
@@ -76,7 +76,7 @@ test.describe('горячие клавиши страниц', () => {
     await page.keyboard.press('Alt+Shift+KeyP');
     await expect(cap).not.toHaveClass(/capturing/);
     await expect(keysOf(page, '.hk-capture')).toHaveText(['Alt', 'Shift', 'P']);
-    await expect(status).toHaveText('Новая страница — Alt+Shift+P');
+    await expect(status).toHaveText('Новая страница - Alt+Shift+P');
     await page.keyboard.press('Escape');
 
     await board.tool('Alt+Shift+KeyP');
@@ -92,7 +92,7 @@ test.describe('горячие клавиши страниц', () => {
     await openHotkeys(board);
     await page.locator('.hk-capture').click();
     await page.keyboard.press('Backspace');
-    await expect(page.locator('.hk-capture')).toHaveText('—');
+    await expect(page.locator('.hk-capture')).toHaveText('-');
     expect((await board.state()).settings.newPageKey).toBeNull();
     await page.locator('.hk-reset').click();
     await expect(keysOf(page, '.hk-capture')).toHaveText(['Alt', 'N']);
@@ -105,7 +105,7 @@ test.describe('горячие клавиши страниц', () => {
     await page.keyboard.press('Control+5');
     await expect(keysOf(page, '.hk-capture')).toHaveText(['Ctrl', '5']);
     await page.locator('.hk-mods button', { hasText: 'Ctrl' }).click();
-    await expect(page.locator('.hk-capture')).toHaveText('—');
+    await expect(page.locator('.hk-capture')).toHaveText('-');
     await expect(page.locator('.hk-status')).toContainText('сочетание новой страницы снято');
     expect((await board.state()).settings).toMatchObject({ pageKeyMod: 'ctrl', newPageKey: null });
   });
@@ -121,7 +121,7 @@ test.describe('горячие клавиши страниц', () => {
     expect(s.pageId).toBe(s.project.pages[1].id);
   });
 
-  test('в браузере — предупреждения о занятых браузером сочетаниях', async ({ board, page }) => {
+  test('в браузере - предупреждения о занятых браузером сочетаниях', async ({ board, page }) => {
     await openHotkeys(board);
     const warns = page.locator('.hk-warn');
     // Alt+N браузер не занимает (Alt+1…9 занят только на Linux — там своё предупреждение)
@@ -131,7 +131,7 @@ test.describe('горячие клавиши страниц', () => {
     await page.keyboard.press('Control+n');
     await expect(warns).toHaveCount(2);
     await expect(warns.nth(0)).toContainText('Ctrl+1…9 переключают вкладки');
-    await expect(warns.nth(1)).toContainText('В браузере Ctrl+N — новое окно');
+    await expect(warns.nth(1)).toContainText('В браузере Ctrl+N - новое окно');
     // свободное сочетание — без предупреждения
     await page.locator('.hk-capture').click();
     await page.keyboard.press('Alt+Shift+KeyP');

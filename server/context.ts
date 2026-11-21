@@ -36,6 +36,8 @@ export interface ResolvedOptions {
   trustProxy: boolean;
   /** Помечать cookie сессии как Secure. */
   secureCookies: boolean;
+  adminOrigin: URL | null;
+  adminAccounts: ReadonlyMap<string, string>;
   /** Сколько новых анонимов с одного адреса в окне. */
   anonRateMax: number;
   anonRateWindowMs: number;

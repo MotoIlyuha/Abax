@@ -30,7 +30,7 @@ async function testImage(page: Page): Promise<Buffer> {
   return Buffer.from(b64, 'base64');
 }
 
-test('знакомство: фото обрезается под круг, «Удалить фото» возвращает буквы; аватар — в шапке и в выборе курсора', async ({ browser }) => {
+test('знакомство: фото обрезается под круг, «Удалить фото» возвращает буквы; аватар - в шапке и в выборе курсора', async ({ browser }) => {
   const page = await fresh(browser);
   await page.locator('.ob-skip').click();
   await page.locator('.ob-name').fill('Бодрый Енот');

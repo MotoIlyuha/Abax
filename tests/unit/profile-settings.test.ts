@@ -52,7 +52,7 @@ afterEach(async () => {
 });
 
 describe('раздел «Профиль»', () => {
-  it('без облака: имя и курсор меняются, про аккаунт — пояснение', () => {
+  it('без облака: имя и курсор меняются, про аккаунт - пояснение', () => {
     setProfile({ name: 'Лемур', onboarded: true });
     const m = mount();
     disposers.push(m.dispose);
@@ -110,7 +110,7 @@ describe('раздел «Профиль»', () => {
       expect($('.ps-method[data-provider="google"] .ps-link').textContent).toBe('Привязать');
     });
 
-    it('«Выйти» — снова аноним, раздел перерисован', async () => {
+    it('«Выйти» - снова аноним, раздел перерисован', async () => {
       const { devCode } = await startEmail('out@abax.ru');
       await verifyEmail('out@abax.ru', devCode!);
       const m = mount();

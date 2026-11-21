@@ -57,7 +57,7 @@ test.describe('вход через облако (dev-провайдеры)', () 
       const hint = page.locator('.ob-step1 .em-otp .ob-dev-hint');
       await expect(hint).toContainText('Режим разработки: код');
       const code = /(\d{6})/.exec((await hint.textContent())!)![1];
-      const text = `17.11.2026 — код для входа в Abax: ${code.slice(0, 3)} ${code.slice(3)}. Он действует 10 минут`;
+      const text = `17.11.2026 - код для входа в Abax: ${code.slice(0, 3)} ${code.slice(3)}. Он действует 10 минут`;
       await page.evaluate(t => navigator.clipboard.writeText(t), text);
       await page.waitForTimeout(600);   // полоса «Код отправлен» делится на клетки
       if (how === 'ПКМ') await page.locator('.ob-step1 .em-code').click({ button: 'right' });
@@ -100,7 +100,7 @@ test.describe('вход через облако (dev-провайдеры)', () 
     await page.context().close();
   });
 
-  test('Google на шаге 1: мгновенный dev-вход, шаг 2 с именем аккаунта; «Профиль» — способы входа и выход', async ({ browser }) => {
+  test('Google на шаге 1: мгновенный dev-вход, шаг 2 с именем аккаунта; «Профиль» - способы входа и выход', async ({ browser }) => {
     const page = await device(browser);
     await page.locator('.ob-step1 [data-provider="google"]').click();
     await page.waitForURL(u => u.pathname === '/' && !u.hash);

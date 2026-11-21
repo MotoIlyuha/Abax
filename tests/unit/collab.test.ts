@@ -105,7 +105,7 @@ afterEach(async () => {
 });
 
 describe('гость', () => {
-  it('до подключения: не активен, права — только просмотр', () => {
+  it('до подключения: не активен, права - только просмотр', () => {
     expect(collab.collabActive()).toBe(false);
     expect(collab.readOnly()).toBe(false);
     expect(collab.isHost()).toBe(false);
@@ -231,10 +231,13 @@ describe('гость', () => {
     await collab.startCollab(base, false, 'Ученик');
     await until(() => st.state.project.id === 'proj');
     const uid = [...server.room.clients.values()][0].uid;
+    let refreshed = false;
+    document.addEventListener('doska:collab-project', () => { refreshed = true; }, { once: true });
     server.setRights(uid, { all: 'edit' });
-    await until(() => collab.pageRight('pg1') === 'edit');
+    await until(() => collab.pageRight('pg1') === 'edit' && refreshed);
     const host = await peer(`${base}&host=1&key=${encodeURIComponent(server.hostKey)}`);
     peers.push(host);
+    await until(() => last(host, 'init'));
     const p = demo();
     p.pages[0].elements = [rect('mine') as never];
     expect(await collab.netStorage.list()).toEqual([]);
@@ -245,7 +248,7 @@ describe('гость', () => {
     expect((await collab.netStorage.load('proj'))?.id).toBe('proj');
     expect(await collab.netStorage.load('other')).toBeNull();
     collab.setNetProject(demo());
-    const msg = await until(() => last(host, 'project'));
+    const msg = await until(() => host.inbox.find(m => m.t === 'project' && m.project.pages[0].elements.some((el: { id: string }) => el.id === 'mine')));
     expect(msg.project.pages[0].elements[0].id).toBe('mine');
     expect(server.room.project!.pages[0].elements).toHaveLength(1);
   });
@@ -501,7 +504,7 @@ describe('приглашение через интернет', () => {
 });
 
 describe('шифрованный транспорт гостя', () => {
-  it('чужой ключ — автор отключает с 4403, гость видит «Неверная ссылка»; правки с верным ключом проходят', async () => {
+  it('чужой ключ - автор отключает с 4403, гость видит «Неверная ссылка»; правки с верным ключом проходят', async () => {
     const tr = await import('../../src/collab-transport');
     const { createRelay } = require('../../relay/server.cjs');
     const { createCloudLink } = require('../../electron/cloud-link.cjs');
@@ -590,6 +593,7 @@ describe('дельта-патчи', () => {
     st.addElement(rect('mine') as never);
     st.setSelection(['mine']);
     await until(() => server.room.project!.pages[0].elements.length === 1);
+    await until(() => host.inbox.some(m => m.t === 'patch' && m.ops.some((op: { op: string; el?: { id: string } }) => op.op === 'put' && op.el?.id === 'mine')));
     const events: Event[] = [];
     document.addEventListener('doska:collab-project', e => events.push(e));
     host.inbox.length = 0;
@@ -659,7 +663,7 @@ describe('ввод ученика в задание', () => {
   });
   const withTask = (): Project => ({ ...demo(), pages: [{ id: 'pg1', name: 'П1', grid: 'square', elements: [task() as never] }, demo().pages[1]] });
 
-  it('вне комнаты ввод не отправляется — вызывающий применит его у себя', () => {
+  it('вне комнаты ввод не отправляется - вызывающий применит его у себя', () => {
     expect(collab.taskInputOnline()).toBe(false);
     expect(collab.sendTaskDraft('pg1', 'task', 'x')).toBe(false);
     expect(collab.sendTaskSubmit('pg1', 'task', 'x')).toBe(false);
@@ -708,7 +712,7 @@ describe('реакции и комментарии через хаб', () => {
     expect(collab.sendComment('pg1', { op: 'reply', threadId: 't', text: 'х' })).toBe(false);
   });
 
-  it('читатель ставит реакцию и пишет комментарий — оба доходят до него же и до остальных', async () => {
+  it('читатель ставит реакцию и пишет комментарий - оба доходят до него же и до остальных', async () => {
     server.room.project = withEls();
     await collab.startCollab(base, false, 'Ученик');
     await until(() => st.state.project.id === 'proj');
@@ -795,7 +799,7 @@ describe('указка в совместной работе', () => {
     expect(st.state.remoteLasers.get(uid)!.pts.map(p => p.start)).toEqual(['#2dc75c', undefined, undefined, '#ff0000']);
   });
 
-  it('чужой маркер дописывается в один росчерк и гаснет после конца; подсветка — только на этой странице', async () => {
+  it('чужой маркер дописывается в один росчерк и гаснет после конца; подсветка - только на этой странице', async () => {
     const other = await pair();
     const send = (m: Msg) => other.ws.send(JSON.stringify({ t: 'pointer', pageId: 'pg1', ...m }));
     send({ k: 'fade', sid: 's', color: '#305bab', width: 12.8, opacity: 0.5, pts: [{ x: 1, y: 1 }] });
@@ -853,7 +857,7 @@ describe('персональные курсоры (Ночь №4)', () => {
     expect(collab.foreignSelections()[0].color).toBe('#e03131');
   });
 
-  it('без курсора (старая версия) — классическая стрелка и цвет от хаба', async () => {
+  it('без курсора (старая версия) - классическая стрелка и цвет от хаба', async () => {
     await collab.startCollab(base, false, 'Ученик');
     await until(() => st.state.project.id === 'proj');
     const other = await peer(`${base}&name=Старый&cursor=%3Cx%3E`);
@@ -880,7 +884,7 @@ describe('аватары участников', () => {
   const PHOTO = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ==';
   const pillTexts = noticeTexts;
 
-  it('свой аватар уходит сразу после входа и при смене; чужое фото приходит отдельно, смена — пилюля', async () => {
+  it('свой аватар уходит сразу после входа и при смене; чужое фото приходит отдельно, смена - пилюля', async () => {
     localStorage.setItem('doska.profile', JSON.stringify({ name: 'Ученик', cursorId: 'default', avatar: '🦊', onboarded: true, updatedAt: 1 }));
     const other = await peer(`${base}&name=Аня`);
     peers.push(other);
@@ -907,7 +911,7 @@ describe('аватары участников', () => {
 describe('уведомления и чат комнаты (Ночь №5)', () => {
   const pillTexts = noticeTexts;
 
-  it('вход и выход участника — пилюли; своё подключение — без пилюли', async () => {
+  it('вход и выход участника - пилюли; своё подключение - без пилюли', async () => {
     await collab.startCollab(base, false, 'Ученик');
     await until(() => st.state.project.id === 'proj');
     expect(pillTexts()).toEqual([]);
@@ -919,7 +923,7 @@ describe('уведомления и чат комнаты (Ночь №5)', () =
     await until(() => pillTexts().includes('Бодрый Енот покинул доску'));
   });
 
-  it('сообщение уходит в комнату и приходит в ленту; история — из init', async () => {
+  it('сообщение уходит в комнату и приходит в ленту; история - из init', async () => {
     const other = await peer(`${base}&name=${encodeURIComponent('Лемур')}`);
     peers.push(other);
     other.ws.send(JSON.stringify({ t: 'chat', text: 'до вас' }));
@@ -941,7 +945,7 @@ describe('уведомления и чат комнаты (Ночь №5)', () =
     expect(center.unreadCount()).toBe(1);
   });
 
-  it('смена моих прав — пилюля', async () => {
+  it('смена моих прав - пилюля', async () => {
     await collab.startCollab(base, false, 'Ученик');
     await until(() => st.state.project.id === 'proj');
     const uid = [...server.room.clients.values()][0].uid;
@@ -962,7 +966,7 @@ describe('уведомления и чат комнаты (Ночь №5)', () =
     expect(pillTexts()).toContain('Автор позвал всех на страницу «Вторая»');
   });
 
-  it('«Позвать к себе» одного: пилюля «позвал вас»; автор убрал — соединение закрыто с кодом 4411', async () => {
+  it('«Позвать к себе» одного: пилюля «позвал вас»; автор убрал - соединение закрыто с кодом 4411', async () => {
     await collab.startCollab(base, false, 'Ученик');
     await until(() => st.state.project.id === 'proj');
     const host = await peer(`${base}&host=1&key=${encodeURIComponent(server.hostKey)}`);
@@ -979,7 +983,7 @@ describe('уведомления и чат комнаты (Ночь №5)', () =
     expect(collab.closedNotice(4411).title).toBe('Вас отключили от доски');
   });
 
-  it('скрытый курсор участника не рисуется; «Скрыть курсоры других» — ни один', async () => {
+  it('скрытый курсор участника не рисуется; «Скрыть курсоры других» - ни один', async () => {
     const vis = await import('../../src/cursor-visibility');
     document.body.insertAdjacentHTML('beforeend', '<div id="canvas-wrap"></div>');
     await collab.startCollab(base, false, 'Ученик');
@@ -1029,7 +1033,7 @@ describe('уведомления и чат комнаты (Ночь №5)', () =
     expect(collab.sendChat('x')).toBe(false);
   });
 
-  it('отклики на мои действия — тихие (прочитаны сразу), события от других — нет', async () => {
+  it('отклики на мои действия - тихие (прочитаны сразу), события от других - нет', async () => {
     await collab.startCollab(base, false, 'Ученик');
     await until(() => st.state.project.id === 'proj');
     const other = await peer(`${base}&name=${encodeURIComponent('Корги')}`);
@@ -1051,7 +1055,7 @@ describe('присутствие: камера, автопереход, «Поз
   const guestClient = () => [...server.room.clients.values()].find(c => !(c as unknown as RoomClient).host) as unknown as RoomClient | undefined;
   const hostUrl = () => `${base}&host=1&key=${encodeURIComponent(server.hostKey)}`;
 
-  it('view: сразу после входа и при смене страницы; камера — после остановки (дебаунс)', async () => {
+  it('view: сразу после входа и при смене страницы; камера - после остановки (дебаунс)', async () => {
     await collab.startCollab(base, false, 'Ученик');
     await until(() => st.state.project.id === 'proj');
     const first = await until(() => guestClient()?.view);
@@ -1068,7 +1072,7 @@ describe('присутствие: камера, автопереход, «Поз
     await until(() => guestClient()!.view!.pageId === other.id, 200);
   });
 
-  it('автопереход: автор сменил страницу — гость переходит к нему; на скрытой странице — нет', async () => {
+  it('автопереход: автор сменил страницу - гость переходит к нему; на скрытой странице - нет', async () => {
     const host = await peer(hostUrl());
     peers.push(host);
     host.ws.send(JSON.stringify({ t: 'follow-host', enabled: true }));
@@ -1132,7 +1136,7 @@ describe('присутствие: камера, автопереход, «Поз
     expect(collab.sendFollowHost(true)).toBe(false);
   });
 
-  it('sendProjectNow: проект уходит сразу, следом — summon (гость видит открытую страницу)', async () => {
+  it('sendProjectNow: проект уходит сразу, следом - summon (гость видит открытую страницу)', async () => {
     // хаб общий для файла: проект прошлого теста пришёл бы автору в init вместо его собственного (с правами)
     server.room.project = null;
     const guest = await peer(`${base}&name=Гость`);
@@ -1186,7 +1190,7 @@ describe('живые права страниц у гостя (Ночь №5, TAS
     expect(noticeTexts()).not.toContain(collab.PAGE_HIDDEN_PILL);
   });
 
-  it('скрыли все страницы: баннер, холст только для чтения, ничего не отправляется; открыли — баннер уходит', async () => {
+  it('скрыли все страницы: баннер, холст только для чтения, ничего не отправляется; открыли - баннер уходит', async () => {
     const host = await guestWithHost();
     const uid = [...server.room.clients.values()].find(c => !(c as unknown as { host: boolean }).host)!.uid;
     server.setRights(uid, { default: 'edit' });
@@ -1260,7 +1264,7 @@ describe('защита чужих элементов у гостя (Ночь №
   const teacher = () => st.state.board.elements.find(e => e.id === 'teacher')!;
   const mine = () => st.state.board.elements.find(e => e.id === 'mine');
 
-  it('свой элемент — свой (автор от хаба), чужой не выделяется и подписан; ластик и Undo не трогают чужое', async () => {
+  it('свой элемент - свой (автор от хаба), чужой не выделяется и подписан; ластик и Undo не трогают чужое', async () => {
     const host = await asEditor(true);
     expect(collab.protectionActive()).toBe(true);
     expect(collab.myPrincipal()).toMatch(/^c:/);
@@ -1298,7 +1302,7 @@ describe('защита чужих элементов у гостя (Ночь №
     expect(st.state.board.elements).toEqual([]);
   });
 
-  it('без защиты — как раньше: чужой элемент выделяется и Undo работает по снимку', async () => {
+  it('без защиты - как раньше: чужой элемент выделяется и Undo работает по снимку', async () => {
     await asEditor(false);
     expect(collab.protectionActive()).toBe(false);
     expect(collab.canTouchElement(teacher())).toBe(true);
@@ -1308,7 +1312,7 @@ describe('защита чужих элементов у гостя (Ночь №
 });
 
 describe('интерфейс гостя по возможностям (Ночь №6, TASK-07)', () => {
-  it('старая ссылка — комментатор: комментирует и пишет в чат; читатель — нет; смена роли — пилюля; копирование — по возможностям', async () => {
+  it('старая ссылка - комментатор: комментирует и пишет в чат; читатель - нет; смена роли - пилюля; копирование - по возможностям', async () => {
     const { canAnnotate } = await import('../../src/comments-ui');
     const chat = await import('../../src/collab-chat');
     server.room.project = { ...demo(), ownerPlan: 'pro', permissions: { allowCopy: false } } as Project;

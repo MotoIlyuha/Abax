@@ -169,7 +169,7 @@ export const state: AppState = {
   pageId: '',
   board: blankPage('Страница 1'),
   camera: { x: 0, y: 0, zoom: 1 },
-  tool: 'pen',
+  tool: 'select',
   style: { color: '#1f2329', width: 4 },
   presets: {
     pen: { list: [{ color: '#1f2329', width: 4 }, { color: '#bd0a0a', width: 4 }, { color: '#305bab', width: 4 }], active: 0 },
@@ -275,7 +275,7 @@ export function parseZoomPercent(text: string): { zoom: number } | { error: stri
   const m = /^\s*(\d+(?:[.,]\d+)?)\s*%?\s*$/.exec(text);
   if (!m) return { error: 'Введите число, например 150' };
   const pct = Number(m[1].replace(',', '.'));
-  if (pct < ZOOM_MIN * 100 || pct > ZOOM_MAX * 100) return { error: `Масштаб — от ${ZOOM_MIN * 100} до ${ZOOM_MAX * 100}%` };
+  if (pct < ZOOM_MIN * 100 || pct > ZOOM_MAX * 100) return { error: `Масштаб - от ${ZOOM_MIN * 100} до ${ZOOM_MAX * 100}%` };
   return { zoom: pct / 100 };
 }
 

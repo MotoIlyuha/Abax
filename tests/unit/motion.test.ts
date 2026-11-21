@@ -10,7 +10,7 @@ describe('движок пружин', () => {
     expect(atRest(s, 0.05)).toBe(true);
   });
 
-  it('мягкое затухание даёт перелёт, критическое — нет', () => {
+  it('мягкое затухание даёт перелёт, критическое - нет', () => {
     const run = (k: number, c: number) => {
       const s = S(0, k, c);
       s.t = 1;
@@ -54,7 +54,7 @@ describe('режим анимаций', () => {
     expect(resolveAnimationMode({ animationMode: 'normal', motionAnimations: true })).toBe('normal');
   });
 
-  it('без сохранённых настроек — «улучшенные» (по умолчанию)', () => {
+  it('без сохранённых настроек - «улучшенные» (по умолчанию)', () => {
     expect(resolveAnimationMode(null)).toBe('enhanced');
     expect(resolveAnimationMode(undefined)).toBe('enhanced');
     expect(resolveAnimationMode({})).toBe('enhanced');

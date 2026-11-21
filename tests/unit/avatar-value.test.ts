@@ -17,19 +17,19 @@ const samples: unknown[] = [
 ];
 
 describe('значение аватара', () => {
-  it('смайлы — только символы эмодзи', () => {
+  it('смайлы - только символы эмодзи', () => {
     for (const ok of ['😀', '👨‍👩‍👧‍👦', '🇷🇺', '1️⃣', '❤️', '👍🏽']) expect(ts.isAvatarEmoji(ok)).toBe(true);
     for (const bad of ['', 'a', 'привет', '😀 ', '<b>', '😀a', '123', '😀'.repeat(17), 5]) expect(ts.isAvatarEmoji(bad)).toBe(false);
   });
 
-  it('фото — только data:image jpeg/png/webp в base64 и не длиннее предела', () => {
+  it('фото - только data:image jpeg/png/webp в base64 и не длиннее предела', () => {
     expect(ts.isAvatarPhoto(photo)).toBe(true);
     expect(ts.isAvatarPhoto('data:image/svg+xml;base64,PHN2Zz4=')).toBe(false);
     expect(ts.isAvatarPhoto('data:image/jpeg;base64,<script>')).toBe(false);
     expect(ts.isAvatarPhoto(`data:image/jpeg;base64,${'A'.repeat(ts.MAX_AVATAR_PHOTO)}`)).toBe(false);
   });
 
-  it('cleanAvatar: null и пустое — буквы, неподходящее — undefined; ключ снимка — без фото', () => {
+  it('cleanAvatar: null и пустое - буквы, неподходящее - undefined; ключ снимка - без фото', () => {
     expect(ts.cleanAvatar(null)).toBeNull();
     expect(ts.cleanAvatar('')).toBeNull();
     expect(ts.cleanAvatar('🦊')).toBe('🦊');
@@ -77,7 +77,7 @@ describe('обрезка под круг', () => {
 });
 
 describe('пилюля «сменил аватар»', () => {
-  it('первое сообщение об аватаре — не смена; дальше — пилюля', () => {
+  it('первое сообщение об аватаре - не смена; дальше - пилюля', () => {
     const before = [{ userId: 1, name: 'Аня' }];
     expect(diffUsers(before, [{ userId: 1, name: 'Аня', avatar: '🦊' }], 0)).toEqual([]);
     const evs = diffUsers([{ userId: 1, name: 'Аня', avatar: '🦊' }], [{ userId: 1, name: 'Аня', avatar: 'photo:1' }], 0);

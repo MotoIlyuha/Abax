@@ -108,7 +108,7 @@ export function renderHotkeysSettings(host: HTMLElement, opts: HotkeysOptions): 
 
     const go = el('div', 'hk-row');
     const goText = el('div', 'hk-what');
-    goText.append(el('div', '', 'Перейти на страницу по номеру'), el('div', 'hk-sub', 'Номер — порядок в списке страниц, от 1 до 9'));
+    goText.append(el('div', '', 'Перейти на страницу по номеру'), el('div', 'hk-sub', 'Номер - порядок в списке страниц, от 1 до 9'));
     const mods = el('div', 'ctx-toolbar-pos hk-mods');
     for (const mod of ['ctrl', 'alt'] as PageKeyMod[]) {
       const b = el('button', s.pageKeyMod === mod ? 'active' : '', `${modLabel(mod)} + 1…9`);
@@ -120,7 +120,7 @@ export function renderHotkeysSettings(host: HTMLElement, opts: HotkeysOptions): 
         const k = state.settings.newPageKey;
         if (k && newPageKeyProblem(k, mod)) {
           patch.newPageKey = null;
-          setStatus(`${comboLabel(k)} теперь переход на страницу — сочетание новой страницы снято`, true);
+          setStatus(`${comboLabel(k)} теперь переход на страницу - сочетание новой страницы снято`, true);
         }
         opts.save(patch);
         draw();
@@ -140,11 +140,11 @@ export function renderHotkeysSettings(host: HTMLElement, opts: HotkeysOptions): 
     cap.setAttribute('aria-label', 'Сочетание «Новая страница»');
     if (capturing) cap.textContent = 'Нажмите сочетание…';
     else if (s.newPageKey) cap.appendChild(keycaps(s.newPageKey));
-    else cap.textContent = '—';
-    cap.title = capturing ? 'Esc — отмена' : 'Нажмите, чтобы сменить сочетание';
+    else cap.textContent = '-';
+    cap.title = capturing ? 'Esc - отмена' : 'Нажмите, чтобы сменить сочетание';
     cap.addEventListener('click', () => {
       capturing = !capturing;
-      setStatus(capturing ? macKeys('Нажмите сочетание с Ctrl или Alt. Backspace — убрать сочетание, Esc — отмена') : HINT);
+      setStatus(capturing ? macKeys('Нажмите сочетание с Ctrl или Alt. Backspace - убрать сочетание, Esc - отмена') : HINT);
       draw();
       root.querySelector<HTMLElement>('.hk-capture')?.focus();
     });
@@ -161,7 +161,7 @@ export function renderHotkeysSettings(host: HTMLElement, opts: HotkeysOptions): 
       reset.addEventListener('click', () => {
         const problem = newPageKeyProblem(DEFAULT_NEW_PAGE_KEY, state.settings.pageKeyMod);
         if (problem) { setStatus(problem, true); return; }
-        setStatus(`Новая страница — ${comboLabel(DEFAULT_NEW_PAGE_KEY)}`);
+        setStatus(`Новая страница - ${comboLabel(DEFAULT_NEW_PAGE_KEY)}`);
         opts.save({ newPageKey: DEFAULT_NEW_PAGE_KEY });
         draw();
       });
@@ -273,7 +273,7 @@ export function renderHotkeysSettings(host: HTMLElement, opts: HotkeysOptions): 
     const head = el('div', 'hk-head');
     head.appendChild(el('h3', 'hk-title', 'Инструменты'));
     const edit = el('button', 'sd-btn hk-edit', 'Изменить');
-    edit.title = 'Назначить клавиши инструментам — в разделе «Панель инструментов»';
+    edit.title = 'Назначить клавиши инструментам - в разделе «Панель инструментов»';
     edit.addEventListener('click', () => opts.editToolKeys());
     head.appendChild(edit);
     tools.appendChild(head);
@@ -336,7 +336,7 @@ export function renderHotkeysSettings(host: HTMLElement, opts: HotkeysOptions): 
     const problem = newPageKeyProblem(combo, state.settings.pageKeyMod);
     if (problem) { setStatus(problem, true); return true; }
     capturing = false;
-    setStatus(`Новая страница — ${comboLabel(combo)}`);
+    setStatus(`Новая страница - ${comboLabel(combo)}`);
     opts.save({ newPageKey: combo });
     draw();
     refocus();

@@ -140,7 +140,7 @@ export function renderProfileSettings(host: HTMLElement, rerender: () => void, o
     });
     acc.append(list, formHost, out);
   } else {
-    acc.appendChild(el('p', 'ps-text', 'Вы не вошли. Войдите, чтобы доски синхронизировались между устройствами и не пропали при очистке браузера — все доски этого устройства сохранятся.'));
+    acc.appendChild(el('p', 'ps-text', 'Вы не вошли. Войдите, чтобы доски синхронизировались между устройствами и не пропали при очистке браузера - все доски этого устройства сохранятся.'));
     const row = el('div', 'ps-providers');
     for (const p of ['email', 'telegram', 'google'] as const) {
       const b = button(`ob-btn ob-chip ob-${p}`, PROVIDER_NAMES[p], PROVIDER_ICONS[p]);

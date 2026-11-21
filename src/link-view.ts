@@ -6,7 +6,7 @@ import { cloneProjectForViewer } from './project-access';
 // Только данные — интерфейс в link-view-ui.ts.
 
 /** Адрес веб-версии: от него строятся ссылки из приложения (у Electron адрес — file://). */
-export const PUBLIC_WEB_URL = 'https://motoilyuha.github.io/Abax/';
+export const PUBLIC_WEB_URL = 'https://board.abaxboard.ru/';
 
 export const NOTICE_NO_PROJECT = 'Проект недоступен на этом устройстве';
 export const NOTICE_NO_PAGE = 'Страница не найдена';

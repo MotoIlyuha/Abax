@@ -56,7 +56,7 @@ describe('describeChange: добавление и удаление', () => {
     expect(one({ id: 'x', type: 'future' } as unknown as Element)).toBe('Добавлен объект');
   });
 
-  it('несколько одного типа — их название, разных — «объект»; согласование с числом', () => {
+  it('несколько одного типа - их название, разных - «объект»; согласование с числом', () => {
     expect(describeChange([], many(3, id => stroke(id)))).toBe('Добавлено 3 рисунка');
     expect(describeChange([], many(5, id => stroke(id)))).toBe('Добавлено 5 рисунков');
     expect(describeChange([], many(21, id => stroke(id)))).toBe('Добавлен 21 рисунок');
@@ -114,7 +114,7 @@ describe('describeChange: изменённые элементы', () => {
     expect(describeChange([a, b], [b, { ...a, layerPin: 'top' }])).toBe('Изменён порядок');
   });
 
-  it('прочие правки — «Изменён/Изменено …» по типу', () => {
+  it('прочие правки - «Изменён/Изменено …» по типу', () => {
     const t = task('t');
     expect(describeChange([t], [{ ...t, answer: '2', topic: 'Другая' }])).toBe('Изменено задание');
     const a = rect('a'), s = stroke('s');
@@ -126,19 +126,19 @@ describe('describeChange: изменённые элементы', () => {
 });
 
 describe('describeChange: без изменений и смешанное', () => {
-  it('тот же массив, те же элементы в том же порядке — «Без изменений»', () => {
+  it('тот же массив, те же элементы в том же порядке - «Без изменений»', () => {
     const list = [rect('a'), text('b')];
     expect(describeChange(list, list)).toBe('Без изменений');
     expect(describeChange(list, [...list])).toBe('Без изменений');
     expect(describeChange([], [])).toBe('Без изменений');
   });
 
-  it('ластик для пера: штрих заменён кусками — «Частично стёрт»', () => {
+  it('ластик для пера: штрих заменён кусками - «Частично стёрт»', () => {
     expect(describeChange([stroke('s')], [stroke('s1'), stroke('s2')])).toBe('Частично стёрт рисунок');
     expect(describeChange([stroke('a'), stroke('b')], [stroke('c')])).toBe('Частично стёрто 2 рисунка');
   });
 
-  it('добавлено, удалено и изменено вместе — части через запятую', () => {
+  it('добавлено, удалено и изменено вместе - части через запятую', () => {
     const a = rect('a');
     expect(describeChange([a, text('t')], [{ ...a, x: 9 }, stroke('s')])).toBe('Добавлен рисунок, удалён текст, перемещён прямоугольник');
     expect(describeChange([text('t')], [rect('r')])).toBe('Добавлен прямоугольник, удалён текст');

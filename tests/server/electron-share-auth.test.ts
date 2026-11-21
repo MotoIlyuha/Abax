@@ -61,7 +61,7 @@ describe('electron main: share:* IPC', () => {
     expect(s.hostKey).toBeUndefined();
   });
 
-  it('hostKey из share:start пускает как автора, без него — нет', async () => {
+  it('hostKey из share:start пускает как автора, без него - нет', async () => {
     const r = await invoke('share:start');
     const open = (q: string) => new Promise<{ init?: any; close?: number }>(resolve => {
       const ws = new WebSocket(`ws://127.0.0.1:${r.port}/ws?${q}`);

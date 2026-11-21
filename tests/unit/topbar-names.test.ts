@@ -12,7 +12,7 @@ beforeEach(() => {
 });
 
 describe('название в шапке', () => {
-  it('короткое — как есть и без подсказки; длинное — сокращено, полное — в подсказке', () => {
+  it('короткое - как есть и без подсказки; длинное - сокращено, полное - в подсказке', () => {
     const t = wireTopName(input, { max: 40, canEdit: () => true, commit: vi.fn() });
     t.set('Дроби');
     expect(input.value).toBe('Дроби');
@@ -25,7 +25,7 @@ describe('название в шапке', () => {
     expect(input.hasAttribute('data-tip')).toBe(false);
   });
 
-  it('в фокусе — полное название; правка сохраняется, после — снова сокращённое', () => {
+  it('в фокусе - полное название; правка сохраняется, после - снова сокращённое', () => {
     const commit = vi.fn();
     const t = wireTopName(input, { max: 40, canEdit: () => true, commit });
     t.set(LONG);
@@ -39,7 +39,7 @@ describe('название в шапке', () => {
     expect(input.value).toBe('Геометрия и алгебр...');
   });
 
-  it('Esc возвращает прежнее; без права — правка не сохраняется', () => {
+  it('Esc возвращает прежнее; без права - правка не сохраняется', () => {
     const commit = vi.fn();
     let can = true;
     const t = wireTopName(input, { max: 40, canEdit: () => can, commit });

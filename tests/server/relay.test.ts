@@ -137,7 +137,7 @@ describe('комната и пересылка', () => {
     expect(relay.stats().guests).toBe(2);
   });
 
-  it('уход гостя — leave автору', async () => {
+  it('уход гостя - leave автору', async () => {
     await start();
     const { host, opened } = await openRoom();
     const { guest, conn } = await join(host, opened.room);
@@ -157,7 +157,7 @@ describe('комната и пересылка', () => {
     expect(await b.guest.closed).toEqual({ code: 4000, reason: '' });
   });
 
-  it('неизвестная и испорченная комната — 4404', async () => {
+  it('неизвестная и испорченная комната - 4404', async () => {
     await start();
     await openRoom();
     const g1 = await connect('/g/AAAAAAAAAAAAAAAAAAAAAA');
@@ -197,28 +197,28 @@ describe('keepalive автора', () => {
 });
 
 describe('начало сессии автора', () => {
-  it('первое сообщение не open — 4400', async () => {
+  it('первое сообщение не open - 4400', async () => {
     await start();
     const h = await connect('/host');
     sendJson(h, { t: 'kick', conn: 1 });
     expect((await h.closed).code).toBe(CLOSE.BAD_REQUEST);
   });
 
-  it('двоичный кадр вместо open — 4400', async () => {
+  it('двоичный кадр вместо open - 4400', async () => {
     await start();
     const h = await connect('/host');
     h.ws.send(Buffer.from('{"t":"open","proto":1}'));
     expect((await h.closed).code).toBe(CLOSE.BAD_REQUEST);
   });
 
-  it('другая версия протокола — 4426', async () => {
+  it('другая версия протокола - 4426', async () => {
     await start();
     const h = await connect('/host');
     sendJson(h, { t: 'open', proto: RELAY_PROTO + 1 });
     expect(await h.closed).toEqual({ code: CLOSE.PROTOCOL_MISMATCH, reason: 'protocol mismatch' });
   });
 
-  it('молчание после подключения — закрытие по таймауту', async () => {
+  it('молчание после подключения - закрытие по таймауту', async () => {
     await start({ openTimeoutMs: 50 });
     const h = await connect('/host');
     expect((await h.closed).code).toBe(CLOSE.BAD_REQUEST);
@@ -296,7 +296,7 @@ describe('обрыв и возвращение автора', () => {
     expect((await back.closed).code).toBe(CLOSE.ROOM_NOT_FOUND);
   });
 
-  it('неверный токен — 4401, комната продолжает ждать автора', async () => {
+  it('неверный токен - 4401, комната продолжает ждать автора', async () => {
     await start();
     const { host, opened } = await openRoom();
     host.ws.terminate();
@@ -345,7 +345,7 @@ describe('лимиты', () => {
     expect(guest.bytes[0].length).toBe(1024);
   });
 
-  it('новых комнат с одного адреса — не больше roomsPerMinute', async () => {
+  it('новых комнат с одного адреса - не больше roomsPerMinute', async () => {
     await start({ roomsPerMinute: 2 });
     await openRoom();
     await openRoom();
@@ -372,7 +372,7 @@ describe('лимиты', () => {
     expect((await h.closed).code).toBe(CLOSE.SERVER_FULL);
   });
 
-  it('подключений гостей с одного адреса — не больше joinsPerMinute', async () => {
+  it('подключений гостей с одного адреса - не больше joinsPerMinute', async () => {
     await start({ joinsPerMinute: 2 });
     const { host, opened } = await openRoom();
     await join(host, opened.room);
@@ -381,7 +381,7 @@ describe('лимиты', () => {
     expect(await g.closed).toEqual({ code: CLOSE.RATE_LIMITED, reason: 'too many joins' });
   });
 
-  it('одновременных соединений с одного адреса — не больше maxConnPerIp; закрытые освобождают место', async () => {
+  it('одновременных соединений с одного адреса - не больше maxConnPerIp; закрытые освобождают место', async () => {
     await start({ maxConnPerIp: 2 });
     const { host, opened } = await openRoom();
     const { guest } = await join(host, opened.room);
@@ -425,7 +425,7 @@ describe('лимиты', () => {
     expect((await g.closed).code).toBe(CLOSE.RATE_LIMITED);
   });
 
-  it('allowedOrigins: гость с чужим Origin не подключается, автор — без проверки', async () => {
+  it('allowedOrigins: гость с чужим Origin не подключается, автор - без проверки', async () => {
     await start({ allowedOrigins: ['https://example.github.io'] });
     const { host, opened } = await openRoom(); // у автора (Electron, Node) заголовка Origin нет
     await expect(connect(`/g/${opened.room}`, { origin: 'https://evil.example' })).rejects.toThrow('HTTP 403');
@@ -484,7 +484,7 @@ describe('лимиты', () => {
 });
 
 describe('HTTP и завершение', () => {
-  it('/health отвечает ok, прочие пути — 404, неизвестный путь для WebSocket — 404', async () => {
+  it('/health отвечает ok, прочие пути - 404, неизвестный путь для WebSocket - 404', async () => {
     await start();
     const base = `http://127.0.0.1:${relay.port}`;
     const health = await fetch(`${base}/health`);
@@ -506,7 +506,7 @@ describe('HTTP и завершение', () => {
 });
 
 describe('вспомогательное', () => {
-  it('ipKey: IPv4 целиком, IPv4 из IPv6 — как IPv4, IPv6 — по сети /64', () => {
+  it('ipKey: IPv4 целиком, IPv4 из IPv6 - как IPv4, IPv6 - по сети /64', () => {
     expect(ipKey('203.0.113.7')).toBe('203.0.113.7');
     expect(ipKey('::ffff:203.0.113.7')).toBe('203.0.113.7');
     expect(ipKey('2001:db8:1:2:aaaa::1')).toBe('2001:db8:1:2::/64');

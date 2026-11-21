@@ -307,7 +307,7 @@ function springyView(value: string, fromPill: boolean, sent: (addr: string, dev?
   async function submit(): Promise<void> {
     if (busy) return;
     const addr = input.value.trim();
-    if (!EMAIL_RE.test(addr)) { reject(addr ? 'Похоже, в адресе опечатка — проверьте его' : 'Сначала введите адрес почты'); return; }
+    if (!EMAIL_RE.test(addr)) { reject(addr ? 'Похоже, в адресе опечатка - проверьте его' : 'Сначала введите адрес почты'); return; }
     busy = true;
     go.classList.add('wait');
     let r: { devCode?: string };
@@ -572,7 +572,7 @@ function codeView(addr: string, devCode: string | undefined, mode: AuthMode, bac
     try {
       applyPasted(await navigator.clipboard.readText());
     } catch {
-      setHelp('Нет доступа к буферу обмена — вставьте код сочетанием Ctrl+V', 'err');
+      setHelp('Нет доступа к буферу обмена - вставьте код сочетанием Ctrl+V', 'err');
     }
   }
   const canReadClipboard = () => typeof navigator.clipboard?.readText === 'function';

@@ -15,7 +15,7 @@ async function makePng(page: Page, w: number, h: number): Promise<Buffer> {
 }
 
 test.describe('масштаб в шапке', () => {
-  test('открытие меню подписи сразу включает ввод — ввод точного значения с проверкой', async ({ board, page }) => {
+  test('открытие меню подписи сразу включает ввод - ввод точного значения с проверкой', async ({ board, page }) => {
     const label = page.locator('#zoom-label');
     const input = page.locator('#zoom-input');
     const hint = page.locator('.zoom-hint');
@@ -37,7 +37,7 @@ test.describe('масштаб в шапке', () => {
     expect((await board.state()).camera.zoom).toBe(1);
 
     await input.fill('4');
-    await expect(hint).toHaveText('Масштаб — от 5 до 3200%');
+    await expect(hint).toHaveText('Масштаб - от 5 до 3200%');
     await input.fill('250 %');
     await expect(hint).toBeHidden();
     await expect(input).not.toHaveClass(/invalid/);
@@ -73,7 +73,7 @@ test.describe('масштаб в шапке', () => {
 });
 
 test.describe('надпись в фигуре', () => {
-  test('нарисованная фигура выделена, курсор стоит — набранное уходит в надпись', async ({ board, page }) => {
+  test('нарисованная фигура выделена, курсор стоит - набранное уходит в надпись', async ({ board, page }) => {
     const r = await board.rect(400, 300, 600, 400);
     let st = await board.state();
     expect(st.tool).toBe('select');
@@ -114,7 +114,7 @@ test.describe('надпись в фигуре', () => {
     expect((await board.elements())[0].text).toBe('Vp 1\nx');
   });
 
-  test('эллипс и треугольник — с надписью, у линии курсора нет', async ({ board, page }) => {
+  test('эллипс и треугольник - с надписью, у линии курсора нет', async ({ board, page }) => {
     for (const [key, shape] of [['o', 'ellipse'], ['y', 'triangle']] as const) {
       await board.tool(key);
       await board.drag([{ x: 300, y: 300 }, { x: 500, y: 450 }]);
@@ -191,7 +191,7 @@ test.describe('надпись в фигуре', () => {
 });
 
 test.describe('прозрачность и скругление', () => {
-  test('ползунок прозрачности — под цветами; новые элементы его наследуют', async ({ board, page }) => {
+  test('ползунок прозрачности - под цветами; новые элементы его наследуют', async ({ board, page }) => {
     await page.locator('#btn-style').click();
     const panel = page.locator('.ctx-panel[data-kind="style"]');
     await board.settled();

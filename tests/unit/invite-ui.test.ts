@@ -45,7 +45,7 @@ describe('тексты', () => {
   const inv = (over: Partial<EmailInvite> = {}): EmailInvite => ({
     id: 'e1', projectId: 'p1', email: 's@x.ru', role: 'editor', status: 'pending', createdAt: 1, updatedAt: 1, ...over,
   });
-  it('статус приглашения: отправлено / заходил(а) / отклонено — вход важнее нажатой кнопки', () => {
+  it('статус приглашения: отправлено / заходил(а) / отклонено - вход важнее нажатой кнопки', () => {
     const now = Date.UTC(2026, 10, 18, 12);
     expect(emailInviteStatusText(inv(), now)).toBe('отправлено, ещё не заходил');
     expect(emailInviteStatusText(inv({ status: 'accepted' }), now)).toBe('принято, ещё не заходил');

@@ -7,7 +7,7 @@ import { cloudStorage } from './cloud-sync';
 import { onChange, state } from './state';
 import { SYNC_STATUS_TEXT, type SyncStatus } from './sync-state';
 
-export const LIMIT_INFO_TEXT = 'На бесплатном тарифе в облаке хранятся 3 проекта по 3 страницы. Этот проект сохранён только на устройстве — в подписке Pro ограничений нет.';
+export const LIMIT_INFO_TEXT = 'На бесплатном тарифе в облаке хранятся 3 проекта по 3 страницы. Этот проект сохранён только на устройстве - в подписке Pro ограничений нет.';
 
 import { SYNC_ICONS } from './icons';
 

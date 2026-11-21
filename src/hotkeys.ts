@@ -95,7 +95,7 @@ export const FIXED_SHORTCUTS: ShortcutGroup[] = [
       { keys: ['Ctrl+KeyV'], what: 'Вставить' },
       { keys: ['Ctrl+KeyD'], what: 'Дублировать' },
       { keys: ['Delete', 'Backspace'], what: 'Удалить выделенное' },
-      { keys: ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'], what: 'Сдвинуть выделенное (удерживайте — плавно, Shift — крупнее)' },
+      { keys: ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'], what: 'Сдвинуть выделенное (удерживайте - плавно, Shift - крупнее)' },
       { keys: ['Ctrl+KeyG'], what: 'Сгруппировать' },
       { keys: ['Ctrl+Shift+KeyG'], what: 'Разгруппировать' },
       { keys: ['Ctrl+KeyB'], what: 'Полужирный текст' },
@@ -113,8 +113,8 @@ export const FIXED_SHORTCUTS: ShortcutGroup[] = [
   },
   {
     title: 'Доска',
-    note: 'Черновик видите только вы — ни гости, ни окно демонстрации, — а при выходе из вкладки или приложения он пропадает. '
-      + 'Создать его можно и мышью: нажмите кнопку новой страницы с зажатым Alt, а на планшете — задержите на ней палец.',
+    note: 'Черновик видите только вы - ни гости, ни окно демонстрации, - а при выходе из вкладки или приложения он пропадает. '
+      + 'Создать его можно и мышью: нажмите кнопку новой страницы с зажатым Alt, а на планшете - задержите на ней палец.',
     items: [
       { keys: ['Ctrl+KeyS'], what: 'Сохранить' },
       { keys: ['Ctrl+KeyE'], what: 'Экспорт в PNG' },
@@ -143,7 +143,7 @@ export const FIXED_SHORTCUTS: ShortcutGroup[] = [
     items: [
       { keys: ['Enter'], what: 'Готово' },
       { keys: ['Shift+Enter'], what: 'Новая строка' },
-      { keys: ['Escape'], what: 'Отменить ввод (у надписи в фигуре — закончить)' },
+      { keys: ['Escape'], what: 'Отменить ввод (у надписи в фигуре - закончить)' },
     ],
   },
 ];
@@ -163,7 +163,7 @@ export function newPageKeyProblem(combo: string, pageMod: PageKeyMod): string | 
   const code = parts[parts.length - 1];
   const mods = parts.slice(0, -1);
   if (!mods.includes('Ctrl') && !mods.includes('Alt')) {
-    return macKeys('Нужно сочетание с Ctrl или Alt: одиночные клавиши — у инструментов');
+    return macKeys('Нужно сочетание с Ctrl или Alt: одиночные клавиши - у инструментов');
   }
   if (!/^(Key[A-Z]|Digit[0-9])$/.test(code)) return macKeys('Подойдёт Ctrl или Alt с буквой или цифрой');
   if (mods.length === 1 && /^Digit[1-9]$/.test(code) && mods[0] === modPart(pageMod)) {

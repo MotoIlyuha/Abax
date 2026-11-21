@@ -56,7 +56,7 @@ describe('режим «Чат и уведомления»', () => {
     expect($('#np-view-all')!.hidden).toBe(true);
   });
 
-  it('счётчики вкладок: «Чат» — непрочитанные чата, «Уведомления» — системные', () => {
+  it('счётчики вкладок: «Чат» - непрочитанные чата, «Уведомления» - системные', () => {
     setChatAvailable(true);
     chatReset([], 1);
     chatReceive(msg('a', 2, 'привет'));
@@ -67,7 +67,7 @@ describe('режим «Чат и уведомления»', () => {
     expect($('#np-tab-all .tp-count')!.classList.contains('on')).toBe(false);
   });
 
-  it('правила прочтения: скрыт — ничего; «Чат» — чат; «Уведомления» — системные; «Все» — всё', () => {
+  it('правила прочтения: скрыт - ничего; «Чат» - чат; «Уведомления» - системные; «Все» - всё', () => {
     setChatAvailable(true);
     chatReset([], 1);
     chatReceive(msg('a', 2, 'привет'));
@@ -146,7 +146,7 @@ describe('режим «Чат и уведомления»', () => {
     expect(notices().filter(n => n.kind === 'chat')).toHaveLength(0);
   });
 
-  it('поле ввода отправляет через слой данных; фокус — в поле', () => {
+  it('поле ввода отправляет через слой данных; фокус - в поле', () => {
     const sent: string[] = [];
     setChatAvailable(true);
     setChatSender(t => { sent.push(t); return true; });
@@ -183,7 +183,7 @@ describe('режим «Чат и уведомления»', () => {
     expect(share).toHaveBeenCalledOnce();
   });
 
-  it('без совместной работы: гость или без кнопки «Поделиться» — без кнопки', () => {
+  it('без совместной работы: гость или без кнопки «Поделиться» - без кнопки', () => {
     state.collabRole = 'guest';
     setChatAvailable(false); // перерисовка пустых состояний
     expect($('#np-view-chat .np-share')).toBeNull();
@@ -229,7 +229,7 @@ describe('режим «Чат и уведомления»', () => {
     expect(run).toHaveBeenCalledOnce();
   });
 
-  it('revealChatMessage: с «Уведомлений» — на «Чат», подсветка сообщения', () => {
+  it('revealChatMessage: с «Уведомлений» - на «Чат», подсветка сообщения', () => {
     setChatAvailable(true);
     chatReset([msg('a', 2, 'раз'), msg('b', 2, 'два')], 1);
     setNotifyTab('notices');
@@ -239,7 +239,7 @@ describe('режим «Чат и уведомления»', () => {
     expect($('#np-view-chat [data-id="b"]')!.classList.contains('cf-flash')).toBe(true);
   });
 
-  it('revealChatMessage до показа — выполняется при показе', () => {
+  it('revealChatMessage до показа - выполняется при показе', () => {
     setChatAvailable(true);
     chatReset([msg('a', 2, 'раз')], 1);
     revealChatMessage('a');
@@ -260,9 +260,11 @@ describe('режим «Чат и уведомления»', () => {
     });
 
     it('карточки обсуждений и объектов с реакциями; свежее обсуждение выше; поля ввода нет', () => {
-      let page = createCommentThread(state.board, { x: 0, y: 0, targetElementId: 'a', authorId: 'u1', authorName: '<b>Маша</b>', text: 'старое', now: 1000 });
-      page = createCommentThread(page, { x: 5, y: 5, authorId: 'u2', authorName: 'Вова', text: 'без объекта', now: 2000 });
-      state.board.comments = page.comments;
+      const page = createCommentThread(state.board, { x: 0, y: 0, targetElementId: 'a', authorId: 'u1', authorName: '<b>Маша</b>', text: 'старое', now: 1000 });
+      state.board.comments = [...page.comments!, {
+        id: 'legacy', x: 5, y: 5,
+        messages: [{ id: 'legacy-msg', authorId: 'u2', authorName: 'Вова', text: 'без объекта', createdAt: 2000 }],
+      }];
       setNotifyTab('comments');
       v.show?.();
       const cards = [...host.querySelectorAll<HTMLElement>('.cm-card')];
@@ -273,7 +275,7 @@ describe('режим «Чат и уведомления»', () => {
       expect($('.np-compose')!.hidden).toBe(true);
     });
 
-    it('пусто — подсказка; уведомление о комментарии — счётчик вкладки и точка на карточке, просмотр — прочитано', () => {
+    it('пусто - подсказка; уведомление о комментарии - счётчик вкладки и точка на карточке, просмотр - прочитано', () => {
       openProject(blankProject('Пусто'));
       state.view = 'board';
       setNotifyTab('comments');

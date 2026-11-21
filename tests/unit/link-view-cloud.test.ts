@@ -66,7 +66,7 @@ describe('просмотр чужого проекта по ссылке', () =>
     expect(document.querySelector('#link-banner .lb-clone')).toBeNull();
   });
 
-  it('страницы нет или она скрыта — первая видимая и сообщение', async () => {
+  it('страницы нет или она скрыта - первая видимая и сообщение', async () => {
     await server();
     for (const pageId of ['нет', 'a-p3']) {
       await enterLinkView({ mode: 'view-page', projectId: 'a', pageId });
@@ -83,7 +83,7 @@ describe('просмотр чужого проекта по ссылке', () =>
     expect(document.querySelector('#link-banner .lb-clone')).toBeNull();
   });
 
-  it('сервера нет на 404 — берётся копия на этом устройстве; нет нигде — «Проект недоступен»', async () => {
+  it('сервера нет на 404 - берётся копия на этом устройстве; нет нигде - «Проект недоступен»', async () => {
     await server();
     const local = { ...blankProject('Только у меня'), id: 'mine' };
     await storage.save(local);
@@ -93,7 +93,7 @@ describe('просмотр чужого проекта по ссылке', () =>
     expect(document.querySelector('#link-banner .lb-title')?.textContent).toBe('Проект недоступен на этом устройстве');
   });
 
-  it('сервер недоступен — тоже копия на устройстве, без ошибок', async () => {
+  it('сервер недоступен - тоже копия на устройстве, без ошибок', async () => {
     setApiForTests(createApiClient({ base: 'http://127.0.0.1:1' }));
     await storage.save({ ...blankProject('Локальный'), id: 'loc' });
     await enterLinkView({ mode: 'view-project', projectId: 'loc' });
@@ -101,7 +101,7 @@ describe('просмотр чужого проекта по ссылке', () =>
     expect(state.linkMode).toBe('view-project');
   });
 
-  it('облако выключено — всё как раньше, через localStorage', async () => {
+  it('облако выключено - всё как раньше, через localStorage', async () => {
     setApiForTests(null);
     await storage.save({ ...blankProject('Локальный'), id: 'loc2' });
     await enterLinkView({ mode: 'view-project', projectId: 'loc2' });
@@ -139,7 +139,7 @@ describe('клонирование через сервер', () => {
     expect(state.linkMode).toBe('view-project');
   });
 
-  it('сервер пропал после открытия — копия делается локально', async () => {
+  it('сервер пропал после открытия - копия делается локально', async () => {
     const { app } = await server();
     await enterLinkView({ mode: 'view-project', projectId: 'a' });
     await closeApps();
@@ -168,7 +168,7 @@ describe('приглашение /j/:token', () => {
     expect(state.linkMode).toBe('view-project');
   });
 
-  it('неизвестная и отозванная ссылка — сообщение, доска не открывается', async () => {
+  it('неизвестная и отозванная ссылка - сообщение, доска не открывается', async () => {
     const { app, owner, token } = await invited();
     expect(await enterInvite('нет-такой')).toBe(false);
     expect(notice()).toContain('Приглашение недействительно');
@@ -179,7 +179,7 @@ describe('приглашение /j/:token', () => {
     expect(state.linkMode).toBeNull();
   });
 
-  it('нет связи с сервером — своё сообщение; облако выключено — прежняя заглушка', async () => {
+  it('нет связи с сервером - своё сообщение; облако выключено - прежняя заглушка', async () => {
     setApiForTests(createApiClient({ base: 'http://127.0.0.1:1' }));
     expect(await enterInvite('любая')).toBe(false);
     expect(notice()).toContain('Нет связи с сервером');
@@ -206,7 +206,7 @@ describe('приглашение /j/:token', () => {
 });
 
 describe('тексты отказа входа по ссылке (Ночь №6, SPEC_NIGHT6 §5.4)', () => {
-  it('по коду сервера — понятная причина; неизвестный — «приглашение недействительно»; сеть — «нет связи»', async () => {
+  it('по коду сервера - понятная причина; неизвестный - «приглашение недействительно»; сеть - «нет связи»', async () => {
     const { inviteFailureNotice, NOTICE_INVITE_GONE, NOTICE_INVITE_OFFLINE } = await import('../../src/link-view-ui');
     expect(inviteFailureNotice('not-found', 'link-paused')[1]).toContain('Автор закрыл доступ к доске по ссылке');
     expect(inviteFailureNotice('not-found', 'alias-released')[0]).toBe('Адрес больше не используется');

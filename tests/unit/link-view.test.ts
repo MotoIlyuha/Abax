@@ -12,7 +12,8 @@ const project = (pages: Page[], extra: Partial<Project> = {}): Project =>
 const blank = () => page('blank');
 
 describe('ссылки', () => {
-  it('база: в браузере — текущий адрес, в приложении и с file:// — веб-версия', () => {
+  it('база: в браузере - текущий адрес, в приложении и с file:// - веб-версия', () => {
+    expect(PUBLIC_WEB_URL).toBe('https://board.abaxboard.ru/');
     expect(linkBaseUrl({ protocol: 'https:', origin: 'https://x.test', pathname: '/Abax/' })).toBe('https://x.test/Abax/');
     expect(linkBaseUrl({ protocol: 'file:', origin: 'null', pathname: '/C:/app/index.html' })).toBe(PUBLIC_WEB_URL);
     expect(linkBaseUrl({ protocol: 'https:', origin: 'https://x.test', pathname: '/' }, true)).toBe(PUBLIC_WEB_URL);
@@ -28,7 +29,7 @@ describe('ссылки', () => {
     expect(parseBoardUrl(focus)).toEqual({ mode: 'view-page', projectId: 'p1', pageId: 'g1', focusIds: ['a', 'b'] });
   });
 
-  it('без данных — null', () => {
+  it('без данных - null', () => {
     expect(boardLinkFor('https://x.test/', 'focus', { id: 'p1' }, 'g1', [])).toBeNull();
     expect(boardLinkFor('https://x.test/', 'page', { id: 'p1' }, '')).toBeNull();
     expect(boardLinkFor('https://x.test/', 'project', { id: '' }, 'g')).toBeNull();
@@ -52,7 +53,7 @@ describe('resolveViewProject', () => {
     expect(r.pageId).toBe('c');
   });
 
-  it('скрытая или несуществующая страница — первая видимая и сообщение', () => {
+  it('скрытая или несуществующая страница - первая видимая и сообщение', () => {
     for (const pageId of ['b', 'zzz']) {
       const r = resolveViewProject({ mode: 'view-page', projectId: 'p1', pageId }, p, blank);
       expect(r.project.pages.map(x => x.id)).toEqual(['a']);
@@ -60,13 +61,13 @@ describe('resolveViewProject', () => {
     }
   });
 
-  it('проекта нет — пустая доска и сообщение', () => {
+  it('проекта нет - пустая доска и сообщение', () => {
     const r = resolveViewProject({ mode: 'view-project', projectId: 'p9' }, null, blank);
     expect(r).toMatchObject({ missing: true, notice: NOTICE_NO_PROJECT, pageId: 'blank' });
     expect(r.project.id).toBe('p9');
   });
 
-  it('все страницы скрыты — пустая страница, а не падение', () => {
+  it('все страницы скрыты - пустая страница, а не падение', () => {
     const hidden = project([page('a')], { permissions: { pageRights: { a: 'hidden' } } });
     const r = resolveViewProject({ mode: 'view-project', projectId: 'p1' }, hidden, blank);
     expect(r.project.pages.map(x => x.id)).toEqual(['blank']);

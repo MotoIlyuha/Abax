@@ -135,7 +135,7 @@ export function renderExperimental(host: HTMLElement, deps: ExperimentalDeps): v
   box.appendChild(deps.check('thumbViewport', 'Показывать на превью видимую область',
     'Пунктирная рамка цветом вашего курсора показывает, какую часть страницы вы сейчас видите'));
   box.appendChild(deps.check('pageLinks', 'Страницы на холсте',
-    'Перетащите страницу из списка страниц на холст — появится её превью. Его можно двигать, менять размер и рамку, '
+    'Перетащите страницу из списка страниц на холст - появится её превью. Его можно двигать, менять размер и рамку, '
     + 'а клик по нему плавно приближает и открывает эту страницу'));
 
   if (recursionDiscovered()) box.appendChild(deps.check('recursionEnabled', 'Включить рекурсию!',
@@ -167,7 +167,7 @@ export function renderExperimental(host: HTMLElement, deps: ExperimentalDeps): v
     box.appendChild(planRow);
 
     const wipe = el('button', 'sd-btn sd-exp-hide', 'Очистить кэш');
-    wipe.title = 'Только для разработки: стирает локальные данные (профиль, проекты, настройки), кэш и перезагружает страницу — всё начнётся с онбординга';
+    wipe.title = 'Только для разработки: стирает локальные данные (профиль, проекты, настройки), кэш и перезагружает страницу - всё начнётся с онбординга';
     wipe.addEventListener('click', () => { void wipeLocalData(); });
     box.appendChild(wipe);
   }

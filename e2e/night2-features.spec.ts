@@ -67,7 +67,7 @@ test.describe('просмотр по ссылке', () => {
     await expect(page.locator('#link-banner .lb-clone')).toHaveCount(0);
   });
 
-  test('нет проекта на устройстве — плашка и пустая доска', async ({ page }) => {
+  test('нет проекта на устройстве - плашка и пустая доска', async ({ page }) => {
     await openLink(page, '/?route=project&projectId=net-takogo');
     await expect(page.locator('#link-banner')).toContainText('Проект недоступен на этом устройстве');
     await expect(page.locator('#link-banner .lb-clone')).toHaveCount(0);
@@ -96,7 +96,7 @@ test.describe('просмотр по ссылке', () => {
     expect(await board.count('shape')).toBe(2);
   });
 
-  test('меню экспорта копирует ссылки; ссылка на объекты — из меню выделения', async ({ board, page, context }) => {
+  test('меню экспорта копирует ссылки; ссылка на объекты - из меню выделения', async ({ board, page, context }) => {
     await context.grantPermissions(['clipboard-read', 'clipboard-write']);
     await board.open();
     const el = await board.rect(400, 300, 500, 400);
@@ -130,7 +130,7 @@ async function joinLocal(context: import('@playwright/test').BrowserContext, cod
 }
 
 test.describe('браузерный хост и патчи', () => {
-  test('гость из соседней вкладки видит правки автора, а с правом edit — рисует сам; всё идёт патчами', async ({ board, page, context }) => {
+  test('гость из соседней вкладки видит правки автора, а с правом edit - рисует сам; всё идёт патчами', async ({ board, page, context }) => {
     await board.open();
     await board.rect(400, 300, 500, 400);
     await startBrowserRoom(page, 'abc1');
@@ -154,7 +154,7 @@ test.describe('браузерный хост и патчи', () => {
     await guest.close();
   });
 
-  test('указка автора — лазер, исчезающий маркер и подсветка — видна гостю', async ({ board, page, context }) => {
+  test('указка автора - лазер, исчезающий маркер и подсветка - видна гостю', async ({ board, page, context }) => {
     await board.open();
     await board.rect(400, 300, 500, 400);
     await startBrowserRoom(page, 'ptr1');
@@ -185,7 +185,7 @@ test.describe('браузерный хост и патчи', () => {
     await guest.close();
   });
 
-  test('через интернет из браузера: без адреса — «Не указан», после ввода — ссылка, гость видит доску', async ({ board, page, browser }) => {
+  test('через интернет из браузера: без адреса - «Не указан», после ввода - ссылка, гость видит доску', async ({ board, page, browser }) => {
     const relay = await createRelay({ port: 0, host: '127.0.0.1', statsIntervalMs: 0, log: () => {} });
     try {
       await board.open();
@@ -290,7 +290,7 @@ test.describe('задания', () => {
     expect(await board.count('task')).toBe(0);
   });
 
-  test('двойной клик открывает правку; условие меняется, ввод остаётся, шаг — в историю', async ({ board, page }) => {
+  test('двойной клик открывает правку; условие меняется, ввод остаётся, шаг - в историю', async ({ board, page }) => {
     await board.open();
     await addTask(page, { statement: 'Старое условие', answer: '1' });
     await page.locator('.task-input').fill('2');
@@ -335,7 +335,7 @@ test.describe('задания', () => {
     await sp.locator('.task-check').click();
     await expect(sp.locator('.task-result')).toHaveText('Верно!');
     await expect(tp.locator('.task-attempts li')).toHaveCount(2);
-    await expect(tp.locator('.task-live-value')).toHaveText('—');
+    await expect(tp.locator('.task-live-value')).toHaveText('-');
     expect((await board.elements())[0].attempts.map((a: any) => a.isCorrect)).toEqual([false, true]);
     // ответ так и не дошёл до ученика
     expect(await student.evaluate(() => (window as any).__doska.state.board.elements[0].answer)).toBe('');
@@ -432,9 +432,17 @@ test.describe('реакции и комментарии', () => {
     await board.tool('v');
     await board.drag([{ x: 450, y: 350 }, { x: 550, y: 450 }]);
     await expect.poll(async () => (await comments())[0].x).toBe(600);
+    await page.keyboard.press('Delete');
+    await expect.poll(() => board.count('shape')).toBe(0);
+    await expect(row).toHaveCount(0);
+    await board.click({ x: 600, y: 400 });
+    await expect(pop).toBeHidden();
+    expect(await comments()).toMatchObject([{ targetElementId: a.id }]);
+    await page.keyboard.press('Control+z');
+    await expect(row.locator('.an-comment')).toHaveText('2');
   });
 
-  test('участник в комнате: реакция цвета своей плашки, комментарий; автору — пуши «Перейти» и «Посмотреть»', async ({ board, page, context }) => {
+  test('участник в комнате: реакция цвета своей плашки, комментарий; автору - пуши «Перейти» и «Посмотреть»', async ({ board, page, context }) => {
     await board.open();
     const a = await board.rect(400, 300, 500, 400);
     await startBrowserRoom(page, 'react1');

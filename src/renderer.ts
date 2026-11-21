@@ -2,7 +2,7 @@ import type { Camera, Element, GridMode, ImageEl, LaserPt, Page, ShapeEl, SolidE
 import { EXAM_LABELS, SUBJECT_LABELS, TASK_STATUS_LABEL, taskStatus } from './task-element';
 import { foreignSelections, readOnly } from './collab';
 import { mySelectionColor } from './profile';
-import { ROW_H, ITEM_GAP, MORE_W, commentWidth, layoutAnnotRows, layoutPins, pillWidth } from './annotations';
+import { ROW_H, ITEM_GAP, MORE_W, commentWidth, layoutAnnotRows, pillWidth } from './annotations';
 import { showComments, showReactions } from './annot-prefs';
 import { notePerson } from './note-people';
 import {
@@ -625,30 +625,6 @@ function drawReactions(ctx: CanvasRenderingContext2D, cam: Camera, w: number, h:
       ctx.fillText(String(users.length), x + 8 + 22, cy);
       x -= ITEM_GAP;
     }
-  }
-  ctx.restore();
-}
-
-/** Пины веток без объекта: число сообщений в кружке; решённые — полупрозрачные. */
-function drawCommentPins(ctx: CanvasRenderingContext2D, cam: Camera, w: number, h: number): void {
-  if (state.linkMode || !showComments()) return;
-  const pins = layoutPins(state.board.comments, state.board.elements, cam, w, h);
-  if (pins.length === 0) return;
-  ctx.save();
-  ctx.font = '700 11px "Segoe UI", system-ui, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  for (const p of pins) {
-    ctx.globalAlpha = p.resolved ? 0.45 : 1;
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-    ctx.fillStyle = p.resolved ? '#7a8291' : '#3273f5';
-    ctx.fill();
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = '#ffffff';
-    ctx.stroke();
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText(String(Math.min(p.count, 99)), p.x, p.y + 0.5);
   }
   ctx.restore();
 }
@@ -1490,8 +1466,6 @@ function draw(): void {
     }
     ctx.setLineDash([]);
   }
-  // реакции и счётчики комментариев — DOM-слой src/annot-layer.ts (кадр сообщается ему ниже); пины — здесь
-  drawCommentPins(ctx, cam, cssW, cssH);
   // у объектного ластика курсор — его иконка (CSS), кружок — только у ластика для пера и маркера
   if (state.tool === 'partEraser' && state.hover) {
     ctx.strokeStyle = '#7a828e';

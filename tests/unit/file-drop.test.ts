@@ -31,7 +31,7 @@ describe('File drop', () => {
     expect(el.getAttribute('aria-label')).toBe('Импорт файла. Перетащите файл сюда. или нажмите, чтобы выбрать файл');
   });
 
-  it('файл над зоной: класс и заголовок «Отпустите…»; ушёл — прежний текст', () => {
+  it('файл над зоной: класс и заголовок «Отпустите…»; ушёл - прежний текст', () => {
     const { drop, el } = make();
     drop.setOver(true);
     expect(el.classList.contains('is-over')).toBe(true);
@@ -41,7 +41,7 @@ describe('File drop', () => {
     expect(line(el, '.xfer-drop-title')).toBe('Перетащите файл сюда');
   });
 
-  it('«Улучшенные»: приём — чип летит в круг, текст «Принимаю…», кольцо появляется', async () => {
+  it('«Улучшенные»: приём - чип летит в круг, текст «Принимаю…», кольцо появляется', async () => {
     const { drop, el } = make();
     drop.accept(file, { x: 10, y: 10 });
     expect(line(el, '.xfer-drop-title')).toBe('Принимаю «урок-по-фи…ласс.pdf»');
@@ -57,7 +57,7 @@ describe('File drop', () => {
     expect(chip).toBeGreaterThan(0.2);
   });
 
-  it('«Улучшенные»: reset — сразу покой, чип и кольцо убраны', async () => {
+  it('«Улучшенные»: reset - сразу покой, чип и кольцо убраны', async () => {
     const { drop, el } = make();
     drop.accept(file);
     await frame();
@@ -68,7 +68,7 @@ describe('File drop', () => {
     expect(parseFloat(part(el, '.xfer-drop-g').style.transform.replace('scale(', ''))).toBe(0);
   });
 
-  it.each(['no-motion', 'no-motion no-ui-anim'])('«%s»: без пружин — сразу «Файл принят», круг зелёный, чипа нет', async cls => {
+  it.each(['no-motion', 'no-motion no-ui-anim'])('«%s»: без пружин - сразу «Файл принят», круг зелёный, чипа нет', async cls => {
     document.body.className = cls;
     const { drop, el } = make();
     drop.accept(file, { x: 10, y: 10 });

@@ -59,9 +59,9 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: 
 
 function tierTitle(plan: PlanTier): string {
   const b = billingState();
-  if (plan === 'free') return 'Бесплатный тариф — посмотреть подписку';
+  if (plan === 'free') return 'Бесплатный тариф - посмотреть подписку';
   const until = b && b.plan === plan && b.planExpiresAt ? ` до ${dateText(b.planExpiresAt)}` : '';
-  return `${b?.trial && b.plan === plan ? 'Пробный период' : 'Тариф'} ${PLAN_TITLES[plan]}${until} — подписка`;
+  return `${b?.trial && b.plan === plan ? 'Пробный период' : 'Тариф'} ${PLAN_TITLES[plan]}${until} - подписка`;
 }
 
 function paintStatic(plan: PlanTier): void {

@@ -80,7 +80,7 @@ describe.each(kinds)('$name', kind => {
       expect(host.last('summon')).toBeUndefined();
     });
 
-    it('страница скрыта от участника, неверный to или зовёт себя — ничего', () => {
+    it('страница скрыта от участника, неверный to или зовёт себя - ничего', () => {
       const { hub, host, join } = room(kind.make());
       const a = join();
       hub.setRights(a.uid, { pages: { pg2: 'hidden' } });
@@ -103,7 +103,7 @@ describe.each(kinds)('$name', kind => {
   });
 
   describe('«Настройки доступа» одного участника (set-rights)', () => {
-    it('автор скрывает страницу только от одного гостя: ему — права и проект без страницы, автору — личные права в снимке', () => {
+    it('автор скрывает страницу только от одного гостя: ему - права и проект без страницы, автору - личные права в снимке', () => {
       const { hub, host, join } = room(kind.make());
       const a = join('Аня');
       const b = join('Боря');
@@ -125,7 +125,7 @@ describe.each(kinds)('$name', kind => {
       expect(snap(host, a.uid).access.personal).toBeUndefined();
     });
 
-    it('права сохраняются за участником: перезаход с секретом возобновления возвращает их, новый гость — без них', () => {
+    it('права сохраняются за участником: перезаход с секретом возобновления возвращает их, новый гость - без них', () => {
       const { hub, host, join } = room(kind.make());
       const a = join('Аня');
       const secret = a.s.last('init')!.resume as string;
@@ -152,7 +152,7 @@ describe.each(kinds)('$name', kind => {
       expect(hub.users().find((u: Msg) => u.userId === again.uid).access.personal).toBeUndefined();
     });
 
-    it('гость не меняет права; автору нельзя; чужие страницы, «edit» и мусор — пропускаются', () => {
+    it('гость не меняет права; автору нельзя; чужие страницы, «edit» и мусор - пропускаются', () => {
       const hub = kind.make({ multiHost: true });
       const { host, join } = room(hub);
       const tablet = new FakeSock();

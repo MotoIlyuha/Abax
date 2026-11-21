@@ -19,7 +19,7 @@ describe('безопасная область краевых курсоров', 
     const ins = safeInsets(wrap, [rect(0, 0, 1000, 48), rect(8, 100, 52, 400), rect(400, 740, 200, 52)]);
     expect(ins).toEqual({ top: 48 + EDGE_PAD, left: 60 + EDGE_PAD, bottom: 60 + EDGE_PAD, right: EDGE_PAD });
   });
-  it('скрытые (нулевые) и вне холста — не мешают', () => {
+  it('скрытые (нулевые) и вне холста - не мешают', () => {
     expect(safeInsets(wrap, [rect(0, 0, 0, 0), rect(2000, 0, 50, 50)])).toEqual({ top: EDGE_PAD, left: EDGE_PAD, bottom: EDGE_PAD, right: EDGE_PAD });
   });
   it('панель справа', () => {
@@ -28,12 +28,12 @@ describe('безопасная область краевых курсоров', 
 });
 
 describe('куда переходить к участнику', () => {
-  it('курсор — с моим зумом; без курсора — центр его экрана с его зумом', () => {
+  it('курсор - с моим зумом; без курсора - центр его экрана с его зумом', () => {
     expect(gotoTarget(user({ cursor: { x: 5, y: 6 }, view: { pageId: 'p1', vx: 1, vy: 2, vz: 3 } }), 'pointer')).toEqual({ pageId: 'p1', x: 5, y: 6, reason: 'pointer' });
     expect(gotoTarget(user({ view: { pageId: 'p1', vx: 1, vy: 2, vz: 3 } }), 'avatar')).toEqual({ pageId: 'p1', x: 1, y: 2, zoom: 3, reason: 'avatar' });
     expect(gotoTarget(user(), 'avatar')).toEqual({ pageId: 'p1', reason: 'avatar' });
   });
-  it('скрытая страница или неизвестно где — некуда', () => {
+  it('скрытая страница или неизвестно где - некуда', () => {
     expect(gotoTarget(user({ hiddenPage: true, pageId: null }), 'avatar')).toBeNull();
     expect(gotoTarget(user({ pageId: null }), 'avatar')).toBeNull();
   });
@@ -47,7 +47,7 @@ describe('куда переходить к участнику', () => {
 });
 
 describe('аватар участника', () => {
-  it('цвета плашки курсора; старая версия — цвет хаба', () => {
+  it('цвета плашки курсора; старая версия - цвет хаба', () => {
     const p = cursorPreset('mint');
     expect(avatarColors({ cursorId: 'mint', color: '#000000' })).toEqual({ bg: p.badgeBg, fg: p.badgeText });
     expect(avatarColors({ color: '#123456' })).toEqual({ bg: '#123456', fg: '#ffffff' });
@@ -61,7 +61,7 @@ describe('аватар участника', () => {
     expect(participantTitle(user({ away: true, pageId: null }))).toBe('Капибара · Отошёл');
   });
 
-  it('переход к участнику; на скрытой странице — тихое уведомление', () => {
+  it('переход к участнику; на скрытой странице - тихое уведомление', () => {
     clearNotices();
     const got: unknown[] = [];
     const on = (e: Event) => got.push((e as CustomEvent).detail);

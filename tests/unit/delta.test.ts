@@ -15,7 +15,7 @@ function roundTrip(prev: Element[], next: Element[]): Page {
 }
 
 describe('diffElements', () => {
-  it('одинаковое — пусто', () => {
+  it('одинаковое - пусто', () => {
     const a = [rect('a'), rect('b')];
     expect(diffElements(a, a)).toEqual([]);
     expect(diffElements(a, structuredClone(a))).toEqual([]); // равные по значению — не изменились
@@ -42,7 +42,7 @@ describe('diffElements', () => {
     expect(diffElements([a, b, c], [c, a, b])).toEqual([{ op: 'order', ids: ['c', 'a', 'b'] }]);
   });
 
-  it('новый элемент не сверху — put и order', () => {
+  it('новый элемент не сверху - put и order', () => {
     const a = rect('a'), b = rect('b'), n = rect('n');
     expect(diffElements([a, b], [a, n, b])).toEqual([{ op: 'put', el: n }, { op: 'order', ids: ['a', 'n', 'b'] }]);
   });

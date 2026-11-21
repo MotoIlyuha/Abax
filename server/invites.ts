@@ -206,12 +206,15 @@ export interface AliasModerationRow {
  * Именные адреса для модерации (будущая админ-панель или скрипт): свежие сначала.
  * since — только занятые с этого момента (мс); owner — только этого аккаунта.
  */
-export function listAliasesForModeration(app: AppContext, opts: { since?: number; ownerId?: string; limit?: number } = {}): AliasModerationRow[] {
+export function listAliasesForModeration(app: AppContext, opts: { since?: number; ownerId?: string; alias?: string; search?: string; limit?: number; offset?: number } = {}): AliasModerationRow[] {
   const where: string[] = [];
   const args: (string | number)[] = [];
   if (opts.since !== undefined) { where.push('a.created_at >= ?'); args.push(opts.since); }
   if (opts.ownerId !== undefined) { where.push('a.owner_id = ?'); args.push(opts.ownerId); }
+  if (opts.alias !== undefined) { where.push('a.alias = ?'); args.push(opts.alias); }
+  if (opts.search) { where.push('instr(a.alias, ?) > 0'); args.push(opts.search.toLowerCase()); }
   args.push(Math.max(1, Math.min(opts.limit ?? 100, 1000)));
+  args.push(Math.max(0, opts.offset ?? 0));
   return app.db.prepare(`
     SELECT a.alias, a.state, a.owner_id AS ownerId, u.display_name AS ownerName, COALESCE(u.email, u.google_email) AS ownerEmail,
            a.project_id AS projectId, p.title AS projectTitle, a.created_at AS createdAt, a.updated_at AS updatedAt,
@@ -221,7 +224,7 @@ export function listAliasesForModeration(app: AppContext, opts: { since?: number
     LEFT JOIN projects p ON p.id = a.project_id
     ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
     ORDER BY a.created_at DESC, a.alias
-    LIMIT ?`).all(...args) as AliasModerationRow[];
+    LIMIT ? OFFSET ?`).all(...args) as AliasModerationRow[];
 }
 
 /**

@@ -29,7 +29,7 @@ describe('подписка: покупка и пробный период', () =
     }
   });
 
-  it('dev-сервер: оплата проходит сразу, срок того же тарифа складывается, платёж — в истории', async () => {
+  it('dev-сервер: оплата проходит сразу, срок того же тарифа складывается, платёж - в истории', async () => {
     const app = await makeApp({ devAuth: true });
     const u = await emailLogin(app, 'kapi@bara.ru');
     const now = app.clock.t;
@@ -58,7 +58,7 @@ describe('подписка: покупка и пробный период', () =
     expect((await call(app, 'GET', '/api/billing', undefined, { token: a.token })).body).toMatchObject({ plan: 'free', paymentsEnabled: false });
   });
 
-  it('пробный Tutor на 14 дней — один раз; истекает в free', async () => {
+  it('пробный Tutor на 14 дней - один раз; истекает в free', async () => {
     const app = await makeApp({ devAuth: true });
     const u = await emailLogin(app, 'trial@bara.ru');
     expect((await call(app, 'GET', '/api/billing', undefined, { token: u.token })).body.trialAvailable).toBe(true);
@@ -86,7 +86,7 @@ describe('подписка: покупка и пробный период', () =
 });
 
 describe('промокоды', () => {
-  it('код из базы: даёт тариф, повторно — нельзя, история с датой и эффектом', async () => {
+  it('код из базы: даёт тариф, повторно - нельзя, история с датой и эффектом', async () => {
     const app = await makeApp({ devAuth: false });
     createPromoCode(app.db, 'SPRING-2026', { plan: 'pro', days: 30 }, app.clock.t);
     const a = await anon(app);
@@ -115,7 +115,7 @@ describe('промокоды', () => {
     expect((await call(app, 'POST', '/api/billing/promo', { code: 'OLD-CODE' }, { token: b.token })).body.error).toBe('promo-not-found');
   });
 
-  it('тестовые коды — только на dev-сервере и только у тестового аккаунта', async () => {
+  it('тестовые коды - только на dev-сервере и только у тестового аккаунта', async () => {
     const dev = await makeApp({ devAuth: true });
     const tester = await emailLogin(dev, 'me@abax.test');
     const stranger = await emailLogin(dev, 'me@bara.ru');

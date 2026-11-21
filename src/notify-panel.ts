@@ -44,9 +44,9 @@ export type NotifyTab = 'all' | 'chat' | 'comments' | 'notices';
 /** Ключ запомненной вкладки (режим панели каркас хранит отдельно — в doska.sidePanel). */
 export const NOTIFY_TAB_KEY = 'doska.notifyTab';
 export const NOTIFY_OFF_TEXT = 'Чат появится, когда к доске подключатся участники';
-export const NOTIFY_QUIET_TEXT = 'Пока тихо — здесь появятся события доски';
+export const NOTIFY_QUIET_TEXT = 'Пока тихо - здесь появятся события доски';
 export const DND_TITLE_OFF = 'Не беспокоить: уведомления не будут всплывать';
-export const DND_TITLE_ON = 'Не беспокоить включено — уведомления не всплывают';
+export const DND_TITLE_ON = 'Не беспокоить включено - уведомления не всплывают';
 
 const TABS: readonly { value: NotifyTab; label: string }[] = [
   { value: 'all', label: 'Все' },
@@ -370,7 +370,7 @@ export function mountNotifyPanel(host: HTMLElement): PanelView {
 
   const renderEmpties = () => {
     feeds.all.setEmpty(chatAvailable() ? emptyState(NOTIFY_ICON, 'Сообщений и событий пока нет') : offState());
-    feeds.chat.setEmpty(chatAvailable() ? emptyState(NOTIFY_ICON, 'Сообщений пока нет — напишите первым') : offState());
+    feeds.chat.setEmpty(chatAvailable() ? emptyState(NOTIFY_ICON, 'Сообщений пока нет - напишите первым') : offState());
   };
 
   const renderNotices = () => {

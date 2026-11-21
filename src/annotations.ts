@@ -1,6 +1,6 @@
 import type { Camera, CommentThread, Element } from './types';
 import { elementAABB } from './geom';
-import { detachedThreads, discussionResolved, elementThreads } from './discussion';
+import { discussionResolved, elementThreads } from './discussion';
 
 // Раскладка реакций и комментариев на доске (SPEC_COMMENTS §1, §3, §4) в экранных пикселях. Только расчёт, без DOM:
 // одна и та же для слоя плашек (src/annot-layer.ts), окна демонстрации (src/renderer.ts) и тестов.
@@ -8,7 +8,6 @@ import { detachedThreads, discussionResolved, elementThreads } from './discussio
 //    (она на 4 px шире объекта), верх — на ROW_GAP ниже рамки: ручка угла не перекрывается, строка не прыгает
 //    при выделении.
 //  • Реакций видно 1–3 — сколько влезает в ширину объекта на экране вместе с кнопками и «+n» (минимум одна).
-//  • Пины — только у веток без объекта (или с удалённым объектом).
 
 /** Рамка выделения шире объекта на столько с каждой стороны. */
 export const FRAME_PAD = 4;
@@ -20,7 +19,6 @@ export const ITEM_GAP = 4;
 export const MORE_W = 34;
 export const REACT_BTN_W = 28;
 export const MAX_SHOWN = 3;
-export const PIN_R = 11;
 
 /** Ширина пилюли: отступы, эмодзи и число — без измерения текста, чтобы раскладка не зависела от DOM. */
 export function pillWidth(count: number): number {
@@ -108,27 +106,4 @@ export function layoutAnnotRows(
     out.push({ elId: el.id, right, top, reactions, shown, comments: n, resolved: c?.resolved ?? false, tools });
   }
   return out;
-}
-
-export interface PinBox { x: number; y: number; r: number; threadId: string; count: number; resolved: boolean }
-
-/** Пины веток без объекта в их точках; те, что за экраном, пропускаются. */
-export function layoutPins(threads: readonly CommentThread[] | undefined, elements: readonly Element[], cam: Camera, viewW: number, viewH: number): PinBox[] {
-  const out: PinBox[] = [];
-  for (const t of detachedThreads(threads, elements)) {
-    const x = (t.x - cam.x) * cam.zoom;
-    const y = (t.y - cam.y) * cam.zoom;
-    if (x < -PIN_R || y < -PIN_R || x > viewW + PIN_R || y > viewH + PIN_R) continue;
-    out.push({ x, y, r: PIN_R, threadId: t.id, count: t.messages.length, resolved: !!t.resolved });
-  }
-  return out;
-}
-
-/** Пин под точкой экрана (верхний — последний нарисованный). */
-export function hitPin(pins: readonly PinBox[], x: number, y: number): PinBox | null {
-  for (let i = pins.length - 1; i >= 0; i--) {
-    const p = pins[i];
-    if (Math.hypot(x - p.x, y - p.y) <= p.r + 2) return p;
-  }
-  return null;
 }

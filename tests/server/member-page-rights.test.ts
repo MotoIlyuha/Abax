@@ -108,7 +108,7 @@ describe('личные права участника на страницы', () 
     expect(app.app.db.prepare('SELECT COUNT(*) AS n FROM member_page_rights').get()).toEqual({ n: 0 });
   });
 
-  it('гость не может задать права через комнату — только автор', async () => {
+  it('гость не может задать права через комнату - только автор', async () => {
     const { app, owner } = await setup();
     const anna = await anon(app);
     const boris = await anon(app);

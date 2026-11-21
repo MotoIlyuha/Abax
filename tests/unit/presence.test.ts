@@ -8,7 +8,7 @@ describe('инициалы участника', () => {
     expect(getParticipantInitials('  Анна   Мария  Петровна ')).toBe('АМ');
   });
 
-  it('эмодзи и знаки отбрасываются; пусто — «?»', () => {
+  it('эмодзи и знаки отбрасываются; пусто - «?»', () => {
     expect(getParticipantInitials('🦫 Бобёр')).toBe('Б');
     expect(getParticipantInitials('🦫')).toBe('?');
     expect(getParticipantInitials('')).toBe('?');
@@ -34,14 +34,14 @@ describe('аватары у страницы', () => {
 
 describe('ближайшая доступная страница', () => {
   const order = ['p1', 'p2', 'p3', 'p4'];
-  it('текущая доступна — остаёмся', () => {
+  it('текущая доступна - остаёмся', () => {
     expect(nearestAvailablePage(order, 'p2', ['p1', 'p2'])).toBe('p2');
   });
   it('следующая, иначе предыдущая', () => {
     expect(nearestAvailablePage(order, 'p2', ['p1', 'p4'])).toBe('p4');
     expect(nearestAvailablePage(order, 'p4', ['p1', 'p2'])).toBe('p2');
   });
-  it('нет доступных — null; неизвестная текущая — первая доступная', () => {
+  it('нет доступных - null; неизвестная текущая - первая доступная', () => {
     expect(nearestAvailablePage(order, 'p2', [])).toBeNull();
     expect(nearestAvailablePage(order, 'zz', ['p3'])).toBe('p3');
   });

@@ -31,7 +31,7 @@ async function openSelfMenu(page: Page): Promise<void> {
 }
 
 test.describe('присутствие', () => {
-  test('краевой курсор: гость за краем экрана автора — стрелка у края, клик переносит камеру к нему', async ({ browser }) => {
+  test('краевой курсор: гость за краем экрана автора - стрелка у края, клик переносит камеру к нему', async ({ browser }) => {
     const { base } = env.get();
     const A = await device(browser, base, { name: 'Лемур' });
     const a = await openAt(A, `${base}/`, env.errors);

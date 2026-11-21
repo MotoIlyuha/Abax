@@ -30,7 +30,7 @@ describe('обсуждение объекта', () => {
     expect(elementCommentCount(undefined, 'a')).toBe(0);
   });
 
-  it('ответ — в открытую ветку со свежим сообщением; все решены — новая ветка', () => {
+  it('ответ - в открытую ветку со свежим сообщением; все решены - новая ветка', () => {
     expect(replyThread(elementThreads(comments, 'a'))?.id).toBe('t2');
     expect(replyThread([thread('x', 'a', [msg('q', 1)], true)])).toBeNull();
     expect(replyThread([thread('x', 'a', [msg('q', 1)]), thread('y', 'a', [msg('w', 9)])])?.id).toBe('y');
@@ -39,7 +39,7 @@ describe('обсуждение объекта', () => {
     expect(discussionResolved([])).toBe(false);
   });
 
-  it('пины — ветки без объекта или с удалённым объектом', () => {
+  it('пины - ветки без объекта или с удалённым объектом', () => {
     expect(detachedThreads(comments, [rect('a')]).map(t => t.id)).toEqual(['t3', 't4']);
     expect(detachedThreads(undefined, [])).toEqual([]);
   });

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="description" content="Панель для работы с учётными записями, подписками и публичными адресами Abax.">
+    <meta name="referrer" content="no-referrer">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; form-action 'self'; base-uri 'none'; object-src 'none'">
+    <title>Панель управления Abax</title>
+    <link rel="stylesheet" href="/src/style.css">
+  </head>
+  <body>
+    <a class="skip" href="#content">Перейти к содержимому</a>
+    <header class="masthead">
+      <div class="frame masthead-inner">
+        <a class="brand" href="#overview">Abax <span>Панель управления</span></a>
+        <div id="account" class="account" hidden></div>
+      </div>
+      <nav id="navigation" class="frame nav" aria-label="Разделы панели" hidden></nav>
+    </header>
+    <main id="content" class="frame content" tabindex="-1">
+      <p role="status">Проверяем сессию…</p>
+      <noscript><p>Для работы панели включите JavaScript.</p></noscript>
+    </main>
+    <div id="announcement" class="visually-hidden" role="status"></div>
+    <dialog id="action-dialog" aria-labelledby="dialog-title"></dialog>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

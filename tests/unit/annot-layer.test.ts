@@ -33,7 +33,7 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); });
 
 describe('пилюли реакций', () => {
-  it('яркий фон по плашке первого поставившего; своя — мой цвет, чужая без имени — цвет палитры', () => {
+  it('яркий фон по плашке первого поставившего; своя - мой цвет, чужая без имени - цвет палитры', () => {
     addElement(rect('a', 100, 100, { reactions: { '👍': [clientId(), 'чужой'], '🔥': ['чужой'] } }));
     syncAnnotLayer();
     const [mine, other] = pills('a');
@@ -50,7 +50,7 @@ describe('пилюли реакций', () => {
     expect(row('a')!.style.transform).toBe('translate(404.0px, 162.0px) translateX(-100%)');
   });
 
-  it('× и удержание снимают свою реакцию; Delete на фокусе — тоже', () => {
+  it('× и удержание снимают свою реакцию; Delete на фокусе - тоже', () => {
     vi.useFakeTimers();
     addElement(rect('a', 100, 100, { reactions: { '👍': [clientId()], '🔥': [clientId()], '❤️': [clientId()] } }));
     syncAnnotLayer();
@@ -72,7 +72,7 @@ describe('пилюли реакций', () => {
     expect(row('a')).toBeNull();
   });
 
-  it('короткое нажатие не снимает; щелчок по чужой — не снимает', () => {
+  it('короткое нажатие не снимает; щелчок по чужой - не снимает', () => {
     vi.useFakeTimers();
     addElement(rect('a', 100, 100, { reactions: { '👍': [clientId()], '🔥': ['чужой'] } }));
     syncAnnotLayer();
@@ -86,7 +86,7 @@ describe('пилюли реакций', () => {
     expect(reactions('a')).toEqual({ '👍': [clientId()], '🔥': ['чужой'] });
   });
 
-  it('узкий объект: одна пилюля и «+n»; меню «+n» — все реакции и кто их поставил, × у своих', () => {
+  it('узкий объект: одна пилюля и «+n»; меню «+n» - все реакции и кто их поставил, × у своих', () => {
     addElement(rect('a', 100, 100, { w: 20, reactions: { '👍': ['x1'], '🔥': [clientId(), 'x2'], '❤️': ['x3'] } }));
     syncAnnotLayer();
     expect(pills('a')).toHaveLength(1);
@@ -105,8 +105,8 @@ describe('пилюли реакций', () => {
   });
 
   it('имена не превращаются в разметку', () => {
-    state.board.comments = createCommentThread(state.board, { x: 0, y: 0, authorId: 'x1', authorName: '<img src=x onerror=1>', text: 'т' }).comments;
     addElement(rect('a', 100, 100, { w: 20, reactions: { '👍': ['x1'], '🔥': ['x2'] } }));
+    state.board.comments = createCommentThread(state.board, { x: 0, y: 0, targetElementId: 'a', authorId: 'x1', authorName: '<img src=x onerror=1>', text: 'т' }).comments;
     syncAnnotLayer();
     row('a')!.querySelector<HTMLButtonElement>('.an-more')!.click();
     const chip = document.querySelector('#reactions-menu .arm-chip')!;
@@ -117,7 +117,7 @@ describe('пилюли реакций', () => {
 });
 
 describe('кнопки у выделенного и счётчик комментариев', () => {
-  it('выделен один — «Поставить реакцию» и «Комментировать»; несколько — кнопок нет', () => {
+  it('выделен один - «Поставить реакцию» и «Комментировать»; несколько - кнопок нет', () => {
     addElement(rect('a'));
     addElement(rect('b', 100, 400));
     syncAnnotLayer();
@@ -150,7 +150,7 @@ describe('кнопки у выделенного и счётчик коммен�
     closeIconPicker(true);
   });
 
-  it('невыделенный объект с комментариями — счётчик на месте кнопки; решено — приглушён', () => {
+  it('невыделенный объект с комментариями - счётчик на месте кнопки; решено - приглушён', () => {
     addElement(rect('a'));
     let page = createCommentThread(state.board, { x: 0, y: 0, targetElementId: 'a', authorId: 'u', authorName: 'А', text: '1' });
     state.board.comments = page.comments;
@@ -165,7 +165,7 @@ describe('кнопки у выделенного и счётчик коммен�
     expect(row('a')!.querySelector('.an-react')).toBeNull();
   });
 
-  it('«Показывать реакции/комментарии» выключены — плашек нет, кнопки у выделенного остаются', () => {
+  it('«Показывать реакции/комментарии» выключены - плашек нет, кнопки у выделенного остаются', () => {
     addElement(rect('a', 100, 100, { reactions: { '👍': ['u'] } }));
     state.board.comments = createCommentThread(state.board, { x: 0, y: 0, targetElementId: 'a', authorId: 'u', authorName: 'А', text: '1' }).comments;
     setAnnotView({ reactions: false, comments: false });

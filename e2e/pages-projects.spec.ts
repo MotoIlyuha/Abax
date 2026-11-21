@@ -257,9 +257,7 @@ test.describe('страницы проекта', () => {
   });
 
   test('панель инструментов внизу: кнопка страниц слева вверху, список колонкой, кнопка не двигается', async ({ board, page }) => {
-    await page.locator('#btn-settings').dispatchEvent('click');
-    await page.locator('#settings-popover button', { hasText: 'Снизу' }).click();
-    await page.locator('#btn-settings').dispatchEvent('click');
+    await board.loadToolbarPosition('bottom');
     const dock = page.locator('#pages-dock');
     await expect(dock).toHaveAttribute('data-side', 'top');
     for (let i = 0; i < 6; i++) await board.addPage();
@@ -302,8 +300,7 @@ test.describe('страницы проекта', () => {
     expect(second.y).toBeGreaterThan(first.y + first.height);
 
     // панель обратно влево — кнопка снова внизу
-    await page.locator('#btn-settings').dispatchEvent('click');
-    await page.locator('#settings-popover button', { hasText: 'Слева' }).click();
+    await board.loadToolbarPosition('left');
     await expect(dock).toHaveAttribute('data-side', 'bottom');
   });
 
@@ -324,16 +321,15 @@ test.describe('страницы проекта', () => {
     const cards = page.locator('#pages-list .page-item');
     const pick = async (name: string) => {
       await page.locator('#btn-settings').dispatchEvent('click');
-      await page.locator('#settings-popover .ctx-options button', { hasText: name }).click();
-      await expect(page.locator('#settings-popover .ctx-options button', { hasText: name })).toHaveClass(/active/);
+      const option = page.locator('#settings-popover .board-page-setting').getByRole('button', { name, exact: true });
+      await option.click();
+      await expect(option).toHaveAttribute('aria-pressed', 'true');
       await page.locator('#btn-settings').dispatchEvent('click');
     };
     await expect(page.locator('#settings-popover')).toBeHidden();
     await page.locator('#btn-settings').dispatchEvent('click');
     await expect(page.locator('#settings-popover .ctx-label', { hasText: 'Анимация перехода на другую страницу' })).toBeVisible();
-    // группа сразу после подписи: в окне есть и другие варианты (например, «Анимации»)
-    const transitionOptions = page.locator('#settings-popover .ctx-label', { hasText: 'Анимация перехода на другую страницу' })
-      .locator('xpath=following-sibling::*[contains(@class, "ctx-options")][1]');
+    const transitionOptions = page.locator('#settings-popover').getByRole('group', { name: 'Анимация перехода на другую страницу' });
     await expect(transitionOptions.locator('button')).toHaveText(['Нет', 'Слайд', 'Затухание', 'Приближение']);
     await page.locator('#btn-settings').dispatchEvent('click');
 
@@ -481,7 +477,7 @@ test.describe('домашняя страница: проекты', () => {
     expect((await board.state()).project.name).toBe('Алгебра 7Б');
   });
 
-  test('окно «Создать проект»: название, страница и смайл; в шапке — 18 символов, полное — в подсказке и при правке', async ({ board, page }) => {
+  test('окно «Создать проект»: название, страница и смайл; в шапке - 18 символов, полное - в подсказке и при правке', async ({ board, page }) => {
     await board.home();
     await page.locator('#home .new-project').click();
     const dlg = page.locator('#project-dialog');
@@ -733,7 +729,7 @@ test.describe('домашняя страница: проекты', () => {
     await board.ready();
     await board.home();
     await expect(home.locator('.home-list')).toBeVisible();
-    await expect(home.locator('.project-row', { hasText: 'Проект 2' }).locator('.project-opened')).toHaveText('—');
+    await expect(home.locator('.project-row', { hasText: 'Проект 2' }).locator('.project-opened')).toHaveText('-');
     await expect(home.locator('.project-row', { hasText: 'Геометрия' }).locator('.project-opened')).toHaveText('Сегодня');
 
     // удаление из списка
@@ -823,7 +819,7 @@ test.describe('домашняя страница: проекты', () => {
     await expect(page.locator('#home')).toBeVisible();
   });
 
-  test('иконка неоткрытого проекта сохраняется; в шапке доски — у открытого', async ({ board, page }) => {
+  test('иконка неоткрытого проекта сохраняется; в шапке доски - у открытого', async ({ board, page }) => {
     await board.home();
     await newProject(page);
     await board.home();

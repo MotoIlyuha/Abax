@@ -41,7 +41,7 @@ describe('расстановка контролов', () => {
     expect(panel()!.style.transform).toBe('translate(100px, 80px) scale(2)');
   });
 
-  it('мелкий масштаб, чужая страница и карточка за краем экрана — без панели', () => {
+  it('мелкий масштаб, чужая страница и карточка за краем экрана - без панели', () => {
     addElement(task());
     state.camera = { x: 0, y: 0, zoom: 0.4 };
     sync();
@@ -70,7 +70,7 @@ describe('расстановка контролов', () => {
 });
 
 describe('ответ у автора и зрителя без сети', () => {
-  it('ввод сохраняется черновиком мимо истории; Enter проверяет, верный ответ — «Верно!»', () => {
+  it('ввод сохраняется черновиком мимо истории; Enter проверяет, верный ответ - «Верно!»', () => {
     addElement(task());
     undo();
     addElement(task());
@@ -153,7 +153,7 @@ describe('учитель и ученик', () => {
     expect(cur().markedHard).toBeUndefined();
   });
 
-  it('ученик: без блока учителя; решение — только если хаб его прислал; поле недоступно без связи', () => {
+  it('ученик: без блока учителя; решение - только если хаб его прислал; поле недоступно без связи', () => {
     state.collabRole = 'guest';
     addElement(task({ answer: '', solutionMd: 'Решение от автора' }));
     sync();
@@ -168,7 +168,7 @@ describe('учитель и ученик', () => {
     expect(cur().studentDraft).toBeUndefined();
   });
 
-  it('код: открыт сразу, копируется; при запрете копирования — тост', () => {
+  it('код: открыт сразу, копируется; при запрете копирования - тост', () => {
     addElement(task({ subject: 'informatics', codeSnippet: { lang: 'python', code: 'print(1)' } }));
     sync();
     expect(document.querySelector('.task-code-body')!.textContent).toBe('print(1)');
@@ -215,7 +215,7 @@ describe('форма задания', () => {
   const field = (label: string) => [...document.querySelectorAll('.td-field')].find(f => f.querySelector('.td-label')!.textContent === label)!;
   const control = (label: string) => field(label).querySelector('input, textarea, select') as HTMLInputElement;
 
-  it('без условия и ответа не сохраняется, с ними — отдаёт значения; Esc закрывает', () => {
+  it('без условия и ответа не сохраняется, с ними - отдаёт значения; Esc закрывает', () => {
     let got: TaskFormValues | null = null;
     openTaskDialog(null, v => { got = v; });
     expect(taskDialogOpen()).toBe(true);
@@ -261,7 +261,7 @@ describe('форма задания', () => {
     closeTaskDialog();
   });
 
-  it('Enter в однострочном поле сохраняет, в условии — переносит строку', () => {
+  it('Enter в однострочном поле сохраняет, в условии - переносит строку', () => {
     let got: TaskFormValues | null = null;
     openTaskDialog(null, v => { got = v; });
     control('Условие').value = 'У';

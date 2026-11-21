@@ -7,7 +7,7 @@ import { registerInviteRoutes } from './invite-routes';
 import { registerEmailInviteRoutes } from './email-invites';
 import { registerProjectRoutes } from './projects';
 import { authenticate, registerAuthRoutes } from './auth';
-import { registerAuthFlowRoutes } from './auth-flows';
+import { normalizeEmail, registerAuthFlowRoutes } from './auth-flows';
 import { registerBillingRoutes } from './billing';
 import type { Mailer } from './mailer';
 import type { AppContext, ResolvedOptions } from './context';
@@ -15,6 +15,9 @@ import { openDb, type Db } from './db';
 import { RateLimiter } from './rate-limit';
 import { HttpError, Router, readBody, type Ctx, type Reply } from './router';
 import { serveStatic } from './static';
+import { adminOrigin } from './config';
+import { isAdminHost, requireAdmin } from './admin-auth';
+import { registerAdminRoutes } from './admin';
 
 export interface AppOptions {
   /** Файл базы или ':memory:'. */
@@ -45,6 +48,8 @@ export interface AppOptions {
   prettyLinks?: boolean;
   trustProxy?: boolean;
   secureCookies?: boolean;
+  adminOrigin?: string;
+  adminAccounts?: [string, string][];
   anonRateMax?: number;
   anonRateWindowMs?: number;
   roomSaveMs?: number;
@@ -84,8 +89,11 @@ const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Max-Age': '600',
 };
 
-function send(res: ServerResponse, method: string, reply: Reply): void {
-  const headers: Record<string, string | number> = { ...CORS_HEADERS, 'X-Content-Type-Options': 'nosniff', ...reply.headers };
+function send(res: ServerResponse, method: string, reply: Reply, privateResponse = false): void {
+  const headers: Record<string, string | number> = {
+    ...(privateResponse ? { 'Cache-Control': 'no-store' } : CORS_HEADERS),
+    'X-Content-Type-Options': 'nosniff', ...reply.headers,
+  };
   let body: Buffer;
   if (reply.json !== undefined) {
     body = Buffer.from(JSON.stringify(reply.json));
@@ -102,6 +110,11 @@ function send(res: ServerResponse, method: string, reply: Reply): void {
 }
 
 function resolveOptions(o: AppOptions): ResolvedOptions {
+  const adminAccounts = new Map<string, string>();
+  for (const [id, value] of o.adminAccounts ?? []) {
+    const email = normalizeEmail(value);
+    if (id && email) adminAccounts.set(id, email);
+  }
   return {
     jwtSecret: o.jwtSecret,
     telegramBotToken: o.telegramBotToken || null,
@@ -120,6 +133,8 @@ function resolveOptions(o: AppOptions): ResolvedOptions {
     prettyLinks: o.prettyLinks ?? !!o.staticDir,
     trustProxy: o.trustProxy === true,
     secureCookies: o.secureCookies === true,
+    adminOrigin: adminOrigin(o.adminOrigin, o.secureCookies === true),
+    adminAccounts,
     anonRateMax: o.anonRateMax ?? 30,
     anonRateWindowMs: o.anonRateWindowMs ?? 3600_000,
     roomSaveMs: o.roomSaveMs ?? 500,
@@ -167,6 +182,7 @@ export function createAppServer(options: AppOptions, extraRoutes: RouteModule[] 
   registerInviteRoutes(router);
   registerEmailInviteRoutes(router);
   registerBillingRoutes(router);
+  registerAdminRoutes(router, app);
   for (const mod of extraRoutes) mod(router, app);
 
   const upgradeHandlers: Parameters<AppServer['onUpgrade']>[0][] = [];
@@ -174,10 +190,19 @@ export function createAppServer(options: AppOptions, extraRoutes: RouteModule[] 
 
   async function dispatch(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const method = (req.method ?? 'GET').toUpperCase();
+    const adminHost = isAdminHost(app, req);
+    let privateResponse = adminHost;
     try {
-      if (method === 'OPTIONS') { send(res, method, { status: 204 }); return; }
       let url: URL;
       try { url = new URL(req.url ?? '/', 'http://abax.local'); } catch { throw new HttpError(400, 'bad-request'); }
+      const path = '/' + url.pathname.split('/').filter(Boolean).join('/');
+      const adminApi = path === '/api/admin' || path.startsWith('/api/admin/');
+      privateResponse ||= adminApi;
+      const admin = adminApi ? requireAdmin(app, req, method) : null;
+      if (adminHost && !adminApi && !['/api/auth/email/start', '/api/auth/email/verify'].includes(path)) {
+        throw new HttpError(404, 'not-found');
+      }
+      if (method === 'OPTIONS' && !privateResponse) { send(res, method, { status: 204 }); return; }
       const m = router.match(method, url.pathname);
       let reply: Reply | void = undefined;
       if (m && m !== 'method') {
@@ -185,7 +210,7 @@ export function createAppServer(options: AppOptions, extraRoutes: RouteModule[] 
         const ctx: Ctx = {
           app, req, method, path: url.pathname, query: url.searchParams, params: m.params,
           ip: clientIp(req, app.opts.trustProxy),
-          user: authenticate(app, req),
+          user: admin ?? (adminHost ? null : authenticate(app, req)),
           raw: () => (rawP ??= readBody(req, m.route.maxBody)),
           async body() {
             const buf = await ctx.raw();
@@ -197,7 +222,7 @@ export function createAppServer(options: AppOptions, extraRoutes: RouteModule[] 
       } else if (m === 'method') {
         throw new HttpError(405, 'method-not-allowed');
       }
-      if (reply && !reply.next) { send(res, method, reply); return; }
+      if (reply && !reply.next) { send(res, method, reply, privateResponse); return; }
       if (url.pathname.startsWith('/api/')) throw new HttpError(404, 'not-found');
       if ((method === 'GET' || method === 'HEAD') && app.opts.staticDir) {
         const file = await serveStatic(app.opts.staticDir, url.pathname);
@@ -206,10 +231,10 @@ export function createAppServer(options: AppOptions, extraRoutes: RouteModule[] 
       throw new HttpError(404, 'not-found');
     } catch (e) {
       if (e instanceof HttpError) {
-        send(res, method, { status: e.status, json: { error: e.code, ...e.extra } });
+        send(res, method, { status: e.status, json: { error: e.code, ...e.extra } }, privateResponse);
       } else {
         app.log(`Ошибка обработки запроса: ${e instanceof Error ? e.stack ?? e.message : String(e)}`);
-        if (!res.headersSent) send(res, method, { status: 500, json: { error: 'internal' } });
+        if (!res.headersSent) send(res, method, { status: 500, json: { error: 'internal' } }, privateResponse);
         else res.destroy();
       }
     }

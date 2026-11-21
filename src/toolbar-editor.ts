@@ -12,7 +12,7 @@ import {
   renameGroup, setEntryHidden, setToolKey, setToolbarConfig, toolDef, toolTip, toolbarConfig, ungroup,
 } from './toolbar';
 
-const HINT = 'Перетащите инструмент на другой — получится группа. Клик по клавише — назначить новую.';
+const HINT = 'Перетащите инструмент на другой - получится группа. Клик по клавише - назначить новую.';
 /** Доля высоты строки сверху и снизу, где бросок вставляет рядом, а не объединяет в группу. */
 const EDGE = 0.3;
 const DRAG_THRESHOLD = 4;
@@ -158,7 +158,7 @@ export function renderToolbarEditor(host: HTMLElement): SectionView {
     for (const it of items) box.appendChild(it.type === 'tool' ? toolRow(cfg, it.id, list, true) : groupCard(cfg, it, list));
     if (items.length === 0) {
       box.appendChild(el('div', 'tbe-empty', list === 'items'
-        ? 'Панель пуста — перетащите сюда инструменты'
+        ? 'Панель пуста - перетащите сюда инструменты'
         : 'Перетащите сюда то, что не нужно на панели. Скрытые инструменты включаются горячей клавишей'));
     }
     col.append(head, box);
@@ -185,8 +185,8 @@ export function renderToolbarEditor(host: HTMLElement): SectionView {
     icon.innerHTML = def.icon;
     const name = el('span', 'tbe-name', def.title);
     const code = cfg.keys[id];
-    const key = el('button', 'tbe-key' + (code ? '' : ' empty'), code ? keyLabel(code) : '—');
-    key.title = code ? `Горячая клавиша ${keyLabel(code)} — нажмите, чтобы сменить` : 'Назначить горячую клавишу';
+    const key = el('button', 'tbe-key' + (code ? '' : ' empty'), code ? keyLabel(code) : '-');
+    key.title = code ? `Горячая клавиша ${keyLabel(code)} - нажмите, чтобы сменить` : 'Назначить горячую клавишу';
     key.setAttribute('aria-label', `Горячая клавиша: ${def.title}`);
     key.addEventListener('click', () => {
       if (capture === id) stopCapture();
@@ -272,7 +272,7 @@ export function renderToolbarEditor(host: HTMLElement): SectionView {
     capture = id;
     key.classList.add('capturing');
     key.textContent = 'Нажмите…';
-    setStatus(`«${toolDef(id).title}»: нажмите букву или цифру. Backspace — убрать клавишу, Esc — отмена`);
+    setStatus(`«${toolDef(id).title}»: нажмите букву или цифру. Backspace - убрать клавишу, Esc - отмена`);
   }
 
   function stopCapture(): void {
@@ -283,7 +283,7 @@ export function renderToolbarEditor(host: HTMLElement): SectionView {
     const code = toolbarConfig().keys[id];
     if (key) {
       key.classList.remove('capturing');
-      key.textContent = code ? keyLabel(code) : '—';
+      key.textContent = code ? keyLabel(code) : '-';
     }
     setStatus(HINT);
   }
@@ -294,7 +294,7 @@ export function renderToolbarEditor(host: HTMLElement): SectionView {
     const r = setToolKey(toolbarConfig(), id, code);
     if (!code) setStatus(`У «${title}» больше нет горячей клавиши`);
     else if (r.displaced) setStatus(`Клавиша ${keyLabel(code)} теперь у «${title}», у «${toolDef(r.displaced).title}» она снята`);
-    else setStatus(`«${title}» — клавиша ${keyLabel(code)}`);
+    else setStatus(`«${title}» - клавиша ${keyLabel(code)}`);
     focusAfter = `[data-tool="${id}"] .tbe-key`;
     commit(r.cfg);
   }
@@ -380,7 +380,7 @@ export function renderToolbarEditor(host: HTMLElement): SectionView {
       const r = combineTools(toolbarConfig(), hit.drop.combine, d.ref.tool, nextGroupName(toolbarConfig()));
       if (!r.group) return;
       renameAfter = r.group;
-      setStatus('Получилась группа — введите её название');
+      setStatus('Получилась группа - введите её название');
       commit(r.cfg);
       return;
     }
@@ -455,7 +455,7 @@ export function renderToolbarEditor(host: HTMLElement): SectionView {
     showMark(d.hit);
     const h = d.hit;
     if (h && 'combine' in h.drop && 'tool' in d.ref) {
-      setStatus(`Отпустите — «${toolDef(d.ref.tool).title}» и «${toolDef(h.drop.combine).title}» станут группой`);
+      setStatus(`Отпустите - «${toolDef(d.ref.tool).title}» и «${toolDef(h.drop.combine).title}» станут группой`);
     } else if (status !== HINT) {
       setStatus(HINT);
     }

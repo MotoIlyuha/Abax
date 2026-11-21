@@ -92,7 +92,7 @@ export function syncFollow(): void {
   if (!collabActive() || state.view !== 'board') { stopFollow(); return; }
   const uid = followUid;
   const step = followStep(collabUsers().find(x => x.userId === uid), state.project.pages.map(p => p.id), lastKey);
-  if (step.kind === 'gone') { stopFollow(`${followName} покинул доску — слежение остановлено`); return; }
+  if (step.kind === 'gone') { stopFollow(`${followName} покинул доску - слежение остановлено`); return; }
   const wait = step.kind === 'wait';
   if (wait !== waiting) { waiting = wait; notify(); }
   if (step.kind !== 'go') return;

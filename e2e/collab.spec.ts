@@ -47,7 +47,7 @@ test.describe('совместная работа', () => {
     await expect(host.userRow('Ученик').locator('.share-user-right').first()).toHaveAttribute('data-value', 'view');
   });
 
-  test('автор выдаёт право правки — гость рисует, автор видит', async ({ host, join }) => {
+  test('автор выдаёт право правки - гость рисует, автор видит', async ({ host, join }) => {
     const url = await host.share();
     const guest = await join(url, 'Ученик');
     await expect(host.userRow('Ученик')).toBeVisible({ timeout: 5000 });

@@ -1219,7 +1219,8 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
     let next = page;
     if (m.op === 'create') {
       if (!isNum(m.x) || !isNum(m.y) || typeof m.text !== 'string') return;
-      next = createCommentThread(page, { x: m.x, y: m.y, ...(isId(m.targetElementId) ? { targetElementId: m.targetElementId } : {}), ...author, text: m.text });
+      if (!isId(m.targetElementId)) return;
+      next = createCommentThread(page, { x: m.x, y: m.y, targetElementId: m.targetElementId, ...author, text: m.text });
     } else if (m.op === 'reply') {
       if (!isId(m.threadId) || typeof m.text !== 'string') return;
       next = addCommentReply(page, m.threadId, { ...author, text: m.text });

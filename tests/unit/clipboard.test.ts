@@ -79,7 +79,7 @@ describe('буфер обмена', () => {
     expect(data.getData(CLIP_MIME)).toBe('');
   });
 
-  it('копирование кладёт элементы в системный буфер, вставка — лесенкой', () => {
+  it('копирование кладёт элементы в системный буфер, вставка - лесенкой', () => {
     addElement(rect('a', { x: 100, y: 100 }));
     setSelection(['a']);
     const data = fakeData();
@@ -93,7 +93,7 @@ describe('буфер обмена', () => {
     expect([...state.selection]).toEqual([p2.id]);
   });
 
-  it('шаг сдвига — в пикселях экрана', () => {
+  it('шаг сдвига - в пикселях экрана', () => {
     addElement(rect('a', { x: 100, y: 100 }));
     setSelection(['a']);
     copySelection();
@@ -102,7 +102,7 @@ describe('буфер обмена', () => {
     expect(state.board.elements[1]).toMatchObject({ x: 100 + STEP / 2, y: 100 + STEP / 2 });
   });
 
-  it('вырезание удаляет оригинал, первая вставка — на его место', () => {
+  it('вырезание удаляет оригинал, первая вставка - на его место', () => {
     addElement(rect('a', { x: 100, y: 100 }));
     setSelection(['a']);
     const data = fakeData();
@@ -113,7 +113,7 @@ describe('буфер обмена', () => {
     expect(state.board.elements.map(e => (e as ShapeEl).x)).toEqual([100, 100 + STEP]);
   });
 
-  it('на другой странице первая вставка — на то же место', () => {
+  it('на другой странице первая вставка - на то же место', () => {
     addElement(rect('a', { x: 100, y: 100 }));
     setSelection(['a']);
     copySelection();
@@ -122,7 +122,7 @@ describe('буфер обмена', () => {
     expect(state.board.elements[0]).toMatchObject({ x: 100, y: 100 });
   });
 
-  it('оригинал за экраном — копия ложится по центру видимой области', () => {
+  it('оригинал за экраном - копия ложится по центру видимой области', () => {
     addElement(rect('a', { x: 5000, y: 5000, w: 100, h: 50 }));
     setSelection(['a']);
     copySelection();
@@ -130,7 +130,7 @@ describe('буфер обмена', () => {
     expect(state.board.elements[1]).toMatchObject({ x: 450 + STEP, y: 375 + STEP });
   });
 
-  it('буфер из другого окна принимается, мусор — нет', () => {
+  it('буфер из другого окна принимается, мусор - нет', () => {
     const foreign = fakeData({ [CLIP_MIME]: JSON.stringify({ key: 'other', pageId: 'p', elements: [rect('x', { x: 1, y: 2 })] }) });
     expect(pasteFromSystem(foreign, VIEW)).toBe(true);
     expect(state.board.elements[0]).toMatchObject({ x: 1, y: 2 });

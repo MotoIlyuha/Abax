@@ -13,7 +13,7 @@ import {
 } from './auth';
 import { createCursorPicker, type CursorPicker } from './cursor-picker';
 import { createAvatarEditor } from './avatar-editor';
-import { cleanAvatar } from './avatar-value';
+import { AVATAR_PHOTO_PX, MAX_AVATAR_PHOTO, cleanAvatar } from './avatar-value';
 import { DEFAULT_CURSOR_ID } from './cursors';
 import { BACK_CHEVRON_ICON, CLOSE_ICON, PROVIDER_ICONS } from './icons';
 import { createEmailLogin, springLayout, type EmailLogin, type EmailStage } from './email-login';
@@ -62,6 +62,32 @@ export function accountName(me: MeResponse | null): string {
   if (!me || me.user.isAnonymous) return '';
   if (me.user.nameCustom) return me.user.displayName;
   return me.user.displayName && me.user.displayName !== 'Гость' ? me.user.displayName : '';
+}
+
+/** Привести фото провайдера к формату, общему для профиля и комнаты. */
+async function providerAvatar(): Promise<string | null> {
+  const api = getApi();
+  if (!api) return null;
+  try {
+    const { photo } = await api.request<{ photo: string }>('GET', '/api/me/provider-avatar');
+    const img = new Image();
+    img.src = photo;
+    await img.decode();
+    const side = Math.min(img.naturalWidth, img.naturalHeight);
+    if (!side) return null;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = AVATAR_PHOTO_PX;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, AVATAR_PHOTO_PX, AVATAR_PHOTO_PX);
+    ctx.drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, AVATAR_PHOTO_PX, AVATAR_PHOTO_PX);
+    for (const quality of [0.86, 0.72, 0.55, 0.4]) {
+      const value = canvas.toDataURL('image/jpeg', quality);
+      if (value.length <= MAX_AVATAR_PHOTO && cleanAvatar(value)) return value;
+    }
+  } catch { /* Фото необязательно для входа. */ }
+  return null;
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, text?: string): HTMLElementTagNameMap[K] {
@@ -195,6 +221,9 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
   const entitled = cursorEntitled();
   let choice: CursorChoice = initialChoice(resume?.cursorId ?? getProfile().cursorId ?? DEFAULT_CURSOR_ID, entitled);
   let avatarValue: string | null = resume && resume.avatar !== undefined ? cleanAvatar(resume.avatar) ?? null : getProfile().avatar;
+  let avatarChanged = false;
+  let avatarLoading = false;
+  let finished = false;
   /** Что запомнить перед переходом к провайдеру входа. */
   const resumeNow = (): AuthResume => ({ where: 'onboarding', name: nameInput.value, cursorId: choice.saved, placeholder, avatar: avatarValue });
   let step: Step = 1;
@@ -287,7 +316,7 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
     name: resolveName(nameInput.value, placeholder),
     cursorId: choice.preview,
     overDialog: true,
-    onChange: v => { avatarValue = v; picker.setAvatar(v); },
+    onChange: v => { avatarChanged = true; avatarValue = v; picker.setAvatar(v); },
   });
   const identity = el('div', 'ob-identity');
   identity.append(avatarEditor.el, nameLabel);
@@ -374,6 +403,21 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
       avatarValue = accountAvatar;
       avatarEditor.setValue(accountAvatar);
       picker.setAvatar(accountAvatar);
+    }
+    if (!accountAvatar && avatarValue === null && !avatarChanged && !avatarLoading && signedIn() && account()?.user.avatarUrl) {
+      avatarLoading = true;
+      const accountId = account()?.user.id;
+      void providerAvatar().then(photo => {
+        if (!photo || avatarChanged || avatarValue !== null || account()?.user.id !== accountId) return;
+        if (finished) {
+          if (getProfile().avatar === null) { setProfile({ avatar: photo }); void pushProfile(); }
+          return;
+        }
+        if (!root.isConnected) return;
+        avatarValue = photo;
+        avatarEditor.setValue(photo);
+        picker.setAvatar(photo);
+      });
     }
     h2.textContent = signedIn() ? 'Вы вошли. Как вас называть?' : 'Как вас зовут?';
     showName();
@@ -463,6 +507,7 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
   }
 
   function finish(): void {
+    finished = true;
     const name = resolveName(nameInput.value, placeholder);
     setProfile({ name, cursorId: choice.saved, avatar: avatarValue, onboarded: true });
     if (getApi()) void pushProfile();

@@ -26,7 +26,7 @@ const NO_PROJECT = 'Недоступно при просмотре по ссыл
 const NO_COPY = 'Автор запретил копирование';
 const NO_SAVE = 'Автор запретил сохранение проекта';
 const NO_SELECTION = 'Сначала выделите объекты на доске';
-const EMPTY_PAGE = 'Страница пуста — нечего экспортировать';
+const EMPTY_PAGE = 'Страница пуста - нечего экспортировать';
 const NOT_READY = 'Доска ещё загружается';
 
 /** Секция со строками: заголовок и колонка кнопок. */
@@ -66,7 +66,7 @@ export function mountImportPanel(host: HTMLElement): PanelView {
   drop.dataset.row = 'drop';
 
   const rows = {
-    pdf: rowButton({ id: 'pdf', icon: ICONS.pdf, title: 'Документ PDF', hint: 'Страницы — картинками; также Word, Excel, текст' }),
+    pdf: rowButton({ id: 'pdf', icon: ICONS.pdf, title: 'Документ PDF', hint: 'Страницы - картинками; также Word, Excel, текст' }),
     image: rowButton({ id: 'image', icon: ICONS.image, title: 'Изображение', hint: 'PNG, JPEG, GIF, WebP, SVG' }),
     clipboard: rowButton({ id: 'clipboard', icon: PANEL_ICONS.clipboard, title: 'Из буфера обмена', hint: 'Картинка из другого приложения', keys: macKeys('Ctrl+V').split('+') }),
     project: rowButton({ id: 'project', icon: PANEL_ICONS.projectFile, title: 'Файл проекта (.json)', hint: 'Откроется отдельным проектом' }),
@@ -164,9 +164,9 @@ export function mountExportPanel(host: HTMLElement): PanelView {
   const inner = el('div', 'pv-inner');
 
   const rows = {
-    pngPage: rowButton({ id: 'png-page', icon: ICONS.image, title: 'PNG — вся страница', hint: 'Всё содержимое одной картинкой' }),
-    pngSelection: rowButton({ id: 'png-selection', icon: PANEL_ICONS.selection, title: 'PNG — выделенное', hint: 'Только выделенные объекты' }),
-    copy: rowButton({ id: 'copy-image', icon: ICONS.copyImage, title: 'Копировать как изображение', hint: 'Выделенное — в буфер обмена' }),
+    pngPage: rowButton({ id: 'png-page', icon: ICONS.image, title: 'PNG - вся страница', hint: 'Всё содержимое одной картинкой' }),
+    pngSelection: rowButton({ id: 'png-selection', icon: PANEL_ICONS.selection, title: 'PNG - выделенное', hint: 'Только выделенные объекты' }),
+    copy: rowButton({ id: 'copy-image', icon: ICONS.copyImage, title: 'Копировать как изображение', hint: 'Выделенное - в буфер обмена' }),
     project: rowButton({ id: 'project', icon: PANEL_ICONS.projectFile, title: 'Файл проекта (.json)', hint: 'Все страницы проекта' }),
     pdf: rowButton({ id: 'pdf', icon: ICONS.pdf, title: 'PDF', hint: 'Документ со страницами доски', badge: 'Скоро' }),
     app: rowButton({ id: 'app', icon: ICONS.openApp, title: 'Открыть в приложении', hint: 'Доска откроется в Abax для компьютера' }),

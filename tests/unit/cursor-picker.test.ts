@@ -9,7 +9,7 @@ describe('выбор курсора: геометрия', () => {
     expect(wrapAngle(-Math.PI / 2 - 2 * Math.PI)).toBeCloseTo(-Math.PI / 2);
   });
 
-  it('lookAngle: мышь влево-вверх — без поворота, вправо-вниз — разворот на 180°', () => {
+  it('lookAngle: мышь влево-вверх - без поворота, вправо-вниз - разворот на 180°', () => {
     expect(lookAngle(10, 10, 0, 0)).toBeCloseTo(0);
     expect(Math.abs(lookAngle(10, 10, 20, 20))).toBeCloseTo(Math.PI);
     // вправо-вверх — поворот по часовой на 90°
@@ -17,7 +17,7 @@ describe('выбор курсора: геометрия', () => {
     expect(lookAngle(5, 5, 5, 5)).toBe(0);
   });
 
-  it('magnetOffset: тянет к мыши, вне радиуса — ноль, не больше предела', () => {
+  it('magnetOffset: тянет к мыши, вне радиуса - ноль, не больше предела', () => {
     expect(magnetOffset(MAGNET_R + 1, 0)).toEqual({ x: 0, y: 0 });
     expect(magnetOffset(0, 0)).toEqual({ x: 0, y: 0 });
     const near = magnetOffset(10, 0);
@@ -31,7 +31,7 @@ describe('выбор курсора: геометрия', () => {
     expect(magnetOffset(MAGNET_R - 2, 0).x).toBeLessThan(magnetOffset(MAGNET_R * 0.5, 0).x);
   });
 
-  it('scrollThumb: без переполнения — ничего; кнопки только когда есть куда листать', () => {
+  it('scrollThumb: без переполнения - ничего; кнопки только когда есть куда листать', () => {
     expect(scrollThumb(200, 200, 0, 188).over).toBe(false);
     const top = scrollThumb(600, 200, 0, 188);
     expect(top).toMatchObject({ over: true, up: false, down: true, offset: 0 });
@@ -50,7 +50,7 @@ describe('выбор курсора: разметка', () => {
   const pickers: { dispose(): void; el: HTMLElement }[] = [];
   afterEach(() => { for (const p of pickers.splice(0)) { p.dispose(); p.el.remove(); } });
 
-  it('все курсоры — карточки списка на холсте, Pro с бейджем, выбор — рамкой', () => {
+  it('все курсоры - карточки списка на холсте, Pro с бейджем, выбор - рамкой', () => {
     const onChange = vi.fn();
     const p = createCursorPicker({ choice: { preview: 'mint', saved: 'mint' }, entitled: false, name: 'Аня', onChange });
     pickers.push(p);

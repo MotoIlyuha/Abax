@@ -70,7 +70,7 @@ describe('animateCameraTo', () => {
     document.body.className = '';
   });
 
-  it('без анимаций (reduced motion) — сразу в точку', () => {
+  it('без анимаций (reduced motion) - сразу в точку', () => {
     animateCameraTo(500, 400, 2, 320, { size, reduced: () => true });
     expect(cameraAnimating()).toBe(false);
     const c = viewCenter(state.camera, W, H);
@@ -79,7 +79,7 @@ describe('animateCameraTo', () => {
     expect(state.camera.zoom).toBe(2);
   });
 
-  it('класс no-motion на body — тоже сразу', () => {
+  it('класс no-motion на body - тоже сразу', () => {
     document.body.classList.add('no-motion');
     const f = frames();
     animateCameraTo(10, 20, undefined, 320, { size, raf: f.raf, caf: f.caf, now: f.now });
@@ -125,7 +125,7 @@ describe('animateCameraTo', () => {
     expect(viewCenter(state.camera, W, H).vx).toBeCloseTo(-500);
   });
 
-  it('нечисловая цель — ничего', () => {
+  it('нечисловая цель - ничего', () => {
     animateCameraTo(Number.NaN, 0, 1, 320, { size, reduced: () => true });
     expect(state.camera).toEqual({ x: 0, y: 0, zoom: 1 });
   });

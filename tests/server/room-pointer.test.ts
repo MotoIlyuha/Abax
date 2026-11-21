@@ -97,7 +97,7 @@ describe('правила доступа room-access.cjs совпадают с sr
     for (const r of ROLES) expect(cjsAccess.legacyRoleOf(r)).toBe(access.legacyRoleOf(r));
   });
 
-  it('итоговое право на странице — все сочетания', () => {
+  it('итоговое право на странице - все сочетания', () => {
     for (const owner of [false, true]) for (const legacy of [false, true]) for (const role of ROLES) {
       for (const pageSetting of RIGHTS) for (const personal of RIGHTS) {
         const input = { owner, legacy, role, pageSetting, personal };
@@ -116,7 +116,7 @@ describe('правила доступа room-access.cjs совпадают с sr
     }
   });
 
-  it('права проекта в хабе Electron: защита от копирования — только у Pro/Tutor', () => {
+  it('права проекта в хабе Electron: защита от копирования - только у Pro/Tutor', () => {
     expect(cjsAccess.hubPermissions({ permissions: { allowCopy: false, forbidClone: true } })).toMatchObject({ allowCopy: true, forbidClone: false });
     expect(cjsAccess.hubPermissions({ ownerPlan: 'pro', permissions: { allowCopy: false, forbidClone: true, summon: 'editors', protectElements: true } }))
       .toEqual({ allowCopy: false, forbidClone: true, summon: 'editors', protectElements: true });

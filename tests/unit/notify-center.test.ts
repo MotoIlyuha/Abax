@@ -33,7 +33,7 @@ describe('центр уведомлений', () => {
     expect(unreadCount('system')).toBe(1);
   });
 
-  it('прочитать: всё, один вид, одно уведомление — с событием только при изменении', () => {
+  it('прочитать: всё, один вид, одно уведомление - с событием только при изменении', () => {
     const events: NoticeEvent[] = [];
     const off = onNotices(ev => events.push(ev));
     const s1 = pushNotice({ title: 'а' });
@@ -110,7 +110,7 @@ describe('центр уведомлений', () => {
     off();
   });
 
-  it('«не беспокоить» без доступа к localStorage — в памяти', () => {
+  it('«не беспокоить» без доступа к localStorage - в памяти', () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('запрещено'); });
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('запрещено'); });
     vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => { throw new Error('запрещено'); });

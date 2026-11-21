@@ -63,13 +63,14 @@ function applyPayment(app: AppContext, row: CheckoutRow, p: ProviderPayment): vo
     || p.amount?.currency !== 'RUB' || p.amount?.value !== row.amount.toFixed(2)) throw new HttpError(502, 'payment-mismatch');
   const url = confirmationUrl(p.confirmation?.confirmation_url);
   app.db.transaction(() => {
+    const now = app.now();
     app.db.prepare('UPDATE yookassa_checkouts SET provider_id = ?, confirmation_url = COALESCE(?, confirmation_url) WHERE payment_id = ?')
       .run(p.id, url, row.id);
     if (p.status === 'succeeded' && p.paid === true) {
-      const updated = app.db.prepare("UPDATE payments SET status = 'paid' WHERE id = ? AND status = 'pending'").run(row.id);
-      if (updated.changes) grantPlan(app.db, getUser(app.db, row.user_id)!, { plan: row.plan as PaidPlan, days: row.days }, app.now());
+      const updated = app.db.prepare("UPDATE payments SET status = 'paid', resolved_at = ? WHERE id = ? AND status = 'pending'").run(now, row.id);
+      if (updated.changes) grantPlan(app.db, getUser(app.db, row.user_id)!, { plan: row.plan as PaidPlan, days: row.days }, now);
     } else if (p.status === 'canceled') {
-      app.db.prepare("UPDATE payments SET status = 'canceled' WHERE id = ? AND status = 'pending'").run(row.id);
+      app.db.prepare("UPDATE payments SET status = 'canceled', resolved_at = ? WHERE id = ? AND status = 'pending'").run(now, row.id);
     }
   })();
 }

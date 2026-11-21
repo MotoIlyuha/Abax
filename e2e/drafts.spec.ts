@@ -73,7 +73,7 @@ test.describe('черновик', () => {
     expect((await board.state()).project.pages).toHaveLength(1);
   });
 
-  test('долгое нажатие на «+» (планшет) создаёт черновик, обычный клик — страницу', async ({ board, page }) => {
+  test('долгое нажатие на «+» (планшет) создаёт черновик, обычный клик - страницу', async ({ board, page }) => {
     await board.addPage();
     const tile = page.locator('#pages-list .page-add');
     const box = (await tile.boundingBox())!;
@@ -112,7 +112,7 @@ test.describe('черновик', () => {
     expect(names).toEqual(['Страница 1', 'Страница 2', 'Черновик']);
   });
 
-  test('удаление: пустой черновик — сразу, с содержимым — после подтверждения; открытый возвращает на страницу', async ({ board, page }) => {
+  test('удаление: пустой черновик - сразу, с содержимым - после подтверждения; открытый возвращает на страницу', async ({ board, page }) => {
     await board.rect(100, 100, 200, 200);
     await board.openPages();
     await page.keyboard.press('Alt+Shift+KeyN');

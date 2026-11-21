@@ -16,7 +16,7 @@ test.describe('откреплённая панель инструментов', 
     await expect(grip).toHaveCSS('opacity', '1');
   });
 
-  test('нажатие на ручку поворачивает панель, перенос вниз — тоже, выключение возвращает к краю', async ({ board, page }) => {
+  test('нажатие на ручку поворачивает панель, перенос вниз - тоже, выключение возвращает к краю', async ({ board, page }) => {
     await page.evaluate(() => localStorage.setItem('doska.settings', JSON.stringify({ toolbarPos: 'left', toolbarDetachable: true })));
     await page.reload();
     await board.ready();
@@ -61,7 +61,7 @@ test.describe('откреплённая панель инструментов', 
     await tb.hover();
     const g3 = (await grip.boundingBox())!;
     await page.mouse.move(g3.x + g3.width / 2, g3.y + 6);
-    await expect(page.locator('#tooltip')).toContainText('удерживайте — прикрепить обратно');
+    await expect(page.locator('#tooltip')).toContainText('удерживайте - прикрепить обратно');
     await expect(page.locator('#toolbar .mt-hl')).toHaveCSS('opacity', '0');
     await page.mouse.down();
     await expect(tb).not.toHaveClass(/floating/);
@@ -69,13 +69,13 @@ test.describe('откреплённая панель инструментов', 
     await expect(tb).toHaveAttribute('data-pos', 'left');
     expect((await board.state()).settings.toolbarFloat).toBeNull();
 
-    // снова открепили нажатием — выбор стороны в настройках доски тоже пристыковывает панель
+    // Запрет открепления в «Дополнительных» возвращает панель к сохранённому краю.
     await tb.hover();
     await grip.click({ position: { x: 20, y: 6 } });
     await expect(tb).toHaveClass(/floating/);
     await page.keyboard.press('Control+Comma');
-    await page.locator('.sd-nav-item[data-section="general"]').click();
-    await page.locator('.sd-general .ctx-toolbar-pos button', { hasText: 'Слева' }).click();
+    await page.locator('.sd-nav-item[data-section="advanced"]').click();
+    await page.getByLabel('Разрешить откреплять панель инструментов').uncheck();
     await expect(tb).not.toHaveClass(/floating/);
     await expect(tb).toHaveAttribute('data-pos', 'left');
     expect((await board.state()).settings.toolbarFloat).toBeNull();

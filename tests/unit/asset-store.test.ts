@@ -70,7 +70,7 @@ describe('AssetStore: вынос и возврат картинок', () => {
     expect(JSON.stringify(p)).toBe(before);
   });
 
-  it('что выносить нечего — тот же проект; страницы и ссылки не трогаются', async () => {
+  it('что выносить нечего - тот же проект; страницы и ссылки не трогаются', async () => {
     const store = new AssetStore({ idb: null });
     const link = img('l', '', { page: 'b' });
     const plain = img('u', 'https://example.org/a.png');
@@ -97,7 +97,7 @@ describe('AssetStore: вынос и возврат картинок', () => {
     expect(srcs(await empty.hydrateProjectAssets(orphan, { [hash]: PNG_A }))).toEqual([PNG_A, 'asset://не-хэш']);
   });
 
-  it('второе хранилище восстанавливает картинки из словаря, а в своей памяти — нет', async () => {
+  it('второе хранилище восстанавливает картинки из словаря, а в своей памяти - нет', async () => {
     const a = new AssetStore({ idb: null });
     const { strippedProject, assets } = await a.extractProjectAssets(project(img('1', PNG_A)));
     expect(a.size).toBe(1);

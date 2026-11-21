@@ -33,7 +33,7 @@ describe('createTaskElement', () => {
 });
 
 describe('проверка ответа', () => {
-  it('«0,25» и «0.25» — один ответ; пробелы, знак и регистр не важны', () => {
+  it('«0,25» и «0.25» - один ответ; пробелы, знак и регистр не важны', () => {
     expect(normalizeAnswer('  0,25 ')).toBe('0.25');
     expect(answersMatch('0.25', '0,25')).toBe(true);
     expect(answersMatch('0,25', '0.25')).toBe(true);
@@ -96,7 +96,7 @@ describe('попытки и черновик', () => {
     expect(t.attempts![0].value).toBe('20');
   });
 
-  it('время по умолчанию — текущее', () => {
+  it('время по умолчанию - текущее', () => {
     const before = Date.now();
     const t = submitTaskAttempt(task(), '1').updated.attempts![0].timestamp;
     expect(t).toBeGreaterThanOrEqual(before);
@@ -137,13 +137,13 @@ describe('защита от списывания: projectTaskForRole', () => {
     expect(full.answer).toBe('0,75'); // исходное не менялось
   });
 
-  it('решение показывается, если автор его открыл — но ответ всё равно скрыт', () => {
+  it('решение показывается, если автор его открыл - но ответ всё равно скрыт', () => {
     const s = projectTaskForRole({ ...full, solutionVisibleToStudent: true }, 'guest');
     expect(s.solutionMd).toBe('Сложить дроби');
     expect(s.answer).toBe('');
   });
 
-  it('автору — без изменений', () => {
+  it('автору - без изменений', () => {
     expect(projectTaskForRole(full, 'host')).toBe(full);
   });
 
@@ -178,7 +178,7 @@ describe('mergeGuestTask: от ученика принимается тольк�
     expect(mergeGuestTask(base, rewritten).attempts).toEqual(base.attempts);
   });
 
-  it('без изменений — тот же объект; чужая правка страницы не стирает черновик', () => {
+  it('без изменений - тот же объект; чужая правка страницы не стирает черновик', () => {
     const withDraft = updateStudentDraft(host, '12');
     expect(mergeGuestTask(withDraft, withDraft)).toBe(withDraft);
     const { studentDraft: _d, ...noDraft } = withDraft;
@@ -246,7 +246,7 @@ describe('сохранение и загрузка через file.ts', () => {
     expect((sanitizeElement({ ...base, attempts: many }) as TaskEl).attempts).toHaveLength(100);
   });
 
-  it('без обязательных полей — отбрасывается', () => {
+  it('без обязательных полей - отбрасывается', () => {
     expect(sanitizeElement({ id: 'a', type: 'task', x: 0, y: 0, w: 1, h: 1, taskId: 'x', answer: '1' })).toBeNull(); // нет условия
     expect(sanitizeElement({ id: 'a', type: 'task', x: 0, w: 1, h: 1, taskId: 'x', statementMd: '', answer: '' })).toBeNull();
   });
@@ -329,7 +329,7 @@ describe('комната: ответы не доходят до учеников
     expect(hub.room.project!.pages[0].elements[0]).toMatchObject({ answer: 'СЕКРЕТ' }); // у автора — настоящий
   });
 
-  it('автор правит задание — ученик получает патч без ответа', () => {
+  it('автор правит задание - ученик получает патч без ответа', () => {
     const { hub, host, student } = setup();
     host.recv({ t: 'patch', pageId: 'pg', rev: 0, ops: [{ op: 'put', el: { ...secret, topic: 'Новая тема' } }] });
     const patch = student.last('patch')!;

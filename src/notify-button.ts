@@ -25,7 +25,7 @@ export const NOTIFY_DND_HINT = 'Не беспокоить включено';
 /** Подпись кнопки (aria-label и подсказка) для числа непрочитанных. */
 export function notifyLabel(count: number, dnd: boolean): string {
   const text = formatUnread(count);
-  const base = text ? `${NOTIFY_LABEL}: непрочитанных — ${text}` : NOTIFY_LABEL;
+  const base = text ? `${NOTIFY_LABEL}: непрочитанных - ${text}` : NOTIFY_LABEL;
   return dnd ? `${base} · ${NOTIFY_DND_HINT}` : base;
 }
 

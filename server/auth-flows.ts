@@ -4,7 +4,8 @@ import type { AppContext } from './context';
 import type { AuthFlowRow, EmailCodeRow } from './db';
 import { sessionReply, requireUser } from './auth';
 import { jwksVerifier, type JwksVerifier } from './jwks';
-import { isAuthMode, resolveIdentity, type AuthMode, type Identity } from './identity';
+import { findByIdentity, isAuthMode, resolveIdentity, type AuthMode, type Identity } from './identity';
+import { checkAdminLogin, startAdminSession } from './admin-auth';
 import { HttpError, type Ctx, type Reply, type Router } from './router';
 import { getUser, sha256Hex } from './users';
 import { normalizeName } from '../src/room-host';
@@ -33,6 +34,10 @@ export function normalizeEmail(raw: unknown): string | null {
 }
 
 const hashCode = (email: string, code: string): string => sha256Hex(`${email}:${code}`);
+
+function emailCodeHash(app: AppContext, key: string, code: string, admin: boolean): string {
+  return admin ? createHmac('sha256', app.opts.jwtSecret).update(key + ':' + code).digest('hex') : hashCode(key, code);
+}
 
 function safeEqualHex(a: string, b: string): boolean {
   const x = Buffer.from(a, 'hex');
@@ -184,27 +189,30 @@ export function registerAuthFlowRoutes(router: Router): void {
 
   router.post('/api/auth/email/start', async ctx => {
     const app = ctx.app;
+    const admin = checkAdminLogin(app, ctx.req);
     if (!app.mailer && !app.opts.devAuth) throw new HttpError(503, 'email-disabled');
     const body = await ctx.body() as { email?: unknown } | undefined;
     const email = normalizeEmail(body?.email);
     if (!email) throw new HttpError(400, 'bad-email');
+    const key = admin ? 'admin:' + email : email;
     if (!app.rateLimit(`email-ip:${ctx.ip}`, 20, 3600_000) || !app.rateLimit(`email:${email}`, 5, 3600_000)) throw new HttpError(429, 'rate-limited');
     const now = app.now();
     app.db.prepare('DELETE FROM email_codes WHERE expires_at <= ?').run(now);
     const code = String(randomInt(0, 1_000_000)).padStart(6, '0');
+    const codeHash = emailCodeHash(app, key, code, admin);
     app.db.prepare(`INSERT INTO email_codes (email, code_hash, expires_at, attempts, created_at) VALUES (?, ?, ?, 0, ?)
       ON CONFLICT(email) DO UPDATE SET code_hash = excluded.code_hash, expires_at = excluded.expires_at, attempts = 0, created_at = excluded.created_at`)
-      .run(email, hashCode(email, code), now + EMAIL_CODE_TTL_MS, now);
+      .run(key, codeHash, now + EMAIL_CODE_TTL_MS, now);
     if (app.opts.devAuth) app.log(`[dev] код входа для ${email}: ${code}`);
     if (app.mailer) {
       try {
         await app.mailer.send({
           to: email,
-          subject: `Код входа в Abax: ${code}`,
+          subject: admin ? 'Код входа в панель управления Abax' : `Код входа в Abax: ${code}`,
           text: `Ваш код входа в Abax: ${code}\n\nКод действует 10 минут. Если вы не запрашивали вход, просто проигнорируйте это письмо.`,
         });
       } catch (e) {
-        app.db.prepare('DELETE FROM email_codes WHERE email = ?').run(email);
+        app.db.prepare('DELETE FROM email_codes WHERE email = ? AND code_hash = ?').run(key, codeHash);
         app.log(`Не удалось отправить письмо: ${e instanceof Error ? e.message : String(e)}`);
         throw new HttpError(502, 'mail-failed');
       }
@@ -214,29 +222,37 @@ export function registerAuthFlowRoutes(router: Router): void {
 
   router.post('/api/auth/email/verify', async ctx => {
     const app = ctx.app;
+    const admin = checkAdminLogin(app, ctx.req);
     const body = await ctx.body() as { email?: unknown; code?: unknown; mode?: unknown } | undefined;
     const email = normalizeEmail(body?.email);
     const code = typeof body?.code === 'string' ? body.code.replace(/\s+/g, '') : '';
-    const mode: AuthMode = isAuthMode(body?.mode) ? body.mode : 'login';
+    const mode: AuthMode = !admin && isAuthMode(body?.mode) ? body.mode : 'login';
     if (!email || !/^\d{6}$/.test(code)) throw new HttpError(400, 'bad-code');
+    const key = admin ? 'admin:' + email : email;
     if (mode === 'link') requireUser(ctx);
-    const row = app.db.prepare('SELECT * FROM email_codes WHERE email = ?').get(email) as EmailCodeRow | undefined;
+    const row = app.db.prepare('SELECT * FROM email_codes WHERE email = ?').get(key) as EmailCodeRow | undefined;
     if (!row) throw new HttpError(400, 'bad-code');
     const now = app.now();
     if (row.expires_at <= now) {
-      app.db.prepare('DELETE FROM email_codes WHERE email = ?').run(email);
+      app.db.prepare('DELETE FROM email_codes WHERE email = ?').run(key);
       throw new HttpError(400, 'code-expired');
     }
-    if (!safeEqualHex(row.code_hash, hashCode(email, code))) {
+    if (!safeEqualHex(row.code_hash, emailCodeHash(app, key, code, admin))) {
       const attempts = row.attempts + 1;
       if (attempts >= EMAIL_MAX_ATTEMPTS) {
-        app.db.prepare('DELETE FROM email_codes WHERE email = ?').run(email);
+        app.db.prepare('DELETE FROM email_codes WHERE email = ?').run(key);
         throw new HttpError(429, 'too-many-attempts');
       }
-      app.db.prepare('UPDATE email_codes SET attempts = ? WHERE email = ?').run(attempts, email);
+      app.db.prepare('UPDATE email_codes SET attempts = ? WHERE email = ?').run(attempts, key);
       throw new HttpError(400, 'bad-code');
     }
-    app.db.prepare('DELETE FROM email_codes WHERE email = ?').run(email);
+    if (!app.db.prepare('DELETE FROM email_codes WHERE email = ? AND code_hash = ?').run(key, row.code_hash).changes) {
+      throw new HttpError(400, 'bad-code');
+    }
+    if (admin) {
+      const session = startAdminSession(app, findByIdentity(app.db, 'email', email));
+      return { json: { ok: true }, headers: { 'Set-Cookie': session } };
+    }
     const user = resolveIdentity(app.db, { provider: 'email', subject: email }, mode, ctx.user, now);
     return sessionReply(app, user);
   }, { maxBody: 4096 });
@@ -329,7 +345,7 @@ export function registerAuthFlowRoutes(router: Router): void {
       if (!valid) throw new Error('неверный id_token');
       // адрес Google — только подтверждённый: по нему автору видны приглашения по почте (SPEC_NIGHT5 §4.1)
       const verifiedEmail = claims!.email_verified === true || claims!.email_verified === 'true' ? normalizeEmail(claims!.email) : null;
-      settleFlow(app, flow, { provider: 'google', subject: claims!.sub as string, displayName: normalizeName(claims!.name) || undefined, verifiedEmail });
+      settleFlow(app, flow, { provider: 'google', subject: claims!.sub as string, displayName: normalizeName(claims!.name) || undefined, verifiedEmail, avatarUrl: typeof claims!.picture === 'string' && /^https:\/\//.test(claims!.picture) ? claims!.picture.slice(0, 500) : null });
     } catch (e) {
       app.log(`Вход через Google не удался: ${e instanceof Error ? e.message : String(e)}`);
       app.db.prepare('UPDATE auth_flows SET error = ? WHERE id = ?').run('google-failed', flow.id);
@@ -346,6 +362,7 @@ export function registerAuthFlowRoutes(router: Router): void {
     const flow = startableFlow(ctx, 'telegram');
     const q = new URLSearchParams({
       client_id: clientId,
+      origin: app.opts.publicWebUrl,
       redirect_uri: `${apiOrigin(app, ctx.req)}/api/auth/telegram/callback`,
       response_type: 'code',
       scope: 'openid profile',

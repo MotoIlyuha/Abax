@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import {
-  DEV_PROMO_CODES, PERIOD_DAYS, PRICES, TRIAL_DAYS, TRIAL_PLAN, extendPlan, isBillingPeriod, isPaidPlan, normalizePromoCode,
+  DAY_MS, DEV_PROMO_CODES, PERIOD_DAYS, PRICES, TRIAL_DAYS, TRIAL_PLAN, extendPlan, isBillingPeriod, isPaidPlan, normalizePromoCode,
   type BillingInfo, type PaidPlan, type PaymentInfo, type PromoEffect, type PromoRedemptionInfo,
 } from '../src/billing';
 import type { AppContext } from './context';
@@ -8,7 +8,7 @@ import type { Db, PaymentRow, PromoCodeRow, PromoRedemptionRow, UserRow } from '
 import { DEV_GOOGLE, DEV_TELEGRAM } from './auth-flows';
 import { requireUser } from './auth';
 import { HttpError, type Ctx, type Router } from './router';
-import { effectivePlan, getUser, isAnonymousUser, meResponse } from './users';
+import { effectivePlan, getUser, isAnonymousUser, meResponse, validPlanDays } from './users';
 import { createCheckout, paymentNotification, refreshPayments, yookassaEnabled } from './yookassa';
 
 // Подписка (окно подписки и раздел настроек «Подписка»): сведения, покупка, пробный период Tutor и промокоды.
@@ -73,18 +73,33 @@ function changed(app: AppContext, userId: string, extra: Record<string, unknown>
   return { json: { ...extra, billing: billingInfo(app, user), me: meResponse(user, app.now(), app.opts.enforceLimits) } };
 }
 
+export function promoStatus(row: PromoCodeRow, now: number): 'active' | 'disabled' | 'expired' | 'exhausted' | 'invalid' {
+  if (row.disabled_at !== null) return 'disabled';
+  if (row.expires_at !== null && row.expires_at <= now) return 'expired';
+  if (row.max_uses !== null && row.uses >= row.max_uses) return 'exhausted';
+  return isPaidPlan(row.plan) && row.days >= 1 ? 'active' : 'invalid';
+}
+
 /** Промокод из базы или (dev-сервер, тестовый аккаунт) из тестового списка; null — такого нет или он закончился. */
-function findPromo(app: AppContext, user: UserRow, code: string): { effect: PromoEffect; row: PromoCodeRow | null } | null {
+function findPromo(app: AppContext, user: UserRow, code: string, now: number): { effect: PromoEffect; row: PromoCodeRow | null } | null {
   const row = (app.db.prepare('SELECT * FROM promo_codes WHERE code = ?').get(code) as PromoCodeRow | undefined) ?? null;
   if (row) {
-    if (!isPaidPlan(row.plan) || !(row.days >= 1)) return null;
-    if (row.expires_at !== null && row.expires_at <= app.now()) return null;
-    if (row.max_uses !== null && row.uses >= row.max_uses) return null;
+    if (!isPaidPlan(row.plan) || promoStatus(row, now) !== 'active') return null;
     return { effect: { plan: row.plan, days: row.days }, row };
   }
   const dev = DEV_PROMO_CODES[code];
   if (dev && app.opts.devAuth && isTestAccount(user)) return { effect: dev, row: null };
   return null;
+}
+
+/** Общий разбор полей для панели и CLI. Срок кода считается от момента его создания. */
+export function promoDefinition(raw: { code?: unknown; plan?: unknown; days?: unknown; maxUses?: unknown; validDays?: unknown }, now: number) {
+  const { plan, days, maxUses = null, validDays = null } = raw;
+  const code = normalizePromoCode(raw.code);
+  if (!code || !isPaidPlan(plan) || typeof days !== 'number' || !Number.isSafeInteger(days) || days < 1 || !validPlanDays(days, now)
+    || (maxUses !== null && (typeof maxUses !== 'number' || !Number.isFinite(maxUses) || maxUses < 1))
+    || (validDays !== null && !validPlanDays(validDays, now))) return null;
+  return { code, effect: { plan, days }, maxUses, expiresAt: validDays === null ? null : now + validDays * DAY_MS };
 }
 
 /** Завести промокод (оператор, server/promo-cli.ts). false — такой код уже есть. */
@@ -123,8 +138,8 @@ export function registerBillingRoutes(router: Router): void {
     }
     const now = app.now();
     app.db.transaction(() => {
-      app.db.prepare('INSERT INTO payments (id, user_id, plan, period, days, amount, status, provider, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        .run(randomUUID(), user.id, plan, period, PERIOD_DAYS[period], PRICES[plan][period], 'paid', 'dev', now);
+      app.db.prepare('INSERT INTO payments (id, user_id, plan, period, days, amount, status, provider, created_at, resolved_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .run(randomUUID(), user.id, plan, period, PERIOD_DAYS[period], PRICES[plan][period], 'paid', 'dev', now, now);
       grantPlan(app.db, getUser(app.db, user.id)!, { plan, days: PERIOD_DAYS[period] }, now);
     })();
     return changed(app, user.id);
@@ -153,17 +168,17 @@ export function registerBillingRoutes(router: Router): void {
     const code = normalizePromoCode(body?.code);
     if (!code) throw new HttpError(400, 'bad-promo');
     if (!app.rateLimit(`promo:${user.id}`, PROMO_RATE_MAX, PROMO_RATE_WINDOW_MS)) throw new HttpError(429, 'rate-limited');
-    const now = app.now();
     const effect = app.db.transaction((): PromoEffect => {
+      const now = app.now();
       if (app.db.prepare('SELECT 1 FROM promo_redemptions WHERE user_id = ? AND code = ?').get(user.id, code)) throw new HttpError(409, 'promo-used');
-      const found = findPromo(app, user, code);
+      const found = findPromo(app, user, code, now);
       if (!found) throw new HttpError(404, 'promo-not-found');
       if (found.row) app.db.prepare('UPDATE promo_codes SET uses = uses + 1 WHERE code = ?').run(code);
       app.db.prepare('INSERT INTO promo_redemptions (user_id, code, plan, days, redeemed_at) VALUES (?, ?, ?, ?, ?)')
         .run(user.id, code, found.effect.plan, found.effect.days, now);
       grantPlan(app.db, getUser(app.db, user.id)!, found.effect, now);
       return found.effect;
-    })();
+    }).immediate();
     return changed(app, user.id, { effect });
   }, { maxBody: 4096 });
 }

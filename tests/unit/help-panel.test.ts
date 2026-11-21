@@ -43,14 +43,14 @@ describe('содержимое', () => {
     expect(tips.length).toBeLessThanOrEqual(8);
     const pages = tips.find(t => t.title === 'Страницы')!;
     expect(pages.text).toContain('Alt+1…9');
-    expect(pages.text).toContain('Alt+N — новая страница');
+    expect(pages.text).toContain('Alt+N - новая страница');
     state.settings = { ...state.settings, newPageKey: null, pageKeyMod: 'ctrl', wheelMode: 'scroll' };
     const again = helpTips();
     expect(again.find(t => t.title === 'Страницы')!.text).not.toContain('новая страница');
     expect(again.find(t => t.title === 'Двигать и масштабировать')!.text).toMatch(/(Ctrl|Cmd) \+ колесо/);
   });
 
-  it('группы клавиш: инструменты, страницы и все постоянные (скрытые настройкой — без них)', () => {
+  it('группы клавиш: инструменты, страницы и все постоянные (скрытые настройкой - без них)', () => {
     const groups = helpKeyGroups();
     expect(groups.map(g => g.title)).toEqual(['Инструменты', 'Страницы', ...FIXED_SHORTCUTS.map(g => g.title)]);
     const resize = groups.find(g => g.title === 'Изменение размера')!;
@@ -58,7 +58,7 @@ describe('содержимое', () => {
     expect(groups.find(g => g.title === 'Страницы')!.items.map(i => i.what)).toEqual(['Перейти на страницу 1–9', 'Новая страница']);
   });
 
-  it('вид: советы, клавиши — элементами <kbd>, версия и «Сообщить о проблеме»', () => {
+  it('вид: советы, клавиши - элементами <kbd>, версия и «Сообщить о проблеме»', () => {
     const { host } = mount();
     expect(host.querySelectorAll('.hlp-tip')).toHaveLength(helpTips().length);
     const undoRow = [...host.querySelectorAll('.hlp-key-row')].find(r => r.querySelector('.hlp-key-what')!.textContent === 'Отменить')!;
@@ -70,7 +70,7 @@ describe('содержимое', () => {
     expect(link.target).toBe('_blank');
   });
 
-  it('версия приложения — из __APP_VERSION__', () => {
+  it('версия приложения - из __APP_VERSION__', () => {
     vi.stubGlobal('__APP_VERSION__', '9.8.7');
     const { host } = mount();
     expect(host.querySelector('.hlp-version')!.textContent).toBe('Abax, версия 9.8.7');
@@ -111,7 +111,7 @@ describe('поиск', () => {
     expect(visible(host, '.hlp-key-row')).toHaveLength(4);
   });
 
-  it('ничего не нашлось — подсказка; Esc очищает поиск', () => {
+  it('ничего не нашлось - подсказка; Esc очищает поиск', () => {
     const { host, input } = mount();
     search(input, 'абракадабра');
     expect(host.querySelector<HTMLElement>('.hlp-empty')!.hidden).toBe(false);
@@ -125,13 +125,13 @@ describe('поиск', () => {
     expect(visible(host, '.hlp-tip').length).toBe(helpTips().length);
   });
 
-  it('текст — только как текст: разметка в запросе не становится узлами', () => {
+  it('текст - только как текст: разметка в запросе не становится узлами', () => {
     const { host, input } = mount();
     search(input, '<img src=x>');
     expect(host.querySelector('img')).toBeNull();
   });
 
-  it('фокус при открытии — в поле поиска', () => {
+  it('фокус при открытии - в поле поиска', () => {
     const { view, input } = mount();
     view.focus?.();
     expect(document.activeElement).toBe(input);

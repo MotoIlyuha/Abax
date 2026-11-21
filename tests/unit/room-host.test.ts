@@ -54,7 +54,7 @@ function setup(opts: Partial<RoomHubOptions> = {}, project: Project = demo()) {
 }
 
 describe('подключение и лимит гостей', () => {
-  it('автор получает init, гость — проект и права', () => {
+  it('автор получает init, гость - проект и права', () => {
     const { host, join } = setup({ plan: 'pro' });
     expect(host.last('init')).toMatchObject({ proto: PROTO, userId: 0 });
     const g = join('Ученик');
@@ -85,7 +85,7 @@ describe('подключение и лимит гостей', () => {
     expect(hub.users()).toHaveLength(2);
   });
 
-  it('free по умолчанию: проект без ownerPlan — бесплатный', () => {
+  it('free по умолчанию: проект без ownerPlan - бесплатный', () => {
     const { join } = setup();
     join();
     expect(join().uid).toBeNull();
@@ -98,7 +98,7 @@ describe('подключение и лимит гостей', () => {
     expect(join().uid).not.toBeNull();
   });
 
-  it('pro и tutor — без лимита; тариф берётся и из проекта', () => {
+  it('pro и tutor - без лимита; тариф берётся и из проекта', () => {
     const a = setup({ plan: 'pro' });
     for (let i = 0; i < 6; i++) expect(a.join().uid).not.toBeNull();
     const b = setup({}, demo({ ownerPlan: 'tutor' }));
@@ -166,7 +166,7 @@ describe('права по страницам и скрытые страницы'
     expect(b.join().s.last('init')!.allowCopy).toBe(false);
   });
 
-  it('лимит редакторов: free — 4, pro — без лимита, опция важнее', () => {
+  it('лимит редакторов: free - 4, pro - без лимита, опция важнее', () => {
     const free = setup({ plan: 'free', maxGuests: 10 });
     const guests = Array.from({ length: 4 }, () => free.join());
     for (const g of guests.slice(0, 3)) expect(free.hub.setRights(g.uid, { default: 'edit' }).ok).toBe(true); // автор + 3 = 4
@@ -188,7 +188,7 @@ describe('права по страницам и скрытые страницы'
 });
 
 describe('полные проекты (t: project)', () => {
-  it('правка гостя с edit доходит до остальных, view — отбрасывается', () => {
+  it('правка гостя с edit доходит до остальных, view - отбрасывается', () => {
     const { hub, host, join } = setup({ plan: 'pro' });
     const editor = join(), viewer = join();
     hub.setRights(editor.uid, { pages: { pg1: 'edit' } });
@@ -202,7 +202,7 @@ describe('полные проекты (t: project)', () => {
     expect(hub.room.project!.pages[1].elements).toHaveLength(0);
   });
 
-  it('гость не меняет id, тариф и права проекта; первый проект — только от автора', () => {
+  it('гость не меняет id, тариф и права проекта; первый проект - только от автора', () => {
     const { hub, join } = setup({ plan: 'pro' }, demo({ ownerPlan: 'pro', permissions: { allowCopy: false } }));
     const g = join();
     hub.setRights(g.uid, { default: 'edit' });
@@ -435,7 +435,7 @@ describe('ввод ученика в задание (task-draft, task-submit)', 
     expect(taskOn(hub).answer).toBe('0,75');
   });
 
-  it('скрытая страница, чужие id, не задание и неверные типы — молча отклоняются', () => {
+  it('скрытая страница, чужие id, не задание и неверные типы - молча отклоняются', () => {
     const { hub, host, join } = setup({}, demo({ pages: [
       { id: 'pg1', name: 'Первая', grid: 'square', elements: [taskEl(), rect('r')] },
       { id: 'pg2', name: 'Вторая', grid: 'square', elements: [taskEl({ id: 'hidden-task' })] },
@@ -457,7 +457,7 @@ describe('ввод ученика в задание (task-draft, task-submit)', 
     expect(hub.room.project!.pages[1].elements[0]).not.toHaveProperty('studentDraft');
   });
 
-  it('автор двигает карточку со старым вводом — ввод ученика, пришедший за это время, не теряется', () => {
+  it('автор двигает карточку со старым вводом - ввод ученика, пришедший за это время, не теряется', () => {
     const { hub, host, join } = setup({ maxGuests: Infinity }, withTask());
     const a = join('Маша');
     const stale = taskOn(hub); // копия автора до ответа ученика
@@ -555,8 +555,8 @@ describe('реакции и комментарии от участников', (
     a.s.sent.length = 0;
     const before = hub.room.project;
     for (const m of [
-      { t: 'comment', op: 'create', pageId: 'pg2', x: 1, y: 1, text: 'х' }, { t: 'comment', op: 'create', pageId: 'pg1', x: 'a', y: 1, text: 'х' },
-      { t: 'comment', op: 'create', pageId: 'pg1', x: 1, y: 1, text: '   ' }, { t: 'comment', op: 'reply', pageId: 'pg1', threadId: 'нет', text: 'х' },
+      { t: 'comment', op: 'create', pageId: 'pg2', x: 1, y: 1, targetElementId: 'c', text: 'х' }, { t: 'comment', op: 'create', pageId: 'pg1', x: 'a', y: 1, targetElementId: 'a', text: 'х' },
+      { t: 'comment', op: 'create', pageId: 'pg1', x: 1, y: 1, targetElementId: 'a', text: '   ' }, { t: 'comment', op: 'reply', pageId: 'pg1', threadId: 'нет', text: 'х' },
       { t: 'comment', op: 'resolve', pageId: 'pg1', threadId: '' }, { t: 'comment', op: 'взлом', pageId: 'pg1' }, { t: 'comment', pageId: 'pg1' },
     ]) a.s.recv(m);
     expect(hub.room.project).toBe(before);
@@ -566,7 +566,7 @@ describe('реакции и комментарии от участников', (
     const other = hub.room.nextUid - 1;
     hub.setRights(other, { pages: { pg1: 'hidden' } });
     h.sent.length = 0;
-    a.s.recv({ t: 'comment', op: 'create', pageId: 'pg1', x: 1, y: 1, text: 'видно не всем' });
+    a.s.recv({ t: 'comment', op: 'create', pageId: 'pg1', x: 1, y: 1, targetElementId: 'a', text: 'видно не всем' });
     expect(h.last('comments')).toBeUndefined();
   });
 
@@ -574,7 +574,7 @@ describe('реакции и комментарии от участников', (
     const { hub, host, join } = setup({}, withEls());
     const a = join('Маша');
     hub.setRights(a.uid, { all: 'edit' });
-    a.s.recv({ t: 'comment', op: 'create', pageId: 'pg1', x: 1, y: 1, text: 'мой' });
+    a.s.recv({ t: 'comment', op: 'create', pageId: 'pg1', x: 1, y: 1, targetElementId: 'a', text: 'мой' });
     const stale = { ...hub.room.project!, pages: hub.room.project!.pages.map(pg => ({ ...pg, comments: undefined })) };
     a.s.recv({ t: 'project', project: stale });
     host.recv({ t: 'project', project: stale });

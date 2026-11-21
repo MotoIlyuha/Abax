@@ -65,7 +65,7 @@ describe('чат комнаты: слой данных', () => {
     expect(got).toEqual(['reset', 'message', 'state', 'state']);
   });
 
-  it('чат не виден: чужое сообщение — уведомление чата, своё — нет', () => {
+  it('чат не виден: чужое сообщение - уведомление чата, своё - нет', () => {
     setChatAvatarLookup(uid => (uid === 2 ? '🦊' : null));
     chatReset([], 1);
     chatReceive(msg('a', 1, 'моё'));
@@ -80,7 +80,7 @@ describe('чат комнаты: слой данных', () => {
     expect(chatUnread()).toBe(1);
   });
 
-  it('сообщение только с вложением — в уведомлении подпись вложения', () => {
+  it('сообщение только с вложением - в уведомлении подпись вложения', () => {
     chatReset([], 1);
     chatReceive(msg('i', 2, '', { att: { kind: 'image', src: 'data:image/png;base64,AA==', w: 1, h: 1 } }));
     expect(chatNotices()[0].body).toBe('Изображение');
@@ -109,7 +109,7 @@ describe('чат комнаты: слой данных', () => {
     expect(got).toEqual([true, false]);
   });
 
-  it('openChat вызывает обработчик интегратора с вкладкой «chat»; без обработчика или без чата — ничего', () => {
+  it('openChat вызывает обработчик интегратора с вкладкой «chat»; без обработчика или без чата - ничего', () => {
     const fn = vi.fn();
     openChat(); // обработчика нет
     setChatOpenHandler(fn);
@@ -120,7 +120,7 @@ describe('чат комнаты: слой данных', () => {
     expect(fn).toHaveBeenCalledTimes(1);
   });
 
-  it('щелчок по уведомлению о сообщении — openChat', () => {
+  it('щелчок по уведомлению о сообщении - openChat', () => {
     const fn = vi.fn();
     setChatOpenHandler(fn);
     chatReset([], 1);
@@ -129,7 +129,7 @@ describe('чат комнаты: слой данных', () => {
     expect(fn).toHaveBeenCalledWith('chat');
   });
 
-  it('много непрочитанных: счётчик 99+, лента — последние 100', () => {
+  it('много непрочитанных: счётчик 99+, лента - последние 100', () => {
     chatReset([], 1);
     for (let i = 0; i < 120; i++) chatReceive(msg(`m${i}`, 2, 'x'));
     expect(chatUnread()).toBe(120);

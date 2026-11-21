@@ -89,7 +89,7 @@ describe('localStorage-хранилище (браузер)', () => {
     expect((await storage.load('old2'))?.pages[0].grid).toBe('square');
   });
 
-  it('неизвестный формат — null', async () => {
+  it('неизвестный формат - null', async () => {
     const { storage } = await load();
     localStorage.setItem('doska.p.z', JSON.stringify({ foo: 1 }));
     localStorage.setItem('doska.p.n', '42');

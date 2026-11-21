@@ -43,7 +43,7 @@ describe('POST /api/assets', () => {
     expect(row.storage_key).toBe(`${want.slice(0, 2)}/${want}`);
   });
 
-  it('хэш считается от всей строки: другое написание той же картинки — другой ассет', async () => {
+  it('хэш считается от всей строки: другое написание той же картинки - другой ассет', async () => {
     const app = await makeApp();
     const a = await anon(app);
     const other = `data:image/png;charset=utf-8;base64,${PNG_B64}`;
@@ -89,7 +89,7 @@ describe('POST /api/assets', () => {
     expect(readdirSync(shard).sort()).toEqual([r.body.hash, `${r.body.hash}.mime`]);
   });
 
-  it('нужна сессия; негодные данные — 400, не картинка — 415, лимит размера — 413', async () => {
+  it('нужна сессия; негодные данные - 400, не картинка - 415, лимит размера - 413', async () => {
     const app = await makeApp();
     const a = await anon(app);
     expect((await call(app, 'POST', '/api/assets', { dataUrl: PNG })).status).toBe(401);
@@ -140,7 +140,7 @@ describe('GET /api/assets/:hash', () => {
     expect(sha(r.body)).toBe(hash);
   });
 
-  it('битый хэш — 400, неизвестный — 404', async () => {
+  it('битый хэш - 400, неизвестный - 404', async () => {
     const app = await makeApp();
     for (const h of ['zz', 'A'.repeat(64), 'a'.repeat(63), 'a'.repeat(65), '../etc/passwd']) {
       expect((await call(app, 'GET', `/api/assets/${encodeURIComponent(h)}`)).status, h).toBe(400);
@@ -294,7 +294,7 @@ describe('клиентский обмен: uploadMissingAssets и fetchMissingAs
     expect(await fetchMissingAssets(strippedProject, storeB, api)).toEqual([]);
   });
 
-  it('неизвестная на сервере картинка — в списке неудач, остальное докачивается', async () => {
+  it('неизвестная на сервере картинка - в списке неудач, остальное докачивается', async () => {
     const app = await makeApp();
     const api = createApiClient({ base: app.base });
     const store = new AssetStore({ idb: null });
@@ -306,7 +306,7 @@ describe('клиентский обмен: uploadMissingAssets и fetchMissingAs
     expect(store.size).toBe(0);
   });
 
-  it('сервер подсунул не то содержимое — в хранилище оно не попадает', async () => {
+  it('сервер подсунул не то содержимое - в хранилище оно не попадает', async () => {
     const hash = 'a'.repeat(64);
     const api = createApiClient({
       base: 'https://x.test',

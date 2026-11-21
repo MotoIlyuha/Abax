@@ -1,32 +1,32 @@
-// Проверка обновлений: последний релиз на GitHub против версии приложения. Сами обновления
+// Проверка обновлений: последняя версия на сервере Abax против версии приложения. Сами обновления
 // не ставим — предлагаем скачать файл для своей платформы (см. update-notice.ts).
 
 export const REPO = 'MotoIlyuha/Abax';
 export const REPO_URL = `https://github.com/${REPO}`;
-/** Последний опубликованный релиз (черновики и предварительные GitHub сюда не отдаёт). */
-export const LATEST_RELEASE_API = `https://api.github.com/repos/${REPO}/releases/latest`;
+/** Сведения о последней опубликованной версии Abax. */
+export const LATEST_RELEASE_API = `https://abaxboard.ru/downloads/latest.json`;
 
 /** Где запущено приложение: от этого зависит, какой файл релиза предлагать. */
 export type UpdatePlatform = 'win-setup' | 'win-portable' | 'android' | 'web' | 'desktop';
 
 export interface ReleaseAsset {
   name: string;
-  browser_download_url: string;
+  browser_download_url?: string;
 }
 
-/** Поля ответа GitHub API, которые нам нужны. */
+/** Поля манифеста обновлений. */
 export interface Release {
   tag_name: string;
   name?: string | null;
   body?: string | null;
-  html_url: string;
+  html_url?: string;
   published_at?: string | null;
   assets?: ReleaseAsset[];
 }
 
 export interface UpdateInfo {
   version: string;
-  /** Страница релиза на GitHub. */
+  /** Страница загрузок. */
   page: string;
   /** Файл для этой платформы; нет подходящего — страница релиза. */
   download: string;
@@ -124,12 +124,14 @@ export function boldParts(s: string): { text: string; bold: boolean }[] {
 export function updateFromRelease(r: Release, current: string, platform: UpdatePlatform): UpdateInfo | null {
   if (!r || typeof r.tag_name !== 'string' || !isNewer(r.tag_name, current)) return null;
   const version = r.tag_name.replace(/^v/, '');
-  const asset = pickAsset(Array.isArray(r.assets) ? r.assets : [], platform);
+  const expected = platform === 'win-setup' ? `Abax.Setup.${version}.exe` : platform === 'win-portable' ? `Abax.${version}.exe` : platform === 'android' ? `Abax-${version}.apk` : '';
+  const asset = Array.isArray(r.assets) ? r.assets.find(a => a && a.name === expected) : undefined;
+  const url = asset ? `https://abaxboard.ru/downloads/versions/${version}/${expected}` : null;
   const published = r.published_at ? Date.parse(r.published_at) : NaN;
   return {
     version,
-    page: r.html_url,
-    download: asset?.browser_download_url ?? r.html_url,
+    page: 'https://abaxboard.ru/downloads/',
+    download: url ?? 'https://abaxboard.ru/downloads/',
     file: asset?.name ?? null,
     publishedAt: Number.isFinite(published) ? published : null,
     notes: releaseNotes(r.body),
@@ -139,19 +141,19 @@ export function updateFromRelease(r: Release, current: string, platform: UpdateP
 const TIMEOUT_MS = 10_000;
 
 /**
- * Последний релиз с GitHub → обновление (null — у нас последняя версия).
- * Нет сети, лимит запросов, странный ответ — исключение.
+ * Последний релиз с сервера Abax → обновление (null — у нас последняя версия).
+ * Нет сети, ошибка сервера, странный ответ — исключение.
  */
 export async function fetchUpdate(current: string, platform: UpdatePlatform, fetchImpl: typeof fetch = fetch): Promise<UpdateInfo | null> {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   try {
-    const res = await fetchImpl(LATEST_RELEASE_API, { headers: { Accept: 'application/vnd.github+json' }, signal: ctrl.signal });
-    // 404 — релизов ещё нет
-    if (res.status === 404) return null;
-    if (!res.ok) throw new Error(`GitHub: ${res.status}`);
+    const res = await fetchImpl(LATEST_RELEASE_API, { cache: 'no-store', signal: ctrl.signal });
+    // Нет манифеста — нельзя утверждать, что обновлений нет
+    if (res.status === 404) throw new Error('Сведения об обновлениях недоступны');
+    if (!res.ok) throw new Error(`Сервер обновлений: ${res.status}`);
     const r = await res.json() as Release;
-    if (!r || typeof r.tag_name !== 'string') throw new Error('GitHub: неожиданный ответ');
+    if (!r || typeof r.tag_name !== 'string' || !parseVersion(r.tag_name) || !Array.isArray(r.assets)) throw new Error('Сервер обновлений: неожиданный ответ');
     return updateFromRelease(r, current, platform);
   } finally {
     clearTimeout(timer);

@@ -98,7 +98,7 @@ function toolsTarget(): string | null {
 
 function pillTitle(users: readonly string[], mine: boolean): string {
   const who = peopleLabel(users);
-  return mine ? `${who}. Нажмите — привлечь внимание, × или удержание — убрать` : `${who}. Нажмите — привлечь внимание`;
+  return mine ? `${who}. Нажмите - привлечь внимание, × или удержание - убрать` : `${who}. Нажмите - привлечь внимание`;
 }
 
 function pill(elId: string, emoji: string, users: readonly string[]): HTMLButtonElement {
@@ -464,7 +464,7 @@ export function initAnnotLayer(): void {
   inited = true;
   onBoardFrame(() => syncAnnotLayer());
   onChange(syncAnnotLayer);
-  onAnnotView(() => { syncAnnotLayer(); requestRender(); }); // пины веток холст рисует сам
+  onAnnotView(() => { syncAnnotLayer(); requestRender(); }); // счётчики в окне демонстрации рисует холст
   // недавние реакции и цвета участников могли смениться — пересобрать при следующем кадре
   syncAnnotLayer();
 }

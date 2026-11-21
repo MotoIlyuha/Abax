@@ -16,6 +16,7 @@ relay/.env
 .env.local
 .data/
 dist-server/
+dist-admin/
 
 # Архивные спецификации и журналы ночной разработки
 /NIGHT_LOG.md

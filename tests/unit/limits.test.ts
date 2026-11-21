@@ -49,7 +49,7 @@ describe('лимиты тарифов', () => {
     expect(sanitizePermissionsForPlan('tutor', {})).toEqual({ forbidClone: false, allowCopy: true });
   });
 
-  it('проект без тарифа — free, права вычисляются с поправкой на тариф', () => {
+  it('проект без тарифа - free, права вычисляются с поправкой на тариф', () => {
     expect(planOf({})).toBe('free');
     expect(planOf({ ownerPlan: 'мусор' })).toBe('free');
     expect(effectivePermissions({ permissions: { allowCopy: false } }).allowCopy).toBe(true);
@@ -98,7 +98,7 @@ describe('сериализация прав проекта (file.ts)', () => {
     }
   });
 
-  it('без id или страниц — не проект', () => {
+  it('без id или страниц - не проект', () => {
     expect(parseProject(null)).toBeNull();
     expect(parseProject({ pages: [] })).toBeNull();
     expect(parseProject({ id: 'a', name: 'x' })).toBeNull();
@@ -115,11 +115,11 @@ describe('сериализация прав проекта (file.ts)', () => {
 });
 
 describe('превышение лимита после смены тарифа', () => {
-  it('страницы: на free больше 3 — сверх лимита, ровно 3 — нет', () => {
+  it('страницы: на free больше 3 - сверх лимита, ровно 3 - нет', () => {
     expect(isOverPageLimit('free', 4)).toBe(true);
     expect(isOverPageLimit('free', 3)).toBe(false);
   });
-  it('проекты: на free больше 3 — сверх лимита, ровно 3 — нет', () => {
+  it('проекты: на free больше 3 - сверх лимита, ровно 3 - нет', () => {
     expect(isOverProjectLimit('free', 4)).toBe(true);
     expect(isOverProjectLimit('free', 3)).toBe(false);
   });
@@ -145,7 +145,7 @@ describe('свой лимит гостей (SPEC_NIGHT5 §3.3)', () => {
     expect(effectiveMaxGuests('free', undefined)).toBe(1);
   });
 
-  it('pro: 1..50 сохраняется; 0, null, дробь и больше 50 — без ограничений', () => {
+  it('pro: 1..50 сохраняется; 0, null, дробь и больше 50 - без ограничений', () => {
     expect(sanitizePermissionsForPlan('pro', { maxGuests: 3 }).maxGuests).toBe(3);
     expect(effectiveMaxGuests('pro', { maxGuests: 3 })).toBe(3);
     expect(effectiveMaxGuests('tutor', { maxGuests: MAX_GUESTS_LIMIT })).toBe(MAX_GUESTS_LIMIT);

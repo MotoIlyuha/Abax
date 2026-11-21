@@ -21,7 +21,7 @@ beforeEach(() => {
 });
 
 describe('комментарии', () => {
-  it('чужое сообщение — уведомление «Перейти» / «Посмотреть» со ссылкой на объект; своё — нет', () => {
+  it('чужое сообщение - уведомление «Перейти» / «Посмотреть» со ссылкой на объект; своё - нет', () => {
     const p1 = createCommentThread(state.board, { x: 0, y: 0, targetElementId: 'a', authorId: 'u1', authorName: 'Маша', text: '  Почему\nтак? ', now: 5 });
     expect(noticeComments({ pageId: state.pageId, kind: 'comments', prev: undefined, next: p1.comments! })).toBe(1);
     const n = notices()[0];
@@ -33,7 +33,7 @@ describe('комментарии', () => {
     expect(notices()).toHaveLength(1);
   });
 
-  it('на другой странице — с её названием; через событие комнаты', () => {
+  it('на другой странице - с её названием; через событие комнаты', () => {
     initNoteNotices();
     const first = state.pageId;
     const other = addPage()!;
@@ -46,7 +46,7 @@ describe('комментарии', () => {
 });
 
 describe('реакции', () => {
-  it('новые чужие реакции — одно уведомление на участника и объект; свои и снятые — нет', () => {
+  it('новые чужие реакции - одно уведомление на участника и объект; свои и снятые - нет', () => {
     const before = [rect('a', { reactions: { '👍': ['u1'] } }), rect('b')];
     const after = [rect('a', { reactions: { '👍': ['u1', 'u2', clientId()], '🔥': ['u2'] } }), rect('b', { reactions: { '❤️': ['u3'] } })];
     expect(noticeReactions({ pageId: state.pageId, kind: 'elements', ids: ['a'], prev: before, next: after })).toBe(1);

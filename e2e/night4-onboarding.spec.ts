@@ -20,7 +20,7 @@ const step = (page: Page) => page.locator('#onboarding');
 const profile = (page: Page) => page.evaluate(() => JSON.parse(localStorage.getItem('doska.profile') ?? 'null'));
 
 test.describe('окно первого входа', () => {
-  test('шаг 1: способы входа, «Продолжить без входа» с пояснением; без облака — сообщение в окне', async ({ browser }) => {
+  test('шаг 1: способы входа, «Продолжить без входа» с пояснением; без облака - сообщение в окне', async ({ browser }) => {
     const page = await fresh(browser);
     await expect(step(page)).toBeVisible();
     await expect(step(page)).toHaveAttribute('data-step', '1');
@@ -85,7 +85,7 @@ test.describe('окно первого входа', () => {
     await page.context().close();
   });
 
-  test('пустое имя + «Продолжить» — имя из подсказки; Pro-курсор — примерка без блокировки', async ({ browser }) => {
+  test('пустое имя + «Продолжить» - имя из подсказки; Pro-курсор - примерка без блокировки', async ({ browser }) => {
     const page = await fresh(browser);
     await page.locator('.ob-skip').click();
     const placeholder = (await page.locator('.ob-name').getAttribute('placeholder'))!;

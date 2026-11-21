@@ -47,6 +47,7 @@ export const ICONS = {
   card: svg('<rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19M6.5 15h4"/>'),
   /** Раздел «Дополнительные» в окне настроек: ползунки. */
   advanced: svg('<path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/>'),
+  privacy: svg('<path d="M12 3 4 6v5c0 5 3.5 8.5 8 10 4.5-1.5 8-5 8-10V6l-8-3Z"/><path d="m9 12 2 2 4-4"/>'),
   info: svg('<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 7.5v.01"/>'),
   flask: svg('<path d="M9 3h6"/><path d="M10 3v6.2L4.6 18.4A1.7 1.7 0 0 0 6.1 21h11.8a1.7 1.7 0 0 0 1.5-2.6L14 9.2V3"/><path d="M7.3 15h9.4"/>'),
   chevronLeft: svg('<path d="M15 6l-6 6 6 6"/>'),
@@ -151,6 +152,9 @@ export const SNAP_ICON = svg('<path d="M6 4h4v9a2 2 0 0 0 4 0V4h4v9a6 6 0 0 1-12
 
 /** «Направляющие»: два прямоугольника, выровненные по верхнему краю, и пунктир по общей линии. */
 export const GUIDES_ICON = svg('<path d="M2 6h20" stroke-dasharray="2 2.2"/><rect x="4" y="6" width="6" height="7" rx="1"/><rect x="14" y="6" width="6" height="12" rx="1"/>');
+
+/** Пропорциональное изменение размера изображения. */
+export const PROPORTIONAL_ICON = svg('<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 15l6-6M10 9h5v5"/>');
 
 /** Подменю «Взаимодействия»: стрелка курсора с лучиками нажатия. */
 export const INTERACTIONS_ICON = svg('<path d="M9 9l11 4.2-4.8 1.6L13.6 20z"/><path d="M5.5 5.5l1.8 1.8M9 3v2.5M3 9h2.5M4.6 13.4l1.8-1.8M13.4 4.6l-1.8 1.8"/>');

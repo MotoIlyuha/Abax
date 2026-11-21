@@ -72,7 +72,7 @@ describe('окно первого входа', () => {
     expect($('.ob-step2').hasAttribute('inert')).toBe(true);
   });
 
-  it('без облака клик по способу входа — сообщение в окне, кнопки остаются', async () => {
+  it('без облака клик по способу входа - сообщение в окне, кнопки остаются', async () => {
     openOnboarding();
     for (const p of ['email', 'telegram', 'google']) {
       $(`.ob-step1 [data-provider="${p}"]`).click();
@@ -99,7 +99,7 @@ describe('окно первого входа', () => {
     expect($('.ob-track').style.transform).toBe('translateX(0)');
   });
 
-  it('Tab в пустом поле подставляет подсказку и не уводит фокус; второй Tab — штатно', () => {
+  it('Tab в пустом поле подставляет подсказку и не уводит фокус; второй Tab - штатно', () => {
     openOnboarding();
     $('.ob-skip').click();
     const name = $<HTMLInputElement>('.ob-name');
@@ -116,7 +116,7 @@ describe('окно первого входа', () => {
     expect(name.value).toBe('');
   });
 
-  it('«Продолжить» с пустым полем — имя из подсказки; профиль сохранён, окно закрыто', () => {
+  it('«Продолжить» с пустым полем - имя из подсказки; профиль сохранён, окно закрыто', () => {
     const done = vi.fn();
     openOnboarding({ onDone: done });
     $('.ob-skip').click();
@@ -129,7 +129,7 @@ describe('окно первого входа', () => {
     expect(done).toHaveBeenCalledOnce();
   });
 
-  it('шаг 3 «Создайте свой первый проект!»: плашка о страницах, «Создать» отдаёт введённое, пустые поля — подсказки', () => {
+  it('шаг 3 «Создайте свой первый проект!»: плашка о страницах, «Создать» отдаёт введённое, пустые поля - подсказки', () => {
     const apply = vi.fn();
     const done = vi.fn();
     openOnboarding({
@@ -158,7 +158,7 @@ describe('окно первого входа', () => {
     expect(done).toHaveBeenCalledOnce();
   });
 
-  it('шаг 3: Enter в поле — «Создать»; Esc — закрыть без переименования; нет стартового проекта — шага нет', () => {
+  it('шаг 3: Enter в поле - «Создать»; Esc - закрыть без переименования; нет стартового проекта - шага нет', () => {
     const apply = vi.fn();
     const project = () => ({ namePlaceholder: 'Проект 1', pagePlaceholder: 'Страница 1', icon: null, planNote: null, apply });
     openOnboarding({ project });
@@ -209,7 +209,7 @@ describe('окно первого входа', () => {
     expect(getProfile().name).toBe(prev);
   });
 
-  it('Enter в поле имени — как «Продолжить»; клавиши не уходят к доске', () => {
+  it('Enter в поле имени - как «Продолжить»; клавиши не уходят к доске', () => {
     const board = vi.fn();
     window.addEventListener('keydown', board);
     openOnboarding();
@@ -223,7 +223,7 @@ describe('окно первого входа', () => {
     window.removeEventListener('keydown', board);
   });
 
-  it('Esc — как «без входа»: имя из подсказки, классический курсор', () => {
+  it('Esc - как «без входа»: имя из подсказки, классический курсор', () => {
     openOnboarding();
     const placeholder = $<HTMLInputElement>('.ob-name').placeholder;
     key($('.ob-step1 .ob-provider'), 'Escape');
@@ -248,7 +248,7 @@ describe('окно первого входа', () => {
     expect(getProfile().cursorId).toBe('mint');
   });
 
-  it('после возврата от провайдера — сразу шаг 2 с сохранёнными именем и курсором; ошибка — на шаге 1', () => {
+  it('после возврата от провайдера - сразу шаг 2 с сохранёнными именем и курсором; ошибка - на шаге 1', () => {
     openOnboarding({ step: 2, resume: { where: 'onboarding', name: 'Лемур', cursorId: 'lavender', placeholder: 'Вомбат' } });
     expect(step()).toBe('2');
     expect($<HTMLInputElement>('.ob-name').value).toBe('Лемур');

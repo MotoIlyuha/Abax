@@ -32,7 +32,7 @@ describe('профиль', () => {
     expect(getProfile().name).toHaveLength(32);
   });
 
-  it('аватар: смайл и фото сохраняются, неподходящее игнорируется, null — буквы', () => {
+  it('аватар: смайл и фото сохраняются, неподходящее игнорируется, null - буквы', () => {
     setProfile({ avatar: '🐼' });
     expect(getProfile().avatar).toBe('🐼');
     expect(myAvatar()).toBe('🐼');
@@ -47,7 +47,7 @@ describe('профиль', () => {
     expect(getProfile().avatar).toBeNull();
   });
 
-  it('испорченная запись — значения по умолчанию', () => {
+  it('испорченная запись - значения по умолчанию', () => {
     localStorage.setItem(PROFILE_KEY, '{oops');
     expect(getProfile().cursorId).toBe('default');
     localStorage.setItem(PROFILE_KEY, JSON.stringify({ name: 5, cursorId: '<x>', onboarded: 'yes' }));
@@ -113,7 +113,7 @@ describe('смешные имена', () => {
 });
 
 describe('поле имени и выбор курсора', () => {
-  it('Tab в пустом поле подставляет подсказку; Shift+Tab и заполненное поле — штатно', () => {
+  it('Tab в пустом поле подставляет подсказку; Shift+Tab и заполненное поле - штатно', () => {
     expect(tabFill('', 'Лемур', false)).toBe('Лемур');
     expect(tabFill('   ', 'Бодрый Енот', false)).toBe('Бодрый Енот');
     expect(tabFill('', 'Лемур', true)).toBeNull();
@@ -121,7 +121,7 @@ describe('поле имени и выбор курсора', () => {
     expect(tabFill('', '', false)).toBeNull();
   });
 
-  it('«Продолжить» с пустым полем — имя из подсказки', () => {
+  it('«Продолжить» с пустым полем - имя из подсказки', () => {
     expect(resolveName('', 'Капибара')).toBe('Капибара');
     expect(resolveName('  Аня  ', 'Капибара')).toBe('Аня');
   });

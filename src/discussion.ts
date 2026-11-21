@@ -47,10 +47,7 @@ export function replyThread(threads: readonly CommentThread[]): CommentThread | 
   return best;
 }
 
-/**
- * Ветки-пины на холсте: без объекта или с объектом, которого на странице уже нет. Ветки при объекте
- * показываются счётчиком у объекта, а не пином.
- */
+/** Ветки для вкладки «Комментарии» без привязки или с удалённым объектом. */
 export function detachedThreads(comments: readonly CommentThread[] | undefined, elements: readonly Element[]): CommentThread[] {
   const list = comments ?? [];
   if (!list.length) return [];

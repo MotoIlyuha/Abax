@@ -103,7 +103,7 @@ describe('HTTP: раздача клиента', () => {
     expect((await fetch(`${base}/../../etc/passwd`)).status).toBe(404);
   });
 
-  it('порт занят — ошибка при запуске', async () => {
+  it('порт занят - ошибка при запуске', async () => {
     await start();
     await expect(createShareServer({ port: server.port, code: 'X' })).rejects.toMatchObject({ code: 'EADDRINUSE' });
   });
@@ -117,7 +117,7 @@ describe('WebSocket: подключение', () => {
     expect(server.room.clients.size).toBe(0);
   });
 
-  it('автор — uid 0, красный, edit; гость — следующий uid, view', async () => {
+  it('автор - uid 0, красный, edit; гость - следующий uid, view', async () => {
     await start();
     const host = await connect('?host=1');
     const h = await init(host);
@@ -149,7 +149,7 @@ describe('WebSocket: подключение', () => {
     expect(snap.name).toBe('Ма ша evil');
   });
 
-  it('пустое имя или имя из одних управляющих символов — имя по умолчанию', async () => {
+  it('пустое имя или имя из одних управляющих символов - имя по умолчанию', async () => {
     await start();
     const p = await connect('?name=' + encodeURIComponent('\u0001\u0002  '));
     expect((await init(p)).name).toBe('Гость 1');
@@ -210,7 +210,7 @@ describe('presence', () => {
     await until(() => last(host, 'users')?.users.find((x: Msg) => x.userId === g.userId)?.selection.length === 0);
   });
 
-  it('бездействующий участник — away', async () => {
+  it('бездействующий участник - away', async () => {
     await start();
     await hostWithProject();
     const guest = await connect();
@@ -291,7 +291,7 @@ describe('права и синхронизация проекта', () => {
     expect(JSON.stringify(msg)).not.toContain('secret');
   });
 
-  it('скрытие страницы сразу убирает её у гостя, открытие — возвращает', async () => {
+  it('скрытие страницы сразу убирает её у гостя, открытие - возвращает', async () => {
     await start();
     await hostWithProject();
     const guest = await connect();
@@ -302,7 +302,7 @@ describe('права и синхронизация проекта', () => {
     await until(() => last(guest, 'project')?.project.pages.length === 2);
   });
 
-  it('автор всегда редактор — права автору не меняются', async () => {
+  it('автор всегда редактор - права автору не меняются', async () => {
     await start();
     await hostWithProject();
     expect(server.setRights(0, { all: 'view' })).toEqual({ ok: false, error: 'Автор всегда редактор' });

@@ -1,8 +1,9 @@
 import { initTopbarFit, topbarFit } from './topbar-fit';
+import { analyticsAvailable, renderAnalyticsSettings } from './analytics-consent';
 import { startCrop } from './crop';
 import type {
-  AnimationMode, BoardSettings, Camera, Element, GridMode, ImageEl, NoteEl, Page, PageTransition, Project, ProjectMeta, ShapeEl, TaskEl, TextAlign, TextEl, TextVAlign,
-  ToolId, ToolbarPos, WheelMode,
+  BoardSettings, Camera, Element, GridMode, ImageEl, NoteEl, Page, Project, ProjectMeta, ShapeEl, TaskEl, TextAlign, TextEl, TextVAlign,
+  ToolId, ToolbarPos,
 } from './types';
 import { setStickyTool, stickyTool } from './sticky-tool';
 import { resolveAnimationMode } from './motion';
@@ -31,6 +32,7 @@ import { renderScene, contentBBox, imageEpoch, imagesLoaded, linkView, presentCa
 import { easeInOut, linkCameras, lockInput, newPageLink, zoomDuration, zoomPath } from './page-links';
 import { makeSortable, reordering } from './reorder';
 import { capturePageTransition } from './page-transition';
+import { PAGE_TRANSITIONS, boardSettingsLabel, renderBoardMotionSettings } from './board-settings';
 import { hasBaseSides, SIDES_MAX, SIDES_MIN, solidSides } from './solid';
 import {
   type AABB, aabbUnion, elementAABB, hitTest, imageFrame, lineWidth, parseTextSize, shapeCaption, shapeHoldsText, stepTextSize,
@@ -53,7 +55,7 @@ import { myCursorId, onProfileChange, profileName } from './profile';
 import { type ToolbarGroup, onToolbarChange, restoreToolbar, toolDef, toolTip, toolUsesColor, toolbarConfig } from './toolbar';
 import { canDropTool, toolDropElement } from './tool-drop';
 import {
-  addSettingsSection, lastSettingsSection, openSettingsDialog, removeSettingsSection, settingsDialogOpen, type SettingsSection,
+  addSettingsSection, lastSettingsSection, openSettingsDialog, removeSettingsSection, settingsDialogOpen, type SectionView, type SettingsSection,
 } from './settings-dialog';
 import { experimentalHeadIcon, experimentsShown, renderExperimental, setExperimentsShown, setRecursionDiscovered } from './experimental';
 import { renderToolbarEditor } from './toolbar-editor';
@@ -105,8 +107,8 @@ import { initAttention } from './attention';
 import { initNoteNotices } from './note-notices';
 import { openTaskDialog, taskDialogOpen, type TaskFormValues } from './task-dialog';
 import { TASK_H, TASK_W, createTaskElement } from './task-element';
-import { createToggleSwitch } from './toggle-switch';
-import { ALIGN_ICONS, BACKGROUND_ICON, BACK_ARROW_ICON, COORD_ICON_ZERO, FONT_ICON, GRID_ICONS, GRIP_ICON, ICONS, OPACITY_ICON, PIN_ICON, PROFILE_ICON, SLIDER_TRACK_ICON, GUIDES_ICON, INTERACTIONS_ICON, SMOOTH_PAN_ICON, SNAP_ICON, VALIGN_ICONS, WIDTH_ICON, svg } from './icons';
+import { createToggleSwitch, setToggleChecked } from './toggle-switch';
+import { ALIGN_ICONS, BACKGROUND_ICON, BACK_ARROW_ICON, COORD_ICON_ZERO, FONT_ICON, GRID_ICONS, GRIP_ICON, ICONS, OPACITY_ICON, PIN_ICON, PROFILE_ICON, SLIDER_TRACK_ICON, GUIDES_ICON, INTERACTIONS_ICON, SMOOTH_PAN_ICON, SNAP_ICON, PROPORTIONAL_ICON, VALIGN_ICONS, WIDTH_ICON, svg } from './icons';
 import { setTopbarGroupHidden } from './topbar-hide';
 import {
   browserSetRights, browserShareStatus, startBrowserCloud, startBrowserHost, stopBrowserCloud, stopBrowserHost,
@@ -230,24 +232,9 @@ function restoreSettings(): void {
   } catch { /* дефолт */ }
 }
 
-/** Варианты анимации перехода на другую страницу (в настройках доски). */
-const PAGE_TRANSITIONS: { mode: PageTransition; name: string; hint: string }[] = [
-  { mode: 'none', name: 'Нет', hint: 'Страница сменяется мгновенно' },
-  { mode: 'slide', name: 'Слайд', hint: 'Страницы сдвигаются в сторону, как слайды' },
-  { mode: 'fade', name: 'Затухание', hint: 'Прежняя страница плавно растворяется' },
-  { mode: 'zoom', name: 'Приближение', hint: 'Новая страница выплывает из глубины' },
-];
-
 function persistSettings(): void {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings));
 }
-
-/** Варианты режима анимаций (настройка доски «Анимации»). */
-const ANIMATION_MODES: { mode: AnimationMode; name: string; hint: string }[] = [
-  { mode: 'off', name: 'Выкл', hint: 'Без движения: меню и панели появляются сразу, пружин нет' },
-  { mode: 'normal', name: 'Обычные', hint: 'Меню и панели плавно выплывают, подсказка и пружины выключены' },
-  { mode: 'enhanced', name: 'Улучшенные', hint: 'Меню и панели выплывают, подсказка панели перетекает от кнопки к кнопке, иконки пружинят' },
-];
 
 /**
  * Режим анимаций на классах body: «выкл» гасит появление панелей (no-ui-anim) и пружины (no-motion);
@@ -1697,8 +1684,8 @@ function buildLayerControl(sel: Element[], moves: { up: boolean; down: boolean }
     const b = document.createElement('button');
     b.className = 'qm-layer-arrow';
     b.title = direction === 'top'
-      ? 'Выше на слой; двойной клик — наверх; удержание — закрепить наверху'
-      : 'Ниже на слой; двойной клик — вниз; удержание — закрепить внизу';
+      ? 'Выше на слой; двойной клик - наверх; удержание - закрепить наверху'
+      : 'Ниже на слой; двойной клик - вниз; удержание - закрепить внизу';
     b.setAttribute('aria-label', b.title);
     b.innerHTML = (direction === 'top' ? ICONS.layerTop : ICONS.layerBottom);
     let hold = 0, held = false;
@@ -2186,7 +2173,11 @@ function settingsPopover(): HTMLElement {
   return document.getElementById('settings-popover')!;
 }
 
+let settingsPopoverView: SectionView | null = null;
+
 function closeSettings(): void {
+  settingsPopoverView?.dispose?.();
+  settingsPopoverView = null;
   document.body.classList.remove('settings-popover-open');
   settingsPopover().hidden = true;
 }
@@ -2200,7 +2191,8 @@ function openSettings(): void {
   title.className = 'ctx-title';
   title.textContent = 'Настройки доски';
   pop.appendChild(title);
-  fillBoardSettings(pop, openSettings);
+  settingsPopoverView = fillBoardSettings(pop);
+  pop.append(hideUndoToggle('Скрыть кнопки отмены и повтора', 'grid-switch board-setting-switch'));
   const all = document.createElement('button');
   all.className = 'settings-all';
   all.title = macKeys('Все настройки (Ctrl+,)');
@@ -2214,7 +2206,9 @@ function openSettings(): void {
   const btn = document.getElementById('btn-settings')!;
   const br = (btn.closest('.topbar-group') ?? btn).getBoundingClientRect();
   pop.style.left = `${Math.max(8, br.right - pop.offsetWidth)}px`;
-  pop.style.top = `${br.bottom + 6}px`;
+  const top = br.bottom + 6;
+  pop.style.top = `${top}px`;
+  pop.style.maxHeight = `calc(100dvh - ${top + 8}px)`;
 }
 
 /** Кнопка профиля в шапке домашнего экрана: мини-курсор и имя; открывает раздел «Профиль». */
@@ -2283,11 +2277,26 @@ export function openAllSettings(section?: string): void {
       id: 'general',
       title: 'Доска',
       icon: ICONS.settings,
-      render: (host, rerender) => {
+      render: host => {
         const box = document.createElement('div');
         box.className = 'sd-general';
-        fillBoardSettings(box, rerender);
         host.appendChild(box);
+        const view = fillBoardSettings(box);
+        const hide = hideSwitches('board-setting-switch');
+        const syncFit = () => syncHideSwitchFit(hide.imports, hide.exportButton);
+        syncFit();
+        document.addEventListener('topbar-fit', syncFit);
+        const unsubTier = onTierHiddenChange(on => setToggleChecked(switchInput(hide.tier), on, false));
+        box.append(boardSwitchGroup('Скрыть из верхней панели', Object.values(hide)),
+          boardSwitchGroup('Взаимодействия', interactionSwitches('board-setting-switch')));
+        return {
+          onKey: view.onKey,
+          dispose() {
+            document.removeEventListener('topbar-fit', syncFit);
+            unsubTier();
+            view.dispose?.();
+          },
+        };
       },
     },
     { id: 'toolbar', title: 'Панель инструментов', icon: ICONS.toolbar, render: host => renderToolbarEditor(host) },
@@ -2305,6 +2314,9 @@ export function openAllSettings(section?: string): void {
       }),
     },
     { id: 'advanced', title: 'Дополнительные', icon: ICONS.advanced, render: host => renderAdvancedSettings(host) },
+    ...(analyticsAvailable() ? [{
+      id: 'privacy', title: 'Конфиденциальность', icon: ICONS.privacy, render: renderAnalyticsSettings,
+    }] : []),
     { id: 'about', title: 'О проекте', icon: ICONS.info, render: host => renderAbout(host, showExperiments) },
     ...(experimentsShown() ? [EXPERIMENTAL] : []),
     // «Профиль» — первым в списке, но окно без явного раздела по-прежнему открывается на «Доске» (или на последнем)
@@ -2320,13 +2332,14 @@ function renderAdvancedSettings(host: HTMLElement): void {
   lbl.textContent = 'Панель инструментов';
   box.appendChild(lbl);
   box.appendChild(settingCheck('toolbarDetachable', 'Разрешить откреплять панель инструментов',
-    'При наведении над панелью появляется ручка: за неё панель переносят по доске (не помещается — поворачивается), '
+    'При наведении над панелью появляется ручка: за неё панель переносят по доске (не помещается - поворачивается), '
     + 'нажатие на ручку поворачивает панель. Выключение возвращает панель на её край',
     () => {
       // запрет откреплять — панель возвращается к своему краю
       if (!state.settings.toolbarDetachable) { setSettings({ toolbarFloat: null }); persistSettings(); }
       applyToolbarPos();
     }));
+  box.append(boardSettingsLabel('Список страниц'), settingCheck('closePagesOnPick', 'Закрывать после выбора страницы'));
   host.appendChild(box);
 }
 
@@ -2355,124 +2368,20 @@ function showExperiments(): void {
 }
 
 /** Основные настройки доски — в поповере и в разделе «Доска» окна всех настроек. */
-function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
-  const lbl1 = document.createElement('div');
-  lbl1.className = 'ctx-label';
-  lbl1.textContent = 'Панель инструментов';
-  pop.appendChild(lbl1);
-  const row = document.createElement('div');
-  row.className = 'ctx-toolbar-pos';
-  for (const pos of (['left', 'top', 'right', 'bottom'] as ToolbarPos[])) {
-    const b = document.createElement('button');
-    const names: Record<ToolbarPos, string> = { left: 'Слева', top: 'Сверху', right: 'Справа', bottom: 'Снизу' };
-    b.textContent = names[pos];
-    // откреплённая панель — ни одна сторона не выбрана; выбор стороны снова пристыковывает её
-    b.className = !state.settings.toolbarFloat && state.settings.toolbarPos === pos ? 'active' : '';
-    b.addEventListener('click', () => {
-      setSettings({ toolbarPos: pos, toolbarFloat: null });
-      persistSettings();
-      applyToolbarPos();
-      rerender();
-    });
-    row.appendChild(b);
-  }
-  pop.appendChild(row);
-  const lbl8 = document.createElement('label');
-  lbl8.className = 'ctx-check';
-  lbl8.title = macKeys('Изображения и страницы PDF не искажаются при изменении размера — Ctrl или Shift зажимать не нужно');
-  const cb8 = document.createElement('input');
-  cb8.type = 'checkbox';
-  cb8.checked = state.settings.keepImageAspect;
-  cb8.addEventListener('change', () => {
-    setSettings({ keepImageAspect: cb8.checked });
+function fillBoardSettings(host: HTMLElement): SectionView {
+  return renderBoardMotionSettings(host, state.settings, patch => {
+    setSettings(patch);
     persistSettings();
+    if (patch.animationMode !== undefined) applyAnimationMode();
   });
-  const span8 = document.createElement('span');
-  span8.textContent = 'Пропорциональный размер изображений';
-  lbl8.append(cb8, span8);
-  pop.appendChild(lbl8);
-  const lbl4 = document.createElement('div');
-  lbl4.className = 'ctx-label';
-  lbl4.textContent = 'Колёсико мыши';
-  pop.appendChild(lbl4);
-  const wheelRow = document.createElement('div');
-  wheelRow.className = 'ctx-toolbar-pos';
-  const wheelModes: { mode: WheelMode; name: string; hint: string }[] = [
-    { mode: 'scroll', name: 'Прокрутка', hint: 'Колёсико прокручивает, Shift — по горизонтали, Ctrl — масштаб' },
-    { mode: 'zoom', name: 'Масштаб', hint: 'Колёсико масштабирует, Shift — прокрутка по горизонтали, Ctrl+Shift — по вертикали. Настройка также действует на тачпад' },
-  ];
-  for (const { mode, name, hint } of wheelModes) {
-    const b = document.createElement('button');
-    b.textContent = name;
-    b.title = hint;
-    b.className = state.settings.wheelMode === mode ? 'active' : '';
-    b.addEventListener('click', () => {
-      setSettings({ wheelMode: mode });
-      persistSettings();
-      rerender();
-    });
-    wheelRow.appendChild(b);
-  }
-  pop.appendChild(wheelRow);
-  const lbl5 = document.createElement('div');
-  lbl5.className = 'ctx-label';
-  lbl5.textContent = 'Анимация перехода на другую страницу';
-  pop.appendChild(lbl5);
-  const transRow = document.createElement('div');
-  transRow.className = 'ctx-toolbar-pos ctx-options';
-  for (const { mode, name, hint } of PAGE_TRANSITIONS) {
-    const b = document.createElement('button');
-    b.textContent = name;
-    b.title = hint;
-    b.className = state.settings.pageTransition === mode ? 'active' : '';
-    b.addEventListener('click', () => {
-      setSettings({ pageTransition: mode });
-      persistSettings();
-      rerender();
-    });
-    transRow.appendChild(b);
-  }
-  pop.appendChild(transRow);
-  const lblPages = document.createElement('div');
-  lblPages.className = 'ctx-label';
-  lblPages.textContent = 'Список страниц';
-  pop.appendChild(lblPages);
-  pop.appendChild(settingCheck('closePagesOnPick', 'Закрывать после выбора страницы'));
-  const lblAnim = document.createElement('div');
-  lblAnim.className = 'ctx-label';
-  lblAnim.textContent = 'Анимации';
-  pop.appendChild(lblAnim);
-  const animRow = document.createElement('div');
-  animRow.className = 'ctx-toolbar-pos ctx-options';
-  for (const { mode, name, hint } of ANIMATION_MODES) {
-    const b = document.createElement('button');
-    b.textContent = name;
-    b.title = hint;
-    b.className = state.settings.animationMode === mode ? 'active' : '';
-    b.addEventListener('click', () => {
-      setSettings({ animationMode: mode });
-      persistSettings();
-      applyAnimationMode();
-      rerender();
-    });
-    animRow.appendChild(b);
-  }
-  pop.appendChild(animRow);
-  const lbl7 = document.createElement('label');
-  lbl7.className = 'ctx-check';
-  lbl7.title = macKeys('Отмена и повтор по-прежнему работают на Ctrl+Z и Ctrl+Y');
-  const cb7 = document.createElement('input');
-  cb7.type = 'checkbox';
-  cb7.checked = state.settings.hideUndoRedo;
-  cb7.addEventListener('change', () => {
-    setSettings({ hideUndoRedo: cb7.checked });
-    persistSettings();
-    applyUndoRedoVisibility(true);
-  });
-  const span7 = document.createElement('span');
-  span7.textContent = 'Скрыть кнопки отмены и повтора';
-  lbl7.append(cb7, span7);
-  pop.appendChild(lbl7);
+}
+
+function boardSwitchGroup(title: string, switches: HTMLLabelElement[]): HTMLElement {
+  const section = document.createElement('section');
+  section.className = 'board-setting-group';
+  section.setAttribute('aria-label', title);
+  section.append(boardSettingsLabel(title), ...switches);
+  return section;
 }
 
 type BoolSetting = 'toolbarDetachable' | 'alignGuides' | 'closePagesOnPick' | 'thumbViewport' | 'pageLinks' | 'recursionEnabled';
@@ -2564,7 +2473,7 @@ const TOOLBAR_HOLD_MS = 500;
 function toolbarGrip(tb: HTMLElement): HTMLElement {
   const grip = document.createElement('div');
   grip.className = 'tb-grip';
-  grip.title = 'Перетащите, чтобы переместить панель. Нажмите — повернуть, удерживайте — прикрепить обратно к краю';
+  grip.title = 'Перетащите, чтобы переместить панель. Нажмите - повернуть, удерживайте - прикрепить обратно к краю';
   grip.innerHTML = GRIP_ICON;
   grip.addEventListener('pointerdown', e => {
     if (e.button !== 0 || !e.isPrimary || !state.settings.toolbarDetachable) return;
@@ -2669,7 +2578,7 @@ export async function exportPng(scope: 'auto' | 'page' | 'selection' = 'auto'): 
     : state.board.elements;
   if (els.length === 0) {
     if (scope === 'selection') showToast('Сначала выделите объекты на доске');
-    else alert('Страница пуста — нечего экспортировать');
+    else alert('Страница пуста - нечего экспортировать');
     return;
   }
   const bb = contentBBox(els);
@@ -2950,7 +2859,7 @@ export async function pasteImageFromClipboard(): Promise<void> {
   try {
     items = await navigator.clipboard.read();
   } catch {
-    showToast(macKeys('Нет доступа к буферу обмена — нажмите Ctrl+V на доске'));
+    showToast(macKeys('Нет доступа к буферу обмена - нажмите Ctrl+V на доске'));
     return;
   }
   for (const it of items) {
@@ -3586,7 +3495,7 @@ function makePageCard(pageId: string, draft = false): PageCard {
   grid.title = 'Фон страницы';
   const name = document.createElement('span');
   name.className = 'page-name';
-  name.title = 'Двойной клик — переименовать';
+  name.title = 'Двойной клик - переименовать';
   row.append(grid, name);
   const del = document.createElement('button');
   del.className = 'page-del';
@@ -3627,7 +3536,7 @@ function makeDraftDivider(): HTMLElement {
   const d = document.createElement('div');
   d.className = 'page-divider';
   d.setAttribute('role', 'separator');
-  d.title = 'Справа — черновики: их видите только вы';
+  d.title = 'Справа - черновики: их видите только вы';
   return d;
 }
 
@@ -4631,7 +4540,7 @@ function projectCard(meta: ProjectMeta, seen: Set<string>): HTMLElement {
   const name = document.createElement('span');
   name.className = 'project-name';
   name.textContent = meta.name;
-  name.title = 'Двойной клик — переименовать';
+  name.title = 'Двойной клик - переименовать';
   title.append(name, ...projectActions(meta));
   const info = document.createElement('div');
   info.className = 'project-info';
@@ -4652,7 +4561,7 @@ function projectRow(meta: ProjectMeta): HTMLElement {
   const name = document.createElement('span');
   name.className = 'project-name';
   name.textContent = meta.name;
-  name.title = 'Двойной клик — переименовать';
+  name.title = 'Двойной клик - переименовать';
   const info = document.createElement('span');
   info.className = 'project-info';
   info.textContent = `Изменён ${dayLabel(meta.updatedAt)}`;
@@ -4663,7 +4572,7 @@ function projectRow(meta: ProjectMeta): HTMLElement {
   const last = openedMap()[meta.id];
   const openedCell = document.createElement('span');
   openedCell.className = 'project-cell project-opened';
-  openedCell.textContent = last ? capitalize(dayLabel(last.at)) : '—';
+  openedCell.textContent = last ? capitalize(dayLabel(last.at)) : '-';
   const actions = document.createElement('div');
   actions.className = 'project-actions';
   actions.append(...projectActions(meta));
@@ -4700,7 +4609,7 @@ function buildCarousel(preview: HTMLElement, project: Project, seen: Set<string>
   });
   const label = document.createElement('div');
   label.className = 'carousel-page';
-  label.title = 'Двойной клик — переименовать страницу';
+  label.title = 'Двойной клик - переименовать страницу';
   const num = document.createElement('span');
   num.className = 'page-num';
   const pageName = document.createElement('span');
@@ -5119,7 +5028,7 @@ function syncPresetButtons(tb: HTMLElement): void {
     b.classList.toggle('current', multi && current);
     if (current) { b.dataset.ctx = 'style'; b.id = 'btn-style'; }
     else { delete b.dataset.ctx; b.removeAttribute('id'); }
-    b.title = multi ? `${title}: пресет ${i + 1}${current ? ' — цвет и толщина' : ''}` : 'Цвет и толщина';
+    b.title = multi ? `${title}: пресет ${i + 1}${current ? ' - цвет и толщина' : ''}` : 'Цвет и толщина';
     // текущий показывает живой стиль (в т.ч. подхваченный из выделения)
     paintStyleIndicator(b.querySelector<HTMLElement>('.style-ind')!, kind !== 'laser', current ? state.style : preset);
   }
@@ -5141,6 +5050,85 @@ function makeVsep(): HTMLElement {
   const s = document.createElement('div');
   s.className = 'vsep';
   return s;
+}
+
+type InteractionSetting = 'snapToGrid' | 'smoothPan' | 'alignGuides' | 'keepImageAspect';
+
+/** Общий набор переключателей для меню и настроек. */
+function interactionSwitches(menuClass: 'main-switch' | 'view-switch' | 'board-setting-switch'): HTMLLabelElement[] {
+  const make = (key: InteractionSetting, label: string, icon: string, title: string) => createToggleSwitch({
+    className: `grid-switch ${menuClass}${key === 'keepImageAspect' ? ' interaction-switch-multiline' : ''}`,
+    label, icon, title, checked: state.settings[key],
+    onChange: on => { setSettings({ [key]: on }); persistSettings(); },
+  });
+  const rows: HTMLLabelElement[] = [];
+  if (state.linkMode === null) rows.push(make('snapToGrid', 'Привязка к сетке', SNAP_ICON, 'Точки, фигуры и рамки при перемещении встают на узлы сетки'));
+  rows.push(make('smoothPan', 'Плавное движение', SMOOTH_PAN_ICON, 'Небольшая инерция при перемещении по доске: после отпускания камера плавно останавливается'));
+  if (state.linkMode === null) {
+    rows.push(make('alignGuides', 'Направляющие', GUIDES_ICON, 'При переносе и изменении размера - пунктир от соседних объектов, к их краям и центрам объект примагничивается'));
+    rows.push(make('keepImageAspect', 'Пропорциональное\nредактирование', PROPORTIONAL_ICON, macKeys('Изображения и страницы PDF не искажаются при изменении размера - Ctrl или Shift зажимать не нужно')));
+  }
+  return rows;
+}
+
+let closeExportMenu = (): void => {};
+
+function switchInput(row: HTMLLabelElement): HTMLInputElement {
+  return row.querySelector('input')!;
+}
+
+function hideUndoToggle(label: string, className: string): HTMLLabelElement {
+  return createToggleSwitch({
+    className, label,
+    icon: ICONS.undo,
+    title: macKeys('Отмена и повтор по-прежнему работают на Ctrl+Z и Ctrl+Y'),
+    checked: state.settings.hideUndoRedo,
+    onChange: on => { setSettings({ hideUndoRedo: on }); persistSettings(); applyUndoRedoVisibility(true); },
+  });
+}
+
+function hideSwitches(rowClass: 'main-switch' | 'board-setting-switch') {
+  const className = 'grid-switch ' + rowClass;
+  const hideUndoSwitch = hideUndoToggle('Кнопки отмены и повтора', className);
+  const hideImportsSwitch = createToggleSwitch({
+    className,
+    label: 'Кнопки импорта',
+    icon: ICONS.pdf,
+    checked: localStorage.getItem('abax.hideImports') === 'true',
+    onChange: on => {
+      localStorage.setItem('abax.hideImports', String(on));
+      setTopbarGroupHidden(document.querySelector<HTMLElement>('.import-group')!, on, hidden => document.body.classList.toggle('hide-import-buttons', hidden));
+    },
+  });
+  const hideExportSwitch = createToggleSwitch({
+    className,
+    label: 'Кнопка экспорта',
+    icon: ICONS.export,
+    checked: localStorage.getItem('abax.hideExport') === 'true',
+    onChange: on => {
+      localStorage.setItem('abax.hideExport', String(on));
+      if (on) closeExportMenu();
+      setTopbarGroupHidden(document.querySelector<HTMLElement>('.export-group')!, on, hidden => document.body.classList.toggle('hide-export-button', hidden));
+    },
+  });
+  const hideTierSwitch = createToggleSwitch({
+    className,
+    label: 'Текущий тариф',
+    icon: ICONS.crown,
+    checked: tierHidden(),
+    onChange: on => setTierHidden(on),
+  });
+  return { undo: hideUndoSwitch, imports: hideImportsSwitch, exportButton: hideExportSwitch, tier: hideTierSwitch };
+}
+
+function syncHideSwitchFit(imports: HTMLLabelElement, exportButton: HTMLLabelElement): void {
+  // элемент, которому в шапке не хватает места, показать нельзя: пункт недоступен
+  const { noRoom } = topbarFit();
+  for (const [row, step] of [[imports, 'import'], [exportButton, 'export']] as const) {
+    const disabled = noRoom.has(step);
+    switchInput(row).disabled = disabled;
+    row.title = disabled ? 'Не хватает места в шапке' : '';
+  }
 }
 
 function wireTopbar(): void {
@@ -5182,8 +5170,6 @@ function wireTopbar(): void {
   // окно демонстрации — второе окно браузера, в приложении для Android его не открыть
   if (isNativeApp()) document.getElementById('btn-present')!.style.display = 'none';
 
-  // меню экспорта создаётся ниже; до этого закрывать нечего
-  let closeExportMenu = (): void => {};
   const menuButton = document.getElementById('btn-home') as HTMLButtonElement;
   menuButton.title = 'Меню';
   menuButton.setAttribute('aria-label', 'Меню');
@@ -5206,47 +5192,12 @@ function wireTopbar(): void {
         + '<hr>' + menuItem('link-project', 'Ссылка на проект (просмотр)', ICONS.link) + menuItem('link-page', 'Ссылка на текущую страницу', ICONS.link))}<hr>
     ${section('hide', 'Скрыть', ICONS.hideSection,
       '')}
-    ${menuItem('task', 'Добавить задание…', ICONS.task)}
+    ${section('interactions', 'Взаимодействия', INTERACTIONS_ICON, '')}
     ${menuItem('settings', 'Настройки', ICONS.settings)}<hr>
     ${!doskaApi && !isNativeApp() ? menuItem('app', 'Открыть в приложении', ICONS.openApp) : ''}`;
   document.body.append(menu);
   // «Скрыть»: переключатели на пружинах (src/toggle-switch.ts), меню при щелчке не закрывается
-  const hideUndoSwitch = createToggleSwitch({
-    className: 'grid-switch main-switch',
-    label: 'Кнопки отмены и повтора',
-    icon: ICONS.undo,
-    checked: state.settings.hideUndoRedo,
-    onChange: on => { setSettings({ hideUndoRedo: on }); persistSettings(); applyUndoRedoVisibility(true); },
-  });
-  const hideImportsSwitch = createToggleSwitch({
-    className: 'grid-switch main-switch',
-    label: 'Кнопки импорта',
-    icon: ICONS.pdf,
-    checked: localStorage.getItem('abax.hideImports') === 'true',
-    onChange: on => {
-      localStorage.setItem('abax.hideImports', String(on));
-      setTopbarGroupHidden(document.querySelector<HTMLElement>('.import-group')!, on, hidden => document.body.classList.toggle('hide-import-buttons', hidden));
-    },
-  });
-  const hideExportSwitch = createToggleSwitch({
-    className: 'grid-switch main-switch',
-    label: 'Кнопка экспорта',
-    icon: ICONS.export,
-    checked: localStorage.getItem('abax.hideExport') === 'true',
-    onChange: on => {
-      localStorage.setItem('abax.hideExport', String(on));
-      if (on) closeExportMenu();
-      setTopbarGroupHidden(document.querySelector<HTMLElement>('.export-group')!, on, hidden => document.body.classList.toggle('hide-export-button', hidden));
-    },
-  });
-  const hideTierSwitch = createToggleSwitch({
-    className: 'grid-switch main-switch',
-    label: 'Текущий тариф',
-    icon: ICONS.crown,
-    checked: tierHidden(),
-    onChange: on => setTierHidden(on),
-  });
-  const switchInput = (row: HTMLElement) => row.querySelector<HTMLInputElement>('input')!;
+  const { undo: hideUndoSwitch, imports: hideImportsSwitch, exportButton: hideExportSwitch, tier: hideTierSwitch } = hideSwitches('main-switch');
   // data-action — на самом переключателе: по нему пункт находят тесты и проверяют доступность
   switchInput(hideUndoSwitch).dataset.action = 'undo';
   switchInput(hideImportsSwitch).dataset.action = 'imports';
@@ -5254,23 +5205,17 @@ function wireTopbar(): void {
   switchInput(hideTierSwitch).dataset.action = 'hide-tier';
   menu.querySelector<HTMLElement>('#menu-hide')!.append(hideUndoSwitch, hideImportsSwitch, hideExportSwitch, hideTierSwitch);
   // крестик на самом тарифе тоже прячет его — переключатель меню показывает это
-  onTierHiddenChange(on => { switchInput(hideTierSwitch).checked = on; });
+  onTierHiddenChange(on => setToggleChecked(switchInput(hideTierSwitch), on, false));
   const submenus = () => [...menu.querySelectorAll<HTMLButtonElement>('[data-section]')]
     .map(button => ({ button, panel: document.getElementById(button.getAttribute('aria-controls')!)! }));
   /** Отметки «Скрыть» и недоступные пункты — по текущему состоянию шапки. */
   const syncMenuChecks = () => {
     // настройку могли поменять и в другом месте (окно настроек)
-    switchInput(hideUndoSwitch).checked = state.settings.hideUndoRedo;
-    switchInput(hideImportsSwitch).checked = localStorage.getItem('abax.hideImports') === 'true';
-    switchInput(hideExportSwitch).checked = localStorage.getItem('abax.hideExport') === 'true';
-    switchInput(hideTierSwitch).checked = tierHidden();
-    // элемент, которому в шапке не хватает места, показать нельзя: пункт недоступен
-    const { noRoom } = topbarFit();
-    for (const [row, step] of [[hideImportsSwitch, 'import'], [hideExportSwitch, 'export']] as const) {
-      const disabled = noRoom.has(step);
-      switchInput(row).disabled = disabled;
-      row.title = disabled ? 'Не хватает места в шапке' : '';
-    }
+    setToggleChecked(switchInput(hideUndoSwitch), state.settings.hideUndoRedo, false);
+    setToggleChecked(switchInput(hideImportsSwitch), localStorage.getItem('abax.hideImports') === 'true', false);
+    setToggleChecked(switchInput(hideExportSwitch), localStorage.getItem('abax.hideExport') === 'true', false);
+    setToggleChecked(switchInput(hideTierSwitch), tierHidden(), false);
+    syncHideSwitchFit(hideImportsSwitch, hideExportSwitch);
   };
   const setMenuOpen = (open: boolean) => {
     if (open) {
@@ -5298,6 +5243,9 @@ function wireTopbar(): void {
     if (sectionButton) {
       // подменю одно: открытое втягивается в свой пункт, новое выходит из нажатого
       const opening = sectionButton.getAttribute('aria-expanded') !== 'true';
+      if (opening && sectionButton.dataset.section === 'interactions') {
+        menu.querySelector<HTMLElement>('#menu-interactions')!.replaceChildren(...interactionSwitches('main-switch'));
+      }
       for (const { button, panel } of submenus()) {
         const expanded = button === sectionButton && opening;
         if (expanded === (button.getAttribute('aria-expanded') === 'true')) continue;
@@ -5314,7 +5262,6 @@ function wireTopbar(): void {
     if (action === 'import') void importDocument();
     if (action === 'image') void insertImage();
     if (action === 'png') void exportPng();
-    if (action === 'task') openTaskForm(null);
     if (action === 'link-project') void copyBoardLink('project');
     if (action === 'link-page') void copyBoardLink('page');
     if (action === 'settings') openAllSettings();
@@ -5543,13 +5490,6 @@ function wireZoomInput(): void {
     return p;
   };
   const check = (on: boolean) => (on ? '<span class="view-check" aria-hidden="true">✓</span>' : '');
-  /** Переключатель настройки доски в подменю «Взаимодействия»: меню не закрывается, настройка сразу сохраняется. */
-  const settingSwitch = (key: 'snapToGrid' | 'smoothPan' | 'alignGuides', label: string, icon: string, title: string) => createToggleSwitch({
-    className: 'grid-switch view-switch',
-    label, icon, title,
-    checked: state.settings[key],
-    onChange: on => { setSettings({ [key]: on }); persistSettings(); },
-  });
   const subPage = (lvl: ViewSub): HTMLElement => {
     // заголовок — тот же пункт, что в меню (иконка, название, стрелка), поверх — стрелка «назад»
     const p = makePage(lvl, `<button class="view-back" data-view="back" aria-label="Назад"><span class="view-icon"><span class="vb-arrow">${BACK_ARROW_ICON}</span><span class="vb-ghost">${subIcon(lvl)}</span></span><span class="view-text">${subTitle(lvl)}</span><span class="view-arrow vb-ghost" aria-hidden="true">›</span></button><hr>`);
@@ -5571,10 +5511,7 @@ function wireZoomInput(): void {
     } else if (lvl === 'interactions') {
       // подсказки — слева: справа край окна, сверху и снизу они закрывали бы пункты меню и масштаб
       p.dataset.tipSide = 'left';
-      // в просмотре по ссылке доску не правят: остаётся только «Плавное движение»
-      if (state.linkMode === null) p.append(settingSwitch('snapToGrid', 'Привязка к сетке', SNAP_ICON, 'Точки, фигуры и рамки при перемещении встают на узлы сетки'));
-      p.append(settingSwitch('smoothPan', 'Плавное движение', SMOOTH_PAN_ICON, 'Небольшая инерция при перемещении по доске: после отпускания камера плавно останавливается'));
-      if (state.linkMode === null) p.append(settingSwitch('alignGuides', 'Направляющие', GUIDES_ICON, 'При переносе и изменении размера — пунктир от соседних объектов, к их краям и центрам объект примагничивается'));
+      p.append(...interactionSwitches('view-switch'));
     } else {
       const current = state.board.backgroundColor ?? '#ffffff';
       for (const [name, color] of PAGE_BACKGROUNDS) {

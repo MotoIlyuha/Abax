@@ -30,6 +30,9 @@ export interface TabPill {
   setCount(value: string, n: number): void;
   /** Кнопка вкладки (фокус, тесты). */
   tab(value: string): HTMLButtonElement | null;
+  /** Для диалогов, которые перехватывают клавиши до вкладки. */
+  onKey(e: KeyboardEvent): boolean;
+  dispose(): void;
   /** Края пилюли сейчас (для тестов и кадров). */
   readonly edges: { left: number; right: number };
 }
@@ -165,26 +168,30 @@ export function createTabPill(o: TabPillOptions): TabPill {
     const dir = i > cur ? 1 : -1;
     cur = i;
     sync();
-    go(dir, !instant && !uiAnimOff() && !reduceMotion());
     if (user) o.onChange(o.tabs[i].value);
+    go(dir, !instant && !uiAnimOff() && !reduceMotion());
   }
 
-  root.addEventListener('keydown', e => {
+  function onKey(e: KeyboardEvent): boolean {
     const n = btns.length;
-    const i = btns.indexOf(document.activeElement as HTMLButtonElement);
-    if (i < 0) return;
+    const i = btns.indexOf(e.target as HTMLButtonElement);
+    if (i < 0) return false;
     const next = e.key === 'ArrowRight' ? (i + 1) % n : e.key === 'ArrowLeft' ? (i - 1 + n) % n
       : e.key === 'Home' ? 0 : e.key === 'End' ? n - 1 : -1;
-    if (next < 0) return;
+    if (next < 0) return false;
     e.preventDefault();
     btns[next].focus();
     select(next, true, e.repeat);
-  });
+    return true;
+  }
+  root.addEventListener('keydown', onKey);
 
   return {
     el: root,
     get value() { return o.tabs[cur].value; },
     get edges() { return { left: it.A.x, right: it.B.x }; },
+    onKey,
+    dispose() { ro?.disconnect(); moving.delete(it); },
     setValue(v, opts) { select(o.tabs.findIndex(t => t.value === v), false, opts?.instant); },
     setCount(v, n) {
       const c = counts.get(v);
@@ -199,7 +206,7 @@ export function createTabPill(o: TabPillOptions): TabPill {
       c.box.classList.toggle('on', k > 0);
       const b = btns[o.tabs.findIndex(t => t.value === v)];
       const base = o.tabs.find(t => t.value === v)?.label ?? '';
-      b.setAttribute('aria-label', k > 0 ? `${base}: непрочитанных — ${text}` : base);
+      b.setAttribute('aria-label', k > 0 ? `${base}: непрочитанных - ${text}` : base);
     },
     tab(v) { return btns[o.tabs.findIndex(t => t.value === v)] ?? null; },
   };

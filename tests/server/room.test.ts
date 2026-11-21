@@ -60,7 +60,7 @@ describe('подключение через attach', () => {
     expect(init.project.pages.map((p: Msg) => p.id)).toEqual(['pg1', 'pg2']);
   });
 
-  it('пустое имя — «Гость N», у автора — «Автор»', () => {
+  it('пустое имя - «Гость N», у автора - «Автор»', () => {
     const hub = createRoomHub({ code: 'X' });
     const h = new FakeSock();
     const g = new FakeSock();
@@ -178,7 +178,7 @@ describe('дельта-патчи', () => {
     expect(guest.sent.find(m => m.t === 'init')!.patches).toBe(true);
   });
 
-  it('патч редактора применяется к странице хаба и уходит автору патчем, а без caps — проектом', () => {
+  it('патч редактора применяется к странице хаба и уходит автору патчем, а без caps - проектом', () => {
     const { hub, host, guest, uid } = setup();
     hub.setRights(uid, { pages: { pg1: 'edit' } });
     host.recv({ t: 'caps', patches: true });
@@ -366,7 +366,7 @@ describe('реакции и комментарии', () => {
     expect(host.sent.filter(m => m.t === 'patch')).toHaveLength(0);
   });
 
-  it('комментарии: ветка, ответ, закрытие; имя автора — имя в комнате; скрытая страница не принимается', () => {
+  it('комментарии: ветка, ответ, закрытие; имя автора - имя в комнате; скрытая страница не принимается', () => {
     const { hub, host, g, uid } = room();
     g.recv({ t: 'comment', op: 'create', pageId: 'pg1', x: 5, y: 6, targetElementId: 'a', text: ' Вопрос ', userId: 'masha', authorName: 'Подделка' });
     const t = hub.room.project.pages[0].comments[0];
@@ -378,8 +378,8 @@ describe('реакции и комментарии', () => {
     expect(hub.room.project.pages[0].comments[0].resolved).toBe(true);
     hub.setRights(uid, { pages: { pg2: 'hidden' } });
     const before = hub.room.project;
-    g.recv({ t: 'comment', op: 'create', pageId: 'pg2', x: 1, y: 1, text: 'х' });
-    g.recv({ t: 'comment', op: 'create', pageId: 'pg1', x: 1, y: 1, text: '  ' });
+    g.recv({ t: 'comment', op: 'create', pageId: 'pg2', x: 1, y: 1, targetElementId: 'c', text: 'х' });
+    g.recv({ t: 'comment', op: 'create', pageId: 'pg1', x: 1, y: 1, targetElementId: 'a', text: '  ' });
     expect(hub.room.project).toBe(before);
     // присланный проект комментарии хаба не затирает
     host.recv({ t: 'project', project: { ...before, pages: before.pages.map((pg: Msg) => ({ ...pg, comments: undefined })) } });

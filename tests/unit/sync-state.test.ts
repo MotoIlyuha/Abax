@@ -24,13 +24,13 @@ describe('стартовая заглушка', () => {
     expect(starterId()).toBeNull();
   });
 
-  it('пустой автоматически созданный проект — заглушка', () => {
+  it('пустой автоматически созданный проект - заглушка', () => {
     const p = starter();
     expect(p.pages[0].name).toBe(STARTER_PAGE_NAME);
     expect(isPristineStarterProject(p, p.id)).toBe(true);
   });
 
-  it('без метки или с меткой другого проекта — не заглушка', () => {
+  it('без метки или с меткой другого проекта - не заглушка', () => {
     const p = starter();
     expect(isPristineStarterProject(p, null)).toBe(false);
     expect(isPristineStarterProject(p, 'другой')).toBe(false);
@@ -63,12 +63,12 @@ describe('стартовая заглушка', () => {
 });
 
 describe('статус синхронизации', () => {
-  it('без облака и при подавлении — скрыт', () => {
+  it('без облака и при подавлении - скрыт', () => {
     expect(syncStatusOf({ cloud: false })).toBe('hidden');
     expect(syncStatusOf({ cloud: true, suppressed: true, busy: true })).toBe('hidden');
   });
 
-  it('обычный путь: в полёте — синхронизация, иначе сохранено', () => {
+  it('обычный путь: в полёте - синхронизация, иначе сохранено', () => {
     expect(syncStatusOf({ cloud: true })).toBe('synced');
     expect(syncStatusOf({ cloud: true, busy: true })).toBe('syncing');
   });

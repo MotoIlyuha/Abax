@@ -88,7 +88,7 @@ export function openTaskDialog(initial: TaskEl | null, onSave: (v: TaskFormValue
   const exam = select(EXAM_TYPES.map(id => ({ id, title: EXAM_LABELS[id] })), initial?.examType ?? 'oge');
   const topic = input(initial?.topic ?? '', 'Например, «Проценты»', 80);
   const statement = area(initial?.statementMd ?? '', 5, 'Условие задачи');
-  const answer = input(initial?.answer ?? '', 'Правильный ответ; несколько допустимых — через «|»', 200);
+  const answer = input(initial?.answer ?? '', 'Правильный ответ; несколько допустимых - через «|»', 200);
   const unit = input(initial?.answerUnit ?? '', 'м/с, кДж…', 20);
   const lang = select(CODE_LANGS, initial?.codeSnippet?.lang ?? 'python');
   const code = area(initial?.codeSnippet?.code ?? '', 6, 'Фрагмент кода');

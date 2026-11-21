@@ -25,7 +25,7 @@ async function setup(over: Parameters<typeof makeApp>[0] = {}) {
 }
 
 describe('сохранение и чтение владельцем', () => {
-  it('PUT создаёт проект (ревизия 1), повторный — ревизия 2; владелец видит всё, включая ответы', async () => {
+  it('PUT создаёт проект (ревизия 1), повторный - ревизия 2; владелец видит всё, включая ответы', async () => {
     const { app, owner } = await setup();
     const p = proj('a');
     const r1 = await putProject(app, owner.token, p);
@@ -54,7 +54,7 @@ describe('сохранение и чтение владельцем', () => {
     expect((await call(app, 'GET', '/api/projects')).status).toBe(401);
   });
 
-  it('негодный ввод: не проект — 400, чужой id в адресе — 400, без сессии — 401, чужой проект — 409', async () => {
+  it('негодный ввод: не проект - 400, чужой id в адресе - 400, без сессии - 401, чужой проект - 409', async () => {
     const { app, owner } = await setup();
     expect((await call(app, 'PUT', '/api/projects/a', { project: { id: 'a' } }, { token: owner.token })).status).toBe(400);
     expect((await call(app, 'PUT', '/api/projects/a', { nope: 1 }, { token: owner.token })).status).toBe(400);
@@ -68,7 +68,7 @@ describe('сохранение и чтение владельцем', () => {
     expect(app.db.prepare('SELECT owner_id FROM projects WHERE id = ?').get('b')).toEqual({ owner_id: owner.id });
   });
 
-  it('неизвестный и отсутствующий проект — 404', async () => {
+  it('неизвестный и отсутствующий проект - 404', async () => {
     const { app, owner } = await setup();
     expect((await call(app, 'GET', '/api/projects/нет', undefined, { token: owner.token })).status).toBe(404);
     expect((await call(app, 'GET', '/api/projects/нет')).status).toBe(404);
@@ -90,7 +90,7 @@ describe('сохранение и чтение владельцем', () => {
 });
 
 describe('лимиты тарифа на сервере', () => {
-  it('free: четвёртый проект — 403 plan-limit-projects; удалённый в счёт не идёт; pro и tutor — без лимита', async () => {
+  it('free: четвёртый проект - 403 plan-limit-projects; удалённый в счёт не идёт; pro и tutor - без лимита', async () => {
     const { app, owner } = await setup();
     for (const id of ['a', 'b', 'c']) expect((await putProject(app, owner.token, proj(id))).status).toBe(200);
     const fourth = await putProject(app, owner.token, proj('d'));
@@ -108,7 +108,7 @@ describe('лимиты тарифа на сервере', () => {
     expect((await putProject(app, owner.token, proj('h'))).status).toBe(200);
   });
 
-  it('free: в проекте не больше трёх страниц — при создании и при росте; pro — сколько угодно', async () => {
+  it('free: в проекте не больше трёх страниц - при создании и при росте; pro - сколько угодно', async () => {
     const { app, owner } = await setup();
     const pages = (id: string, n: number) => Array.from({ length: n }, (_, i) => ({ id: `${id}-${i}`, name: `С${i}`, grid: 'square', elements: [] }));
     const big = await putProject(app, owner.token, proj('a', { pages: pages('a', 4) }));
@@ -133,7 +133,7 @@ describe('лимиты тарифа на сервере', () => {
     expect((await putProject(app, owner.token, proj('a', { pages: pages(5) }), 3)).status).toBe(403);
   });
 
-  it('просроченный pro — снова free', async () => {
+  it('просроченный pro - снова free', async () => {
     const { app, owner } = await setup();
     setPlan(app, owner.id, 'pro', app.clock.t + 1000);
     for (const id of ['a', 'b', 'c', 'd']) expect((await putProject(app, owner.token, proj(id))).status).toBe(200);
@@ -162,7 +162,7 @@ describe('картинки в проекте', () => {
     expect(app.db.prepare('SELECT data_json FROM projects').get()).not.toHaveProperty('data_json', expect.stringContaining('base64'));
   });
 
-  it('ссылка на неизвестную картинку — 409 missing-assets со списком; после загрузки проходит', async () => {
+  it('ссылка на неизвестную картинку - 409 missing-assets со списком; после загрузки проходит', async () => {
     const { app, owner } = await setup();
     const hash = 'ab'.repeat(32);
     const r = await putProject(app, owner.token, withImage('a', `asset://${hash}`));
@@ -216,7 +216,7 @@ describe('устаревшая ревизия: сохранение автора
     expect(got.pages[0].comments).toHaveLength(1);
   });
 
-  it('expectedRev равен текущей: клиент всё видел, его версия — истина', async () => {
+  it('expectedRev равен текущей: клиент всё видел, его версия - истина', async () => {
     const { app, owner } = await seeded();
     const mine = proj('a');
     const r = await putProject(app, owner.token, mine, 2);
@@ -227,7 +227,7 @@ describe('устаревшая ревизия: сохранение автора
     expect(got.pages[0].comments).toBeUndefined();
   });
 
-  it('expectedRev не передан — считается устаревшим (ввод не теряется)', async () => {
+  it('expectedRev не передан - считается устаревшим (ввод не теряется)', async () => {
     const { app, owner } = await seeded();
     await putProject(app, owner.token, proj('a'));
     const got = (await call(app, 'GET', '/api/projects/a', undefined, { token: owner.token })).body.project;
@@ -277,7 +277,7 @@ describe('просмотр: роли и маскировка', () => {
     expect(r.body.project.pages[0].elements[0].answer).toBe('');
   });
 
-  it('?pageId=: только эта страница, клонировать нельзя, скрытая и неизвестная — 404', async () => {
+  it('?pageId=: только эта страница, клонировать нельзя, скрытая и неизвестная - 404', async () => {
     const { app } = await shared();
     const r = await call(app, 'GET', '/api/projects/a?pageId=a-p2');
     expect(r.body.project.pages.map((p: any) => p.id)).toEqual(['a-p2']);
@@ -324,7 +324,7 @@ describe('просмотр: роли и маскировка', () => {
     expect(JSON.stringify(r.body)).not.toContain('СКРЫТЫЙ-ТЕКСТ');
   });
 
-  it('отозванное, просроченное, чужое и неизвестное приглашения — 404', async () => {
+  it('отозванное, просроченное, чужое и неизвестное приглашения - 404', async () => {
     const { app, owner } = await shared();
     await putProject(app, owner.token, proj('b'));
     addInvite(app, 'tok-rev', 'a', owner.id, { revoked: 1 });
@@ -379,7 +379,7 @@ describe('POST /api/projects/:id/patch', () => {
     expect(JSON.parse(rev.patch_json).ops).toHaveLength(2);
   });
 
-  it('гость с edit на странице правит её без сессии; на других страницах и с view — 403', async () => {
+  it('гость с edit на странице правит её без сессии; на других страницах и с view - 403', async () => {
     const { app } = await shared();
     const ok = await call(app, 'POST', '/api/projects/a/patch?invite=edit-p2', patch('a-p2', [putOp(rectEl('g1'))]));
     expect(ok.status).toBe(200);
@@ -393,7 +393,7 @@ describe('POST /api/projects/:id/patch', () => {
     expect(stored(app).pages[0].elements.map((e: any) => e.id)).toEqual(['t1', 'r1']);
   });
 
-  it('без прав: без сессии и приглашения — 401, чужой вошедший — 403, плохое приглашение — 403; плохой патч — 400; нет страницы — 404', async () => {
+  it('без прав: без сессии и приглашения - 401, чужой вошедший - 403, плохое приглашение - 403; плохой патч - 400; нет страницы - 404', async () => {
     const { app } = await shared();
     const stranger = await anon(app);
     const body = patch('a-p2', [putOp(rectEl('x'))]);
@@ -462,7 +462,7 @@ describe('POST /api/projects/:id/clone', () => {
     return s;
   }
 
-  it('чужой проект: новая копия у клонирующего — без ответов, ввода, комментариев, прав и скрытых страниц', async () => {
+  it('чужой проект: новая копия у клонирующего - без ответов, ввода, комментариев, прав и скрытых страниц', async () => {
     const { app } = await shared();
     const cloner = await anon(app);
     const r = await call(app, 'POST', '/api/projects/a/clone', undefined, { token: cloner.token });
@@ -488,7 +488,7 @@ describe('POST /api/projects/:id/clone', () => {
     expect(JSON.parse((app.db.prepare('SELECT data_json FROM projects WHERE id = ?').get('a') as any).data_json).pages[0].elements[0].answer).toBe('42');
   });
 
-  it('запрет клонирования — 403 clone-forbidden; владельцу можно', async () => {
+  it('запрет клонирования - 403 clone-forbidden; владельцу можно', async () => {
     const { app, owner } = await shared({ forbidClone: true });
     const cloner = await anon(app);
     const r = await call(app, 'POST', '/api/projects/a/clone', undefined, { token: cloner.token });
@@ -498,7 +498,7 @@ describe('POST /api/projects/:id/clone', () => {
     expect((await call(app, 'POST', '/api/projects/a/clone', undefined, { token: owner.token })).status).toBe(201);
   });
 
-  it('лимит проектов клонирующего на free — 403 plan-limit-projects; pro клонирует без лимита', async () => {
+  it('лимит проектов клонирующего на free - 403 plan-limit-projects; pro клонирует без лимита', async () => {
     const { app } = await shared();
     const cloner = await anon(app);
     for (const id of ['x', 'y', 'z']) await putProject(app, cloner.token, proj(id));
@@ -509,7 +509,7 @@ describe('POST /api/projects/:id/clone', () => {
     expect((await call(app, 'POST', '/api/projects/a/clone', undefined, { token: cloner.token })).status).toBe(201);
   });
 
-  it('нужна сессия; удалённый и неизвестный проект — 404; с приглашением скрываются и его скрытые страницы', async () => {
+  it('нужна сессия; удалённый и неизвестный проект - 404; с приглашением скрываются и его скрытые страницы', async () => {
     const { app, owner } = await shared({});
     expect((await call(app, 'POST', '/api/projects/a/clone')).status).toBe(401);
     const cloner = await anon(app);
@@ -523,7 +523,7 @@ describe('POST /api/projects/:id/clone', () => {
 });
 
 describe('DELETE /api/projects/:id', () => {
-  it('мягкое удаление: проект скрыт, строка остаётся; чужой и повторный — 404; PUT владельца его восстанавливает', async () => {
+  it('мягкое удаление: проект скрыт, строка остаётся; чужой и повторный - 404; PUT владельца его восстанавливает', async () => {
     const { app, owner } = await setup();
     const other = await anon(app);
     await putProject(app, owner.token, proj('a'));
@@ -540,7 +540,7 @@ describe('DELETE /api/projects/:id', () => {
     expect(app.db.prepare('SELECT is_deleted FROM projects WHERE id = ?').get('a')).toEqual({ is_deleted: 0 });
   });
 
-  it('восстановление считается созданием: при заполненном лимите — 403', async () => {
+  it('восстановление считается созданием: при заполненном лимите - 403', async () => {
     const { app, owner } = await setup();
     await putProject(app, owner.token, proj('a'));
     await call(app, 'DELETE', '/api/projects/a', undefined, { token: owner.token });
@@ -562,7 +562,7 @@ describe('офлайн-конфликт по подписи содержимог
     return { ...s, baseSig };
   }
 
-  it('сервер ушёл вперёд с другого устройства — 409 rev-conflict без записи', async () => {
+  it('сервер ушёл вперёд с другого устройства - 409 rev-conflict без записи', async () => {
     const { app, owner, baseSig } = await twoDevices();
     const laptop = proj('a', { name: 'Офлайн-правка' });
     const r = await call(app, 'PUT', '/api/projects/a', { project: laptop, expectedRev: 1, baseSig }, { token: owner.token });
@@ -574,14 +574,14 @@ describe('офлайн-конфликт по подписи содержимог
     expect(JSON.stringify(got.project)).toContain('с-планшета');
   });
 
-  it('без baseSig — прежнее слияние (автор выигрывает)', async () => {
+  it('без baseSig - прежнее слияние (автор выигрывает)', async () => {
     const { app, owner } = await twoDevices();
     const r = await putProject(app, owner.token, proj('a', { name: 'Офлайн-правка' }), 1);
     expect(r.status).toBe(200);
     expect(r.body.rev).toBe(3);
   });
 
-  it('устаревшая ревизия, но содержимое автора на сервере не менялось (только ввод учеников) — слияние, не конфликт', async () => {
+  it('устаревшая ревизия, но содержимое автора на сервере не менялось (только ввод учеников) - слияние, не конфликт', async () => {
     const { app, owner } = await setup();
     const first = await putProject(app, owner.token, proj('a'));
     editStored(app, 'a', p => { p.pages[0].elements[1].reactions = { '👍': ['u1'] }; p.pages[0].comments = [{ id: 'c1', x: 0, y: 0, messages: [] }]; });
@@ -593,7 +593,7 @@ describe('офлайн-конфликт по подписи содержимог
     expect(r.body.sig).toBe(contentSignature(mine));
   });
 
-  it('expectedRev равен текущей — baseSig не проверяется', async () => {
+  it('expectedRev равен текущей - baseSig не проверяется', async () => {
     const { app, owner } = await setup();
     await putProject(app, owner.token, proj('a'));
     const r = await call(app, 'PUT', '/api/projects/a', { project: proj('a', { name: 'X' }), expectedRev: 1, baseSig: 'v1:чужая' }, { token: owner.token });

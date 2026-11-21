@@ -22,7 +22,7 @@ import { clientId } from './identity';
 
 /** Сколько последних сообщений видно в свёрнутой карточке. */
 export const PREVIEW_MAX = 3;
-export const COMMENTS_EMPTY_TEXT = 'Комментариев пока нет — выделите объект и нажмите «Комментировать»';
+export const COMMENTS_EMPTY_TEXT = 'Комментариев пока нет - выделите объект и нажмите «Комментировать»';
 
 const GOTO_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17L17 7"/><path d="M9 7h8v8"/></svg>';
 

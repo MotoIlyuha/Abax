@@ -100,7 +100,7 @@ describe.each(kinds)('$name', kind => {
       expect(b.s.all('attention').length).toBe(n);
     });
 
-    it('читатель не привлекает внимание; скрытая страница — не получает', () => {
+    it('читатель не привлекает внимание; скрытая страница - не получает', () => {
       const { hub, host, join } = room(kind.make());
       const reader = join('Читатель');
       const b = join('Боря');

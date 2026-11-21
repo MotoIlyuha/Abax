@@ -43,7 +43,7 @@ test.describe('панель цвета и толщины', () => {
     await expect(panel.locator(`.ctx-swatches.custom [data-c="${color}"]`)).toHaveCount(0);
   });
 
-  test('перетаскивание в «Мои цвета»: приёмник синеет над зоной, текст — только без своих цветов', async ({ board, page }) => {
+  test('перетаскивание в «Мои цвета»: приёмник синеет над зоной, текст - только без своих цветов', async ({ board, page }) => {
     await page.locator('#btn-style').click();
     const panel = page.locator('.ctx-panel[data-kind="style"]');
     const hint = panel.locator('.ctx-drop-hint');
@@ -352,27 +352,18 @@ test.describe('панель цвета и толщины', () => {
 });
 
 test.describe('настройки доски', () => {
-  test('позиция панели инструментов сохраняется', async ({ board, page }) => {
+  test('сохранённая ранее позиция панели загружается, выбор края убран из поповера', async ({ board, page }) => {
+    await board.loadToolbarPosition('bottom');
     await page.locator('#btn-settings').dispatchEvent('click');
     const pop = page.locator('#settings-popover');
     await expect(pop).toBeVisible();
-    for (const [name, pos] of [['Сверху', 'top'], ['Справа', 'right'], ['Снизу', 'bottom']]) {
-      await pop.locator('button', { hasText: name }).click();
-      await expect(page.locator('#toolbar')).toHaveAttribute('data-pos', pos);
-      await expect(pop.locator('button', { hasText: name })).toHaveClass(/active/);
-    }
-    await page.locator('#btn-settings').dispatchEvent('click');
-    await expect(pop).toBeHidden();
-    await page.reload();
-    await board.ready();
+    await expect(pop.getByText('Панель инструментов', { exact: true })).toHaveCount(0);
     await expect(page.locator('#toolbar')).toHaveAttribute('data-pos', 'bottom');
   });
 
   test('панель группы встаёт у кнопки при любой позиции тулбара', async ({ board, page }) => {
-    await page.locator('#btn-settings').dispatchEvent('click');
-    for (const name of ['Сверху', 'Справа', 'Снизу', 'Слева']) {
-      await page.locator('#settings-popover button', { hasText: name }).click();
-      await page.keyboard.press('Escape');
+    for (const pos of ['top', 'right', 'bottom', 'left'] as const) {
+      await board.loadToolbarPosition(pos);
       await page.locator('#btn-solids').click();
       const panel = page.locator('.ctx-panel[data-kind="shapes"]');
       await expect(panel).toBeVisible();
@@ -384,17 +375,16 @@ test.describe('настройки доски', () => {
       expect(pb.x + pb.width).toBeLessThanOrEqual(wrap.x + wrap.width);
       expect(pb.y + pb.height).toBeLessThanOrEqual(wrap.y + wrap.height);
       await page.locator('#btn-solids').click();
-      await page.locator('#btn-settings').dispatchEvent('click');
     }
   });
 
-  test('подменю «Взаимодействия» в МВВ: привязка, плавное движение, направляющие — переключатели', async ({ board, page }) => {
+  test('подменю «Взаимодействия» в МВВ: привязка, плавное движение, направляющие - переключатели', async ({ board, page }) => {
     await page.locator('#zoom-label').click();
     const menu = page.locator('#view-menu');
     await menu.locator('[data-view="interactions"]').click();
     await expect(menu.locator('.view-back')).toHaveText('Взаимодействия›');
     const switches = menu.locator('.view-switch');
-    await expect(switches).toHaveText(['Привязка к сетке', 'Плавное движение', 'Направляющие']);
+    await expect(switches).toHaveText(['Привязка к сетке', 'Плавное движение', 'Направляющие', 'Пропорциональное редактирование']);
     for (const sw of await switches.all()) await expect(sw.locator('.view-icon svg')).toHaveCount(1);
     const sw = switches.filter({ hasText: 'Привязка к сетке' });
     const cb = sw.locator('input[role="switch"]');
@@ -406,17 +396,14 @@ test.describe('настройки доски', () => {
     expect((await board.state()).settings.snapToGrid).toBe(true);
     await switches.filter({ hasText: 'Направляющие' }).click();
     expect((await board.state()).settings.alignGuides).toBe(false);
-    // в настройках этих пунктов больше нет
     await page.keyboard.press('Escape');
-    // в главном меню Abax пункта нет
-    await page.locator('#btn-home').click();
-    await expect(page.locator('#main-menu', { hasText: 'Привязка к сетке' })).toHaveCount(0);
-    await page.keyboard.press('Escape');
-    await page.locator('#btn-settings').dispatchEvent('click');
-    for (const text of ['Привязка к сетке', 'Плавное движение', 'Направляющие']) await expect(page.locator('#settings-popover', { hasText: text })).toHaveCount(0);
+    await page.keyboard.press('Control+Comma');
+    const interactions = page.locator('#settings-dialog').getByRole('region', { name: 'Взаимодействия' });
+    await expect(interactions.getByRole('switch', { name: 'Привязка к сетке' })).toBeChecked();
+    await expect(interactions.getByRole('switch', { name: 'Направляющие' })).not.toBeChecked();
   });
 
-  test('меню «Скрыть» — переключатели, меню не закрывается', async ({ board, page }) => {
+  test('меню «Скрыть» - переключатели, меню не закрывается', async ({ board, page }) => {
     await page.locator('#btn-home').click();
     await page.locator('#main-menu [data-section="hide"]').click();
     const undo = page.locator('#menu-hide .main-switch', { hasText: 'Кнопки отмены и повтора' });
@@ -438,7 +425,7 @@ test.describe('настройки доски', () => {
     await expect(imports.locator('input')).not.toBeChecked();
   });
 
-  test('«Скрыть»: при улучшенных анимациях группа уезжает влево и растворяется, без анимаций — сразу', async ({ board, page }) => {
+  test('«Скрыть»: при улучшенных анимациях группа уезжает влево и растворяется, без анимаций - сразу', async ({ board, page }) => {
     const undoGroup = page.locator('.undo-group');
     const importGroup = page.locator('.import-group');
     const importX = async () => (await importGroup.boundingBox())!.x;
@@ -466,7 +453,7 @@ test.describe('настройки доски', () => {
     void board;
   });
 
-  test('подписи координатной плоскости — переключатель в меню фона', async ({ board, page }) => {
+  test('подписи координатной плоскости - переключатель в меню фона', async ({ board, page }) => {
     // в настройках такого пункта больше нет
     await page.locator('#btn-settings').dispatchEvent('click');
     await expect(page.locator('#settings-popover label', { hasText: 'Деления' })).toHaveCount(0);
@@ -525,6 +512,7 @@ test.describe('настройки доски', () => {
 
   test('панели плавно появляются, анимацию можно выключить', async ({ board, page }) => {
     const anim = (sel: string) => page.locator(sel).evaluate(e => getComputedStyle(e).animationName);
+    await board.tool('p');
     await page.locator('#btn-style').click();
     expect(await anim('.ctx-panel[data-kind="style"]')).toBe('ui-pop');
     await page.keyboard.press('Escape');
@@ -542,7 +530,7 @@ test.describe('настройки доски', () => {
     expect(await anim('#quick-menu')).toBe('none');
 
     await page.locator('#btn-settings').dispatchEvent('click');
-    await expect(page.locator('#settings-popover button', { hasText: /^Улучшенные$/ })).toHaveClass(/active/);
+    await expect(page.locator('#settings-popover').getByRole('tab', { name: 'Улучшенные' })).toHaveAttribute('aria-selected', 'true');
     await page.locator('#settings-popover button', { hasText: /^Выкл$/ }).click();
     expect((await board.state()).settings.animationMode).toBe('off');
     expect(await anim('#settings-popover')).toBe('none');
@@ -553,7 +541,7 @@ test.describe('настройки доски', () => {
     await page.keyboard.press('Escape');
     await page.keyboard.press('Control+Comma');
     expect(await anim('.sd-window')).toBe('none');
-    await expect(page.locator('.sd-general button', { hasText: /^Выкл$/ })).toHaveClass(/active/);
+    await expect(page.locator('.sd-general').getByRole('tab', { name: 'Выкл' })).toHaveAttribute('aria-selected', 'true');
     await page.keyboard.press('Escape');
 
     await page.reload();
@@ -589,7 +577,7 @@ test.describe('настройки доски', () => {
     await board.ready();
     await expect(page.locator('#btn-undo')).toBeHidden();
     await page.keyboard.press('Control+Comma');
-    await page.locator('.sd-general label', { hasText: 'Скрыть кнопки отмены и повтора' }).locator('input').uncheck();
+    await page.getByRole('switch', { name: 'Кнопки отмены и повтора' }).uncheck();
     await expect(page.locator('#btn-undo')).toBeVisible();
     await expect(group).toBeVisible();
   });
@@ -695,7 +683,7 @@ test.describe('страница', () => {
 });
 
 test.describe('вёрстка шапки', () => {
-  test('«Поделиться» — текстом, «Вид и масштаб» и помощь внизу справа, F1 открывает помощь, экспорт скрывается из меню', async ({ board, page }) => {
+  test('«Поделиться» - текстом, «Вид и масштаб» и помощь внизу справа, F1 открывает помощь, экспорт скрывается из меню', async ({ board, page }) => {
     await expect(page.locator('#btn-share')).toHaveText('Поделиться');
     await expect(page.locator('#btn-share .share-icon')).toBeHidden();
     await expect(page.locator('#btn-settings')).toBeHidden();
@@ -801,7 +789,7 @@ test.describe('адаптивная шапка', () => {
     void board;
   });
 
-  test('при сужении уходят экспорт, импорт, отмена/повтор переезжают под панель, «Поделиться» — иконкой; пункты «Скрыть» без места недоступны', async ({ board, page }) => {
+  test('при сужении уходят экспорт, импорт, отмена/повтор переезжают под панель, «Поделиться» - иконкой; пункты «Скрыть» без места недоступны', async ({ page }) => {
     const fit = () => page.evaluate(() => [...document.body.classList].filter(c => c.startsWith('fit-')).sort().join(' '));
     await page.setViewportSize({ width: 1280, height: 800 });
     await expect.poll(fit).toBe('');
@@ -819,22 +807,32 @@ test.describe('адаптивная шапка', () => {
     await expect(page.locator('#main-menu [data-action="undo"]')).toBeEnabled();
     await page.keyboard.press('Escape');
 
+    await page.keyboard.press('Control+Comma');
+    const hide = page.locator('#settings-dialog').getByRole('region', { name: 'Скрыть из верхней панели' });
+    await expect(hide.getByRole('switch', { name: 'Кнопка экспорта' })).toBeDisabled();
+    await expect(hide.getByRole('switch', { name: 'Кнопки импорта' })).toBeEnabled();
+    await page.keyboard.press('Escape');
+
     await page.setViewportSize({ width: 330, height: 800 });
     await expect.poll(fit).toBe('fit-export fit-import fit-share fit-undo');
     await expect(page.locator('#btn-share .share-icon')).toBeVisible();
     await expect(page.locator('#btn-share .share-text')).toBeHidden();
     // отмена и повтор — под панелью инструментов, одна над другой
-    const tb = (await page.locator('#toolbar').boundingBox())!;
-    const undo = (await page.locator('#btn-undo').boundingBox())!;
-    const redo = (await page.locator('#btn-redo').boundingBox())!;
-    expect(undo.y).toBeGreaterThan(tb.y + tb.height);
-    expect(redo.y).toBeGreaterThan(undo.y + undo.height - 1);
-    expect(Math.abs(undo.x + undo.width / 2 - redo.x - redo.width / 2)).toBeLessThan(1);
+    await expect.poll(() => page.evaluate(() => {
+      const rect = (id: string) => document.getElementById(id)!.getBoundingClientRect();
+      const toolbar = rect('toolbar');
+      const undo = rect('btn-undo');
+      const redo = rect('btn-redo');
+      return {
+        belowToolbar: undo.top > toolbar.bottom,
+        stacked: redo.top > undo.bottom - 1,
+        aligned: Math.abs(undo.x + undo.width / 2 - redo.x - redo.width / 2) < 1,
+      };
+    })).toEqual({ belowToolbar: true, stacked: true, aligned: true });
     expect(await page.locator('#topbar').evaluate(e => e.scrollWidth <= e.clientWidth)).toBe(true);
 
     await page.setViewportSize({ width: 1280, height: 800 });
     await expect.poll(fit).toBe('');
-    void board;
   });
 });
 
@@ -870,7 +868,7 @@ test.describe('подсказки', () => {
   test('режим «Анимации»: по умолчанию «Улучшенные», «Обычные» возвращают обычный пузырь', async ({ board, page }) => {
     expect((await board.state()).settings.animationMode).toBe('enhanced');
     await page.keyboard.press('Control+Comma');
-    await expect(page.locator('.sd-general button', { hasText: /^Улучшенные$/ })).toHaveClass(/active/);
+    await expect(page.locator('.sd-general').getByRole('tab', { name: 'Улучшенные' })).toHaveAttribute('aria-selected', 'true');
     await page.locator('.sd-general button', { hasText: /^Обычные$/ }).click();
     expect((await board.state()).settings.animationMode).toBe('normal');
     await page.keyboard.press('Escape');
@@ -959,10 +957,10 @@ test.describe('экспорт PNG', () => {
     expect(await page.evaluate(() => (window as any).__downloads)).toHaveLength(2);
   });
 
-  test('пустая страница — предупреждение', async ({ board, page }) => {
+  test('пустая страница - предупреждение', async ({ board, page }) => {
     const msg = new Promise<string>(resolve => page.once('dialog', d => { resolve(d.message()); void d.dismiss(); }));
     await board.exportPng();
-    expect(await msg).toBe('Страница пуста — нечего экспортировать');
+    expect(await msg).toBe('Страница пуста - нечего экспортировать');
   });
 });
 
@@ -1054,8 +1052,8 @@ test.describe('изображения', () => {
     expect(b.h).toBeCloseTo(180, 0);
     expect(b.y + b.h / 2).toBeCloseTo(a.y + a.h / 2, 0);
 
-    await page.locator('#btn-settings').dispatchEvent('click');
-    const cb = page.locator('#settings-popover label', { hasText: 'Пропорциональный размер изображений' }).locator('input');
+    await page.keyboard.press('Control+Comma');
+    const cb = page.locator('#settings-dialog').getByRole('switch', { name: 'Пропорциональное редактирование' });
     await expect(cb).toBeChecked();
     await cb.uncheck();
     await page.keyboard.press('Escape');
@@ -1074,7 +1072,7 @@ test.describe('изображения', () => {
     expect((await board.state()).settings.keepImageAspect).toBe(false);
   });
 
-  test('битый файл — сообщение об ошибке', async ({ board, page }) => {
+  test('битый файл - сообщение об ошибке', async ({ board, page }) => {
     const msg = new Promise<string>(resolve => page.once('dialog', d => { resolve(d.message()); void d.dismiss(); }));
     const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.locator('#btn-image').click()]);
     await chooser.setFiles({ name: 'bad.png', mimeType: 'image/png', buffer: Buffer.from('not an image') });
@@ -1137,7 +1135,7 @@ test.describe('импорт PDF', () => {
     expect(await board.count()).toBe(0); // весь импорт — один шаг истории
   });
 
-  test('битый PDF — сообщение об ошибке', async ({ board, page }) => {
+  test('битый PDF - сообщение об ошибке', async ({ board, page }) => {
     const msg = new Promise<string>(resolve => page.once('dialog', d => { resolve(d.message()); void d.dismiss(); }));
     const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.locator('#btn-import').click()]);
     await chooser.setFiles({ name: 'bad.pdf', mimeType: 'application/pdf', buffer: Buffer.from('%PDF-broken') });

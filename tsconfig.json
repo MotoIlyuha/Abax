@@ -12,5 +12,5 @@
     "types": ["vite/client"],
     "skipLibCheck": true
   },
-  "include": ["src"]
+  "include": ["src", "admin/src", "shared"]
 }

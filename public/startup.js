@@ -1,5 +1,5 @@
 // Экран загрузки до старта приложения. Отдельный файл, а не встроенный скрипт:
-// CSP в index.html разрешает только скрипты из самого приложения (script-src 'self').
+// CSP в index.html запрещает встроенные скрипты.
 (function () {
   var retry = document.getElementById('startup-retry');
   if (retry) retry.addEventListener('click', function () { location.reload(); });

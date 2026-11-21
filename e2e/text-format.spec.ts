@@ -19,7 +19,7 @@ test.describe('ввод текста', () => {
     expect((await board.state()).selection).toEqual([t.id]);
   });
 
-  test('меню выделения при вводе остаётся; Ctrl+B и Ctrl+I; Ctrl+Z, X, C, V — с текстом', async ({ board, page }) => {
+  test('меню выделения при вводе остаётся; Ctrl+B и Ctrl+I; Ctrl+Z, X, C, V - с текстом', async ({ board, page }) => {
     await startText(board, 'abc');
     const editor = page.locator('#overlay textarea');
     const qm = board.quickMenu;
@@ -62,7 +62,7 @@ test.describe('ввод текста', () => {
 });
 
 test.describe('кегль текста', () => {
-  test('стрелки — по готовым значениям, ввод вручную с проверкой, панель со слайдером', async ({ board, page }) => {
+  test('стрелки - по готовым значениям, ввод вручную с проверкой, панель со слайдером', async ({ board, page }) => {
     await startText(board, 'Тема');
     await page.keyboard.press('Enter');
     const qm = board.quickMenu;
@@ -89,7 +89,7 @@ test.describe('кегль текста', () => {
     await page.keyboard.press('Enter');
     await expect(panel).toBeVisible(); // с ошибкой не применяется
     await val.fill('500');
-    await expect(val).toHaveAttribute('title', 'Размер — от 6 до 400');
+    await expect(val).toHaveAttribute('title', 'Размер - от 6 до 400');
     await val.fill('50');
     await page.keyboard.press('Enter');
     await expect(panel).toHaveCount(0);
@@ -115,7 +115,7 @@ test.describe('кегль текста', () => {
     expect((await board.elements())[0].size).toBe(small);
   });
 
-  test('кегль нового текста меняют прямо при вводе — фокус остаётся в редакторе', async ({ board, page }) => {
+  test('кегль нового текста меняют прямо при вводе - фокус остаётся в редакторе', async ({ board, page }) => {
     await startText(board, 'ab');
     const editor = page.locator('#overlay textarea');
     await board.quickMenu.locator('.qm-font-step').first().click();
@@ -131,7 +131,7 @@ test.describe('кегль текста', () => {
 });
 
 test.describe('надпись в фигуре', () => {
-  test('выравнивание по горизонтали и вертикали; кегль — свой или «Авто»', async ({ board, page }) => {
+  test('выравнивание по горизонтали и вертикали; кегль - свой или «Авто»', async ({ board, page }) => {
     await board.rect(400, 300, 640, 460);
     await page.keyboard.type('ab');
     const editor = page.locator('#overlay textarea.inplace-edit.shape');

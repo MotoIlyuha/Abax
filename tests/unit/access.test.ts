@@ -11,7 +11,7 @@ import { MAX_ALIASES_PER_OWNER, PLAN_LIMITS, sanitizePermissionsForPlan } from '
 import type { Element } from '../../src/types';
 
 describe('роли', () => {
-  it('старые синонимы: edit → редактор, view → комментатор; новые — как есть; мусор — null', () => {
+  it('старые синонимы: edit → редактор, view → комментатор; новые - как есть; мусор - null', () => {
     expect(normalizeRole('edit')).toEqual({ role: 'editor', legacy: true });
     expect(normalizeRole('view')).toEqual({ role: 'commenter', legacy: true });
     expect(normalizeRole('reader')).toEqual({ role: 'reader', legacy: false });
@@ -30,7 +30,7 @@ describe('роли', () => {
   });
 });
 
-describe('effectivePageAccess — таблица SPEC_NIGHT6 §2.2', () => {
+describe('effectivePageAccess - таблица SPEC_NIGHT6 §2.2', () => {
   const base = { owner: false, legacy: false } as const;
   it.each([
     ['читатель (новая роль) + страница edit', { ...base, role: 'reader', pageSetting: 'edit' }, 'view'],
@@ -61,10 +61,10 @@ describe('effectivePageAccess — таблица SPEC_NIGHT6 §2.2', () => {
 });
 
 describe('participantCaps', () => {
-  it('владелец — всё', () => {
+  it('владелец - всё', () => {
     expect(participantCaps({ owner: true, role: 'reader' }, { allowCopy: false })).toEqual({ comment: true, chat: true, pointer: true, copy: true, summon: true });
   });
-  it('читатель — ни комментариев, ни чата, ни указки; копирование — по доске', () => {
+  it('читатель - ни комментариев, ни чата, ни указки; копирование - по доске', () => {
     expect(participantCaps({ owner: false, role: 'reader' }, {})).toEqual({ comment: false, chat: false, pointer: false, copy: true, summon: false });
     expect(participantCaps({ owner: false, role: 'reader' }, { allowCopy: false }).copy).toBe(false);
   });
@@ -74,7 +74,7 @@ describe('participantCaps', () => {
     expect(participantCaps({ owner: false, role: 'commenter', inviteAllowCopy: false }, {}).copy).toBe(false);
     expect(participantCaps({ owner: false, role: 'commenter' }, { forbidClone: true }).copy).toBe(false);
   });
-  it('редактор копирует всегда (старая ссылка edit — по доске), зовёт всех только по настройке доски', () => {
+  it('редактор копирует всегда (старая ссылка edit - по доске), зовёт всех только по настройке доски', () => {
     expect(participantCaps({ owner: false, role: 'editor', inviteAllowCopy: false }, { allowCopy: false }).copy).toBe(true);
     expect(participantCaps({ owner: false, role: 'editor', legacy: true }, { allowCopy: false }).copy).toBe(false);
     expect(participantCaps({ owner: false, role: 'editor', legacy: true }, {}).copy).toBe(true);
@@ -85,7 +85,7 @@ describe('participantCaps', () => {
 });
 
 describe('токены и именные адреса', () => {
-  it('токен — ровно 24 символа base64url', () => {
+  it('токен - ровно 24 символа base64url', () => {
     expect(isTokenShaped('AbCdEfGhIjKlMnOpQrStUv_-')).toBe(true);
     expect(isTokenShaped('AbCdEfGhIjKlMnOpQrStUv_')).toBe(false);
     expect(isTokenShaped('AbCdEfGhIjKlMnOpQrStUv_-x')).toBe(false);
@@ -98,7 +98,7 @@ describe('токены и именные адреса', () => {
     }
     expect(RESERVED_ALIASES.has('j')).toBe(true);
   });
-  it('новый адрес — не короче 12 символов; старые 3–11-символьные по-прежнему узнаются при входе', () => {
+  it('новый адрес - не короче 12 символов; старые 3–11-символьные по-прежнему узнаются при входе', () => {
     expect(ALIAS_MIN).toBe(12);
     expect(isAliasShaped('geo')).toBe(true);
     expect(isNewAliasOk('geo')).toBe(false);
@@ -127,7 +127,7 @@ describe('токены и именные адреса', () => {
       for (const c of cs) { expect(c).not.toBe(base); expect(c.length).toBeLessThanOrEqual(ALIAS_MAX); expect(isNewAliasOk(c)).toBe(true); }
     }
   });
-  it('адрес и токен не пересекаются: строка 24 символов из строчных букв — только токен', () => {
+  it('адрес и токен не пересекаются: строка 24 символов из строчных букв - только токен', () => {
     const s = 'abcdefghijklmnopqrstuvwx';
     expect(isTokenShaped(s)).toBe(true);
     expect(isAliasShaped(s)).toBe(false);
@@ -142,7 +142,7 @@ describe('токены и именные адреса', () => {
     expect(aliasProblem('admin')).toMatch(/системой/);
     expect(aliasProblem('physics-9a-2026')).toBeNull();
   });
-  it('тариф: именной адрес — Pro/Tutor; лимит записей на аккаунт', () => {
+  it('тариф: именной адрес - Pro/Tutor; лимит записей на аккаунт', () => {
     expect(PLAN_LIMITS.free.canSetAlias).toBe(false);
     expect(PLAN_LIMITS.pro.canSetAlias && PLAN_LIMITS.tutor.canSetAlias).toBe(true);
     expect(MAX_ALIASES_PER_OWNER).toBe(20);
@@ -169,7 +169,7 @@ describe('новые поля прав и автор элемента', () => {
     }
     expect(sanitizePermissionsForPlan('free', {})).not.toHaveProperty('protectElements');
   });
-  it('by: верное значение сохраняется, неверное отбрасывается (элемент — владельца)', () => {
+  it('by: верное значение сохраняется, неверное отбрасывается (элемент - владельца)', () => {
     expect(sanitizeElement({ ...rect, by: 'u:1f2e-3d' })).toMatchObject({ by: 'u:1f2e-3d' });
     expect(sanitizeElement({ ...rect, by: 'c:ab12' })).toMatchObject({ by: 'c:ab12' });
     for (const bad of ['x:1', 'u:', 'u:<b>', 42, 'u:' + 'a'.repeat(79)]) expect(sanitizeElement({ ...rect, by: bad })).not.toHaveProperty('by');

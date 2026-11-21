@@ -44,7 +44,7 @@ describe('счётчик масштаба', () => {
     expect(el.textContent).toBe('400%');
   });
 
-  it('«улучшенные»: цифры — колёсики, прокручиваются через промежуточные цифры', () => {
+  it('«улучшенные»: цифры - колёсики, прокручиваются через промежуточные цифры', () => {
     const frames: ((t: number) => void)[] = [];
     vi.stubGlobal('requestAnimationFrame', (cb: (t: number) => void) => { frames.push(cb); return frames.length; });
     const el = document.createElement('button');
@@ -60,7 +60,7 @@ describe('счётчик масштаба', () => {
     expect(el.textContent).toBe('470%');
   });
 
-  it('«улучшенные»: число цифр меняется — колёсики добавляются и убираются', () => {
+  it('«улучшенные»: число цифр меняется - колёсики добавляются и убираются', () => {
     const el = document.createElement('button');
     setZoomCounter(el, 100);
     setZoomCounter(el, 50);

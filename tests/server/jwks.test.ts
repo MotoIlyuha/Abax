@@ -30,7 +30,7 @@ describe('JWKS', () => {
     { ...ed.publicKey.export({ format: 'jwk' }), kid: 'd1', alg: 'EdDSA' },
   ];
 
-  it('RS256, ES256 и EdDSA проверяются; чужой ключ и подмена — нет', async () => {
+  it('RS256, ES256 и EdDSA проверяются; чужой ключ и подмена - нет', async () => {
     const { v } = setup(() => jwks);
     expect(await v.verify(jwt('RS256', 'r1', { a: 1 }, rsa.privateKey))).toEqual({ a: 1 });
     expect(await v.verify(jwt('ES256', 'e1', { b: 2 }, ec.privateKey))).toEqual({ b: 2 });
@@ -45,7 +45,7 @@ describe('JWKS', () => {
     expect(await v.verify('nope')).toBeNull();
   });
 
-  it('ключи кэшируются; новый kid — повторная загрузка набора', async () => {
+  it('ключи кэшируются; новый kid - повторная загрузка набора', async () => {
     let keys: unknown[] = [jwks[0]];
     const s = setup(() => keys);
     await s.v.verify(jwt('RS256', 'r1', {}, rsa.privateKey));

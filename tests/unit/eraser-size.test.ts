@@ -16,7 +16,7 @@ function run(speed: number, ms: number, from = newEraserMotion(), t0 = 1000) {
 }
 
 describe('размер ластика от скорости', () => {
-  it('в покое и при спокойной руке — маленький', () => {
+  it('в покое и при спокойной руке - маленький', () => {
     expect(targetEraserRadius(0)).toBe(ERASER_BASE_R);
     expect(targetEraserRadius(300)).toBe(ERASER_BASE_R);
     expect(run(200, 600).r).toBeCloseTo(ERASER_BASE_R, 5);

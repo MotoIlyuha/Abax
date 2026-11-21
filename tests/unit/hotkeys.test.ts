@@ -13,7 +13,7 @@ const LINUX = { browser: true, linux: true };
 const APP = { browser: false, linux: true };
 
 describe('сочетания клавиш', () => {
-  it('сочетание из события: модификаторы в постоянном порядке, Cmd — это Ctrl', () => {
+  it('сочетание из события: модификаторы в постоянном порядке, Cmd - это Ctrl', () => {
     expect(comboFromEvent(key('KeyN', { ctrl: true }))).toBe('Ctrl+KeyN');
     expect(comboFromEvent(key('KeyN', { meta: true }))).toBe('Ctrl+KeyN');
     expect(comboFromEvent(key('KeyP', { shift: true, alt: true }))).toBe('Alt+Shift+KeyP');

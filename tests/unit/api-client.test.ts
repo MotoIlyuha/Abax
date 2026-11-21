@@ -34,7 +34,7 @@ beforeEach(() => { localStorage.clear(); setApiForTests(undefined); });
 afterEach(() => { setApiForTests(undefined); vi.unstubAllGlobals(); });
 
 describe('адрес облака', () => {
-  it('normalizeApiUrl: только http(s), без «/» в конце; мусор — пусто', () => {
+  it('normalizeApiUrl: только http(s), без «/» в конце; мусор - пусто', () => {
     expect(normalizeApiUrl('https://api.example.com/')).toBe('https://api.example.com');
     expect(normalizeApiUrl(' http://localhost:5173 ')).toBe('http://localhost:5173');
     expect(normalizeApiUrl('https://example.com/v1/')).toBe('https://example.com/v1');
@@ -80,7 +80,7 @@ describe('сессия', () => {
     expect(calls.filter(c => c.url.endsWith('/api/auth/anon'))).toHaveLength(1);
   });
 
-  it('401 — тихий повторный вход и один повтор запроса; второй 401 — ошибка', async () => {
+  it('401 - тихий повторный вход и один повтор запроса; второй 401 - ошибка', async () => {
     localStorage.setItem(SESSION_KEY, 'OLD');
     localStorage.setItem(DEVICE_TOKEN_KEY, 'd'.repeat(43));
     const { f, calls } = fakeFetch(c => {
@@ -97,7 +97,7 @@ describe('сессия', () => {
     await expect(api2.me()).rejects.toMatchObject({ status: 401, code: 'unauthorized' });
   });
 
-  it('нет сети — ApiError со статусом 0; ошибка сервера — её код', async () => {
+  it('нет сети - ApiError со статусом 0; ошибка сервера - её код', async () => {
     const down = createApiClient({ base: 'https://api.test', fetch: fakeFetch(() => 'network').f });
     const e = await down.me().catch(x => x);
     expect(e).toBeInstanceOf(ApiError);
@@ -138,7 +138,7 @@ describe('тариф с сервера', () => {
     expect(limitsEnforced()).toBe(true);
   });
 
-  it('сервер недоступен — тихо false, прежний тариф остаётся', async () => {
+  it('сервер недоступен - тихо false, прежний тариф остаётся', async () => {
     localStorage.setItem(SESSION_KEY, 'S');
     localStorage.setItem(SERVER_PLAN_KEY, JSON.stringify({ plan: 'pro', limitsEnforced: false }));
     const api = createApiClient({ base: 'https://api.test', fetch: fakeFetch(() => 'network').f });

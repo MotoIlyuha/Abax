@@ -4,10 +4,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <!-- script-src без 'unsafe-inline': даже если чужие данные попадут в разметку, скрипт не выполнится.
-       worker-src blob: — воркер pdf.js встроен в сборку (?worker&inline); ws: — сервер совместной работы
-       (автор в Electron открыт с file://); api.github.com — проверка обновлений;
-       'unsafe-inline' в style-src — стили через style и <style> окна демонстрации. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ws: wss: https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'none'" />
+       worker-src blob: - воркер pdf.js встроен в сборку (?worker&inline); ws: - сервер совместной работы
+       (автор в Electron открыт с file://); abaxboard.ru - проверка обновлений;
+       'unsafe-inline' в style-src - стили через style и <style> окна демонстрации. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://mc.yandex.ru; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://mc.yandex.ru; font-src 'self' data:; connect-src 'self' ws: wss: https://abaxboard.ru https://mc.yandex.ru; frame-src https://mc.yandex.ru; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <script src="metrika.js"></script>
   <title>Abax</title>
   <link rel="icon" type="image/svg+xml" href="logo.svg" />
   <style>
@@ -33,7 +34,7 @@
   <script src="startup.js"></script>
   <div id="topbar">
     <div class="topbar-side topbar-right">
-      <!-- flex-direction: row-reverse — первый в разметке стоит правее всех: экспорт справа от импорта -->
+      <!-- flex-direction: row-reverse - первый в разметке стоит правее всех: экспорт справа от импорта -->
       <div class="topbar-group export-group"><button id="btn-export" class="icon" title="Экспорт в PNG (Ctrl+E)"></button></div>
       <div class="topbar-group import-group">
         <button id="btn-import" class="icon" title="Импорт документа"></button>
@@ -53,10 +54,10 @@
       <button id="btn-home" class="topbar-logo" title="Проекты (домашняя страница)" aria-label="Проекты (домашняя страница)"><img src="logo.svg" alt="Abax" /></button>
     </div>
     <div class="topbar-side topbar-left">
-      <!-- «Чат, комментарии и уведомления» (src/notify-button.ts): row-reverse — крайняя справа, видна всегда; подсказка снизу -->
+      <!-- «Чат, комментарии и уведомления» (src/notify-button.ts): row-reverse - крайняя справа, видна всегда; подсказка снизу -->
       <button id="btn-notify" class="notify-btn" type="button" title="Чат, комментарии и уведомления" aria-label="Чат, комментарии и уведомления" aria-expanded="false" data-tip-side="bottom"></button>
       <button id="btn-share" class="share-btn" type="button" title="Поделиться доской" aria-label="Поделиться доской"><span class="share-icon" aria-hidden="true"></span><span class="share-text">Поделиться</span></button>
-      <!-- row-reverse: группа аватаров — слева от «Поделиться», сама по себе, без плашки (src/collab-presence.ts) -->
+      <!-- row-reverse: группа аватаров - слева от «Поделиться», сама по себе, без плашки (src/collab-presence.ts) -->
       <div id="collab-presence" aria-label="Участники" hidden></div>
       <div class="topbar-group collab-group">
         <!-- скрыты из шапки; обработчики остаются (окно демонстрации и быстрые настройки) -->
@@ -66,7 +67,7 @@
     </div>
     <button id="grid-mode" title="Фон страницы" aria-haspopup="listbox" aria-expanded="false" hidden></button>
   </div>
-  <!-- правый нижний угол: вид и масштаб, справа — помощь -->
+  <!-- правый нижний угол: вид и масштаб, справа - помощь -->
   <div id="bottombar">
     <div class="topbar-group view-group"><button id="view-grid-icon" class="icon" title="Тип сетки" aria-label="Тип сетки" aria-expanded="false"></button><button id="zoom-out" class="icon" title="Уменьшить масштаб" aria-label="Уменьшить масштаб"></button><button id="zoom-label" title="Масштаб, вид и взаимодействия" aria-haspopup="true" aria-expanded="false"><span id="zoom-value">100%</span><svg class="zoom-chevron" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg></button><button id="zoom-in" class="icon" title="Увеличить масштаб" aria-label="Увеличить масштаб"></button><button id="btn-fit" class="icon" title="Показать всё" aria-label="Показать всё"></button></div>
     <div class="topbar-group help-group"><button id="btn-help" class="icon" title="Справка (F1)" aria-label="Справка" aria-controls="side-panel" aria-expanded="false"></button></div>
@@ -89,7 +90,7 @@
       <!-- плашки объектов: реакции, «Комментировать» (src/annot-layer.ts) -->
       <div id="annot-layer"></div>
       <div id="follow-banner" role="status" hidden></div>
-      <div id="follow-hidden-badge" role="status" hidden>Эта страница скрыта — участники остались на предыдущей странице</div>
+      <div id="follow-hidden-badge" role="status" hidden>Эта страница скрыта - участники остались на предыдущей странице</div>
       <div id="all-pages-hidden-banner" role="status" hidden>Автор временно скрыл все страницы доски. Доступ откроется автоматически, когда автор включит страницу.</div>
       <div id="draft-badge" role="status" hidden><span>Черновик</span> · виден только вам: ни гостям, ни в демонстрации</div>
       <div id="pages-dock" data-tip-side="top">

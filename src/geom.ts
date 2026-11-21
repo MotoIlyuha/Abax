@@ -125,7 +125,7 @@ export function parseTextSize(text: string): { size: number } | { error: string 
   const m = /^\s*(\d+(?:[.,]\d+)?)\s*$/.exec(text);
   if (!m) return { error: 'Введите число, например 24' };
   const size = Math.round(Number(m[1].replace(',', '.')));
-  if (size < TEXT_SIZE_MIN || size > TEXT_SIZE_MAX) return { error: `Размер — от ${TEXT_SIZE_MIN} до ${TEXT_SIZE_MAX}` };
+  if (size < TEXT_SIZE_MIN || size > TEXT_SIZE_MAX) return { error: `Размер - от ${TEXT_SIZE_MIN} до ${TEXT_SIZE_MAX}` };
   return { size };
 }
 

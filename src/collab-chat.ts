@@ -21,7 +21,7 @@ export const CHAT_COUNTER_FROM = 400;
 /** Сколько символов сообщения видно в превью уведомления. */
 export const CHAT_PREVIEW_LEN = 80;
 
-export const RATE_HINT = 'Не так быстро — подождите пару секунд';
+export const RATE_HINT = 'Не так быстро - подождите пару секунд';
 export const OFFLINE_HINT = 'Нет соединения с доской';
 export const READER_CHAT_TEXT = 'Читатели не пишут в чат';
 

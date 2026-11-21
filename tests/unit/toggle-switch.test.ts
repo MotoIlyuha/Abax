@@ -47,7 +47,7 @@ describe('переключатель', () => {
     expect(maxWidth).toBeGreaterThan(16);
   });
 
-  it('«Обычные»: без пружин — инлайн-стилей нет, двигает CSS', async () => {
+  it('«Обычные»: без пружин - инлайн-стилей нет, двигает CSS', async () => {
     document.body.className = 'no-motion';
     const { input, knob, track, changes } = make();
     input.click();

@@ -78,7 +78,7 @@ describe.each(kinds)('$name', kind => {
       expect(g.s.last('chat')!.cursorId).toBeUndefined();
     });
 
-    it('пустое, длиннее 500 символов и не строка — отказ (без обрезки)', () => {
+    it('пустое, длиннее 500 символов и не строка - отказ (без обрезки)', () => {
       const { host, join } = room(kind.make());
       const g = join();
       for (const text of ['   ', '', 'я'.repeat(501), 42, null]) g.s.recv({ t: 'chat', text });
@@ -116,7 +116,7 @@ describe.each(kinds)('$name', kind => {
   });
 
   describe('камера участника (view)', () => {
-    it('правильный view попадает в users; неправильный — нет', () => {
+    it('правильный view попадает в users; неправильный - нет', () => {
       const { hub, host, join } = room(kind.make());
       const g = join();
       g.s.recv({ t: 'view', pageId: 'pg2', vx: 10, vy: -5, vz: 1.5 });
@@ -172,7 +172,7 @@ describe.each(kinds)('$name', kind => {
   });
 
   describe('«Позвать всех» (summon)', () => {
-    it('от автора — гостям, которым страница видна; от гостя — ничего', () => {
+    it('от автора - гостям, которым страница видна; от гостя - ничего', () => {
       const { hub, host, join } = room(kind.make());
       const a = join();
       const b = join();
@@ -189,7 +189,7 @@ describe.each(kinds)('$name', kind => {
   });
 
   describe('«Автопереход за мной» (follow-host)', () => {
-    it('автор включает — всем рассылка и состояние в init; гость не может', () => {
+    it('автор включает - всем рассылка и состояние в init; гость не может', () => {
       const { host, join } = room(kind.make());
       const g = join();
       g.s.recv({ t: 'follow-host', enabled: true });
@@ -202,7 +202,7 @@ describe.each(kinds)('$name', kind => {
       expect(join().s.last('init')!.followHost).toBe(false);
     });
 
-    it('тариф без автоперехода — пакет игнорируется', () => {
+    it('тариф без автоперехода - пакет игнорируется', () => {
       const hub = kind.free ? kind.free({ maxGuests: Infinity }) : kind.make({ canFollowHost: false });
       const { host, join } = room(hub);
       const g = join();
@@ -213,7 +213,7 @@ describe.each(kinds)('$name', kind => {
   });
 
   describe('живые права страниц (§3.2)', () => {
-    it('автор скрыл страницу в permissions — гость получает права и проект без неё; открыл — страница вернулась', () => {
+    it('автор скрыл страницу в permissions - гость получает права и проект без неё; открыл - страница вернулась', () => {
       const { host, join } = room(kind.make());
       const g = join();
       host.recv({ t: 'project', project: demo({ permissions: { pageRights: { pg2: 'hidden' } } }) });
@@ -259,7 +259,7 @@ describe.each(kinds)('$name', kind => {
   });
 
   describe('лимит гостей автора (§3.3)', () => {
-    it('Pro-проект с maxGuests: лишнему гостю — denied room-full и код 4430', () => {
+    it('Pro-проект с maxGuests: лишнему гостю - denied room-full и код 4430', () => {
       const hub = kind.name.endsWith('.ts') ? createTsHub({ code: 'R' }) : kind.make();
       const { join } = room(hub, demo({ ownerPlan: 'pro', permissions: { maxGuests: 2 } }));
       expect(join().uid).not.toBeNull();
@@ -287,14 +287,14 @@ describe.each(kinds)('$name', kind => {
   });
 
   describe('несколько устройств автора (multiHost)', () => {
-    it('по умолчанию второй автор — отказ 4409', () => {
+    it('по умолчанию второй автор - отказ 4409', () => {
       const { hub } = room(kind.make());
       const second = new FakeSock();
       expect(hub.attach(second, { isHost: true })).toBeNull();
       expect(second.closed?.code).toBe(4409);
     });
 
-    it('multiHost: второе устройство — тоже автор, со своим uid, гостевой слот не занимает', () => {
+    it('multiHost: второе устройство - тоже автор, со своим uid, гостевой слот не занимает', () => {
       const hub = kind.free ? kind.free({ multiHost: true }) : kind.make({ multiHost: true, maxGuests: 1 });
       const { host, join } = room(hub);
       const tablet = new FakeSock();
@@ -316,7 +316,7 @@ describe.each(kinds)('$name', kind => {
 });
 
 describe('src/room-host.ts: лимит тарифа Free', () => {
-  it('второму гостю — denied с прежней причиной, maxGuests 1, planLimited и код 4402', () => {
+  it('второму гостю - denied с прежней причиной, maxGuests 1, planLimited и код 4402', () => {
     const { join } = room(createTsHub({ code: 'R', plan: 'free' }));
     join();
     const second = join();

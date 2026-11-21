@@ -27,12 +27,12 @@ describe('тариф и включение лимитов', () => {
     expect(localStorage.getItem(ENFORCE_LIMITS_KEY)).toBeNull();
   });
 
-  it('мусор в хранилище — free', () => {
+  it('мусор в хранилище - free', () => {
     localStorage.setItem(PLAN_KEY, 'platinum');
     expect(userPlan()).toBe('free');
   });
 
-  it('тариф проекта: свой ownerPlan, а у старого проекта без него — free, что бы ни было у пользователя', () => {
+  it('тариф проекта: свой ownerPlan, а у старого проекта без него - free, что бы ни было у пользователя', () => {
     expect(projectPlan({})).toBe('free');
     setUserPlan('tutor');
     expect(userPlan()).toBe('tutor');
@@ -44,7 +44,7 @@ describe('тариф и включение лимитов', () => {
 });
 
 describe('клавиши переключения тарифа в режиме разработки', () => {
-  it('«−» (и цифровой блок) — Free, «+» (Shift+«=» и цифровой блок) — Pro; остальные клавиши — не тариф', () => {
+  it('«−» (и цифровой блок) - Free, «+» (Shift+«=» и цифровой блок) - Pro; остальные клавиши - не тариф', () => {
     expect(devPlanForCode('Minus')).toBe('free');
     expect(devPlanForCode('NumpadSubtract')).toBe('free');
     expect(devPlanForCode('Equal')).toBe('pro');
@@ -86,7 +86,7 @@ describe('источник тарифа пользователя', () => {
     expect(userPlan()).toBe('tutor');
   });
 
-  it('вне dev-режима doska.plan игнорируется; с doska.devMode=1 — работает', () => {
+  it('вне dev-режима doska.plan игнорируется; с doska.devMode=1 - работает', () => {
     vi.stubEnv('DEV', false);
     applyServerPlan({ plan: 'pro', limitsEnforced: false });
     setUserPlan('tutor');
@@ -99,7 +99,7 @@ describe('источник тарифа пользователя', () => {
     expect(userPlan()).toBe('tutor');
   });
 
-  it('мусор в серверном кэше — free', () => {
+  it('мусор в серверном кэше - free', () => {
     localStorage.setItem(SERVER_PLAN_KEY, '{"plan":"vip"}');
     expect(userPlan()).toBe('free');
     localStorage.setItem(SERVER_PLAN_KEY, 'не json');
@@ -123,7 +123,7 @@ describe('страницы', () => {
     expect(state.project.pages).toHaveLength(7);
   });
 
-  it('на free с лимитами — не больше трёх; отказ ничего не меняет', () => {
+  it('на free с лимитами - не больше трёх; отказ ничего не меняет', () => {
     setLimitsEnforced(true);
     expect(addPage()).not.toBeNull();
     expect(addPage()).not.toBeNull();
@@ -145,7 +145,7 @@ describe('страницы', () => {
     expect(state.project.pages).toHaveLength(3);
   });
 
-  it('проект pro у бесплатного пользователя — без лимита; старый проект без ownerPlan — free даже у tutor; существующие сверх лимита не трогаются', () => {
+  it('проект pro у бесплатного пользователя - без лимита; старый проект без ownerPlan - free даже у tutor; существующие сверх лимита не трогаются', () => {
     setLimitsEnforced(true);
     state.project.ownerPlan = 'pro';
     for (let i = 0; i < 5; i++) expect(addPage()).not.toBeNull();

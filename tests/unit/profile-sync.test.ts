@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApiClient, setApiForTests, type ApiClient } from '../../src/api-client';
 import { clearServerPlan, userPlan } from '../../src/plan';
 import { getProfile, resetProfileForTests, setProfile } from '../../src/profile';
-import { account, onAccountChange, pushProfile, resetProfileSyncForTests, signedIn, startProfileSync, syncAccount } from '../../src/profile-sync';
+import { account, onAccountChange, pushProfile, resetProfileSyncForTests, setAccount, signedIn, startProfileSync, syncAccount } from '../../src/profile-sync';
 import { call, closeApps, makeApp, setPlan, type TestApp } from '../server/helpers';
 
 let app: TestApp;
@@ -39,7 +39,21 @@ afterEach(async () => {
 const serverUser = async () => (await api.me()).user;
 
 describe('синхронизация профиля', () => {
-  it('без облака: syncAccount — false, ничего не делает', async () => {
+  it('задержавшееся сохранение профиля не отменяет отображение привязанного Telegram', async () => {
+    const before = await api.me();
+    setAccount(before, api);
+    setProfile({ name: 'Енот' });
+    let finish!: (value: typeof before) => void;
+    const delayed = { ...api, request: () => new Promise<typeof before>(resolve => { finish = resolve; }) } as ApiClient;
+    const saving = pushProfile(delayed);
+    const linked = { ...before, user: { ...before.user, telegram: true, tgUsername: 'enot', isAnonymous: false, nameCustom: true } };
+    setAccount(linked, api);
+    finish(before);
+    await saving;
+    expect(account()?.user).toMatchObject({ telegram: true, tgUsername: 'enot' });
+  });
+
+  it('без облака: syncAccount - false, ничего не делает', async () => {
     setApiForTests(null);
     expect(await syncAccount()).toBe(false);
     expect(account()).toBeNull();
@@ -56,14 +70,14 @@ describe('синхронизация профиля', () => {
     expect(await serverUser()).toMatchObject({ cursorId: 'mint', nameCustom: true });
   });
 
-  it('знакомство не пройдено — профиль не отправляется', async () => {
+  it('знакомство не пройдено - профиль не отправляется', async () => {
     setProfile({ name: 'Лемур' });
     await syncAccount();
     await new Promise(r => setTimeout(r, 50));
     expect((await serverUser()).nameCustom).toBe(false);
   });
 
-  it('вошёл и у аккаунта своё имя — сервер главнее', async () => {
+  it('вошёл и у аккаунта своё имя - сервер главнее', async () => {
     setProfile({ name: 'Устройство', cursorId: 'coral', onboarded: true });
     const token = await api.ensureSession();
     await call(app, 'PATCH', '/api/me', { displayName: 'Аккаунт', cursorId: 'lavender' }, { token });

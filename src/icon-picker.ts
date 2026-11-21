@@ -165,6 +165,29 @@ export function openIconPicker(anchor: HTMLElement, current: string | null, onPi
 
   const tabButtons = new Map<string, HTMLButtonElement>();
   const sections = new Map<string, HTMLElement>();
+  const grids = new Map<HTMLElement, { items: [string, string][]; start: number; end: number; columns: number }>();
+  const rowHeight = 38;
+  const renderGrids = () => {
+    for (const [grid, view] of grids) {
+      if (grid.parentElement?.hidden) continue;
+      const columns = Math.max(1, Math.floor((grid.clientWidth || body.clientWidth || 342) / rowHeight));
+      const rows = Math.ceil(view.items.length / columns);
+      const top = grid.offsetTop;
+      const startRow = Math.max(0, Math.min(rows, Math.floor((body.scrollTop - top) / rowHeight) - 2));
+      const endRow = Math.max(startRow, Math.min(rows, Math.ceil((body.scrollTop + (body.clientHeight || 300) - top) / rowHeight) + 2));
+      const start = startRow * columns, end = Math.min(view.items.length, endRow * columns);
+      if (view.start === start && view.end === end && view.columns === columns) continue;
+      view.start = start; view.end = end; view.columns = columns;
+      grid.style.paddingTop = `${startRow * rowHeight}px`;
+      grid.style.paddingBottom = `${(rows - endRow) * rowHeight}px`;
+      const fragment = document.createDocumentFragment();
+      for (const item of view.items.slice(start, end)) fragment.appendChild(emojiButton(item));
+      grid.replaceChildren(fragment);
+    }
+  };
+  const registerGrid = (grid: HTMLElement, items: [string, string][]) => {
+    grids.set(grid, { items, start: -1, end: -1, columns: 0 });
+  };
   let jumped = false;
   for (const c of CATEGORIES) {
     const t = document.createElement('button');
@@ -181,6 +204,7 @@ export function openIconPicker(anchor: HTMLElement, current: string | null, onPi
       if (s) body.scrollTop = s.offsetTop;
       jumped = body.scrollTop !== before;
       markTab(c.key);
+      renderGrids();
     });
     tabButtons.set(c.key, t);
     tabs.appendChild(t);
@@ -214,12 +238,13 @@ export function openIconPicker(anchor: HTMLElement, current: string | null, onPi
       h.textContent = c.title;
       const grid = document.createElement('div');
       grid.className = 'ip-grid';
-      for (const item of list) grid.appendChild(emojiButton(item));
+      registerGrid(grid, list);
       s.append(h, grid);
       sections.set(c.key, s);
       body.appendChild(s);
     }
     body.appendChild(results);
+    renderGrids();
     // запрос набрали, пока эмодзи грузились, — ищем по нему теперь
     if (search.value.trim()) search.dispatchEvent(new Event('input'));
   });
@@ -227,6 +252,7 @@ export function openIconPicker(anchor: HTMLElement, current: string | null, onPi
   // подсветка вкладки — по прокрутке; докрутили до конца — последний раздел (он короче окна).
   // Прокрутку от клика по вкладке пропускаем: у конца списка раздел не встаёт наверх, а вкладка — та, что нажали
   body.addEventListener('scroll', () => {
+    renderGrids();
     if (jumped) { jumped = false; return; }
     if (!results.hidden || sections.size === 0) return;
     let cur = CATEGORIES[0].key;
@@ -237,9 +263,11 @@ export function openIconPicker(anchor: HTMLElement, current: string | null, onPi
 
   search.addEventListener('input', () => {
     const q = search.value.trim().toLowerCase();
-    if (!q) { showSections(); return; }
+    if (!q) { showSections(); renderGrids(); return; }
     for (const s of sections.values()) s.hidden = true;
     results.hidden = false;
+    const previousGrid = results.querySelector<HTMLElement>('.ip-grid');
+    if (previousGrid) grids.delete(previousGrid);
     results.textContent = '';
     // сначала те, чьё название начинается с запроса («ракета» — 🚀, потом 🧑‍🚀), затем совпадения с начала слова
     const rank = (words: string) => words.startsWith(q) ? 0 : (' ' + words).includes(' ' + q) ? 1 : 2;
@@ -253,9 +281,10 @@ export function openIconPicker(anchor: HTMLElement, current: string | null, onPi
     h.textContent = found.length ? 'Найдено' : 'Ничего не нашлось';
     const grid = document.createElement('div');
     grid.className = 'ip-grid';
-    for (const item of found) grid.appendChild(emojiButton(item));
+    registerGrid(grid, found);
     results.append(h, grid);
     body.scrollTop = 0;
+    renderGrids();
   });
   search.addEventListener('keydown', e => {
     e.stopPropagation();

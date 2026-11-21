@@ -9,7 +9,7 @@ const page = (elements: Element[] = []): Page => ({ id: 'p2', name: 'Стран�
 const onScreen = (cam: Camera, x: number, y: number) => ({ x: (x - cam.x) * cam.zoom, y: (y - cam.y) * cam.zoom });
 
 describe('область страницы в превью', () => {
-  it('пустая — вокруг начала координат, не меньше минимума, с нужным соотношением сторон', () => {
+  it('пустая - вокруг начала координат, не меньше минимума, с нужным соотношением сторон', () => {
     const v = pageLinkView([], 16 / 10);
     expect((v.x0 + v.x1) / 2).toBeCloseTo(0);
     expect((v.y0 + v.y1) / 2).toBeCloseTo(0);
@@ -21,7 +21,7 @@ describe('область страницы в превью', () => {
     expect(tall.x1 - tall.x0).toBe(640);
   });
 
-  it('содержимое целиком, с полями, по центру; соотношение сторон — как у превью', () => {
+  it('содержимое целиком, с полями, по центру; соотношение сторон - как у превью', () => {
     const els = [rect('a', 0, 0, 1000, 200), rect('b', 1500, 900, 100, 100)];
     for (const aspect of [0.5, 1, 16 / 9, 4]) {
       const v = pageLinkView(els, aspect);
@@ -78,7 +78,7 @@ describe('путь камеры', () => {
   const a: Camera = { x: -300, y: -100, zoom: 0.8 };
   const b: Camera = { x: 250, y: 120, zoom: 3.2 };
 
-  it('начало и конец — ровно камеры a и b; масштаб — по логарифму', () => {
+  it('начало и конец - ровно камеры a и b; масштаб - по логарифму', () => {
     expect(zoomPath(a, b, 0)).toEqual(a);
     expect(zoomPath(a, b, 1)).toEqual(b);
     expect(zoomPath(a, b, -1)).toEqual(a);
@@ -97,7 +97,7 @@ describe('путь камеры', () => {
     }
   });
 
-  it('масштаб почти тот же — просто сдвиг', () => {
+  it('масштаб почти тот же - просто сдвиг', () => {
     const c = { x: 100, y: 50, zoom: 0.8 };
     expect(zoomPath(a, c, 0.5)).toEqual({ x: -100, y: -25, zoom: 0.8 });
   });
@@ -121,7 +121,7 @@ describe('путь камеры', () => {
 describe('блокировка ввода на время перехода', () => {
   afterEach(() => document.body.replaceChildren());
 
-  it('щит поверх окна; клавиши, указатель и колёсико не доходят; после снятия — снова доходят', () => {
+  it('щит поверх окна; клавиши, указатель и колёсико не доходят; после снятия - снова доходят', () => {
     const input = document.createElement('input');
     document.body.appendChild(input);
     input.focus();

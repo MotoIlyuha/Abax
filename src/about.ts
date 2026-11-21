@@ -109,7 +109,7 @@ export function renderAbout(host: HTMLElement, onLogoHold?: () => void): void {
   title.append(name, el('div', 'sd-about-version', `Версия ${__APP_VERSION__}`));
   head.append(logo, title);
   box.appendChild(head);
-  box.appendChild(el('p', 'sd-about-desc', 'Локальная доска для занятий по математике. Доски хранятся на этом компьютере — интернет для работы не нужен.'));
+  box.appendChild(el('p', 'sd-about-desc', 'Локальная доска для занятий по математике. Доски хранятся на этом компьютере - интернет для работы не нужен.'));
 
   box.appendChild(el('div', 'ctx-label', 'Возможности'));
   const list = el('ul', 'sd-about-features');
