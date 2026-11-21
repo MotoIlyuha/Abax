@@ -593,6 +593,7 @@ describe('дельта-патчи', () => {
     st.addElement(rect('mine') as never);
     st.setSelection(['mine']);
     await until(() => server.room.project!.pages[0].elements.length === 1);
+    await until(() => host.inbox.some(m => m.t === 'patch' && m.ops.some((op: { op: string; el?: { id: string } }) => op.op === 'put' && op.el?.id === 'mine')));
     const events: Event[] = [];
     document.addEventListener('doska:collab-project', e => events.push(e));
     host.inbox.length = 0;

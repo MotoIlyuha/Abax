@@ -13,6 +13,7 @@ const blank = () => page('blank');
 
 describe('ссылки', () => {
   it('база: в браузере - текущий адрес, в приложении и с file:// - веб-версия', () => {
+    expect(PUBLIC_WEB_URL).toBe('https://board.abaxboard.ru/');
     expect(linkBaseUrl({ protocol: 'https:', origin: 'https://x.test', pathname: '/Abax/' })).toBe('https://x.test/Abax/');
     expect(linkBaseUrl({ protocol: 'file:', origin: 'null', pathname: '/C:/app/index.html' })).toBe(PUBLIC_WEB_URL);
     expect(linkBaseUrl({ protocol: 'https:', origin: 'https://x.test', pathname: '/' }, true)).toBe(PUBLIC_WEB_URL);
