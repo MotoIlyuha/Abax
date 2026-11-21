@@ -25,7 +25,6 @@ export const TOOL_DEFS: ToolDef[] = [
   { id: 'partEraser', title: 'Ластик для пера и маркера', icon: TOOL_ICONS.partEraser },
   { id: 'text', title: 'Текст', icon: TOOL_ICONS.text },
   { id: 'note', title: 'Стикер', icon: TOOL_ICONS.note },
-  { id: 'task', title: 'Задание', icon: TOOL_ICONS.task },
   // раздвинуть: всё, что ниже линии, уезжает вниз
   {
     id: 'spread', title: 'Раздвинуть',
@@ -125,7 +124,7 @@ export function defaultToolbar(): ToolbarConfig {
     items: [
       tool('select'),
       { type: 'group', id: 'draw', name: 'Рисование', tools: ['pen', 'highlighter', 'eraser', 'partEraser'] },
-      tool('text'), tool('note'), tool('spread'), tool('task'),
+      tool('text'), tool('note'), tool('spread'),
       { type: 'group', id: 'shapes', name: 'Фигуры', tools: ['rect', 'ellipse', 'triangle', 'line', 'arrow', 'poly'] },
       { type: 'group', id: 'solids', name: 'Стереометрия', tools: ['cube', 'box', 'prism', 'pyramid', 'truncPyramid', 'cylinder', 'cone', 'truncCone', 'sphere'] },
       { type: 'group', id: 'pointer', name: 'Указка', tools: ['laser', 'fadePen', 'flash'] },

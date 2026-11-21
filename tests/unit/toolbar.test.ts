@@ -70,6 +70,19 @@ describe('toolUsesColor', () => {
 });
 
 describe('sanitizeToolbar', () => {
+  it('удаляет задание из сохранённой панели, групп и горячих клавиш', () => {
+    const cfg = sanitizeToolbar({
+      items: [{ type: 'tool', id: 'task' }, { type: 'group', id: 'custom', name: 'Мои', tools: ['task', 'text'] }],
+      hidden: [{ type: 'tool', id: 'task' }],
+      keys: { task: 'Digit1', text: 'KeyT' },
+    });
+    expect(allTools(defaultToolbar())).not.toContain('task');
+    expect(allTools(cfg)).not.toContain('task');
+    expect(cfg.items.find(it => it.type === 'group' && it.id === 'custom')).toMatchObject({ tools: ['text'] });
+    expect(cfg.keys.task).toBeUndefined();
+    expect(cfg.keys.text).toBe('KeyT');
+  });
+
   it('мусор - настройка по умолчанию', () => {
     for (const raw of [null, 42, 'x', [], { items: 'нет' }]) {
       expect(allTools(sanitizeToolbar(raw)).sort()).toEqual(TOOL_DEFS.map(t => t.id).sort());
@@ -199,7 +212,7 @@ describe('операции', () => {
     const base = defaultToolbar();
     const r = combineTools(base, 'text', 'spread', 'Макет');
     expect(r.group).toBeTruthy();
-    expect(layout(r.cfg).slice(0, 5)).toEqual(['select', 'draw[pen,highlighter,eraser,partEraser]', `${r.group}[text,spread]`, 'note', 'task']);
+    expect(layout(r.cfg).slice(0, 4)).toEqual(['select', 'draw[pen,highlighter,eraser,partEraser]', `${r.group}[text,spread]`, 'note']);
     expect(r.cfg.items.find(it => it.type === 'group' && it.id === r.group)).toMatchObject({ name: 'Макет' });
     // из группы тоже можно
     const r2 = combineTools(base, 'select', 'ellipse', 'Г');
