@@ -62,6 +62,16 @@ export class Board {
     await expect(this.page.locator('#toolbar .tool').first()).toBeVisible();
   }
 
+  /** Загружает сохранённое расположение панели из прежних настроек. */
+  async loadToolbarPosition(pos: 'left' | 'top' | 'right' | 'bottom'): Promise<void> {
+    await this.page.evaluate(toolbarPos => {
+      const saved = JSON.parse(localStorage.getItem('doska.settings') ?? '{}');
+      localStorage.setItem('doska.settings', JSON.stringify({ ...saved, toolbarPos, toolbarFloat: null }));
+    }, pos);
+    await this.page.reload();
+    await this.ready();
+  }
+
   elements(): Promise<El[]> {
     // src картинок обрезаем: data URL бывают по мегабайту
     return this.page.evaluate(() => (window as any).__doska.state.board.elements.map((e: any) =>

@@ -80,10 +80,15 @@ test.describe('окно «Все настройки»', () => {
     await expect(page.locator('.sd-nav-item')).toHaveText(['Профиль', 'Подписка', 'Доска', 'Панель инструментов', 'Горячие клавиши', 'Дополнительные', 'Конфиденциальность', 'О проекте']);
     await expect(page.locator('#sd-title')).toHaveText('Доска');
 
-    // раздел «Доска» — те же настройки, что в поповере
-    await page.locator('.sd-general button', { hasText: 'Сверху' }).click();
-    await expect(page.locator('#toolbar')).toHaveAttribute('data-pos', 'top');
-    await expect(page.locator('.sd-general button', { hasText: 'Сверху' })).toHaveClass(/active/);
+    const general = dialog(page).locator('.sd-general');
+    await expect(general.getByText('Панель инструментов', { exact: true })).toHaveCount(0);
+    await expect(general.getByText('Список страниц', { exact: true })).toHaveCount(0);
+    await expect(general.getByRole('region', { name: 'Скрыть из верхней панели' }).getByRole('switch')).toHaveCount(4);
+    await expect(general.getByRole('region', { name: 'Взаимодействия' }).getByRole('switch')).toHaveCount(4);
+    for (const section of ['Скрыть из верхней панели', 'Взаимодействия']) {
+      await expect(general.getByRole('region', { name: section }).locator('.board-setting-switch').first())
+        .toHaveCSS('border-top-width', '0px');
+    }
 
     await page.locator('.sd-nav-item', { hasText: 'Панель инструментов' }).click();
     await expect(page.locator('#sd-title')).toHaveText('Панель инструментов');
@@ -99,6 +104,117 @@ test.describe('окно «Все настройки»', () => {
     await page.keyboard.press('Control+Comma');
     await page.mouse.click(10, 450);
     await expect(dialog(page)).toHaveCount(0);
+  });
+
+  test('предпросмотры идут по порядку, наведение прерывает автопоказ и повторяет выбранный пример', async ({ page }) => {
+    await page.clock.install();
+    await page.clock.pauseAt(new Date(Date.now() + 1000));
+    await page.keyboard.press('Control+Comma');
+    const general = dialog(page).locator('.sd-general');
+    const wheel = general.getByRole('group', { name: 'Колёсико мыши' });
+    const pages = general.getByRole('group', { name: 'Анимация перехода на другую страницу' });
+    const preview = (group: Locator) => group.locator('button.is-previewing');
+    await page.clock.runFor(440);
+    const wheelNames = ['Прокрутка', 'Масштаб'];
+    const pageNames = ['Нет', 'Слайд', 'Затухание', 'Приближение'];
+    for (let i = 0; i <= pageNames.length; i++) {
+      await expect(preview(wheel)).toHaveText(wheelNames[i % wheelNames.length]);
+      await expect(preview(pages)).toHaveText(pageNames[i % pageNames.length]);
+      if (i < pageNames.length) await page.clock.runFor(2000);
+    }
+    await expect(wheel.getByRole('button', { pressed: true })).toHaveText('Масштаб');
+    await expect(pages.getByRole('button', { pressed: true })).toHaveText('Слайд');
+
+    const fade = pages.getByRole('button', { name: 'Затухание' });
+    await fade.hover();
+    await expect(preview(wheel)).toHaveCount(0);
+    await expect(preview(pages)).toHaveText('Затухание');
+    await fade.evaluate(el => {
+      const observed = { replays: 0 };
+      el.addEventListener('pointerleave', () => observer.disconnect(), { once: true });
+      const observer = new MutationObserver(records => {
+        observed.replays += records.filter(record => !record.oldValue?.includes('is-previewing')).length;
+        el.setAttribute('data-replays', String(observed.replays));
+      });
+      observer.observe(el, { attributes: true, attributeFilter: ['class'], attributeOldValue: true });
+    });
+    await page.clock.runFor(4100);
+    await expect(fade).toHaveAttribute('data-replays', '2');
+    await expect(pages.getByRole('button', { pressed: true })).toHaveText('Слайд');
+    await page.mouse.move(8, 8);
+    await page.clock.runFor(1000);
+    await expect(preview(wheel)).toHaveCount(0);
+    await expect(preview(pages)).toHaveCount(0);
+    await pages.dispatchEvent('wheel');
+    await page.clock.runFor(1000);
+    await expect(preview(pages)).toHaveCount(0);
+    await page.clock.runFor(900);
+    await expect(preview(wheel)).toHaveText('Прокрутка');
+    await expect(preview(pages)).toHaveText('Нет');
+
+    const instant = pages.getByRole('button', { name: 'Нет', exact: true });
+    const before = instant.locator('.board-demo-page-before');
+    await instant.hover();
+    const wasHidden = await before.evaluate(el => (el as HTMLElement).hidden);
+    await page.clock.runFor(2000);
+    await expect(before).toHaveJSProperty('hidden', !wasHidden);
+  });
+
+  test('предпросмотры запускаются при выборе, вкладки показывают появление меню', async ({ page }) => {
+    await page.keyboard.press('Control+Comma');
+    const general = dialog(page).locator('.sd-general');
+    const wheel = general.getByRole('group', { name: 'Колёсико мыши' });
+    const pages = general.getByRole('group', { name: 'Анимация перехода на другую страницу' });
+    for (const [group, name, duration] of [[wheel, 'Масштаб', 900], [pages, 'Затухание', 900]] as const) {
+      await expect(group.getByRole('button', { pressed: true })).toHaveCount(1);
+      const option = group.getByRole('button', { name });
+      expect(await option.evaluate((el, duration) => {
+        (el as HTMLButtonElement).click();
+        return el.getAnimations({ subtree: true }).some(a => a.playState === 'running' && a.effect?.getTiming().duration === duration);
+      }, duration)).toBe(true);
+      await expect(option).toHaveAttribute('aria-pressed', 'true');
+    }
+    const instant = pages.getByRole('button', { name: 'Нет', exact: true });
+    await instant.click();
+    await expect(instant.locator('.board-demo-page [hidden]')).toHaveCount(1);
+    await expect(pages).toHaveJSProperty('childElementCount', 4);
+
+    const menu = general.locator('.board-animation-menu');
+    const play = general.getByRole('button', { name: 'Проиграть пример появления меню' });
+    expect(await play.evaluate(el => {
+      (el as HTMLButtonElement).click();
+      return el.parentElement!.querySelector('.board-animation-menu')!.classList.contains('mm-morph');
+    })).toBe(true);
+    await general.getByRole('tab', { name: 'Улучшенные' }).focus();
+    await page.keyboard.press('ArrowLeft');
+    await expect(general.getByRole('tab', { name: 'Обычные' })).toHaveAttribute('aria-selected', 'true');
+    expect(await play.evaluate(el => {
+      (el as HTMLButtonElement).click();
+      return el.parentElement!.querySelector('.board-animation-menu')!.classList.contains('mm-in');
+    })).toBe(true);
+    await page.keyboard.press('ArrowLeft');
+    await expect(general.getByRole('tab', { name: 'Выкл' })).toHaveAttribute('aria-selected', 'true');
+    await expect(menu).toBeVisible();
+    await expect(menu).not.toHaveClass(/mm-(?:in|morph)/);
+    await expect(page.locator('body')).toHaveClass(/no-ui-anim/);
+  });
+
+  test('переключатели доски синхронизируются с главным меню', async ({ page }) => {
+    await page.keyboard.press('Control+Comma');
+    await dialog(page).getByRole('switch', { name: 'Кнопка экспорта' }).check();
+    await dialog(page).getByRole('switch', { name: 'Плавное движение' }).uncheck();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#btn-export')).toBeHidden();
+    await page.locator('#btn-home').click();
+    await page.locator('#main-menu [data-section="hide"]').click();
+    await expect(page.locator('#menu-hide').getByRole('switch', { name: 'Кнопка экспорта' })).toBeChecked();
+    await page.locator('#main-menu [data-section="interactions"]').click();
+    const smoothPan = page.locator('#menu-interactions').getByRole('switch', { name: 'Плавное движение' });
+    await expect(smoothPan).not.toBeChecked();
+    await smoothPan.check();
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Control+Comma');
+    await expect(dialog(page).getByRole('switch', { name: 'Плавное движение' })).toBeChecked();
   });
 
   test('пока окно открыто, клавиши не достаются доске', async ({ board, page }) => {
@@ -153,6 +269,18 @@ test.describe('окно «Все настройки»', () => {
     // тост поверх окна настроек и сам исчезает
     await expect(page.locator('#settings-dialog')).toBeVisible();
     await expect(toast).toBeHidden({ timeout: 6000 });
+  });
+});
+
+test.describe('сенсорное устройство', () => {
+  test.use({ hasTouch: true, isMobile: true, viewport: { width: 390, height: 844 } });
+
+  test('настройка колёсика скрыта', async ({ page }) => {
+    await page.keyboard.press('Control+Comma');
+    const general = dialog(page).locator('.sd-general');
+    await expect(general).toBeVisible();
+    await expect(general.getByText('Колёсико мыши', { exact: true })).toBeHidden();
+    await expect(general.getByRole('group', { name: 'Анимация перехода на другую страницу' })).toBeVisible();
   });
 });
 

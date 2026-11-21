@@ -2,8 +2,8 @@ import { initTopbarFit, topbarFit } from './topbar-fit';
 import { analyticsAvailable, renderAnalyticsSettings } from './analytics-consent';
 import { startCrop } from './crop';
 import type {
-  AnimationMode, BoardSettings, Camera, Element, GridMode, ImageEl, NoteEl, Page, PageTransition, Project, ProjectMeta, ShapeEl, TaskEl, TextAlign, TextEl, TextVAlign,
-  ToolId, ToolbarPos, WheelMode,
+  BoardSettings, Camera, Element, GridMode, ImageEl, NoteEl, Page, Project, ProjectMeta, ShapeEl, TaskEl, TextAlign, TextEl, TextVAlign,
+  ToolId, ToolbarPos,
 } from './types';
 import { setStickyTool, stickyTool } from './sticky-tool';
 import { resolveAnimationMode } from './motion';
@@ -32,6 +32,7 @@ import { renderScene, contentBBox, imageEpoch, imagesLoaded, linkView, presentCa
 import { easeInOut, linkCameras, lockInput, newPageLink, zoomDuration, zoomPath } from './page-links';
 import { makeSortable, reordering } from './reorder';
 import { capturePageTransition } from './page-transition';
+import { PAGE_TRANSITIONS, boardSettingsLabel, renderBoardMotionSettings } from './board-settings';
 import { hasBaseSides, SIDES_MAX, SIDES_MIN, solidSides } from './solid';
 import {
   type AABB, aabbUnion, elementAABB, hitTest, imageFrame, lineWidth, parseTextSize, shapeCaption, shapeHoldsText, stepTextSize,
@@ -54,7 +55,7 @@ import { myCursorId, onProfileChange, profileName } from './profile';
 import { type ToolbarGroup, onToolbarChange, restoreToolbar, toolDef, toolTip, toolUsesColor, toolbarConfig } from './toolbar';
 import { canDropTool, toolDropElement } from './tool-drop';
 import {
-  addSettingsSection, lastSettingsSection, openSettingsDialog, removeSettingsSection, settingsDialogOpen, type SettingsSection,
+  addSettingsSection, lastSettingsSection, openSettingsDialog, removeSettingsSection, settingsDialogOpen, type SectionView, type SettingsSection,
 } from './settings-dialog';
 import { experimentalHeadIcon, experimentsShown, renderExperimental, setExperimentsShown, setRecursionDiscovered } from './experimental';
 import { renderToolbarEditor } from './toolbar-editor';
@@ -106,7 +107,7 @@ import { initAttention } from './attention';
 import { initNoteNotices } from './note-notices';
 import { openTaskDialog, taskDialogOpen, type TaskFormValues } from './task-dialog';
 import { TASK_H, TASK_W, createTaskElement } from './task-element';
-import { createToggleSwitch } from './toggle-switch';
+import { createToggleSwitch, setToggleChecked } from './toggle-switch';
 import { ALIGN_ICONS, BACKGROUND_ICON, BACK_ARROW_ICON, COORD_ICON_ZERO, FONT_ICON, GRID_ICONS, GRIP_ICON, ICONS, OPACITY_ICON, PIN_ICON, PROFILE_ICON, SLIDER_TRACK_ICON, GUIDES_ICON, INTERACTIONS_ICON, SMOOTH_PAN_ICON, SNAP_ICON, PROPORTIONAL_ICON, VALIGN_ICONS, WIDTH_ICON, svg } from './icons';
 import { setTopbarGroupHidden } from './topbar-hide';
 import {
@@ -231,24 +232,9 @@ function restoreSettings(): void {
   } catch { /* дефолт */ }
 }
 
-/** Варианты анимации перехода на другую страницу (в настройках доски). */
-const PAGE_TRANSITIONS: { mode: PageTransition; name: string; hint: string }[] = [
-  { mode: 'none', name: 'Нет', hint: 'Страница сменяется мгновенно' },
-  { mode: 'slide', name: 'Слайд', hint: 'Страницы сдвигаются в сторону, как слайды' },
-  { mode: 'fade', name: 'Затухание', hint: 'Прежняя страница плавно растворяется' },
-  { mode: 'zoom', name: 'Приближение', hint: 'Новая страница выплывает из глубины' },
-];
-
 function persistSettings(): void {
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings));
 }
-
-/** Варианты режима анимаций (настройка доски «Анимации»). */
-const ANIMATION_MODES: { mode: AnimationMode; name: string; hint: string }[] = [
-  { mode: 'off', name: 'Выкл', hint: 'Без движения: меню и панели появляются сразу, пружин нет' },
-  { mode: 'normal', name: 'Обычные', hint: 'Меню и панели плавно выплывают, подсказка и пружины выключены' },
-  { mode: 'enhanced', name: 'Улучшенные', hint: 'Меню и панели выплывают, подсказка панели перетекает от кнопки к кнопке, иконки пружинят' },
-];
 
 /**
  * Режим анимаций на классах body: «выкл» гасит появление панелей (no-ui-anim) и пружины (no-motion);
@@ -2187,7 +2173,11 @@ function settingsPopover(): HTMLElement {
   return document.getElementById('settings-popover')!;
 }
 
+let settingsPopoverView: SectionView | null = null;
+
 function closeSettings(): void {
+  settingsPopoverView?.dispose?.();
+  settingsPopoverView = null;
   document.body.classList.remove('settings-popover-open');
   settingsPopover().hidden = true;
 }
@@ -2201,7 +2191,8 @@ function openSettings(): void {
   title.className = 'ctx-title';
   title.textContent = 'Настройки доски';
   pop.appendChild(title);
-  fillBoardSettings(pop, openSettings);
+  settingsPopoverView = fillBoardSettings(pop);
+  pop.append(hideUndoToggle('Скрыть кнопки отмены и повтора', 'grid-switch board-setting-switch'));
   const all = document.createElement('button');
   all.className = 'settings-all';
   all.title = macKeys('Все настройки (Ctrl+,)');
@@ -2215,7 +2206,9 @@ function openSettings(): void {
   const btn = document.getElementById('btn-settings')!;
   const br = (btn.closest('.topbar-group') ?? btn).getBoundingClientRect();
   pop.style.left = `${Math.max(8, br.right - pop.offsetWidth)}px`;
-  pop.style.top = `${br.bottom + 6}px`;
+  const top = br.bottom + 6;
+  pop.style.top = `${top}px`;
+  pop.style.maxHeight = `calc(100dvh - ${top + 8}px)`;
 }
 
 /** Кнопка профиля в шапке домашнего экрана: мини-курсор и имя; открывает раздел «Профиль». */
@@ -2284,11 +2277,26 @@ export function openAllSettings(section?: string): void {
       id: 'general',
       title: 'Доска',
       icon: ICONS.settings,
-      render: (host, rerender) => {
+      render: host => {
         const box = document.createElement('div');
         box.className = 'sd-general';
-        fillBoardSettings(box, rerender);
         host.appendChild(box);
+        const view = fillBoardSettings(box);
+        const hide = hideSwitches('board-setting-switch');
+        const syncFit = () => syncHideSwitchFit(hide.imports, hide.exportButton);
+        syncFit();
+        document.addEventListener('topbar-fit', syncFit);
+        const unsubTier = onTierHiddenChange(on => setToggleChecked(switchInput(hide.tier), on, false));
+        box.append(boardSwitchGroup('Скрыть из верхней панели', Object.values(hide)),
+          boardSwitchGroup('Взаимодействия', interactionSwitches('board-setting-switch')));
+        return {
+          onKey: view.onKey,
+          dispose() {
+            document.removeEventListener('topbar-fit', syncFit);
+            unsubTier();
+            view.dispose?.();
+          },
+        };
       },
     },
     { id: 'toolbar', title: 'Панель инструментов', icon: ICONS.toolbar, render: host => renderToolbarEditor(host) },
@@ -2331,6 +2339,7 @@ function renderAdvancedSettings(host: HTMLElement): void {
       if (!state.settings.toolbarDetachable) { setSettings({ toolbarFloat: null }); persistSettings(); }
       applyToolbarPos();
     }));
+  box.append(boardSettingsLabel('Список страниц'), settingCheck('closePagesOnPick', 'Закрывать после выбора страницы'));
   host.appendChild(box);
 }
 
@@ -2359,110 +2368,20 @@ function showExperiments(): void {
 }
 
 /** Основные настройки доски — в поповере и в разделе «Доска» окна всех настроек. */
-function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
-  const lbl1 = document.createElement('div');
-  lbl1.className = 'ctx-label';
-  lbl1.textContent = 'Панель инструментов';
-  pop.appendChild(lbl1);
-  const row = document.createElement('div');
-  row.className = 'ctx-toolbar-pos';
-  for (const pos of (['left', 'top', 'right', 'bottom'] as ToolbarPos[])) {
-    const b = document.createElement('button');
-    const names: Record<ToolbarPos, string> = { left: 'Слева', top: 'Сверху', right: 'Справа', bottom: 'Снизу' };
-    b.textContent = names[pos];
-    // откреплённая панель — ни одна сторона не выбрана; выбор стороны снова пристыковывает её
-    b.className = !state.settings.toolbarFloat && state.settings.toolbarPos === pos ? 'active' : '';
-    b.addEventListener('click', () => {
-      setSettings({ toolbarPos: pos, toolbarFloat: null });
-      persistSettings();
-      applyToolbarPos();
-      rerender();
-    });
-    row.appendChild(b);
-  }
-  pop.appendChild(row);
-  const lbl4 = document.createElement('div');
-  lbl4.className = 'ctx-label';
-  lbl4.textContent = 'Колёсико мыши';
-  pop.appendChild(lbl4);
-  const wheelRow = document.createElement('div');
-  wheelRow.className = 'ctx-toolbar-pos';
-  const wheelModes: { mode: WheelMode; name: string; hint: string }[] = [
-    { mode: 'scroll', name: 'Прокрутка', hint: 'Колёсико прокручивает, Shift - по горизонтали, Ctrl - масштаб' },
-    { mode: 'zoom', name: 'Масштаб', hint: 'Колёсико масштабирует, Shift - прокрутка по горизонтали, Ctrl+Shift - по вертикали. Настройка также действует на тачпад' },
-  ];
-  for (const { mode, name, hint } of wheelModes) {
-    const b = document.createElement('button');
-    b.textContent = name;
-    b.title = hint;
-    b.className = state.settings.wheelMode === mode ? 'active' : '';
-    b.addEventListener('click', () => {
-      setSettings({ wheelMode: mode });
-      persistSettings();
-      rerender();
-    });
-    wheelRow.appendChild(b);
-  }
-  pop.appendChild(wheelRow);
-  const lbl5 = document.createElement('div');
-  lbl5.className = 'ctx-label';
-  lbl5.textContent = 'Анимация перехода на другую страницу';
-  pop.appendChild(lbl5);
-  const transRow = document.createElement('div');
-  transRow.className = 'ctx-toolbar-pos ctx-options';
-  for (const { mode, name, hint } of PAGE_TRANSITIONS) {
-    const b = document.createElement('button');
-    b.textContent = name;
-    b.title = hint;
-    b.className = state.settings.pageTransition === mode ? 'active' : '';
-    b.addEventListener('click', () => {
-      setSettings({ pageTransition: mode });
-      persistSettings();
-      rerender();
-    });
-    transRow.appendChild(b);
-  }
-  pop.appendChild(transRow);
-  const lblPages = document.createElement('div');
-  lblPages.className = 'ctx-label';
-  lblPages.textContent = 'Список страниц';
-  pop.appendChild(lblPages);
-  pop.appendChild(settingCheck('closePagesOnPick', 'Закрывать после выбора страницы'));
-  const lblAnim = document.createElement('div');
-  lblAnim.className = 'ctx-label';
-  lblAnim.textContent = 'Анимации';
-  pop.appendChild(lblAnim);
-  const animRow = document.createElement('div');
-  animRow.className = 'ctx-toolbar-pos ctx-options';
-  for (const { mode, name, hint } of ANIMATION_MODES) {
-    const b = document.createElement('button');
-    b.textContent = name;
-    b.title = hint;
-    b.className = state.settings.animationMode === mode ? 'active' : '';
-    b.addEventListener('click', () => {
-      setSettings({ animationMode: mode });
-      persistSettings();
-      applyAnimationMode();
-      rerender();
-    });
-    animRow.appendChild(b);
-  }
-  pop.appendChild(animRow);
-  const lbl7 = document.createElement('label');
-  lbl7.className = 'ctx-check';
-  lbl7.title = macKeys('Отмена и повтор по-прежнему работают на Ctrl+Z и Ctrl+Y');
-  const cb7 = document.createElement('input');
-  cb7.type = 'checkbox';
-  cb7.checked = state.settings.hideUndoRedo;
-  cb7.addEventListener('change', () => {
-    setSettings({ hideUndoRedo: cb7.checked });
+function fillBoardSettings(host: HTMLElement): SectionView {
+  return renderBoardMotionSettings(host, state.settings, patch => {
+    setSettings(patch);
     persistSettings();
-    applyUndoRedoVisibility(true);
+    if (patch.animationMode !== undefined) applyAnimationMode();
   });
-  const span7 = document.createElement('span');
-  span7.textContent = 'Скрыть кнопки отмены и повтора';
-  lbl7.append(cb7, span7);
-  pop.appendChild(lbl7);
+}
+
+function boardSwitchGroup(title: string, switches: HTMLLabelElement[]): HTMLElement {
+  const section = document.createElement('section');
+  section.className = 'board-setting-group';
+  section.setAttribute('aria-label', title);
+  section.append(boardSettingsLabel(title), ...switches);
+  return section;
 }
 
 type BoolSetting = 'toolbarDetachable' | 'alignGuides' | 'closePagesOnPick' | 'thumbViewport' | 'pageLinks' | 'recursionEnabled';
@@ -5135,8 +5054,8 @@ function makeVsep(): HTMLElement {
 
 type InteractionSetting = 'snapToGrid' | 'smoothPan' | 'alignGuides' | 'keepImageAspect';
 
-/** Общий набор переключателей для обоих меню. */
-function interactionSwitches(menuClass: 'main-switch' | 'view-switch'): HTMLLabelElement[] {
+/** Общий набор переключателей для меню и настроек. */
+function interactionSwitches(menuClass: 'main-switch' | 'view-switch' | 'board-setting-switch'): HTMLLabelElement[] {
   const make = (key: InteractionSetting, label: string, icon: string, title: string) => createToggleSwitch({
     className: `grid-switch ${menuClass}${key === 'keepImageAspect' ? ' interaction-switch-multiline' : ''}`,
     label, icon, title, checked: state.settings[key],
@@ -5150,6 +5069,66 @@ function interactionSwitches(menuClass: 'main-switch' | 'view-switch'): HTMLLabe
     rows.push(make('keepImageAspect', 'Пропорциональное\nредактирование', PROPORTIONAL_ICON, macKeys('Изображения и страницы PDF не искажаются при изменении размера - Ctrl или Shift зажимать не нужно')));
   }
   return rows;
+}
+
+let closeExportMenu = (): void => {};
+
+function switchInput(row: HTMLLabelElement): HTMLInputElement {
+  return row.querySelector('input')!;
+}
+
+function hideUndoToggle(label: string, className: string): HTMLLabelElement {
+  return createToggleSwitch({
+    className, label,
+    icon: ICONS.undo,
+    title: macKeys('Отмена и повтор по-прежнему работают на Ctrl+Z и Ctrl+Y'),
+    checked: state.settings.hideUndoRedo,
+    onChange: on => { setSettings({ hideUndoRedo: on }); persistSettings(); applyUndoRedoVisibility(true); },
+  });
+}
+
+function hideSwitches(rowClass: 'main-switch' | 'board-setting-switch') {
+  const className = 'grid-switch ' + rowClass;
+  const hideUndoSwitch = hideUndoToggle('Кнопки отмены и повтора', className);
+  const hideImportsSwitch = createToggleSwitch({
+    className,
+    label: 'Кнопки импорта',
+    icon: ICONS.pdf,
+    checked: localStorage.getItem('abax.hideImports') === 'true',
+    onChange: on => {
+      localStorage.setItem('abax.hideImports', String(on));
+      setTopbarGroupHidden(document.querySelector<HTMLElement>('.import-group')!, on, hidden => document.body.classList.toggle('hide-import-buttons', hidden));
+    },
+  });
+  const hideExportSwitch = createToggleSwitch({
+    className,
+    label: 'Кнопка экспорта',
+    icon: ICONS.export,
+    checked: localStorage.getItem('abax.hideExport') === 'true',
+    onChange: on => {
+      localStorage.setItem('abax.hideExport', String(on));
+      if (on) closeExportMenu();
+      setTopbarGroupHidden(document.querySelector<HTMLElement>('.export-group')!, on, hidden => document.body.classList.toggle('hide-export-button', hidden));
+    },
+  });
+  const hideTierSwitch = createToggleSwitch({
+    className,
+    label: 'Текущий тариф',
+    icon: ICONS.crown,
+    checked: tierHidden(),
+    onChange: on => setTierHidden(on),
+  });
+  return { undo: hideUndoSwitch, imports: hideImportsSwitch, exportButton: hideExportSwitch, tier: hideTierSwitch };
+}
+
+function syncHideSwitchFit(imports: HTMLLabelElement, exportButton: HTMLLabelElement): void {
+  // элемент, которому в шапке не хватает места, показать нельзя: пункт недоступен
+  const { noRoom } = topbarFit();
+  for (const [row, step] of [[imports, 'import'], [exportButton, 'export']] as const) {
+    const disabled = noRoom.has(step);
+    switchInput(row).disabled = disabled;
+    row.title = disabled ? 'Не хватает места в шапке' : '';
+  }
 }
 
 function wireTopbar(): void {
@@ -5191,8 +5170,6 @@ function wireTopbar(): void {
   // окно демонстрации — второе окно браузера, в приложении для Android его не открыть
   if (isNativeApp()) document.getElementById('btn-present')!.style.display = 'none';
 
-  // меню экспорта создаётся ниже; до этого закрывать нечего
-  let closeExportMenu = (): void => {};
   const menuButton = document.getElementById('btn-home') as HTMLButtonElement;
   menuButton.title = 'Меню';
   menuButton.setAttribute('aria-label', 'Меню');
@@ -5220,42 +5197,7 @@ function wireTopbar(): void {
     ${!doskaApi && !isNativeApp() ? menuItem('app', 'Открыть в приложении', ICONS.openApp) : ''}`;
   document.body.append(menu);
   // «Скрыть»: переключатели на пружинах (src/toggle-switch.ts), меню при щелчке не закрывается
-  const hideUndoSwitch = createToggleSwitch({
-    className: 'grid-switch main-switch',
-    label: 'Кнопки отмены и повтора',
-    icon: ICONS.undo,
-    checked: state.settings.hideUndoRedo,
-    onChange: on => { setSettings({ hideUndoRedo: on }); persistSettings(); applyUndoRedoVisibility(true); },
-  });
-  const hideImportsSwitch = createToggleSwitch({
-    className: 'grid-switch main-switch',
-    label: 'Кнопки импорта',
-    icon: ICONS.pdf,
-    checked: localStorage.getItem('abax.hideImports') === 'true',
-    onChange: on => {
-      localStorage.setItem('abax.hideImports', String(on));
-      setTopbarGroupHidden(document.querySelector<HTMLElement>('.import-group')!, on, hidden => document.body.classList.toggle('hide-import-buttons', hidden));
-    },
-  });
-  const hideExportSwitch = createToggleSwitch({
-    className: 'grid-switch main-switch',
-    label: 'Кнопка экспорта',
-    icon: ICONS.export,
-    checked: localStorage.getItem('abax.hideExport') === 'true',
-    onChange: on => {
-      localStorage.setItem('abax.hideExport', String(on));
-      if (on) closeExportMenu();
-      setTopbarGroupHidden(document.querySelector<HTMLElement>('.export-group')!, on, hidden => document.body.classList.toggle('hide-export-button', hidden));
-    },
-  });
-  const hideTierSwitch = createToggleSwitch({
-    className: 'grid-switch main-switch',
-    label: 'Текущий тариф',
-    icon: ICONS.crown,
-    checked: tierHidden(),
-    onChange: on => setTierHidden(on),
-  });
-  const switchInput = (row: HTMLElement) => row.querySelector<HTMLInputElement>('input')!;
+  const { undo: hideUndoSwitch, imports: hideImportsSwitch, exportButton: hideExportSwitch, tier: hideTierSwitch } = hideSwitches('main-switch');
   // data-action — на самом переключателе: по нему пункт находят тесты и проверяют доступность
   switchInput(hideUndoSwitch).dataset.action = 'undo';
   switchInput(hideImportsSwitch).dataset.action = 'imports';
@@ -5263,23 +5205,17 @@ function wireTopbar(): void {
   switchInput(hideTierSwitch).dataset.action = 'hide-tier';
   menu.querySelector<HTMLElement>('#menu-hide')!.append(hideUndoSwitch, hideImportsSwitch, hideExportSwitch, hideTierSwitch);
   // крестик на самом тарифе тоже прячет его — переключатель меню показывает это
-  onTierHiddenChange(on => { switchInput(hideTierSwitch).checked = on; });
+  onTierHiddenChange(on => setToggleChecked(switchInput(hideTierSwitch), on, false));
   const submenus = () => [...menu.querySelectorAll<HTMLButtonElement>('[data-section]')]
     .map(button => ({ button, panel: document.getElementById(button.getAttribute('aria-controls')!)! }));
   /** Отметки «Скрыть» и недоступные пункты — по текущему состоянию шапки. */
   const syncMenuChecks = () => {
     // настройку могли поменять и в другом месте (окно настроек)
-    switchInput(hideUndoSwitch).checked = state.settings.hideUndoRedo;
-    switchInput(hideImportsSwitch).checked = localStorage.getItem('abax.hideImports') === 'true';
-    switchInput(hideExportSwitch).checked = localStorage.getItem('abax.hideExport') === 'true';
-    switchInput(hideTierSwitch).checked = tierHidden();
-    // элемент, которому в шапке не хватает места, показать нельзя: пункт недоступен
-    const { noRoom } = topbarFit();
-    for (const [row, step] of [[hideImportsSwitch, 'import'], [hideExportSwitch, 'export']] as const) {
-      const disabled = noRoom.has(step);
-      switchInput(row).disabled = disabled;
-      row.title = disabled ? 'Не хватает места в шапке' : '';
-    }
+    setToggleChecked(switchInput(hideUndoSwitch), state.settings.hideUndoRedo, false);
+    setToggleChecked(switchInput(hideImportsSwitch), localStorage.getItem('abax.hideImports') === 'true', false);
+    setToggleChecked(switchInput(hideExportSwitch), localStorage.getItem('abax.hideExport') === 'true', false);
+    setToggleChecked(switchInput(hideTierSwitch), tierHidden(), false);
+    syncHideSwitchFit(hideImportsSwitch, hideExportSwitch);
   };
   const setMenuOpen = (open: boolean) => {
     if (open) {

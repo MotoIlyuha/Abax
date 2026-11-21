@@ -46,35 +46,37 @@ function play(mode: Exclude<PageTransition, 'none'>, canvas: HTMLCanvasElement, 
   layer.style.cssText = `position:absolute;left:${canvas.offsetLeft}px;top:${canvas.offsetTop}px;`
     + `width:${canvas.clientWidth}px;height:${canvas.clientHeight}px;overflow:hidden;pointer-events:none;z-index:0;`
     + (mode === 'fade' ? '' : 'background:#fff;');
-  const ms = DURATION[mode];
-  const timing: KeyframeAnimationOptions = { duration: ms, easing: EASE, fill: 'both' };
-  const anims: Animation[] = [];
-  if (mode === 'fade') {
-    // новая страница уже на холсте — старая растворяется поверх неё
-    layer.append(before);
-    anims.push(before.animate([{ opacity: 1 }, { opacity: 0 }], { ...timing, easing: 'ease-out' }));
-  } else {
-    const after = snapshot(canvas);
-    if (!after) return;
-    layer.append(before, after);
-    if (mode === 'slide') {
-      anims.push(
-        before.animate([{ transform: 'translateX(0)' }, { transform: `translateX(${-dir * 100}%)` }], timing),
-        after.animate([{ transform: `translateX(${dir * 100}%)` }, { transform: 'translateX(0)' }], timing),
-      );
-    } else {
-      // вперёд — старая страница «пролетает» мимо, новая выходит из глубины; назад — наоборот
-      const near = 'scale(1.08)';
-      const far = 'scale(0.92)';
-      anims.push(
-        before.animate([{ transform: 'scale(1)', opacity: 1 }, { transform: dir > 0 ? near : far, opacity: 0 }], timing),
-        after.animate([{ transform: dir > 0 ? far : near, opacity: 0 }, { transform: 'scale(1)', opacity: 1 }], timing),
-      );
-    }
-  }
+  const after = mode === 'fade' ? canvas : snapshot(canvas);
+  if (!after) return;
+  layer.append(before);
+  if (mode !== 'fade') layer.append(after);
   canvas.after(layer);
+  const anims = animatePageLayers(mode, before, after, dir);
   const done = () => layer.remove();
   void Promise.all(anims.map(a => a.finished)).then(done, done);
   // в свёрнутом окне анимации могут не доиграть — слой всё равно убираем
-  window.setTimeout(done, ms + 200);
+  window.setTimeout(done, DURATION[mode] + 200);
+}
+
+/** Одинаковые кадры перехода для снимков холста и предпросмотра в настройках. */
+export function animatePageLayers(
+  mode: Exclude<PageTransition, 'none'>, before: HTMLElement, after: HTMLElement, dir: 1 | -1 = 1,
+  preview?: { duration: number; easing: string },
+): Animation[] {
+  const timing: KeyframeAnimationOptions = { duration: DURATION[mode], easing: EASE, ...preview, fill: 'both' };
+  if (mode === 'fade') {
+    return [before.animate([{ opacity: 1 }, { opacity: 0 }], { ...timing, easing: preview?.easing ?? 'ease-out' })];
+  }
+  if (mode === 'slide') {
+    return [
+      before.animate([{ transform: 'translateX(0)' }, { transform: `translateX(${-dir * 100}%)` }], timing),
+      after.animate([{ transform: `translateX(${dir * 100}%)` }, { transform: 'translateX(0)' }], timing),
+    ];
+  }
+  const near = 'scale(1.08)';
+  const far = 'scale(0.92)';
+  return [
+    before.animate([{ transform: 'scale(1)', opacity: 1 }, { transform: dir > 0 ? near : far, opacity: 0 }], timing),
+    after.animate([{ transform: dir > 0 ? far : near, opacity: 0 }, { transform: 'scale(1)', opacity: 1 }], timing),
+  ];
 }

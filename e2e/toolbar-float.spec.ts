@@ -69,13 +69,13 @@ test.describe('откреплённая панель инструментов', 
     await expect(tb).toHaveAttribute('data-pos', 'left');
     expect((await board.state()).settings.toolbarFloat).toBeNull();
 
-    // снова открепили нажатием — выбор стороны в настройках доски тоже пристыковывает панель
+    // Запрет открепления в «Дополнительных» возвращает панель к сохранённому краю.
     await tb.hover();
     await grip.click({ position: { x: 20, y: 6 } });
     await expect(tb).toHaveClass(/floating/);
     await page.keyboard.press('Control+Comma');
-    await page.locator('.sd-nav-item[data-section="general"]').click();
-    await page.locator('.sd-general .ctx-toolbar-pos button', { hasText: 'Слева' }).click();
+    await page.locator('.sd-nav-item[data-section="advanced"]').click();
+    await page.getByLabel('Разрешить откреплять панель инструментов').uncheck();
     await expect(tb).not.toHaveClass(/floating/);
     await expect(tb).toHaveAttribute('data-pos', 'left');
     expect((await board.state()).settings.toolbarFloat).toBeNull();
