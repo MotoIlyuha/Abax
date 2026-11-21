@@ -3,12 +3,13 @@ import type { PlanTier } from '../src/types';
 import { PLAN_LIMITS, isPlanTier } from '../src/limits';
 import { DEFAULT_CURSOR_ID, isCursorId } from '../src/cursors';
 import { cleanAvatar } from '../src/avatar-value';
+import { DAY_MS } from '../src/billing';
 import type { Db, UserRow } from './db';
 
 export const sha256Hex = (s: string): string => createHash('sha256').update(s).digest('hex');
 
 /** Тариф с учётом срока: истёк plan_expires_at — free. */
-export function effectivePlan(user: UserRow, now: number): PlanTier {
+export function effectivePlan(user: Pick<UserRow, 'plan' | 'plan_expires_at'>, now: number): PlanTier {
   if (user.plan_expires_at !== null && user.plan_expires_at <= now) return 'free';
   return isPlanTier(user.plan) ? user.plan : 'free';
 }
@@ -106,6 +107,10 @@ export function mergeUsers(db: Db, fromId: string, toId: string, now: number): v
 
 /** Назначить тариф вручную; days — срок в днях, без него — бессрочно. */
 export function setUserPlanRow(db: Db, userId: string, plan: PlanTier, now: number, days?: number): boolean {
-  const expires = days !== undefined && days > 0 ? now + days * 24 * 3600 * 1000 : null;
+  const expires = days !== undefined && days > 0 ? now + days * DAY_MS : null;
   return db.prepare('UPDATE users SET plan = ?, plan_expires_at = ?, plan_trial = 0, updated_at = ? WHERE id = ?').run(plan, expires, now, userId).changes > 0;
+}
+
+export function validPlanDays(days: unknown, now: number): days is number {
+  return typeof days === 'number' && days > 0 && Number.isFinite(new Date(now + days * DAY_MS).getTime());
 }

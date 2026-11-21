@@ -311,16 +311,19 @@ describe('секрет сессий и база', () => {
     try {
       const path = join(dir, 'sub', 'abax.db');
       const db = openDb(path);
-      expect(db.pragma('journal_mode', { simple: true })).toBe('wal');
-      expect(db.pragma('foreign_keys', { simple: true })).toBe(1);
-      const tables = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all() as { name: string }[]).map(t => t.name).sort();
-      expect(tables).toEqual(['assets', 'auth_flows', 'email_codes', 'invites', 'member_page_rights', 'payments', 'project_email_invites', 'project_revisions', 'projects', 'promo_codes', 'promo_redemptions', 'public_aliases', 'users', 'yookassa_checkouts']); // вход, приглашения, права, подписка и попытки оплаты
-      db.prepare("INSERT INTO users (id, created_at, updated_at) VALUES ('u', 1, 1)").run();
-      db.close();
+      try {
+        expect(db.pragma('journal_mode', { simple: true })).toBe('wal');
+        expect(db.pragma('foreign_keys', { simple: true })).toBe(1);
+        const tables = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all() as { name: string }[]).map(t => t.name).sort();
+        expect(tables).toEqual(['admin_audit', 'admin_sessions', 'assets', 'auth_flows', 'email_codes', 'invites', 'member_page_rights',
+          'payments', 'project_email_invites', 'project_revisions', 'projects', 'promo_codes', 'promo_redemptions', 'public_aliases', 'users', 'yookassa_checkouts']);
+        db.prepare("INSERT INTO users (id, created_at, updated_at) VALUES ('u', 1, 1)").run();
+      } finally { db.close(); }
       const again = openDb(path);
-      expect(again.prepare('SELECT COUNT(*) n FROM users').get()).toEqual({ n: 1 });
-      expect(() => again.prepare("INSERT INTO projects (id, owner_id, title, data_json, created_at, updated_at) VALUES ('p', 'нет', 't', '{}', 1, 1)").run()).toThrow();
-      again.close();
+      try {
+        expect(again.prepare('SELECT COUNT(*) n FROM users').get()).toEqual({ n: 1 });
+        expect(() => again.prepare("INSERT INTO projects (id, owner_id, title, data_json, created_at, updated_at) VALUES ('p', 'нет', 't', '{}', 1, 1)").run()).toThrow();
+      } finally { again.close(); }
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 

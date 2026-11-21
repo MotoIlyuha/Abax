@@ -1,7 +1,7 @@
 import { join, resolve } from 'node:path';
 import { createAppServer } from './app';
 import { S3AssetBackend } from './asset-storage';
-import { listEnv, loadJwtSecret, truthy } from './config';
+import { adminAccountEntries, listEnv, loadJwtSecret, truthy } from './config';
 import { consoleMailer, mailerFromEnv } from './mailer';
 
 // Запуск сервера из окружения. Переменные: PORT, HOST, DATA_DIR, JWT_SECRET, TELEGRAM_BOT_TOKEN,
@@ -41,6 +41,8 @@ async function main(): Promise<void> {
     ...(env.ABAX_PRETTY_LINKS !== undefined ? { prettyLinks: env.ABAX_PRETTY_LINKS === '1' } : {}),
     trustProxy: truthy(env.TRUST_PROXY),
     secureCookies: env.NODE_ENV === 'production',
+    adminOrigin: env.ABAX_ADMIN_ORIGIN,
+    adminAccounts: adminAccountEntries(env.ABAX_ADMIN_ACCOUNTS),
     assetBackend,
     log: m => console.log(m),
   });
