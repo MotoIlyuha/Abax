@@ -169,7 +169,7 @@ export const state: AppState = {
   pageId: '',
   board: blankPage('Страница 1'),
   camera: { x: 0, y: 0, zoom: 1 },
-  tool: 'pen',
+  tool: 'select',
   style: { color: '#1f2329', width: 4 },
   presets: {
     pen: { list: [{ color: '#1f2329', width: 4 }, { color: '#bd0a0a', width: 4 }, { color: '#305bab', width: 4 }], active: 0 },
