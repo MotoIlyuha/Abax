@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApiClient, setApiForTests, type ApiClient } from '../../src/api-client';
 import { clearServerPlan, userPlan } from '../../src/plan';
 import { getProfile, resetProfileForTests, setProfile } from '../../src/profile';
-import { account, onAccountChange, pushProfile, resetProfileSyncForTests, signedIn, startProfileSync, syncAccount } from '../../src/profile-sync';
+import { account, onAccountChange, pushProfile, resetProfileSyncForTests, setAccount, signedIn, startProfileSync, syncAccount } from '../../src/profile-sync';
 import { call, closeApps, makeApp, setPlan, type TestApp } from '../server/helpers';
 
 let app: TestApp;
@@ -39,6 +39,20 @@ afterEach(async () => {
 const serverUser = async () => (await api.me()).user;
 
 describe('синхронизация профиля', () => {
+  it('задержавшееся сохранение профиля не отменяет отображение привязанного Telegram', async () => {
+    const before = await api.me();
+    setAccount(before, api);
+    setProfile({ name: 'Енот' });
+    let finish!: (value: typeof before) => void;
+    const delayed = { ...api, request: () => new Promise<typeof before>(resolve => { finish = resolve; }) } as ApiClient;
+    const saving = pushProfile(delayed);
+    const linked = { ...before, user: { ...before.user, telegram: true, tgUsername: 'enot', isAnonymous: false, nameCustom: true } };
+    setAccount(linked, api);
+    finish(before);
+    await saving;
+    expect(account()?.user).toMatchObject({ telegram: true, tgUsername: 'enot' });
+  });
+
   it('без облака: syncAccount - false, ничего не делает', async () => {
     setApiForTests(null);
     expect(await syncAccount()).toBe(false);

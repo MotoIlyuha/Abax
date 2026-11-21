@@ -67,6 +67,7 @@ export async function syncAccount(api: ApiClient | null = getApi()): Promise<boo
 /** Отправить имя, курсор и аватар устройства на сервер; Pro-курсор без тарифа остаётся только на устройстве. */
 export async function pushProfile(api: ApiClient | null = getApi()): Promise<void> {
   if (!api) return;
+  const accountAtStart = current;
   const p = getProfile();
   const body: { displayName?: string; cursorId?: string; avatar?: string | null } = { cursorId: p.cursorId, avatar: p.avatar };
   if (p.name) body.displayName = p.name;
@@ -74,10 +75,14 @@ export async function pushProfile(api: ApiClient | null = getApi()): Promise<voi
     && current.user.cursorId === body.cursorId && (current.user.avatar ?? null) === body.avatar;
   if (same) return;
   try {
-    current = await api.request<MeResponse>('PATCH', '/api/me', body);
+    const updated = await api.request<MeResponse>('PATCH', '/api/me', body);
+    if (current === accountAtStart) current = updated;
   } catch (e) {
     if (e instanceof ApiError && e.code === 'plan-cursor' && body.displayName) {
-      try { current = await api.request<MeResponse>('PATCH', '/api/me', { displayName: body.displayName, avatar: body.avatar }); } catch { /* тихо */ }
+      try {
+        const updated = await api.request<MeResponse>('PATCH', '/api/me', { displayName: body.displayName, avatar: body.avatar });
+        if (current === accountAtStart) current = updated;
+      } catch { /* тихо */ }
     }
   }
 }

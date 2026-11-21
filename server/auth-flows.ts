@@ -346,6 +346,7 @@ export function registerAuthFlowRoutes(router: Router): void {
     const flow = startableFlow(ctx, 'telegram');
     const q = new URLSearchParams({
       client_id: clientId,
+      origin: app.opts.publicWebUrl,
       redirect_uri: `${apiOrigin(app, ctx.req)}/api/auth/telegram/callback`,
       response_type: 'code',
       scope: 'openid profile',

@@ -113,7 +113,7 @@ describe('способы входа сервера', () => {
       if (url === 'https://oauth.telegram.org/.well-known/jwks.json') return new Response(JSON.stringify({ keys: [jwk] }), { status: 200 });
       return new Response(JSON.stringify({ access_token: 'a', token_type: 'Bearer', expires_in: 3600, id_token: idToken }), { status: 200 });
     }) as unknown as typeof fetch;
-    const app = await makeApp({ telegramClientSecret: 'tg-secret', publicApiUrl: 'https://api.abax.example', fetch: fakeFetch });
+    const app = await makeApp({ telegramClientSecret: 'tg-secret', publicApiUrl: 'https://api.abax.example', publicWebUrl: 'https://abax.example', fetch: fakeFetch });
     expect((await call(app, 'GET', '/api/auth/providers')).body).toMatchObject({ telegram: true, telegramBotId: '123456' });
     const exp = Math.floor(app.clock.t / 1000) + 600;
     const good = { iss: 'https://oauth.telegram.org', aud: '123456', sub: '777', iat: exp - 600, exp, id: 4242, name: 'Тг Пользователь', preferred_username: 'tg_user', picture: 'https://cdn.telesco.pe/a.jpg' };
@@ -123,7 +123,7 @@ describe('способы входа сервера', () => {
     const toTg = new URL(await follow(`${app.base}/api/auth/telegram/start?flow=${f.body.flowId}`));
     expect(toTg.origin + toTg.pathname).toBe('https://oauth.telegram.org/auth');
     expect(Object.fromEntries(toTg.searchParams)).toMatchObject({
-      client_id: '123456', redirect_uri: 'https://api.abax.example/api/auth/telegram/callback', response_type: 'code',
+      client_id: '123456', origin: 'https://abax.example', redirect_uri: 'https://api.abax.example/api/auth/telegram/callback', response_type: 'code',
       scope: 'openid profile', state: f.body.flowId, code_challenge_method: 'S256',
     });
     idToken = sign(good);
