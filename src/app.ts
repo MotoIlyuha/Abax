@@ -5208,7 +5208,6 @@ function wireTopbar(): void {
         + '<hr>' + menuItem('link-project', 'Ссылка на проект (просмотр)', ICONS.link) + menuItem('link-page', 'Ссылка на текущую страницу', ICONS.link))}<hr>
     ${section('hide', 'Скрыть', ICONS.hideSection,
       '')}
-    ${menuItem('task', 'Добавить задание…', ICONS.task)}
     ${menuItem('settings', 'Настройки', ICONS.settings)}<hr>
     ${!doskaApi && !isNativeApp() ? menuItem('app', 'Открыть в приложении', ICONS.openApp) : ''}`;
   document.body.append(menu);
@@ -5316,7 +5315,6 @@ function wireTopbar(): void {
     if (action === 'import') void importDocument();
     if (action === 'image') void insertImage();
     if (action === 'png') void exportPng();
-    if (action === 'task') openTaskForm(null);
     if (action === 'link-project') void copyBoardLink('project');
     if (action === 'link-page') void copyBoardLink('page');
     if (action === 'settings') openAllSettings();
