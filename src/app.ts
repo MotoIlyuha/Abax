@@ -107,7 +107,7 @@ import { initNoteNotices } from './note-notices';
 import { openTaskDialog, taskDialogOpen, type TaskFormValues } from './task-dialog';
 import { TASK_H, TASK_W, createTaskElement } from './task-element';
 import { createToggleSwitch } from './toggle-switch';
-import { ALIGN_ICONS, BACKGROUND_ICON, BACK_ARROW_ICON, COORD_ICON_ZERO, FONT_ICON, GRID_ICONS, GRIP_ICON, ICONS, OPACITY_ICON, PIN_ICON, PROFILE_ICON, SLIDER_TRACK_ICON, GUIDES_ICON, INTERACTIONS_ICON, SMOOTH_PAN_ICON, SNAP_ICON, VALIGN_ICONS, WIDTH_ICON, svg } from './icons';
+import { ALIGN_ICONS, BACKGROUND_ICON, BACK_ARROW_ICON, COORD_ICON_ZERO, FONT_ICON, GRID_ICONS, GRIP_ICON, ICONS, OPACITY_ICON, PIN_ICON, PROFILE_ICON, SLIDER_TRACK_ICON, GUIDES_ICON, INTERACTIONS_ICON, SMOOTH_PAN_ICON, SNAP_ICON, PROPORTIONAL_ICON, VALIGN_ICONS, WIDTH_ICON, svg } from './icons';
 import { setTopbarGroupHidden } from './topbar-hide';
 import {
   browserSetRights, browserShareStatus, startBrowserCloud, startBrowserHost, stopBrowserCloud, stopBrowserHost,
@@ -2379,20 +2379,6 @@ function fillBoardSettings(pop: HTMLElement, rerender: () => void): void {
     row.appendChild(b);
   }
   pop.appendChild(row);
-  const lbl8 = document.createElement('label');
-  lbl8.className = 'ctx-check';
-  lbl8.title = macKeys('Изображения и страницы PDF не искажаются при изменении размера - Ctrl или Shift зажимать не нужно');
-  const cb8 = document.createElement('input');
-  cb8.type = 'checkbox';
-  cb8.checked = state.settings.keepImageAspect;
-  cb8.addEventListener('change', () => {
-    setSettings({ keepImageAspect: cb8.checked });
-    persistSettings();
-  });
-  const span8 = document.createElement('span');
-  span8.textContent = 'Пропорциональный размер изображений';
-  lbl8.append(cb8, span8);
-  pop.appendChild(lbl8);
   const lbl4 = document.createElement('div');
   lbl4.className = 'ctx-label';
   lbl4.textContent = 'Колёсико мыши';
@@ -5145,6 +5131,25 @@ function makeVsep(): HTMLElement {
   return s;
 }
 
+type InteractionSetting = 'snapToGrid' | 'smoothPan' | 'alignGuides' | 'keepImageAspect';
+
+/** Общий набор переключателей для обоих меню. */
+function interactionSwitches(menuClass: 'main-switch' | 'view-switch'): HTMLLabelElement[] {
+  const make = (key: InteractionSetting, label: string, icon: string, title: string) => createToggleSwitch({
+    className: `grid-switch ${menuClass}${key === 'keepImageAspect' ? ' interaction-switch-multiline' : ''}`,
+    label, icon, title, checked: state.settings[key],
+    onChange: on => { setSettings({ [key]: on }); persistSettings(); },
+  });
+  const rows: HTMLLabelElement[] = [];
+  if (state.linkMode === null) rows.push(make('snapToGrid', 'Привязка к сетке', SNAP_ICON, 'Точки, фигуры и рамки при перемещении встают на узлы сетки'));
+  rows.push(make('smoothPan', 'Плавное движение', SMOOTH_PAN_ICON, 'Небольшая инерция при перемещении по доске: после отпускания камера плавно останавливается'));
+  if (state.linkMode === null) {
+    rows.push(make('alignGuides', 'Направляющие', GUIDES_ICON, 'При переносе и изменении размера - пунктир от соседних объектов, к их краям и центрам объект примагничивается'));
+    rows.push(make('keepImageAspect', 'Пропорциональное\nредактирование', PROPORTIONAL_ICON, macKeys('Изображения и страницы PDF не искажаются при изменении размера - Ctrl или Shift зажимать не нужно')));
+  }
+  return rows;
+}
+
 function wireTopbar(): void {
   // подсказки шапки из index.html: на macOS — Cmd вместо Ctrl
   for (const b of document.querySelectorAll<HTMLElement>('#topbar [title], #bottombar [title]')) b.title = macKeys(b.title);
@@ -5208,6 +5213,7 @@ function wireTopbar(): void {
         + '<hr>' + menuItem('link-project', 'Ссылка на проект (просмотр)', ICONS.link) + menuItem('link-page', 'Ссылка на текущую страницу', ICONS.link))}<hr>
     ${section('hide', 'Скрыть', ICONS.hideSection,
       '')}
+    ${section('interactions', 'Взаимодействия', INTERACTIONS_ICON, '')}
     ${menuItem('settings', 'Настройки', ICONS.settings)}<hr>
     ${!doskaApi && !isNativeApp() ? menuItem('app', 'Открыть в приложении', ICONS.openApp) : ''}`;
   document.body.append(menu);
@@ -5299,6 +5305,9 @@ function wireTopbar(): void {
     if (sectionButton) {
       // подменю одно: открытое втягивается в свой пункт, новое выходит из нажатого
       const opening = sectionButton.getAttribute('aria-expanded') !== 'true';
+      if (opening && sectionButton.dataset.section === 'interactions') {
+        menu.querySelector<HTMLElement>('#menu-interactions')!.replaceChildren(...interactionSwitches('main-switch'));
+      }
       for (const { button, panel } of submenus()) {
         const expanded = button === sectionButton && opening;
         if (expanded === (button.getAttribute('aria-expanded') === 'true')) continue;
@@ -5543,13 +5552,6 @@ function wireZoomInput(): void {
     return p;
   };
   const check = (on: boolean) => (on ? '<span class="view-check" aria-hidden="true">✓</span>' : '');
-  /** Переключатель настройки доски в подменю «Взаимодействия»: меню не закрывается, настройка сразу сохраняется. */
-  const settingSwitch = (key: 'snapToGrid' | 'smoothPan' | 'alignGuides', label: string, icon: string, title: string) => createToggleSwitch({
-    className: 'grid-switch view-switch',
-    label, icon, title,
-    checked: state.settings[key],
-    onChange: on => { setSettings({ [key]: on }); persistSettings(); },
-  });
   const subPage = (lvl: ViewSub): HTMLElement => {
     // заголовок — тот же пункт, что в меню (иконка, название, стрелка), поверх — стрелка «назад»
     const p = makePage(lvl, `<button class="view-back" data-view="back" aria-label="Назад"><span class="view-icon"><span class="vb-arrow">${BACK_ARROW_ICON}</span><span class="vb-ghost">${subIcon(lvl)}</span></span><span class="view-text">${subTitle(lvl)}</span><span class="view-arrow vb-ghost" aria-hidden="true">›</span></button><hr>`);
@@ -5571,10 +5573,7 @@ function wireZoomInput(): void {
     } else if (lvl === 'interactions') {
       // подсказки — слева: справа край окна, сверху и снизу они закрывали бы пункты меню и масштаб
       p.dataset.tipSide = 'left';
-      // в просмотре по ссылке доску не правят: остаётся только «Плавное движение»
-      if (state.linkMode === null) p.append(settingSwitch('snapToGrid', 'Привязка к сетке', SNAP_ICON, 'Точки, фигуры и рамки при перемещении встают на узлы сетки'));
-      p.append(settingSwitch('smoothPan', 'Плавное движение', SMOOTH_PAN_ICON, 'Небольшая инерция при перемещении по доске: после отпускания камера плавно останавливается'));
-      if (state.linkMode === null) p.append(settingSwitch('alignGuides', 'Направляющие', GUIDES_ICON, 'При переносе и изменении размера - пунктир от соседних объектов, к их краям и центрам объект примагничивается'));
+      p.append(...interactionSwitches('view-switch'));
     } else {
       const current = state.board.backgroundColor ?? '#ffffff';
       for (const [name, color] of PAGE_BACKGROUNDS) {

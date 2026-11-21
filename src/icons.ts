@@ -152,6 +152,9 @@ export const SNAP_ICON = svg('<path d="M6 4h4v9a2 2 0 0 0 4 0V4h4v9a6 6 0 0 1-12
 /** «Направляющие»: два прямоугольника, выровненные по верхнему краю, и пунктир по общей линии. */
 export const GUIDES_ICON = svg('<path d="M2 6h20" stroke-dasharray="2 2.2"/><rect x="4" y="6" width="6" height="7" rx="1"/><rect x="14" y="6" width="6" height="12" rx="1"/>');
 
+/** Пропорциональное изменение размера изображения. */
+export const PROPORTIONAL_ICON = svg('<rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 15l6-6M10 9h5v5"/>');
+
 /** Подменю «Взаимодействия»: стрелка курсора с лучиками нажатия. */
 export const INTERACTIONS_ICON = svg('<path d="M9 9l11 4.2-4.8 1.6L13.6 20z"/><path d="M5.5 5.5l1.8 1.8M9 3v2.5M3 9h2.5M4.6 13.4l1.8-1.8M13.4 4.6l-1.8 1.8"/>');
 
