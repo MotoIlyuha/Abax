@@ -25,6 +25,7 @@ export const TOOL_DEFS: ToolDef[] = [
   { id: 'partEraser', title: 'Ластик для пера и маркера', icon: TOOL_ICONS.partEraser },
   { id: 'text', title: 'Текст', icon: TOOL_ICONS.text },
   { id: 'note', title: 'Стикер', icon: TOOL_ICONS.note },
+  { id: 'task', title: 'Задание', icon: TOOL_ICONS.task },
   // раздвинуть: всё, что ниже линии, уезжает вниз
   {
     id: 'spread', title: 'Раздвинуть',
