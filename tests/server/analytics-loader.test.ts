@@ -18,6 +18,8 @@ describe('загрузка Метрики', () => {
     choice = 'accepted';
     listeners['abax:analytics-accepted']();
     expect(insertBefore).toHaveBeenCalledOnce();
+    const calls = (win as unknown as { ym: { a: IArguments[] } }).ym.a;
+    expect(calls[0][2]).toMatchObject({ webvisor: false });
     listeners['abax:analytics-accepted']();
     expect(insertBefore).toHaveBeenCalledOnce();
   });

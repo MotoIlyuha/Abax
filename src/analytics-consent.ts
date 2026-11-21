@@ -33,7 +33,7 @@ export function showAnalyticsBanner(): void {
   const title = document.createElement('strong');
   title.textContent = 'Помогите улучшить Abax';
   const text = document.createElement('p');
-  text.textContent = 'Яндекс Метрика использует файлы cookie и записывает действия на сайте, чтобы помочь нам улучшать продукт. Выбор можно изменить позже в настройках, в разделе «Дополнительные».';
+  text.textContent = 'Яндекс Метрика использует файлы cookie и собирает статистику, чтобы помочь нам улучшать продукт. Выбор можно изменить позже в настройках, в разделе «Дополнительные».';
   const error = document.createElement('p');
   error.className = 'analytics-error';
   error.setAttribute('role', 'alert');
@@ -100,6 +100,6 @@ export function renderAnalyticsSettings(host: HTMLElement): void {
   });
   const hint = document.createElement('p');
   hint.className = 'analytics-settings-hint';
-  hint.textContent = 'Аналитические cookie и запись действий в Вебвизоре. При выключении страница перезагрузится.';
+  hint.textContent = 'Аналитические cookie и статистика посещений. При выключении страница перезагрузится.';
   host.append(heading, row, hint);
 }

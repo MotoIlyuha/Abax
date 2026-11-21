@@ -17,7 +17,7 @@ function startMetrika() {
   })(window, document, 'script', 'https://mc.yandex.ru/metrika/tag.js?id=114443432', 'ym');
 
   window.ym(114443432, 'init', {
-    ssr: true, webvisor: true, clickmap: true, ecommerce: 'dataLayer',
+    ssr: true, webvisor: false, clickmap: true, ecommerce: 'dataLayer',
     referrer: document.referrer, url: location.href, accurateTrackBounce: true, trackLinks: true
   });
 }
