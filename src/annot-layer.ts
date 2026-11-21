@@ -204,6 +204,10 @@ function buildTools(n: RowNode, elId: string): void {
   });
   react.el.dataset.tipSide = 'top';
   react.el.setAttribute('aria-label', 'Поставить реакцию');
+  // После выбора снова раскрываем ленту только при явном возвращении к кнопке.
+  for (const type of ['pointerenter', 'focus'] as const) {
+    react.el.addEventListener(type, () => wrap.classList.remove('an-picked'));
+  }
   wrap.append(recent, react.el);
   n.root.insertBefore(wrap, n.comment);
   n.tools = wrap;
@@ -236,7 +240,6 @@ function renderRecent(n: RowNode, elId: string): void {
       if (!wrap) return;
       wrap.classList.add('an-picked');
       b.blur();
-      wrap.addEventListener('mouseleave', () => wrap.classList.remove('an-picked'), { once: true });
     });
     n.recent!.append(b);
   });

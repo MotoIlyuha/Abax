@@ -92,7 +92,7 @@ test.describe('облако без швов', () => {
 
     // а это устройство, не зная об этом, рисует ещё
     await board.rect(600, 500, 720, 580);
-    const toast = page.locator('#toast', { hasText: 'Проект обновился с другого устройства' });
+    const toast = page.locator('#notify-stack .ns-card', { hasText: 'Проект обновился с другого устройства' });
     await expect(toast).toBeVisible({ timeout: 15000 });
     // основной проект — серверная версия, своя фигура ушла в копию
     await expect.poll(() => stateOf(page, s => s.project.name as string)).toBe('С планшета');

@@ -516,7 +516,8 @@ test.describe('лимиты тарифов', () => {
     await board.addPage();
     expect((await board.state()).project.pages).toHaveLength(3);
     await page.locator('#pages-list .page-add').click();
-    await expect(page.locator('#toast')).toHaveText('На бесплатном тарифе доступно до 3 страниц в проекте');
+    await expect(page.locator('#plans-dialog')).toBeVisible();
+    await page.locator('#plans-dialog .pl-close').click();
     expect((await board.state()).project.pages).toHaveLength(3);
     // черновик (Alt + клик по плитке) в лимит не входит
     await page.keyboard.down('Alt');
@@ -551,7 +552,7 @@ test.describe('лимиты тарифов', () => {
     }
     await board.home();
     await page.locator('#home .new-project').click();
-    await expect(page.locator('#toast')).toHaveText('На бесплатном тарифе доступно до 3 проектов');
+    await expect(page.locator('#plans-dialog')).toBeVisible();
     expect((await board.state()).projects).toHaveLength(3);
   });
 

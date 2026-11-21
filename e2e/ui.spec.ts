@@ -43,11 +43,12 @@ test.describe('панель цвета и толщины', () => {
     await expect(panel.locator(`.ctx-swatches.custom [data-c="${color}"]`)).toHaveCount(0);
   });
 
-  test('перетаскивание в «Мои цвета»: приёмник синеет над зоной, текст — только без своих цветов', async ({ page }) => {
+  test('перетаскивание в «Мои цвета»: приёмник синеет над зоной, текст — только без своих цветов', async ({ board, page }) => {
     await page.locator('#btn-style').click();
     const panel = page.locator('.ctx-panel[data-kind="style"]');
     const hint = panel.locator('.ctx-drop-hint');
     await expect(hint).toContainText('Перетащите цвет сюда');
+    await board.settled();
     const src = (await panel.locator('.ctx-swatches:not(.custom) [data-c="#ff6464"]').boundingBox())!;
     const dst = (await hint.boundingBox())!;
     await page.mouse.move(src.x + 17, src.y + 17);
@@ -101,7 +102,7 @@ test.describe('панель цвета и толщины', () => {
     await expect(page.locator('.eyedropper-overlay')).toHaveCount(0);
     await expect(panel.locator('.ctx-swatches.custom [data-c="#123456"]')).toHaveCount(1);
     expect((await board.state()).style.color).toBe('#123456');
-    await expect(panel.locator('.ctx-drop-hint')).toContainText('Перетащите цвет сюда');
+    await expect(panel.locator('.ctx-drop-hint')).toHaveText('');
   });
 
   test('пресеты: три у пера и маркера, один у остальных', async ({ board, page }) => {
@@ -828,7 +829,7 @@ test.describe('адаптивная шапка', () => {
     const redo = (await page.locator('#btn-redo').boundingBox())!;
     expect(undo.y).toBeGreaterThan(tb.y + tb.height);
     expect(redo.y).toBeGreaterThan(undo.y + undo.height - 1);
-    expect(Math.abs(undo.x - redo.x)).toBeLessThan(1);
+    expect(Math.abs(undo.x + undo.width / 2 - redo.x - redo.width / 2)).toBeLessThan(1);
     expect(await page.locator('#topbar').evaluate(e => e.scrollWidth <= e.clientWidth)).toBe(true);
 
     await page.setViewportSize({ width: 1280, height: 800 });

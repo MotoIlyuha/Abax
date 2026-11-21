@@ -2845,12 +2845,12 @@ body.no-ui-anim .cp-msg.cp-new { animation: none; }
 .an-react-wrap:hover .an-recent, .an-react-wrap:focus-within .an-recent { opacity: 1; transform: none; pointer-events: auto; }
 .an-recent-btn {
   width: 26px; height: 26px; padding: 0; border: 0; border-radius: 13px; background: transparent; font-size: 16px; line-height: 1;
-  opacity: 0; transform: translateX(10px) scale(.5);
+  opacity: 0; pointer-events: none; transform: translateX(10px) scale(.5);
   transition: opacity .14s ease calc(var(--i) * 28ms), transform .32s cubic-bezier(.34, 1.56, .64, 1) calc(var(--i) * 28ms), background .12s ease;
 }
-.an-react-wrap:hover .an-recent-btn, .an-react-wrap:focus-within .an-recent-btn { opacity: 1; transform: none; }
+.an-react-wrap:hover .an-recent-btn, .an-react-wrap:focus-within .an-recent-btn { opacity: 1; pointer-events: auto; transform: none; }
 .an-react-wrap.an-picked .an-recent { opacity: 0; transform: translateX(14px) scaleX(.6); pointer-events: none; }
-.an-react-wrap.an-picked .an-recent-btn { opacity: 0; transform: translateX(10px) scale(.5); }
+.an-react-wrap.an-picked .an-recent-btn { opacity: 0; pointer-events: none; transform: translateX(10px) scale(.5); }
 .an-recent-btn:hover { background: var(--accent-soft); transform: scale(1.18) !important; }
 /* появление кнопок у выделенного объекта */
 .an-row.an-enter .an-react-wrap, .an-row.an-enter .an-comment:not(.an-counter) { animation: an-pop .34s cubic-bezier(.34, 1.56, .64, 1) both; }

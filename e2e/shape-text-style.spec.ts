@@ -191,17 +191,20 @@ test.describe('надпись в фигуре', () => {
 });
 
 test.describe('прозрачность и скругление', () => {
-  test('ползунок прозрачности — между толщиной и цветами; новые элементы его наследуют', async ({ board, page }) => {
+  test('ползунок прозрачности — под цветами; новые элементы его наследуют', async ({ board, page }) => {
     await page.locator('#btn-style').click();
     const panel = page.locator('.ctx-panel[data-kind="style"]');
     await board.settled();
     const order = await panel.evaluate(p => [...p.children].map(c => c.className));
-    expect(order.slice(0, 3)).toEqual(['ctx-range ctx-width', 'ctx-range ctx-opacity', 'ctx-scroll']);
+    expect(order.slice(0, 3)).toEqual(['ctx-range ctx-width', 'ctx-scroll', 'ctx-bar']);
+    await expect(panel.locator('.ctx-scroll .ctx-opacity')).toHaveCount(1);
     // у толщины — иконка слева и значение справа
     await expect(panel.locator('.ctx-width .ctx-range-icon svg')).toBeVisible();
     await expect(panel.locator('.ctx-width .ctx-range-val')).toHaveText('4');
     const track = panel.locator('.ctx-opacity .ctx-range-track');
     await expect(track).toHaveAttribute('aria-valuetext', '100%');
+    await track.scrollIntoViewIfNeeded();
+    await board.settled();
     const box = (await track.boundingBox())!;
     await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
     const opacity = (await board.state()).style.opacity as number;
@@ -282,6 +285,8 @@ test.describe('прозрачность и скругление', () => {
     const drop = (await panel.locator('.qs-track').boundingBox())!;
     await page.mouse.click(drop.x + drop.width - 1, drop.y + drop.height / 2);
     expect((await board.elements())[0].width).toBeGreaterThan(13);
+    await panel.locator('.ctx-opacity .ctx-range-track').scrollIntoViewIfNeeded();
+    await board.settled();
     const op = (await panel.locator('.ctx-opacity .ctx-range-track').boundingBox())!;
     await page.mouse.click(op.x + op.width / 2, op.y + op.height / 2);
     expect((await board.elements())[0].opacity).toBeLessThan(0.7);
