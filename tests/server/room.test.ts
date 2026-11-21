@@ -378,8 +378,8 @@ describe('реакции и комментарии', () => {
     expect(hub.room.project.pages[0].comments[0].resolved).toBe(true);
     hub.setRights(uid, { pages: { pg2: 'hidden' } });
     const before = hub.room.project;
-    g.recv({ t: 'comment', op: 'create', pageId: 'pg2', x: 1, y: 1, text: 'х' });
-    g.recv({ t: 'comment', op: 'create', pageId: 'pg1', x: 1, y: 1, text: '  ' });
+    g.recv({ t: 'comment', op: 'create', pageId: 'pg2', x: 1, y: 1, targetElementId: 'c', text: 'х' });
+    g.recv({ t: 'comment', op: 'create', pageId: 'pg1', x: 1, y: 1, targetElementId: 'a', text: '  ' });
     expect(hub.room.project).toBe(before);
     // присланный проект комментарии хаба не затирает
     host.recv({ t: 'project', project: { ...before, pages: before.pages.map((pg: Msg) => ({ ...pg, comments: undefined })) } });

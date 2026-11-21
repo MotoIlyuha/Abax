@@ -43,10 +43,10 @@ const withComments = (page, comments) => ({ ...page, comments });
 function createCommentThread(page, params) {
   const text = cleanCommentText(params.text);
   if (!text || !Number.isFinite(params.x) || !Number.isFinite(params.y) || !isUserId(params.authorId)) return page;
-  const target = params.targetElementId && page.elements.some(e => e.id === params.targetElementId) ? params.targetElementId : undefined;
+  if (!params.targetElementId || !page.elements.some(e => e.id === params.targetElementId)) return page;
   const thread = {
     id: params.id ?? newId(), x: params.x, y: params.y,
-    ...(target ? { targetElementId: target } : {}),
+    targetElementId: params.targetElementId,
     messages: [{
       id: params.messageId ?? newId(), authorId: params.authorId, authorName: cleanAuthorName(params.authorName), text,
       createdAt: params.now ?? Date.now(),

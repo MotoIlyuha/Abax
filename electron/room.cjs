@@ -935,7 +935,8 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
     let next = page;
     if (m.op === 'create') {
       if (!isNum(m.x) || !isNum(m.y) || typeof m.text !== 'string') return;
-      next = notes.createCommentThread(page, { x: m.x, y: m.y, ...(isId(m.targetElementId) ? { targetElementId: m.targetElementId } : {}), ...author, text: m.text });
+      if (!isId(m.targetElementId)) return;
+      next = notes.createCommentThread(page, { x: m.x, y: m.y, targetElementId: m.targetElementId, ...author, text: m.text });
     } else if (m.op === 'reply') {
       if (!isId(m.threadId) || typeof m.text !== 'string') return;
       next = notes.addCommentReply(page, m.threadId, { ...author, text: m.text });

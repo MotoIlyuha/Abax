@@ -1000,7 +1000,7 @@ export function sendAttention(pageId: string, elId: string, emoji: string): bool
 }
 
 export type CommentRequest =
-  | { op: 'create'; x: number; y: number; targetElementId?: string; text: string }
+  | { op: 'create'; x: number; y: number; targetElementId: string; text: string }
   | { op: 'reply'; threadId: string; text: string }
   | { op: 'resolve'; threadId: string; resolved: boolean };
 

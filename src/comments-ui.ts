@@ -5,8 +5,7 @@ import { elementAABB } from './geom';
 import { canEditPagesNote, noteName, sendComment, sendReaction, type CommentRequest } from './collab-notes';
 import { clientId } from './identity';
 import { myCollabCaps } from './collab';
-import { PIN_R, hitPin, layoutPins } from './annotations';
-import { noteRecentReaction, showComments } from './annot-prefs';
+import { noteRecentReaction } from './annot-prefs';
 import {
   discussionMessages, discussionResolved, elementLabel, elementThreads, replyThread, threadLastAt, type DiscussionMessage,
 } from './discussion';
@@ -18,8 +17,8 @@ import { notePerson } from './note-people';
 import { claimMenu, closeMenu, openMenu, releaseMenu } from './menu-motion';
 import { onBoardFrame } from './renderer';
 
-// Интерфейс реакций и комментариев (SPEC_COMMENTS): постановка и снятие реакций, нажатия на пины веток без объекта,
-// панель обсуждения объекта. Работает у автора, у участников комнаты (читатель — только читает) и скрыт при просмотре
+// Интерфейс реакций и комментариев (SPEC_COMMENTS): постановка и снятие реакций, панель обсуждения объекта.
+// Работает у автора, у участников комнаты (читатель — только читает) и скрыт при просмотре
 // по ссылке. Кнопки и пилюли под объектами — src/annot-layer.ts.
 
 /** Реакции и комментарии доступны: не просмотр по ссылке и не черновик (его не видит никто, кроме автора). */
@@ -63,28 +62,10 @@ export function removeReaction(elId: string, emoji: string): void {
   if (hasMyReaction(elId, emoji)) toggleReactionOn(elId, emoji);
 }
 
-// ----- Нажатия на холсте -----
-
-/**
- * Нажатие по пину ветки без объекта (x, y — экранные координаты холста; пилюли и счётчики объектов — DOM-слой
- * src/annot-layer.ts). true — нажатие обработано, холст его дальше не разбирает.
- */
-export function annotationClick(x: number, y: number): boolean {
-  if (!annotationsAvailable() || !showComments()) return false;
-  const r = host()?.getBoundingClientRect();
-  const w = r && r.width > 0 ? r.width : window.innerWidth;
-  const h = r && r.height > 0 ? r.height : window.innerHeight;
-  const pin = hitPin(layoutPins(state.board.comments, state.board.elements, state.camera, w, h), x, y);
-  if (!pin) return false;
-  openThread(pin.threadId);
-  return true;
-}
-
-
 // ----- Панель обсуждения (SPEC_COMMENTS §3) -----
 // Обсуждение объекта — лента как в чате (свои справа акцентом, чужие слева с аватаром, именем цвета плашки и временем)
 // и поле ввода чата (src/chat-composer.ts). Выходит из кнопки «Комментировать» по трём уровням анимации
-// (src/menu-motion.ts). Ветка без объекта (пин) открывает ту же панель только со своими сообщениями.
+// (src/menu-motion.ts). Ветку без объекта можно открыть из вкладки «Комментарии».
 
 type PopState = { kind: 'element'; elId: string } | { kind: 'thread'; id: string };
 interface Pop {
@@ -168,7 +149,7 @@ export function startComment(el: Element): void {
   openDiscussion(el.id);
 }
 
-/** Ветка без объекта (пин) или ветка по id. Ветка при объекте открывает обсуждение объекта. */
+/** Открывает ветку из вкладки «Комментарии». Для объекта показывает всё его обсуждение. */
 export function openThread(id: string): void {
   const t = threadOf(id);
   if (!annotationsAvailable() || !t) return;
@@ -259,7 +240,7 @@ function submit(raw: string): ChatSendResult {
     } else {
       const el = state.board.elements.find(e => e.id === elId);
       if (!el) return 'empty';
-      // точка новой ветки — правый верхний угол объекта (её видят старые версии как пин)
+      // Точка нужна для перехода к обсуждению из списка после удаления объекта.
       const a = elementAABB(el);
       ok = change({ op: 'create', x: a.x1, y: a.y0, targetElementId: elId, text },
         page => createCommentThread(page, { x: a.x1, y: a.y0, targetElementId: elId, ...author, text }));
@@ -391,7 +372,7 @@ function place(p: Pop): void {
       if (el) { const a = elementAABB(el); pt = { x: a.x1, y: a.y1 }; }
     } else {
       const t = threadOf(p.state.id);
-      if (t) pt = { x: t.x + PIN_R / cam.zoom, y: t.y };
+      if (t) pt = { x: t.x, y: t.y };
     }
     ax1 = (wrap?.left ?? 0) + (pt.x - cam.x) * cam.zoom;
     ay0 = ay1 = (wrap?.top ?? 0) + (pt.y - cam.y) * cam.zoom;
@@ -418,8 +399,7 @@ export function initCommentsUi(): void {
   }, true);
   document.addEventListener('pointerdown', e => {
     const t = e.target as HTMLElement | null;
-    // нажатие по кнопке «Комментировать» решает она сама (откроет другое обсуждение или закроет это);
-    // по пину откроет ветку annotationClick; остальное — закрывает
+    // Кнопка «Комментировать» сама переключает обсуждение.
     if (pop && !(t instanceof Node && pop.el.contains(t)) && !t?.closest?.('.an-comment, #icon-picker')) closeThread();
   }, true);
 }

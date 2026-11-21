@@ -1,10 +1,9 @@
-// Реакции и комментарии: постановка и снятие реакций, нажатия на пины, поповер ветки.
+// Реакции и комментарии: постановка и снятие реакций, открытие обсуждения.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  addReaction, annotationClick, annotationsAvailable, closeThread, hasMyReaction, initCommentsUi, openDiscussion, openDiscussionId,
+  addReaction, annotationsAvailable, closeThread, hasMyReaction, initCommentsUi, openDiscussion, openDiscussionId, openThread,
   removeReaction, startComment, threadOpen, toggleReactionOn,
 } from '../../src/comments-ui';
-import { layoutPins } from '../../src/annotations';
 import { recentReactions } from '../../src/annot-prefs';
 import { clientId, resetClientId } from '../../src/identity';
 import { createCommentThread } from '../../src/comments';
@@ -64,7 +63,6 @@ describe('реакции у автора без комнаты', () => {
     expect(annotationsAvailable()).toBe(false);
     toggleReactionOn('a', '👍');
     expect(reactions('a')).toBeUndefined();
-    expect(annotationClick(110, 167)).toBe(false);
   });
 });
 
@@ -120,10 +118,12 @@ describe('обсуждение объекта у автора без комна�
     expect(pop()!.classList.contains('resolved')).toBe(false);
   });
 
-  it('пин ветки без объекта открывает её; повторное открытие того же обсуждения - закрывает; Esc закрывает', () => {
-    state.board.comments = createCommentThread(state.board, { x: 50, y: 60, authorId: 'u1', authorName: 'А', text: 'т' }).comments;
-    const pin = layoutPins(state.board.comments, state.board.elements, state.camera, 800, 600)[0];
-    expect(annotationClick(pin.x, pin.y)).toBe(true);
+  it('сохранённую ветку без объекта можно открыть из списка и ответить; Esc закрывает', () => {
+    state.board.comments = [{
+      id: 'legacy', x: 50, y: 60,
+      messages: [{ id: 'legacy-msg', authorId: 'u1', authorName: 'А', text: 'т', createdAt: 1 }],
+    }];
+    openThread('legacy');
     expect(pop()!.querySelector('.cp-sub')!.textContent).toBe('Комментарий на доске');
     send('Отвечаю');
     expect(state.board.comments![0].messages.map(m => m.text)).toEqual(['т', 'Отвечаю']);

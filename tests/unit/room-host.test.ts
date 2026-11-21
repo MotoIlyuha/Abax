@@ -555,8 +555,8 @@ describe('реакции и комментарии от участников', (
     a.s.sent.length = 0;
     const before = hub.room.project;
     for (const m of [
-      { t: 'comment', op: 'create', pageId: 'pg2', x: 1, y: 1, text: 'х' }, { t: 'comment', op: 'create', pageId: 'pg1', x: 'a', y: 1, text: 'х' },
-      { t: 'comment', op: 'create', pageId: 'pg1', x: 1, y: 1, text: '   ' }, { t: 'comment', op: 'reply', pageId: 'pg1', threadId: 'нет', text: 'х' },
+      { t: 'comment', op: 'create', pageId: 'pg2', x: 1, y: 1, targetElementId: 'c', text: 'х' }, { t: 'comment', op: 'create', pageId: 'pg1', x: 'a', y: 1, targetElementId: 'a', text: 'х' },
+      { t: 'comment', op: 'create', pageId: 'pg1', x: 1, y: 1, targetElementId: 'a', text: '   ' }, { t: 'comment', op: 'reply', pageId: 'pg1', threadId: 'нет', text: 'х' },
       { t: 'comment', op: 'resolve', pageId: 'pg1', threadId: '' }, { t: 'comment', op: 'взлом', pageId: 'pg1' }, { t: 'comment', pageId: 'pg1' },
     ]) a.s.recv(m);
     expect(hub.room.project).toBe(before);
@@ -566,7 +566,7 @@ describe('реакции и комментарии от участников', (
     const other = hub.room.nextUid - 1;
     hub.setRights(other, { pages: { pg1: 'hidden' } });
     h.sent.length = 0;
-    a.s.recv({ t: 'comment', op: 'create', pageId: 'pg1', x: 1, y: 1, text: 'видно не всем' });
+    a.s.recv({ t: 'comment', op: 'create', pageId: 'pg1', x: 1, y: 1, targetElementId: 'a', text: 'видно не всем' });
     expect(h.last('comments')).toBeUndefined();
   });
 
@@ -574,7 +574,7 @@ describe('реакции и комментарии от участников', (
     const { hub, host, join } = setup({}, withEls());
     const a = join('Маша');
     hub.setRights(a.uid, { all: 'edit' });
-    a.s.recv({ t: 'comment', op: 'create', pageId: 'pg1', x: 1, y: 1, text: 'мой' });
+    a.s.recv({ t: 'comment', op: 'create', pageId: 'pg1', x: 1, y: 1, targetElementId: 'a', text: 'мой' });
     const stale = { ...hub.room.project!, pages: hub.room.project!.pages.map(pg => ({ ...pg, comments: undefined })) };
     a.s.recv({ t: 'project', project: stale });
     host.recv({ t: 'project', project: stale });

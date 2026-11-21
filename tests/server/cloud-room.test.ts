@@ -112,7 +112,7 @@ describe('комната без автора (pro)', () => {
     g.send({ t: 'caps', patches: true });
     g.send({ t: 'patch', pageId: 'a-p2', rev: 1, ops: [{ op: 'put', el: rectEl('новый') }] });
     g.send({ t: 'react', pageId: 'a-p2', elId: 'r2', emoji: '👍', userId: 'u1' });
-    g.send({ t: 'comment', pageId: 'a-p2', op: 'create', x: 5, y: 5, text: 'Вопрос' });
+    g.send({ t: 'comment', pageId: 'a-p2', op: 'create', x: 5, y: 5, targetElementId: 'r2', text: 'Вопрос' });
     await until(() => storedProject(app, 'a').pages[1].comments?.length === 1);
     const p2 = storedProject(app, 'a').pages[1];
     expect(p2.elements.map((e: any) => e.id)).toEqual(['r2', 'новый']);

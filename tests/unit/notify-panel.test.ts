@@ -260,9 +260,11 @@ describe('режим «Чат и уведомления»', () => {
     });
 
     it('карточки обсуждений и объектов с реакциями; свежее обсуждение выше; поля ввода нет', () => {
-      let page = createCommentThread(state.board, { x: 0, y: 0, targetElementId: 'a', authorId: 'u1', authorName: '<b>Маша</b>', text: 'старое', now: 1000 });
-      page = createCommentThread(page, { x: 5, y: 5, authorId: 'u2', authorName: 'Вова', text: 'без объекта', now: 2000 });
-      state.board.comments = page.comments;
+      const page = createCommentThread(state.board, { x: 0, y: 0, targetElementId: 'a', authorId: 'u1', authorName: '<b>Маша</b>', text: 'старое', now: 1000 });
+      state.board.comments = [...page.comments!, {
+        id: 'legacy', x: 5, y: 5,
+        messages: [{ id: 'legacy-msg', authorId: 'u2', authorName: 'Вова', text: 'без объекта', createdAt: 2000 }],
+      }];
       setNotifyTab('comments');
       v.show?.();
       const cards = [...host.querySelectorAll<HTMLElement>('.cm-card')];

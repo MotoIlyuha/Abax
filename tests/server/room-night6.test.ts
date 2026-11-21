@@ -87,7 +87,7 @@ describe.each(kinds)('$name', kind => {
       expect(rights.caps).toMatchObject({ comment: false, chat: false, pointer: false });
       const before = host.sent.length;
       g.s.recv({ t: 'chat', text: 'можно?' });
-      g.s.recv({ t: 'comment', op: 'create', pageId: 'pg1', x: 1, y: 1, text: 'вопрос' });
+      g.s.recv({ t: 'comment', op: 'create', pageId: 'pg1', x: 1, y: 1, targetElementId: 'r', text: 'вопрос' });
       g.s.recv({ t: 'react', pageId: 'pg1', elId: 'r', emoji: '👍' });
       g.s.recv({ t: 'pointer', k: 'laser', pageId: 'pg1', color: '#ff2d2d', pts: [{ x: 1, y: 1 }] });
       g.s.recv({ t: 'task-submit', pageId: 'pg1', elId: 't1', value: '4' });
@@ -105,8 +105,12 @@ describe.each(kinds)('$name', kind => {
       expect(g.s.last('rights')!.rights.pages.pg1).toBe('view');
       g.s.recv({ t: 'task-submit', pageId: 'pg1', elId: 't1', value: '4' });
       expect(host.last('patch')!.ops[0].el.attempts).toHaveLength(1);
-      g.s.recv({ t: 'comment', op: 'create', pageId: 'pg1', x: 1, y: 1, text: 'вопрос' });
-      expect(host.last('comments')!.comments).toHaveLength(1);
+      const comment = { t: 'comment', op: 'create', pageId: 'pg1', x: 1, y: 1, text: 'вопрос' };
+      g.s.recv(comment);
+      g.s.recv({ ...comment, targetElementId: 'нет' });
+      expect(host.last('comments')).toBeUndefined();
+      g.s.recv({ ...comment, targetElementId: 't1' });
+      expect(host.last('comments')!.comments).toMatchObject([{ targetElementId: 't1' }]);
     });
 
     it('редактор новой роли - edit на страницах без права; patch принимается', () => {

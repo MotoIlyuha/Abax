@@ -464,7 +464,7 @@ export function initAnnotLayer(): void {
   inited = true;
   onBoardFrame(() => syncAnnotLayer());
   onChange(syncAnnotLayer);
-  onAnnotView(() => { syncAnnotLayer(); requestRender(); }); // пины веток холст рисует сам
+  onAnnotView(() => { syncAnnotLayer(); requestRender(); }); // счётчики в окне демонстрации рисует холст
   // недавние реакции и цвета участников могли смениться — пересобрать при следующем кадре
   syncAnnotLayer();
 }

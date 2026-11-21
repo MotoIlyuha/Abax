@@ -432,6 +432,14 @@ test.describe('реакции и комментарии', () => {
     await board.tool('v');
     await board.drag([{ x: 450, y: 350 }, { x: 550, y: 450 }]);
     await expect.poll(async () => (await comments())[0].x).toBe(600);
+    await page.keyboard.press('Delete');
+    await expect.poll(() => board.count('shape')).toBe(0);
+    await expect(row).toHaveCount(0);
+    await board.click({ x: 600, y: 400 });
+    await expect(pop).toBeHidden();
+    expect(await comments()).toMatchObject([{ targetElementId: a.id }]);
+    await page.keyboard.press('Control+z');
+    await expect(row.locator('.an-comment')).toHaveText('2');
   });
 
   test('участник в комнате: реакция цвета своей плашки, комментарий; автору - пуши «Перейти» и «Посмотреть»', async ({ board, page, context }) => {

@@ -105,8 +105,8 @@ describe('пилюли реакций', () => {
   });
 
   it('имена не превращаются в разметку', () => {
-    state.board.comments = createCommentThread(state.board, { x: 0, y: 0, authorId: 'x1', authorName: '<img src=x onerror=1>', text: 'т' }).comments;
     addElement(rect('a', 100, 100, { w: 20, reactions: { '👍': ['x1'], '🔥': ['x2'] } }));
+    state.board.comments = createCommentThread(state.board, { x: 0, y: 0, targetElementId: 'a', authorId: 'x1', authorName: '<img src=x onerror=1>', text: 'т' }).comments;
     syncAnnotLayer();
     row('a')!.querySelector<HTMLButtonElement>('.an-more')!.click();
     const chip = document.querySelector('#reactions-menu .arm-chip')!;

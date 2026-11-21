@@ -56,26 +56,25 @@ describe('ветки комментариев', () => {
     }]);
   });
 
-  it('привязка к отсутствующему элементу отбрасывается; без привязки - свободная ветка', () => {
-    const p = createCommentThread(page(), { x: 1, y: 2, targetElementId: 'нет', ...author, text: 'Привет' });
-    expect(p.comments![0]).not.toHaveProperty('targetElementId');
-    expect(p.comments![0].id).toBeTruthy();
+  it('ветка к отсутствующему элементу не создаётся', () => {
+    const base = page();
+    expect(createCommentThread(base, { x: 1, y: 2, targetElementId: 'нет', ...author, text: 'Привет' })).toBe(base);
   });
 
   it('пустой текст и неверные координаты отклоняются', () => {
     const base = page();
-    expect(createCommentThread(base, { x: 1, y: 1, ...author, text: '   ' })).toBe(base);
-    expect(createCommentThread(base, { x: NaN, y: 1, ...author, text: 'а' })).toBe(base);
-    expect(createCommentThread(base, { x: 1, y: 1, authorId: '', authorName: '', text: 'а' })).toBe(base);
+    expect(createCommentThread(base, { x: 1, y: 1, targetElementId: 'a', ...author, text: '   ' })).toBe(base);
+    expect(createCommentThread(base, { x: NaN, y: 1, targetElementId: 'a', ...author, text: 'а' })).toBe(base);
+    expect(createCommentThread(base, { x: 1, y: 1, targetElementId: 'a', authorId: '', authorName: '', text: 'а' })).toBe(base);
   });
 
   it('длинный текст обрезается до 2000', () => {
-    const p = createCommentThread(page(), { x: 1, y: 1, ...author, text: 'я'.repeat(5000) });
+    const p = createCommentThread(page(), { x: 1, y: 1, targetElementId: 'a', ...author, text: 'я'.repeat(5000) });
     expect(p.comments![0].messages[0].text).toHaveLength(2000);
   });
 
   it('ответ добавляется в конец; неизвестная ветка и пустой ответ отклоняются', () => {
-    const p1 = createCommentThread(page(), { x: 1, y: 1, ...author, text: 'Вопрос', id: 't1', now: 1 });
+    const p1 = createCommentThread(page(), { x: 1, y: 1, targetElementId: 'a', ...author, text: 'Вопрос', id: 't1', now: 1 });
     const p2 = addCommentReply(p1, 't1', { authorId: 'u2', authorName: 'Борис', text: 'Ответ' }, { now: 2, id: 'm2' });
     expect(p2.comments![0].messages.map(m => [m.authorId, m.text, m.createdAt])).toEqual([['u1', 'Вопрос', 1], ['u2', 'Ответ', 2]]);
     expect(p1.comments![0].messages).toHaveLength(1); // иммутабельно
@@ -84,7 +83,7 @@ describe('ветки комментариев', () => {
   });
 
   it('закрытие и возврат в обсуждение', () => {
-    const p1 = createCommentThread(page(), { x: 1, y: 1, ...author, text: 'в', id: 't1' });
+    const p1 = createCommentThread(page(), { x: 1, y: 1, targetElementId: 'a', ...author, text: 'в', id: 't1' });
     const closed = resolveCommentThread(p1, 't1');
     expect(closed.comments![0].resolved).toBe(true);
     expect(resolveCommentThread(closed, 't1')).toBe(closed); // уже закрыта
@@ -96,10 +95,10 @@ describe('ветки комментариев', () => {
 });
 
 describe('syncCommentsWithMovedElements', () => {
-  const withThread = (targetElementId?: string) => createCommentThread(page(), { x: 110, y: 40, targetElementId, ...author, text: 'к', id: 't1' });
+  const withThread = () => createCommentThread(page(), { x: 110, y: 40, targetElementId: 'a', ...author, text: 'к', id: 't1' });
 
   it('привязанная ветка сдвигается на (dx, dy) элемента', () => {
-    const p = withThread('a');
+    const p = withThread();
     const next = [translateElement(p.elements[0], 30, -20)];
     const out = syncCommentsWithMovedElements(p, p.elements, next);
     expect(out.comments![0]).toMatchObject({ x: 140, y: 20 });
@@ -107,15 +106,15 @@ describe('syncCommentsWithMovedElements', () => {
   });
 
   it('свободная ветка и неподвижный элемент - без изменений', () => {
-    const free = withThread();
+    const p = withThread();
+    const free = { ...p, comments: p.comments!.map(t => ({ ...t, targetElementId: undefined })) };
     expect(syncCommentsWithMovedElements(free, free.elements, [translateElement(free.elements[0], 5, 5)])).toBe(free);
-    const p = withThread('a');
     expect(syncCommentsWithMovedElements(p, p.elements, [{ ...p.elements[0] }])).toBe(p); // тот же объект по значению
     expect(syncCommentsWithMovedElements(p, p.elements, p.elements)).toBe(p);
   });
 
   it('удалённый элемент ветку не двигает и не удаляет', () => {
-    const p = withThread('a');
+    const p = withThread();
     const out = syncCommentsWithMovedElements(p, p.elements, []);
     expect(out).toBe(p);
     expect(out.comments![0].targetElementId).toBe('a');
