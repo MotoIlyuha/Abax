@@ -20,7 +20,7 @@ export const PERIOD_DAYS: Record<BillingPeriod, number> = { month: 30, quarter: 
 /** Цена в рублях за весь срок. */
 export const PRICES: Record<PaidPlan, Record<BillingPeriod, number>> = {
   pro: { month: 399, quarter: 999, year: 3499 },
-  tutor: { month: 699, quarter: 1499, year: 6999 },
+  tutor: { month: 699, quarter: 1499, year: 5999 },
 };
 
 /** Пробный период: только Tutor, один раз на аккаунт. */

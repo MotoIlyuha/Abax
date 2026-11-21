@@ -5665,7 +5665,7 @@ body.no-ui-anim .tier-hide, body.no-ui-anim .tier-icon { transition: none; }
 @keyframes pl-spin { to { transform: rotate(360deg); } }
 .pl-note { min-height: 16px; font-size: 12px; color: var(--fg-tertiary); text-align: center; }
 .pl-note[hidden] { display: block; visibility: hidden; }
-.pl-msg { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px; margin: 14px auto 0; max-width: 620px; padding: 10px 14px; border-radius: 12px; background: var(--warn-soft); color: var(--warn-ink); font-size: 13px; text-align: center; }
+.pl-msg { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px; margin: 14px 0 0; padding: 10px 14px; border-radius: 12px; background: var(--warn-soft); color: var(--warn-ink); font-size: 13px; text-align: center; }
 .pl-msg[hidden] { display: none; }
 .pl-msg-btn { height: 30px; padding: 0 14px; }
 .pl-foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
