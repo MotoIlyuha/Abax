@@ -231,10 +231,13 @@ describe('гость', () => {
     await collab.startCollab(base, false, 'Ученик');
     await until(() => st.state.project.id === 'proj');
     const uid = [...server.room.clients.values()][0].uid;
+    let refreshed = false;
+    document.addEventListener('doska:collab-project', () => { refreshed = true; }, { once: true });
     server.setRights(uid, { all: 'edit' });
-    await until(() => collab.pageRight('pg1') === 'edit');
+    await until(() => collab.pageRight('pg1') === 'edit' && refreshed);
     const host = await peer(`${base}&host=1&key=${encodeURIComponent(server.hostKey)}`);
     peers.push(host);
+    await until(() => last(host, 'init'));
     const p = demo();
     p.pages[0].elements = [rect('mine') as never];
     expect(await collab.netStorage.list()).toEqual([]);
@@ -245,7 +248,7 @@ describe('гость', () => {
     expect((await collab.netStorage.load('proj'))?.id).toBe('proj');
     expect(await collab.netStorage.load('other')).toBeNull();
     collab.setNetProject(demo());
-    const msg = await until(() => last(host, 'project'));
+    const msg = await until(() => host.inbox.find(m => m.t === 'project' && m.project.pages[0].elements.some((el: { id: string }) => el.id === 'mine')));
     expect(msg.project.pages[0].elements[0].id).toBe('mine');
     expect(server.room.project!.pages[0].elements).toHaveLength(1);
   });
