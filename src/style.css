@@ -3348,7 +3348,7 @@ form.ob-email { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin
 .cp-item-icon.worn { opacity: 0; }
 .cp-preview .cp-item:focus-visible { outline-offset: -3px; border-radius: 12px; z-index: 1; }
 .cp-item-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 16px; }
-.cp-pro { position: absolute; top: 5px; right: 5px; }
+.pro-badge.cp-pro { position: absolute; top: 5px; right: 5px; }
 
 /* курсор с именем: стоит у фигуры, на холсте — надет на мышь */
 .cp-pointer { position: absolute; left: 0; top: 0; z-index: 2; pointer-events: none; will-change: transform; }
