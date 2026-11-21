@@ -1,22 +1,24 @@
 import { expect, test } from './fixtures';
 
-test.describe('загрузка', () => {
+test.describe('новый пользователь', () => {
+  test.use({ initialTool: null });
+
   test('новый пользователь получает проект с одной страницей', async ({ board, page }) => {
     await expect(page).toHaveTitle('Abax');
     const s = await board.state();
     expect(s.project.name).toBe('Проект 1');
     expect(s.project.pages.map(p => p.name)).toEqual(['Страница 1']);
-    expect(s.tool).toBe('pen');
+    expect(s.tool).toBe('select');
     await expect(page.locator('#page-name')).toHaveValue('Страница 1');
     await expect(page.locator('#project-name')).toHaveValue('Проект 1');
-    // перо — в группе «Рисование», её кнопка показывает перо
-    await expect(page.locator('#btn-draw')).toHaveClass(/active/);
-    await expect(page.locator('#btn-draw')).toHaveAttribute('data-shape', 'pen');
+    await expect(page.locator('#toolbar .tool[data-tool="select"]')).toHaveClass(/active/);
     await expect(page.locator('#btn-undo')).toBeDisabled();
     await expect(page.locator('#btn-redo')).toBeDisabled();
     await expect(page.locator('#zoom-label')).toHaveText('100%');
   });
+});
 
+test.describe('загрузка', () => {
   test('последний открытый проект восстанавливается после перезагрузки', async ({ board, page }) => {
     await board.drag([{ x: 400, y: 300 }, { x: 500, y: 350 }]);
     await board.saved();
