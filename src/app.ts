@@ -1,5 +1,5 @@
 import { initTopbarFit, topbarFit } from './topbar-fit';
-import { renderAnalyticsSettings } from './analytics-consent';
+import { analyticsAvailable, renderAnalyticsSettings } from './analytics-consent';
 import { startCrop } from './crop';
 import type {
   AnimationMode, BoardSettings, Camera, Element, GridMode, ImageEl, NoteEl, Page, PageTransition, Project, ProjectMeta, ShapeEl, TaskEl, TextAlign, TextEl, TextVAlign,
@@ -2306,6 +2306,9 @@ export function openAllSettings(section?: string): void {
       }),
     },
     { id: 'advanced', title: 'Дополнительные', icon: ICONS.advanced, render: host => renderAdvancedSettings(host) },
+    ...(analyticsAvailable() ? [{
+      id: 'privacy', title: 'Конфиденциальность', icon: ICONS.privacy, render: renderAnalyticsSettings,
+    }] : []),
     { id: 'about', title: 'О проекте', icon: ICONS.info, render: host => renderAbout(host, showExperiments) },
     ...(experimentsShown() ? [EXPERIMENTAL] : []),
     // «Профиль» — первым в списке, но окно без явного раздела по-прежнему открывается на «Доске» (или на последнем)
@@ -2328,7 +2331,6 @@ function renderAdvancedSettings(host: HTMLElement): void {
       if (!state.settings.toolbarDetachable) { setSettings({ toolbarFloat: null }); persistSettings(); }
       applyToolbarPos();
     }));
-  renderAnalyticsSettings(box);
   host.appendChild(box);
 }
 

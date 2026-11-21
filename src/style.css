@@ -4256,10 +4256,9 @@ body.hide-export-button .export-group { display: none; }
 .analytics-closing { pointer-events: none !important; }
 body.no-motion #analytics-banner.analytics-closing { animation: analytics-close .2s ease-in forwards; }
 @keyframes analytics-close { to { opacity: 0; transform: scale(.05); } }
-.analytics-settings-heading { margin-top: 22px; }
-.analytics-settings-switch { display: flex; align-items: center; gap: 12px; padding: 8px 0; cursor: pointer; }
-.analytics-settings-switch .switch-text { flex: 1; }
+.grid-switch.analytics-settings-switch { margin: 0; padding: 8px 0; border-top: 0; }
 .analytics-settings-hint { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
+.analytics-settings-error:empty { margin: 0; }
 #view-menu { max-height: calc(100vh - 90px); overflow-y: auto; }
 /* список страниц не заходит под нижний правый угол (ширина — в --bottombar-w, см. app.ts) */
 #pages-dock:not([data-side="top"]) { right: calc(24px + var(--bottombar-w, 0px) + var(--side-panel-shift-b, 0px)); }

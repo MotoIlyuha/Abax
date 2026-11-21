@@ -51,12 +51,33 @@ async function drag(page: Page, from: Locator, to: Locator, at = 0.5, dx = 0.5):
 }
 
 test.describe('окно «Все настройки»', () => {
+  test('Яндекс Метрика переключается в разделе «Конфиденциальность»', async ({ page }) => {
+    await page.route('https://mc.yandex.ru/**', route => route.abort());
+    const banner = page.locator('#analytics-banner');
+    await expect(banner).toContainText('в разделе «Конфиденциальность»');
+    await banner.getByRole('button', { name: 'Отклонить' }).click();
+
+    await page.keyboard.press('Control+Comma');
+    const metrika = dialog(page).getByRole('switch', { name: 'Яндекс Метрика' });
+    await dialog(page).getByRole('button', { name: 'Дополнительные' }).click();
+    await expect(metrika).toHaveCount(0);
+    await dialog(page).getByRole('button', { name: 'Конфиденциальность' }).click();
+    await expect(metrika).toHaveAccessibleDescription(/Не отключайте, если хотите сделать Abax лучше/);
+    await expect(metrika).toHaveCSS('opacity', '0');
+    await expect(dialog(page).locator('.analytics-settings-switch .switch-track')).toHaveCSS('width', '34px');
+    await expect(metrika).not.toBeChecked();
+    await metrika.check();
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('abax.analytics-consent'))).toBe('accepted');
+    await Promise.all([page.waitForEvent('framenavigated'), metrika.click()]);
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('abax.analytics-consent'))).toBe('rejected');
+  });
+
   test('открывается из настроек доски и по Ctrl+, закрывается Esc, крестиком и кликом мимо', async ({ page }) => {
     await page.locator('#btn-settings').dispatchEvent('click');
     await page.locator('#settings-popover .settings-all').click();
     await expect(dialog(page)).toBeVisible();
     await expect(page.locator('#settings-popover')).toBeHidden();
-    await expect(page.locator('.sd-nav-item')).toHaveText(['Профиль', 'Подписка', 'Доска', 'Панель инструментов', 'Горячие клавиши', 'Дополнительные', 'О проекте']);
+    await expect(page.locator('.sd-nav-item')).toHaveText(['Профиль', 'Подписка', 'Доска', 'Панель инструментов', 'Горячие клавиши', 'Дополнительные', 'Конфиденциальность', 'О проекте']);
     await expect(page.locator('#sd-title')).toHaveText('Доска');
 
     // раздел «Доска» — те же настройки, что в поповере

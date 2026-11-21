@@ -1,6 +1,6 @@
 // Личный выбор аналитики хранится на устройстве, отдельно от настроек доски.
 import { atRest, clamp, motionEnabled, reduceMotion, S, snap, step, uiAnimOff } from './motion';
-import { createToggleSwitch } from './toggle-switch';
+import { createToggleSwitch, setToggleChecked } from './toggle-switch';
 
 const KEY = 'abax.analytics-consent';
 type Choice = 'accepted' | 'rejected';
@@ -12,7 +12,7 @@ export function analyticsChoice(): Choice | null {
   } catch { return null; }
 }
 
-function isWebsite(): boolean { return location.protocol === 'http:' || location.protocol === 'https:'; }
+export function analyticsAvailable(): boolean { return location.protocol === 'http:' || location.protocol === 'https:'; }
 
 /** Возвращает false, если выбор нельзя сохранить: счётчик в таком случае не запускается. */
 export function setAnalyticsChoice(accepted: boolean): boolean {
@@ -24,7 +24,7 @@ export function setAnalyticsChoice(accepted: boolean): boolean {
 }
 
 export function showAnalyticsBanner(): void {
-  if (!isWebsite() || analyticsChoice() || document.getElementById('analytics-banner')) return;
+  if (!analyticsAvailable() || analyticsChoice() || document.getElementById('analytics-banner')) return;
   const anchor = document.getElementById('btn-help')?.parentElement;
   if (!anchor) return;
   const card = document.createElement('section');
@@ -33,7 +33,7 @@ export function showAnalyticsBanner(): void {
   const title = document.createElement('strong');
   title.textContent = 'Помогите улучшить Abax';
   const text = document.createElement('p');
-  text.textContent = 'Яндекс Метрика использует файлы cookie и собирает статистику, чтобы помочь нам улучшать продукт. Выбор можно изменить позже в настройках, в разделе «Дополнительные».';
+  text.textContent = 'Яндекс Метрика использует файлы cookie и собирает статистику, чтобы помочь нам улучшать продукт. Выбор можно изменить в разделе «Конфиденциальность» в настройках.';
   const error = document.createElement('p');
   error.className = 'analytics-error';
   error.setAttribute('role', 'alert');
@@ -82,24 +82,29 @@ function closeBanner(card: HTMLElement): void {
 }
 
 export function renderAnalyticsSettings(host: HTMLElement): void {
-  if (!isWebsite()) return;
-  const heading = document.createElement('div');
-  heading.className = 'ctx-label analytics-settings-heading';
-  heading.textContent = 'Конфиденциальность';
+  const box = document.createElement('div');
+  box.className = 'sd-general';
+  const hint = document.createElement('p');
+  hint.id = 'analytics-settings-hint';
+  hint.className = 'analytics-settings-hint';
+  hint.textContent = 'Аналитические cookie и статистика посещений. Не отключайте, если хотите сделать Abax лучше. При выключении страница перезагрузится.';
+  const error = document.createElement('p');
+  error.className = 'analytics-settings-error';
+  error.setAttribute('role', 'alert');
   const row = createToggleSwitch({
-    className: 'analytics-settings-switch', label: 'Яндекс Метрика', checked: analyticsChoice() === 'accepted',
+    className: 'grid-switch analytics-settings-switch', label: 'Яндекс Метрика', checked: analyticsChoice() === 'accepted',
     onChange: accepted => {
       if (!setAnalyticsChoice(accepted)) {
-        const input = row.querySelector<HTMLInputElement>('input');
-        if (input) input.checked = !accepted;
-        hint.textContent = 'Не удалось сохранить выбор. Проверьте настройки браузера.';
+        setToggleChecked(input, !accepted);
+        error.textContent = 'Не удалось сохранить выбор. Проверьте настройки браузера.';
         return;
       }
+      error.textContent = '';
       document.getElementById('analytics-banner')?.remove();
     },
   });
-  const hint = document.createElement('p');
-  hint.className = 'analytics-settings-hint';
-  hint.textContent = 'Аналитические cookie и статистика посещений. При выключении страница перезагрузится.';
-  host.append(heading, row, hint);
+  const input = row.querySelector('input')!;
+  input.setAttribute('aria-describedby', hint.id);
+  box.append(row, hint, error);
+  host.append(box);
 }
