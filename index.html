@@ -7,7 +7,8 @@
        worker-src blob: — воркер pdf.js встроен в сборку (?worker&inline); ws: — сервер совместной работы
        (автор в Electron открыт с file://); api.github.com — проверка обновлений;
        'unsafe-inline' в style-src — стили через style и <style> окна демонстрации. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' ws: wss: https://api.github.com; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://mc.yandex.ru; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://mc.yandex.ru; font-src 'self' data:; connect-src 'self' ws: wss: https://api.github.com https://mc.yandex.ru; frame-src https://mc.yandex.ru; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <script src="metrika.js"></script>
   <title>Abax</title>
   <link rel="icon" type="image/svg+xml" href="logo.svg" />
   <style>
@@ -23,6 +24,7 @@
   </style>
 </head>
 <body>
+  <noscript><div><img src="https://mc.yandex.ru/watch/114443432" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
   <div id="startup" role="status" aria-live="polite">
     <div id="startup-status">
       <img src="logo.svg" alt="" />
