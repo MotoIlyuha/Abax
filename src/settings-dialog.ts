@@ -47,6 +47,11 @@ export function settingsDialogOpen(): boolean {
 }
 
 export function openSettingsDialog(sections: SettingsSection[], section?: string): void {
+  if (dialog) {
+    showSection(section ?? lastSection);
+    dialog.nav.querySelector<HTMLElement>('.sd-nav-item.active')?.focus();
+    return;
+  }
   closeSettingsDialog();
   const el = document.createElement('div');
   el.id = 'settings-dialog';

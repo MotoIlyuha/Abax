@@ -3048,6 +3048,7 @@ form.ob-email { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin
 }
 .ob-input::placeholder { color: var(--fg-placeholder); }
 .ob-code { letter-spacing: 0.2em; }
+.ob-code::placeholder { letter-spacing: normal; }
 .ob-back {
   grid-column: 1;
   grid-row: 1;
