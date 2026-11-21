@@ -9,11 +9,12 @@ import { DEV_GOOGLE, DEV_TELEGRAM } from './auth-flows';
 import { requireUser } from './auth';
 import { HttpError, type Ctx, type Router } from './router';
 import { effectivePlan, getUser, isAnonymousUser, meResponse } from './users';
+import { createCheckout, paymentNotification, refreshPayments, yookassaEnabled } from './yookassa';
 
 // Подписка (окно подписки и раздел настроек «Подписка»): сведения, покупка, пробный период Tutor и промокоды.
 // Купить, взять пробный период и ввести промокод можно только после входа (аноним — 403 login-required).
-// Настоящая платёжная система пока не подключена: на dev-сервере (ABAX_DEV_AUTH) оплата тестовая и проходит сразу,
-// в продакшене покупка отвечает 503 payments-disabled. Промокоды проверяет только сервер; один аккаунт активирует
+// ЮKassa выдаёт тариф после подтверждения; без её настроек на dev-сервере оплата тестовая и проходит сразу.
+// Промокоды проверяет только сервер; один аккаунт активирует
 // код один раз. Тестовые коды (DEV_PROMO_CODES) — только на dev-сервере и только у тестового аккаунта.
 
 /** Попыток ввода промокода на аккаунт в час (перебор кодов). */
@@ -25,9 +26,9 @@ export function isTestAccount(user: UserRow): boolean {
   return user.tg_id === DEV_TELEGRAM.subject || user.google_sub === DEV_GOOGLE.subject || /@(?:[a-z0-9-]+\.)*abax\.test$/i.test(user.email ?? '');
 }
 
-/** Оплата доступна: пока только тестовая на dev-сервере. */
+/** Настроенная ЮKassa имеет приоритет перед тестовой оплатой. */
 export function paymentsEnabled(app: AppContext): boolean {
-  return app.opts.devAuth;
+  return yookassaEnabled(app) || (!app.opts.yookassaShopId && !app.opts.yookassaSecretKey && app.opts.devAuth);
 }
 
 function requireAccount(ctx: Ctx): UserRow {
@@ -50,7 +51,7 @@ export function billingInfo(app: AppContext, user: UserRow): BillingInfo {
     .filter(p => isPaidPlan(p.plan))
     .map((p): PaymentInfo => ({
       id: p.id, plan: p.plan as PaidPlan, period: isBillingPeriod(p.period) ? p.period : null, days: p.days,
-      amount: p.amount, status: p.status === 'trial' ? 'trial' : 'paid', createdAt: p.created_at,
+      amount: p.amount, status: p.status === 'trial' ? 'trial' : p.status === 'pending' ? 'pending' : p.status === 'canceled' ? 'canceled' : 'paid', createdAt: p.created_at,
     }));
   const promos = (app.db.prepare('SELECT * FROM promo_redemptions WHERE user_id = ? ORDER BY redeemed_at DESC, rowid DESC LIMIT 100').all(user.id) as PromoRedemptionRow[])
     .filter(r => isPaidPlan(r.plan))
@@ -94,7 +95,20 @@ export function createPromoCode(db: Db, code: string, effect: PromoEffect, now: 
 }
 
 export function registerBillingRoutes(router: Router): void {
-  router.get('/api/billing', ctx => ({ json: billingInfo(ctx.app, requireUser(ctx)) }));
+  router.get('/api/billing', async ctx => {
+    const user = requireUser(ctx);
+    await refreshPayments(ctx.app, user.id);
+    return { json: billingInfo(ctx.app, getUser(ctx.app.db, user.id)!) };
+  });
+
+  router.post('/api/billing/yookassa/webhook', async ctx => {
+    const body = await ctx.body() as { type?: unknown; event?: unknown; object?: { id?: unknown } } | undefined;
+    if (body?.type !== 'notification' || !['payment.succeeded', 'payment.canceled'].includes(String(body.event))
+      || typeof body.object?.id !== 'string' || !/^[a-zA-Z0-9-]{1,64}$/.test(body.object.id)) throw new HttpError(400, 'bad-request');
+    if (!ctx.app.rateLimit(`payment-webhook:${ctx.ip}`, 120, 60_000)) throw new HttpError(429, 'rate-limited');
+    await paymentNotification(ctx.app, body.object.id);
+    return { json: { ok: true } };
+  }, { maxBody: 65536 });
 
   router.post('/api/billing/checkout', async ctx => {
     const app = ctx.app;
@@ -103,6 +117,10 @@ export function registerBillingRoutes(router: Router): void {
     if (!isPaidPlan(body?.plan) || !isBillingPeriod(body?.period)) throw new HttpError(400, 'bad-request');
     if (!paymentsEnabled(app)) throw new HttpError(503, 'payments-disabled');
     const { plan, period } = body;
+    if (yookassaEnabled(app)) {
+      const confirmationUrl = await createCheckout(app, user, plan, period);
+      return changed(app, user.id, confirmationUrl ? { confirmationUrl } : {});
+    }
     const now = app.now();
     app.db.transaction(() => {
       app.db.prepare('INSERT INTO payments (id, user_id, plan, period, days, amount, status, provider, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')

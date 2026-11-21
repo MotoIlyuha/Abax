@@ -371,7 +371,16 @@ CREATE TABLE promo_redemptions (
 `;
 
 /** Миграции по порядку; номер версии хранится в PRAGMA user_version. */
-const MIGRATIONS: string[] = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8];
+const SCHEMA_V9 = `
+CREATE TABLE yookassa_checkouts (
+  payment_id TEXT PRIMARY KEY REFERENCES payments(id) ON DELETE CASCADE,
+  provider_id TEXT UNIQUE,
+  request_json TEXT NOT NULL,
+  confirmation_url TEXT
+);
+`;
+
+const MIGRATIONS: string[] = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8, SCHEMA_V9];
 
 /** target — до какой версии (по умолчанию — до последней; меньше — только в тестах миграций). */
 export function migrate(db: Db, target = MIGRATIONS.length): void {

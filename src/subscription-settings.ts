@@ -162,7 +162,8 @@ export function renderSubscriptionSettings(host: HTMLElement, o: SubscriptionSet
     if (!payments.length) payList.appendChild(el('div', 'sub-empty', blocker === 'no-cloud' ? 'Без облака платежей нет' : 'Платежей пока нет'));
     for (const p of payments) {
       const what = p.status === 'trial' ? `Пробный период ${PLAN_TITLES[p.plan]}` : `${PLAN_TITLES[p.plan]} · ${p.period ? PERIOD_TITLES[p.period] : daysText(p.days)}`;
-      payList.appendChild(row(p.status === 'trial' ? ICONS.star : ICONS.card, what, dateTimeText(p.createdAt), p.status === 'trial' ? 'Бесплатно' : formatRub(p.amount)));
+      const status = p.status === 'pending' ? 'Ожидает оплаты' : p.status === 'canceled' ? 'Отменён' : '';
+      payList.appendChild(row(p.status === 'trial' ? ICONS.star : ICONS.card, what, [dateTimeText(p.createdAt), status].filter(Boolean).join(' · '), p.status === 'trial' ? 'Бесплатно' : formatRub(p.amount)));
     }
     promoList.textContent = '';
     const used = b?.promos ?? [];

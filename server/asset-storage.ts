@@ -1,4 +1,5 @@
-import { mkdir, readFile, rename, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, stat, unlink, writeFile } from 'node:fs/promises';
+import { setTimeout as pause } from 'node:timers/promises';
 import { dirname, join } from 'node:path';
 import { createHash, createHmac, randomBytes } from 'node:crypto';
 
@@ -35,7 +36,17 @@ export class LocalFsAssetBackend implements AssetStorageBackend {
     await mkdir(dirname(path), { recursive: true });
     const tmp = `${path}.${randomBytes(6).toString('hex')}.tmp`;
     await writeFile(tmp, data);
-    await rename(tmp, path);
+    try {
+      for (let attempt = 0; ; attempt++) {
+        try { await rename(tmp, path); break; }
+        catch (error) {
+          // Windows ненадолго блокирует замену файла при параллельной записи или чтении.
+          const code = (error as NodeJS.ErrnoException).code;
+          if (process.platform !== 'win32' || !['EPERM', 'EACCES', 'EBUSY'].includes(code ?? '') || attempt >= 5) throw error;
+          await pause(20 * (attempt + 1));
+        }
+      }
+    } finally { await unlink(tmp).catch(() => {}); }
   }
 
   async put(hash: string, data: Uint8Array, mimeType: string): Promise<void> {

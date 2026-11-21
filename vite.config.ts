@@ -42,6 +42,8 @@ function abaxDevServer(): Plugin {
           assetsDir: join(dataDir, 'assets'),
           jwtSecret: loadJwtSecret(process.env, dataDir),
           telegramBotToken: process.env.TELEGRAM_BOT_TOKEN,
+          yookassaShopId: process.env.YOOKASSA_SHOP_ID,
+          yookassaSecretKey: process.env.YOOKASSA_SECRET_KEY,
           enforceLimits: truthy(process.env.ABAX_ENFORCE_LIMITS),
           publicWebUrl: process.env.PUBLIC_WEB_URL || 'http://localhost:5173',
           // dev-провайдеры входа (npm run dev:cloud включает их, если нет настоящих ключей Telegram/Google)

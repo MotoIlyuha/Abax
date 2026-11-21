@@ -489,6 +489,18 @@ export function openPlansDialog(feature: ProFeature | null = null): void {
     after(wait, () => {
       if (current?.root !== root) return;
       if (!r.ok) { setBtn(c, 'idle'); say(billingErrorText(r.error)); return; }
+      if (r.confirmationUrl) {
+        setBtn(c, 'idle');
+        say('Оплатите выбранный тариф в ЮKassa. После оплаты вернитесь сюда.', {
+          label: 'Проверить оплату', run: () => { void refreshBilling(); },
+        });
+        const link = el('a', 'ob-btn ob-primary pl-msg-btn', 'Перейти к оплате');
+        link.href = r.confirmationUrl;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        msg.appendChild(link);
+        return;
+      }
       setBtn(c, 'done');
       for (const o of paid) if (o !== c) syncCta(o);
       syncFree();
@@ -548,7 +560,7 @@ export function openPlansDialog(feature: ProFeature | null = null): void {
   }
 
   function trapFocus(e: KeyboardEvent): void {
-    const items = [...win.querySelectorAll<HTMLElement>('button')].filter(x => !(x as HTMLButtonElement).disabled && x.tabIndex !== -1);
+    const items = [...win.querySelectorAll<HTMLElement>('button, a[href]')].filter(x => !(x as HTMLButtonElement).disabled && x.tabIndex !== -1);
     const firstEl = items[0], last = items[items.length - 1];
     const cur = document.activeElement;
     if (!win.contains(cur)) { e.preventDefault(); firstEl.focus(); }

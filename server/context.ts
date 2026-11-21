@@ -13,6 +13,9 @@ export interface ResolvedOptions {
   enforceLimits: boolean;
   /** Dev-провайдеры входа (ABAX_DEV_AUTH): только для разработки. */
   devAuth: boolean;
+  /** Реквизиты ЮKassa остаются только на сервере. */
+  yookassaShopId: string | null;
+  yookassaSecretKey: string | null;
   /** Вход через Google (OAuth): нет client id — выключен (или dev-заглушка при devAuth). */
   googleClientId: string | null;
   /** Вход через Telegram (OpenID Connect): Client ID (ID бота) и Client Secret из @BotFather → Login Widget. */

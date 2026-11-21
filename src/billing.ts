@@ -145,8 +145,8 @@ export interface PaymentInfo {
   period: BillingPeriod | null;
   days: number;
   amount: number;
-  /** paid — оплачен; trial — пробный период (0 ₽). */
-  status: 'paid' | 'trial';
+  /** Незавершённая или отменённая покупка не даёт тариф. */
+  status: 'paid' | 'trial' | 'pending' | 'canceled';
   createdAt: number;
 }
 

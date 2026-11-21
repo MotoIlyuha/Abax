@@ -23,6 +23,8 @@ async function main(): Promise<void> {
     assetsDir: join(dataDir, 'assets'),
     jwtSecret: loadJwtSecret(env, dataDir),
     telegramBotToken: env.TELEGRAM_BOT_TOKEN,
+    yookassaShopId: env.YOOKASSA_SHOP_ID,
+    yookassaSecretKey: env.YOOKASSA_SECRET_KEY,
     enforceLimits: truthy(env.ABAX_ENFORCE_LIMITS),
     // dev-провайдеры входа — только по явному флагу и никогда в продакшене
     devAuth: truthy(env.ABAX_DEV_AUTH) && env.NODE_ENV !== 'production',

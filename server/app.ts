@@ -26,6 +26,8 @@ export interface AppOptions {
   enforceLimits?: boolean;
   /** Dev-провайдеры входа (ABAX_DEV_AUTH): код почты в ответе, мгновенный вход тестовыми Telegram/Google. */
   devAuth?: boolean;
+  yookassaShopId?: string | null;
+  yookassaSecretKey?: string | null;
   /** Почта для кодов входа (server/mailer.ts). */
   mailer?: Mailer | null;
   googleClientId?: string | null;
@@ -105,6 +107,8 @@ function resolveOptions(o: AppOptions): ResolvedOptions {
     telegramBotToken: o.telegramBotToken || null,
     enforceLimits: o.enforceLimits === true,
     devAuth: o.devAuth === true,
+    yookassaShopId: o.yookassaShopId || null,
+    yookassaSecretKey: o.yookassaSecretKey || null,
     googleClientId: o.googleClientId || null,
     telegramClientId: o.telegramClientId || null,
     telegramClientSecret: o.telegramClientSecret || null,

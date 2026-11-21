@@ -314,7 +314,7 @@ describe('секрет сессий и база', () => {
       expect(db.pragma('journal_mode', { simple: true })).toBe('wal');
       expect(db.pragma('foreign_keys', { simple: true })).toBe(1);
       const tables = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all() as { name: string }[]).map(t => t.name).sort();
-      expect(tables).toEqual(['assets', 'auth_flows', 'email_codes', 'invites', 'member_page_rights', 'payments', 'project_email_invites', 'project_revisions', 'projects', 'promo_codes', 'promo_redemptions', 'public_aliases', 'users']); // + таблицы входа Ночи №4, приглашения по почте Ночи №5, именные адреса Ночи №6, личные права участника, подписка
+      expect(tables).toEqual(['assets', 'auth_flows', 'email_codes', 'invites', 'member_page_rights', 'payments', 'project_email_invites', 'project_revisions', 'projects', 'promo_codes', 'promo_redemptions', 'public_aliases', 'users', 'yookassa_checkouts']); // вход, приглашения, права, подписка и попытки оплаты
       db.prepare("INSERT INTO users (id, created_at, updated_at) VALUES ('u', 1, 1)").run();
       db.close();
       const again = openDb(path);

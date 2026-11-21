@@ -64,7 +64,7 @@ describe('цены и сроки', () => {
     expect(monthlyPrice('pro', 'quarter')).toBe(333);
     expect(monthlyPrice('pro', 'year')).toBe(292);
     expect(monthlyPrice('tutor', 'quarter')).toBe(500);
-    expect(monthlyPrice('tutor', 'year')).toBe(583);
+    expect(monthlyPrice('tutor', 'year')).toBe(500);
     expect(savingsRub('pro', 'year')).toBe(399 * 12 - 3499);
     expect(savingsPct('pro', 'month')).toBe(0);
     expect(savingsPct('pro', 'year')).toBe(27);
@@ -150,7 +150,7 @@ describe('бейдж Pro', () => {
     expect(b.hidden).toBe(false);
     expect(b.classList.contains('is-waiting')).toBe(true);
     document.body.appendChild(b);
-    proBadge('copy'); // вне документа — не считается увиденным
+    syncProLocks(); // после появления в документе наблюдатель начинает следить за бейджем
     await flush();
     expect(breakPending('copy')).toBe(false);
     expect(b.hidden).toBe(true);
@@ -239,6 +239,34 @@ describe('окно подписки', () => {
     expect(changes).toEqual(['pro']);
     expect(root.querySelector('.pl-card-pro .pl-cta')!.classList.contains('is-done')).toBe(true);
     expect(root.querySelector('.pl-card-pro .pl-cta')!.getAttribute('aria-label')).toBe('Вы на Pro');
+    expect(root.querySelector('.pl-card-pro .pl-current')!.textContent).toBe('Ваш тариф');
+  });
+
+  it('ЮKassa: ссылка на оплату оставляет тариф бесплатным, проверка подтверждённого платежа обновляет его', async () => {
+    let state = billing();
+    const api = fakeApi((m, p) => {
+      if (p === '/api/billing' && m === 'GET') return state;
+      if (p === '/api/billing/checkout') {
+        state = billing({ payments: [{ id: 'pay1', plan: 'pro', period: 'year', days: 365, amount: 3499, status: 'pending', createdAt: Date.now() }] });
+        return { billing: state, me: me('free'), confirmationUrl: 'https://yoomoney.ru/checkout/payments/test' };
+      }
+      throw new Error(`неожиданный запрос ${m} ${p}`);
+    });
+    api.me = async () => me('pro');
+    setApiForTests(api);
+    setAccount(me('free'), api);
+    openPlansDialog();
+    const root = document.getElementById('plans-dialog')!;
+    root.querySelector<HTMLButtonElement>('.pl-card-pro .pl-cta')!.click();
+    await new Promise(r => setTimeout(r, 700));
+    const link = root.querySelector<HTMLAnchorElement>('.pl-msg a')!;
+    expect(link.href).toBe('https://yoomoney.ru/checkout/payments/test');
+    expect(link.target).toBe('_blank');
+    expect(root.querySelector('.pl-card-free')!.classList.contains('is-current')).toBe(true);
+    expect(root.querySelector('.pl-card-pro .pl-cta')!.classList.contains('is-done')).toBe(false);
+    state = billing({ plan: 'pro', payments: [{ ...state.payments[0], status: 'paid' }] });
+    root.querySelector<HTMLButtonElement>('.pl-msg button')!.click();
+    await flush();
     expect(root.querySelector('.pl-card-pro .pl-current')!.textContent).toBe('Ваш тариф');
   });
 });

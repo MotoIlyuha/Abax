@@ -104,7 +104,7 @@ export function mergeUsers(db: Db, fromId: string, toId: string, now: number): v
   })();
 }
 
-/** Назначить тариф (выдаёт оператор: пока нет платежей); days — срок в днях, без него — бессрочно. */
+/** Назначить тариф вручную; days — срок в днях, без него — бессрочно. */
 export function setUserPlanRow(db: Db, userId: string, plan: PlanTier, now: number, days?: number): boolean {
   const expires = days !== undefined && days > 0 ? now + days * 24 * 3600 * 1000 : null;
   return db.prepare('UPDATE users SET plan = ?, plan_expires_at = ?, plan_trial = 0, updated_at = ? WHERE id = ?').run(plan, expires, now, userId).changes > 0;
