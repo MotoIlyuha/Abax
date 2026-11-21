@@ -1,5 +1,8 @@
 // Счётчик сайта не запускается в приложении, открытом из локальных файлов.
-if (location.protocol === 'http:' || location.protocol === 'https:') {
+function startMetrika() {
+  if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
+  try { if (localStorage.getItem('abax.analytics-consent') !== 'accepted') return; } catch (_) { return; }
+  if (window.ym) return;
   (function (m, e, t, r, i, k, a) {
     m[i] = m[i] || function () { (m[i].a = m[i].a || []).push(arguments); };
     m[i].l = 1 * new Date();
@@ -18,3 +21,10 @@ if (location.protocol === 'http:' || location.protocol === 'https:') {
     referrer: document.referrer, url: location.href, accurateTrackBounce: true, trackLinks: true
   });
 }
+startMetrika();
+window.addEventListener('abax:analytics-accepted', startMetrika);
+window.addEventListener('storage', function (event) {
+  if (event.key !== 'abax.analytics-consent' && event.key !== null) return;
+  if (event.newValue === 'accepted') startMetrika();
+  else if (window.ym) location.reload();
+});

@@ -4,6 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <script>
+    function startMetrika() {
+    try { if (localStorage.getItem('abax.analytics-consent') !== 'accepted') return; } catch (_) { return; }
+    if (window.ym) return;
     (function (m, e, t, r, i, k, a) {
       m[i] = m[i] || function () { (m[i].a = m[i].a || []).push(arguments); };
       m[i].l = 1 * new Date();
@@ -20,6 +23,13 @@
       ssr: true, webvisor: true, clickmap: true, ecommerce: 'dataLayer',
       referrer: document.referrer, url: location.href, accurateTrackBounce: true, trackLinks: true
     });
+    }
+    startMetrika();
+    window.addEventListener('storage', function (event) {
+      if (event.key !== 'abax.analytics-consent' && event.key !== null) return;
+      if (event.newValue === 'accepted') { startMetrika(); document.getElementById('analytics-banner').hidden = true; }
+      else if (window.ym) location.reload();
+    });
   </script>
   <title>Abax</title>
   <style>
@@ -31,14 +41,41 @@
     h1 { margin: 0 0 8px; font-size: 24px; }
     p { margin: 0 0 12px; color: var(--muted); }
     a { color: var(--accent); }
+    #analytics-banner { position: fixed; right: 12px; bottom: 12px; width: min(340px, calc(100vw - 24px)); box-sizing: border-box; padding: 16px; border-radius: 14px; background: var(--bg); box-shadow: 0 4px 24px #0003; font-size: 13px; }
+    #analytics-banner[hidden] { display: none; }
+    #analytics-banner p { margin: 8px 0 12px; }
+    #analytics-banner div { display: flex; justify-content: flex-end; gap: 8px; }
+    #analytics-banner button { padding: 8px 12px; font: inherit; cursor: pointer; }
   </style>
 </head>
 <body>
-  <noscript><div><img src="https://mc.yandex.ru/watch/114443432" style="position:absolute; left:-9999px;" alt="" /></div></noscript>
   <main>
     <h1>Abax</h1>
     <p>Здесь открываются доски, которыми делятся через интернет. Чтобы подключиться, откройте ссылку, которую прислал автор доски.</p>
     <p><a href="https://github.com/MotoIlyuha/Abax/releases/latest">Скачать Abax</a></p>
   </main>
+  <section id="analytics-banner" aria-label="Настройки аналитики" hidden>
+    <strong>Помогите улучшить Abax</strong>
+    <p>Яндекс Метрика использует файлы cookie и записывает действия на сайте, чтобы помочь нам улучшать продукт. Выбор можно изменить позже в настройках приложения, в разделе «Дополнительные».</p>
+    <div><button type="button" data-choice="rejected">Отклонить</button><button type="button" data-choice="accepted">Разрешить</button></div>
+    <p id="analytics-error" role="alert"></p>
+  </section>
+  <script>
+    (function () {
+      var banner = document.getElementById('analytics-banner');
+      try {
+        var choice = localStorage.getItem('abax.analytics-consent');
+        banner.hidden = choice === 'accepted' || choice === 'rejected';
+      } catch (_) { banner.hidden = false; }
+      banner.addEventListener('click', function (event) {
+        var choice = event.target.dataset.choice;
+        if (choice !== 'accepted' && choice !== 'rejected') return;
+        try { localStorage.setItem('abax.analytics-consent', choice); }
+        catch (_) { document.getElementById('analytics-error').textContent = 'Не удалось сохранить выбор. Проверьте настройки браузера.'; return; }
+        banner.hidden = true;
+        if (choice === 'accepted') startMetrika();
+      });
+    })();
+  </script>
 </body>
 </html>

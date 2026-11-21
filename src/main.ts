@@ -25,6 +25,7 @@ import { STARTER_PROJECT_NAME, markStarter } from './sync-state';
 import { roomFullInfo, showRoomFullModal } from './room-full';
 import { refreshIncomingInvites } from './incoming-invites';
 import { pushNotice } from './notify-center';
+import { showAnalyticsBanner } from './analytics-consent';
 
 /**
  * Уведомление гостю, когда комната закрылась или отказала. Мест нет (4402/4430) — окно «Комната заполнена»
@@ -191,12 +192,13 @@ let afterStartup: (() => void) | null = null;
 function startOnboarding(outcome: AuthOutcome | null): void {
   const resume = outcome?.resume ?? null;
   if (outcome && resume?.where === 'onboarding') {
-    openOnboarding({ step: outcome.ok ? 2 : 1, resume, error: outcome.ok ? null : outcome.error, project: firstProjectStep });
+    openOnboarding({ step: outcome.ok ? 2 : 1, resume, error: outcome.ok ? null : outcome.error, project: firstProjectStep, onDone: showAnalyticsBanner });
   } else if (outcome && resume?.where === 'settings') {
     openProfileAfterAuth(outcome);
+    showAnalyticsBanner();
   } else if (needsOnboarding()) {
-    openOnboarding({ project: firstProjectStep });
-  }
+    openOnboarding({ project: firstProjectStep, onDone: showAnalyticsBanner });
+  } else showAnalyticsBanner();
 }
 
 void boot().then(() => {
@@ -205,7 +207,8 @@ void boot().then(() => {
     document.getElementById('startup')!.hidden = true;
     const next = afterStartup;
     afterStartup = null;
-    next?.();
+    if (next) next();
+    else showAnalyticsBanner();
   }));
 }).catch((error: unknown) => {
   console.error('Не удалось запустить приложение', error);

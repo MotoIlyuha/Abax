@@ -1,4 +1,5 @@
 import { initTopbarFit, topbarFit } from './topbar-fit';
+import { renderAnalyticsSettings } from './analytics-consent';
 import { startCrop } from './crop';
 import type {
   AnimationMode, BoardSettings, Camera, Element, GridMode, ImageEl, NoteEl, Page, PageTransition, Project, ProjectMeta, ShapeEl, TaskEl, TextAlign, TextEl, TextVAlign,
@@ -2327,6 +2328,7 @@ function renderAdvancedSettings(host: HTMLElement): void {
       if (!state.settings.toolbarDetachable) { setSettings({ toolbarFloat: null }); persistSettings(); }
       applyToolbarPos();
     }));
+  renderAnalyticsSettings(box);
   host.appendChild(box);
 }
 

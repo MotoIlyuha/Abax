@@ -4237,6 +4237,26 @@ body.hide-export-button .export-group { display: none; }
   pointer-events: none;
 }
 #bottombar .zoom-hint { top: auto; bottom: calc(100% + 6px); }
+.help-group { position: relative; }
+#analytics-banner {
+  position: absolute; right: 0; bottom: calc(100% + 12px); width: min(340px, calc(100vw - 24px));
+  box-sizing: border-box; padding: 16px; border: 1px solid var(--border); border-radius: 14px;
+  background: var(--panel); color: var(--fg); box-shadow: var(--shadow-dialog); pointer-events: auto;
+  transform-origin: calc(100% - 22px) calc(100% + 22px); font-size: 13px; line-height: 1.45;
+}
+#analytics-banner strong { font-size: 15px; }
+#analytics-banner p { margin: 8px 0 12px; }
+#analytics-banner .analytics-error:empty { display: none; }
+.analytics-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.analytics-actions button { padding: 8px 12px; border: 1px solid var(--border-control); border-radius: 8px; background: var(--panel); color: var(--fg); font: inherit; cursor: pointer; }
+.analytics-actions .analytics-accept { background: var(--accent); border-color: var(--accent); color: white; }
+.analytics-closing { pointer-events: none !important; }
+body.no-motion #analytics-banner.analytics-closing { animation: analytics-close .2s ease-in forwards; }
+@keyframes analytics-close { to { opacity: 0; transform: scale(.05); } }
+.analytics-settings-heading { margin-top: 22px; }
+.analytics-settings-switch { display: flex; align-items: center; gap: 12px; padding: 8px 0; cursor: pointer; }
+.analytics-settings-switch .switch-text { flex: 1; }
+.analytics-settings-hint { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
 #view-menu { max-height: calc(100vh - 90px); overflow-y: auto; }
 /* список страниц не заходит под нижний правый угол (ширина — в --bottombar-w, см. app.ts) */
 #pages-dock:not([data-side="top"]) { right: calc(24px + var(--bottombar-w, 0px) + var(--side-panel-shift-b, 0px)); }
