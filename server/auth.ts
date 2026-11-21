@@ -197,6 +197,34 @@ export function registerAuthRoutes(router: Router): void {
     return { json: meResponse(user, ctx.app.now(), ctx.app.opts.enforceLimits) };
   });
 
+  // Фото только из проверенного профиля провайдера; произвольные адреса и перенаправления запрещены.
+  router.get('/api/me/provider-avatar', async ctx => {
+    const user = requireUser(ctx);
+    let url: URL;
+    try { url = new URL(user.avatar_url ?? ''); } catch { throw new HttpError(404, 'avatar-unavailable'); }
+    const host = url.hostname.toLowerCase();
+    if (url.protocol !== 'https:' || url.port || url.username || url.password ||
+      !(host === 'googleusercontent.com' || host.endsWith('.googleusercontent.com') || host === 'telesco.pe' || host.endsWith('.telesco.pe'))) {
+      throw new HttpError(404, 'avatar-unavailable');
+    }
+    try {
+      const res = await ctx.app.fetch(url.toString(), { redirect: 'error', signal: AbortSignal.timeout(8000) });
+      const type = (res.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase();
+      if (!res.ok || !['image/jpeg', 'image/png', 'image/webp'].includes(type) || !res.body) throw new Error();
+      const reader = res.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let size = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        size += value.length;
+        if (size > 2_000_000) { await reader.cancel(); throw new Error(); }
+        chunks.push(value);
+      }
+      return { json: { photo: `data:${type};base64,${Buffer.concat(chunks).toString('base64')}` }, headers: { 'Cache-Control': 'no-store' } };
+    } catch { throw new HttpError(502, 'avatar-unavailable'); }
+  });
+
   // профиль: своё имя, персональный курсор (SPEC_NIGHT4 §6) и аватар (смайл или фото; null — буквы)
   router.patch('/api/me', async ctx => {
     const app = ctx.app;

@@ -329,7 +329,7 @@ export function registerAuthFlowRoutes(router: Router): void {
       if (!valid) throw new Error('неверный id_token');
       // адрес Google — только подтверждённый: по нему автору видны приглашения по почте (SPEC_NIGHT5 §4.1)
       const verifiedEmail = claims!.email_verified === true || claims!.email_verified === 'true' ? normalizeEmail(claims!.email) : null;
-      settleFlow(app, flow, { provider: 'google', subject: claims!.sub as string, displayName: normalizeName(claims!.name) || undefined, verifiedEmail });
+      settleFlow(app, flow, { provider: 'google', subject: claims!.sub as string, displayName: normalizeName(claims!.name) || undefined, verifiedEmail, avatarUrl: typeof claims!.picture === 'string' && /^https:\/\//.test(claims!.picture) ? claims!.picture.slice(0, 500) : null });
     } catch (e) {
       app.log(`Вход через Google не удался: ${e instanceof Error ? e.message : String(e)}`);
       app.db.prepare('UPDATE auth_flows SET error = ? WHERE id = ?').run('google-failed', flow.id);
