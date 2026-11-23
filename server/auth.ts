@@ -77,11 +77,11 @@ export function authenticate(app: AppContext, req: IncomingMessage): UserRow | n
 }
 
 export function sessionCookie(app: AppContext, token: string): string {
-  return `${SESSION_COOKIE}=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}${app.opts.secureCookies ? '; Secure' : ''}`;
+  return `${SESSION_COOKIE}=${token}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${Math.floor(SESSION_TTL_MS / 1000)}${app.opts.secureCookies ? '; Secure' : ''}${app.opts.cookieDomain ? '; Domain=' + app.opts.cookieDomain : ''}`;
 }
 
 const clearedCookie = (app: AppContext): string =>
-  `${SESSION_COOKIE}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0${app.opts.secureCookies ? '; Secure' : ''}`;
+  `${SESSION_COOKIE}=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0${app.opts.secureCookies ? '; Secure' : ''}${app.opts.cookieDomain ? '; Domain=' + app.opts.cookieDomain : ''}`;
 
 /** Пользователь запроса или 401. */
 export function requireUser(ctx: Ctx): UserRow {

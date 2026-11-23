@@ -1,3 +1,4 @@
+import { registerMiniAppAuth } from './tma';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { LocalFsAssetBackend, type AssetStorageBackend } from './asset-storage';
@@ -48,6 +49,7 @@ export interface AppOptions {
   prettyLinks?: boolean;
   trustProxy?: boolean;
   secureCookies?: boolean;
+  cookieDomain?: string;
   adminOrigin?: string;
   adminAccounts?: [string, string][];
   anonRateMax?: number;
@@ -133,6 +135,7 @@ function resolveOptions(o: AppOptions): ResolvedOptions {
     prettyLinks: o.prettyLinks ?? !!o.staticDir,
     trustProxy: o.trustProxy === true,
     secureCookies: o.secureCookies === true,
+    cookieDomain: o.cookieDomain === '.abaxboard.ru' ? o.cookieDomain : '',
     adminOrigin: adminOrigin(o.adminOrigin, o.secureCookies === true),
     adminAccounts,
     anonRateMax: o.anonRateMax ?? 30,
@@ -176,6 +179,7 @@ export function createAppServer(options: AppOptions, extraRoutes: RouteModule[] 
   };
   const router = new Router();
   registerAuthRoutes(router);
+  registerMiniAppAuth(router);
   registerAuthFlowRoutes(router);
   registerAssetRoutes(router);
   registerProjectRoutes(router);
