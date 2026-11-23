@@ -40,6 +40,7 @@ export async function mutation(ctx: Ctx, perform: (body: Record<string, unknown>
   const owner = requireUser(ctx).id;
   try {
     const body = record(await ctx.body() ?? {});
+    if (body.accountId !== undefined && body.accountId !== owner) throw new HttpError(409, 'account-changed');
     const op = body.operationId === undefined ? null : key(body.operationId);
     const request = JSON.stringify([ctx.method, ctx.path, body]);
     const db = ctx.app.db;

@@ -7,7 +7,7 @@ import { requireUser } from './auth';
 import { activeCount, getActiveProject, getProjectRow, ownerPlanOf, projectOf, writeProject } from './projects';
 import { HttpError, type Ctx, type Router } from './router';
 import { lessonOf, lessonsOf, saveLesson } from './tutor-calendar';
-import { mutation, saveStudent, studentOf } from './tutor-students';
+import { allStudents, mutation, saveStudent, studentOf } from './tutor-students';
 import { activeAliasOf, linkInviteOf } from './invites';
 import { inviteUrl, newToken } from './invite-routes';
 
@@ -44,6 +44,13 @@ function ensureBoard(ctx: Ctx, s: Student, body: Record<string, unknown>, now: n
   return project;
 }
 export function registerTutorBoards(router: Router): void {
+  router.get('/api/tutor/snapshot', ctx => {
+    const owner = requireUser(ctx).id;
+    const students = allStudents(ctx);
+    const lessons = students.flatMap(s => lessonsOf(ctx,s.id));
+    const payments = ctx.app.db.prepare('SELECT id,student_id,lesson_id,amount,created_at FROM tutor_payments WHERE tutor_id=? ORDER BY created_at,id').all(owner);
+    return { json: { accountId: owner, students, lessons, payments } };
+  });
   const path = '/api/tutor/students/:id';
   router.post(path + '/board', ctx => mutation(ctx, (body, now, effect) => {
     const s = studentOf(ctx, ctx.params.id);

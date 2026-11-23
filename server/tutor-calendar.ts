@@ -80,7 +80,8 @@ export function registerCalendar(router: Router): void {
     const moved: Lesson[] = [];
     if (!batch.some(l => l.id === old.id)) throw new HttpError(409, 'cannot-reschedule');
     for (const l of batch) {
-      const id = l.id === old.id ? lessonId(body.id ?? randomUUID()) : randomUUID();
+      const ids = body.followingIds as Record<string,unknown> | undefined;
+      const id = l.id === old.id ? lessonId(body.id ?? randomUUID()) : key(ids?.[l.id] ?? randomUUID());
       const [before, after] = moveLesson(l, l.start_at + at - old.start_at, id, now);
       const replacement = editLesson(after, body.duration_min === undefined ? {} : { duration_min: body.duration_min }, now);
       saveLesson(ctx, before);
