@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { changeStatus, moveLesson, newLesson, reminder } from '../../src/tutor-lessons';
+import { lessonLanes, changeStatus, moveLesson, newLesson, reminder } from '../../src/tutor-lessons';
 import { studentForm } from '../../src/tutor-model';
 
 it('считает долг только по проведённым неоплаченным урокам и сохраняет исходный перенос', () => {
@@ -11,4 +11,15 @@ it('считает долг только по проведённым неопл�
   expect(done.amount).toBe(0);
   expect(reminder(s, done.lesson, [old, done.lesson])).toContain('1500 ₽. Спасибо!');
   expect(changeStatus(next, 'unpaid', 1500, 0, 3).amount).toBe(-1500);
+});
+
+it('разводит цепочку перекрывающихся уроков по двум колонкам', () => {
+  const s = studentForm({ name: 'Анна' }, 's', 1);
+  const rows = [0, 30, 60, 140].map((min, i) => newLesson(s, String(i), 36000000 + min * 60000, 1));
+  expect([...lessonLanes(rows).values()]).toEqual([
+    { column: 0, count: 2 },
+    { column: 1, count: 2 },
+    { column: 0, count: 2 },
+    { column: 0, count: 1 },
+  ]);
 });

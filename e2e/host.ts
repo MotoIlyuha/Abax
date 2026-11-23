@@ -3,7 +3,7 @@
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { test as base, type Browser, type BrowserContext, type Page } from '@playwright/test';
-import { Board, expect, pickOption } from './fixtures';
+import { Board, expect, pickOption, skipOnboarding } from './fixtures';
 
 export { expect };
 
@@ -227,6 +227,7 @@ export const test = base.extend<{ host: Host; join: (url: string, name: string) 
 
 export async function openGuest(browser: Browser, url: string, name: string): Promise<Guest> {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  await skipOnboarding(ctx);
   const page = await ctx.newPage();
   await page.goto(`${url}&name=${encodeURIComponent(name)}`);
   const g = new Guest(ctx, page, name);

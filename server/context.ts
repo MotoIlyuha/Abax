@@ -57,6 +57,7 @@ export interface AccessEvent { projectId: string; kind: 'deleted' | 'invite-revo
 
 /** Общее состояние сервера, которое получают все обработчики. */
 export interface AppContext {
+  liveProject(id: string): Project | null;
   db: Db;
   opts: ResolvedOptions;
   assets: AssetStorageBackend;

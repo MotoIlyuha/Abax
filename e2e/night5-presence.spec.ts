@@ -99,9 +99,9 @@ test.describe('присутствие', () => {
 
     // автопереход: автор включает, уходит на первую — гость следом
     await openSelfMenu(a);
-    const follow = a.locator('#avatar-menu [data-action="follow-me"] .switch-input');
-    await follow.click({ force: true });
-    await expect(follow).toBeChecked();
+    const follow = a.locator('#avatar-menu [data-action="follow-me"]');
+    await follow.click();
+    await expect(follow.locator('.switch-input')).toBeChecked();
     await a.keyboard.press('Escape');
     await goToPage(a, 0);
     await expect.poll(() => pageIdOf(g), { timeout: 10000 }).toBe(pages[0]);

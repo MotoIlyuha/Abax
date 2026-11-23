@@ -113,7 +113,7 @@ describe('сочетания, занятые браузером', () => {
   });
 
   it('предупреждение для новой страницы называет сочетание и чем оно занято', () => {
-    expect(newPageKeyWarning('Ctrl+KeyN', BROWSER)).toMatch(/^В браузере Ctrl\+N — новое окно/);
+    expect(newPageKeyWarning('Ctrl+KeyN', BROWSER)).toMatch(/^В браузере Ctrl\+N - новое окно/);
     expect(newPageKeyWarning('Alt+Shift+KeyP', BROWSER)).toBeNull();
     expect(newPageKeyWarning(null, BROWSER)).toBeNull();
   });

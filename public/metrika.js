@@ -2,6 +2,7 @@
 function startMetrika() {
   if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
   try { if (localStorage.getItem('abax.analytics-consent') !== 'accepted') return; } catch (_) { return; }
+  if (/[?&#]tgWebAppData=/.test(location.href) || window.Telegram?.WebApp?.initData) return;
   if (window.ym) return;
   (function (m, e, t, r, i, k, a) {
     m[i] = m[i] || function () { (m[i].a = m[i].a || []).push(arguments); };

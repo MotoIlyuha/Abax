@@ -28,6 +28,7 @@ test.describe('панель цвета и толщины', () => {
 
     await page.reload();
     await board.ready();
+    await board.tool('p');
     expect((await board.state()).style.color).toBe('#ff6464');
   });
 
@@ -129,6 +130,7 @@ test.describe('панель цвета и толщины', () => {
 
     await page.reload();
     await board.ready();
+    await board.tool('p');
     expect((await board.state()).style.color).toBe('#2dc75c');
   });
 

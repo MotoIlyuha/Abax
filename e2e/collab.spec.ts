@@ -55,6 +55,7 @@ test.describe('совместная работа', () => {
     await expect(guest.page.locator('body')).not.toHaveClass(/readonly-mode/);
     await expect(guest.page.locator('#toolbar')).toBeVisible();
 
+    await guest.board.tool('p');
     await guest.board.drag([{ x: 300, y: 300 }, { x: 500, y: 350 }, { x: 600, y: 300 }]);
     expect(await guest.board.count('stroke')).toBe(1);
     await expect.poll(() => host.board.count('stroke'), { timeout: 5000 }).toBe(1);
@@ -176,6 +177,7 @@ test.describe('совместная работа', () => {
     // на второй — правка
     await guest.page.locator('#pages-list .page-item').nth(1).click();
     await expect(guest.page.locator('body')).not.toHaveClass(/readonly-mode/);
+    await guest.board.tool('p');
     await guest.board.drag([{ x: 300, y: 300 }, { x: 500, y: 300 }]);
     await expect.poll(() => host.server!.room.project.pages[1].elements.length, { timeout: 5000 }).toBe(1);
 

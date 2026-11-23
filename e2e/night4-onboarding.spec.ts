@@ -146,16 +146,16 @@ test.describe('окно первого входа', () => {
     await expect(step(page)).toBeVisible();
     // фокус на самом окне (без рамки на кнопке), Tab — к кнопкам окна
     await expect(page.locator('.ob-window')).toBeFocused();
-    // по умолчанию — перо; V («Выделение») при открытом окне не срабатывает
-    expect(await page.evaluate(() => (window as any).__doska.state.tool)).toBe('pen');
-    await page.keyboard.press('v');
-    expect(await page.evaluate(() => (window as any).__doska.state.tool)).toBe('pen');
+    // По умолчанию активно выделение. При открытом окне P не переключает доску на перо.
+    expect(await page.evaluate(() => (window as any).__doska.state.tool)).toBe('select');
+    await page.keyboard.press('p');
+    expect(await page.evaluate(() => (window as any).__doska.state.tool)).toBe('select');
     await page.keyboard.press('Escape');
     await expect(step(page)).toHaveCount(0);
     expect(await profile(page)).toMatchObject({ onboarded: true, cursorId: 'default' });
     expect((await profile(page)).name.length).toBeGreaterThan(1);
-    await page.keyboard.press('v');
-    expect(await page.evaluate(() => (window as any).__doska.state.tool)).toBe('select');
+    await page.keyboard.press('p');
+    expect(await page.evaluate(() => (window as any).__doska.state.tool)).toBe('pen');
     await page.context().close();
   });
 

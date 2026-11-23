@@ -100,6 +100,7 @@ export function mergeUsers(db: Db, fromId: string, toId: string, now: number): v
     db.prepare('UPDATE invites SET created_by = ? WHERE created_by = ?').run(toId, fromId);
     db.prepare('UPDATE assets SET uploaded_by = ? WHERE uploaded_by = ?').run(toId, fromId);
     db.prepare('UPDATE project_revisions SET author_id = ? WHERE author_id = ?').run(toId, fromId);
+    db.prepare('DELETE FROM tutor_operations WHERE tutor_id=? AND id IN (SELECT id FROM tutor_operations WHERE tutor_id=?)').run(fromId,toId);
     for (const table of ['tutor_students', 'tutor_lessons', 'tutor_payments', 'tutor_operations']) {
       db.prepare(`UPDATE ${table} SET tutor_id = ? WHERE tutor_id = ?`).run(toId, fromId);
     }

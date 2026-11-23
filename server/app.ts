@@ -167,6 +167,7 @@ export function createAppServer(options: AppOptions, extraRoutes: RouteModule[] 
   const log = options.log ?? (() => {});
   const logError = (e: unknown) => log(`Ошибка обработчика: ${e instanceof Error ? e.stack ?? e.message : String(e)}`);
   const app: AppContext = {
+    liveProject: id => rooms.projectOf(id),
     db,
     opts: resolveOptions(options),
     assets: options.assetBackend ?? new LocalFsAssetBackend(options.assetsDir),
@@ -235,6 +236,7 @@ export function createAppServer(options: AppOptions, extraRoutes: RouteModule[] 
       if (reply && !reply.next) { send(res, method, reply, privateResponse); return; }
       if (url.pathname.startsWith('/api/')) throw new HttpError(404, 'not-found');
       if ((method === 'GET' || method === 'HEAD') && app.opts.staticDir) {
+        if (url.pathname === '/tutor/') { send(res, method, { status:308, headers:{Location:'/tutor' + url.search} }); return; }
         const file = await serveStatic(app.opts.staticDir, /^\/tutor\/?$/.test(url.pathname) ? '/index.html' : url.pathname);
         if (file) { send(res, method, file); return; }
       }

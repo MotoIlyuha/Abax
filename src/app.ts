@@ -2593,7 +2593,7 @@ export async function exportPng(scope: 'auto' | 'page' | 'selection' = 'auto'): 
   if (!c) return;
   renderScene(c, els, { x: bb.x0 - pad, y: bb.y0 - pad, zoom: 1 }, bw, bh, scale, 'none');
   const dataUrl = cv.toDataURL('image/png');
-  const name = `${state.project.name.trim() || 'abax'} — ${state.board.name.trim() || 'стр'}.png`;
+  const name = `${state.project.name.trim() || 'abax'} - ${state.board.name.trim() || 'стр'}.png`;
   const api = (window as { doskaAPI?: { exportPng(d: string, n: string): Promise<boolean> } }).doskaAPI;
   if (api) {
     await api.exportPng(dataUrl, name);
@@ -4983,6 +4983,13 @@ function buildToolbar(): void {
     }
     tools.appendChild(b);
   }
+  if (new URLSearchParams(location.search).get('route') === 'board' && isTeacher()) {
+    const task = document.createElement('button');
+    task.type = 'button'; task.className = 'tool'; task.dataset.tool = 'task';
+    task.title = 'Добавить задание'; task.innerHTML = ICONS.task;
+    task.addEventListener('click', () => openTaskForm(null));
+    tools.append(task);
+  }
   if (tools.childElementCount > 0) {
     tb.appendChild(tools);
     const sep = makeVsep();
@@ -5198,6 +5205,7 @@ function wireTopbar(): void {
     ${section('hide', 'Скрыть', ICONS.hideSection,
       '')}
     ${section('interactions', 'Взаимодействия', INTERACTIONS_ICON, '')}
+    ${new URLSearchParams(location.search).get('route') === 'board' && isTeacher() ? menuItem('task', 'Добавить задание', ICONS.task) : ''}
     ${menuItem('settings', 'Настройки', ICONS.settings)}<hr>
     ${!doskaApi && !isNativeApp() ? menuItem('app', 'Открыть в приложении', ICONS.openApp) : ''}`;
   document.body.append(menu);
@@ -5269,6 +5277,7 @@ function wireTopbar(): void {
     if (action === 'png') void exportPng();
     if (action === 'link-project') void copyBoardLink('project');
     if (action === 'link-page') void copyBoardLink('page');
+    if (action === 'task') openTaskForm(null);
     if (action === 'settings') openAllSettings();
     if (action === 'project') void downloadProjectFile();
     if (action === 'pdf') showToast('Экспорт в PDF пока недоступен');

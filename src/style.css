@@ -5884,7 +5884,7 @@ body.no-ui-anim #plans-dialog, body.no-ui-anim #plans-dialog * { transition: non
 
 /* Кабинет репетитора */
 body.tutor-mode > :not(#tutor-root):not(#startup) { display:none !important; }
-.home-tutor,#tutor-return { color:inherit; font:600 13px/1.2 inherit; text-decoration:none; padding:8px 12px; border-radius:10px; background:#e5efe9; color:#214f44; }
+.home-tutor,#tutor-return { color:inherit; font-family:inherit;font-size:13px;font-weight:600;line-height:1.2; text-decoration:none; padding:8px 12px; border-radius:10px; background:#e5efe9; color:#214f44; }
 #tutor-root { --tu-bg:#f4f5ef; --tu-card:#fffefa; --tu-ink:#1f332d; --tu-muted:#52675e; --tu-line:#cfdbd1; --tu-accent:#235e4e; --tu-on:#fff; --tu-tint:#e0ece1; position:fixed; inset:0; display:grid; grid-template-columns:212px minmax(0,1fr); color:var(--tu-ink); background:var(--tu-bg); font:15px/1.45 system-ui,sans-serif; user-select:text; padding:max(env(safe-area-inset-top),calc(var(--t-safe-top,0px) + var(--t-content-top,0px))) max(env(safe-area-inset-right),calc(var(--t-safe-right,0px) + var(--t-content-right,0px))) max(env(safe-area-inset-bottom),calc(var(--t-safe-bottom,0px) + var(--t-content-bottom,0px))) max(env(safe-area-inset-left),calc(var(--t-safe-left,0px) + var(--t-content-left,0px))); }
 #tutor-root[hidden],#tutor-root [hidden] { display:none !important; }
 #tutor-root[data-scheme="dark"] { --tu-bg:#17211e; --tu-card:#21302a; --tu-ink:#ecf2e9; --tu-muted:#bdcfc1; --tu-line:#42594d; --tu-accent:#add1bb; --tu-on:#18291f; --tu-tint:#35483d; color-scheme:dark; }
@@ -5985,7 +5985,7 @@ body.tutor-mode > :not(#tutor-root):not(#startup) { display:none !important; }
 .tu-mobileweek { margin-bottom:10px; justify-content:space-between; flex-wrap:nowrap; }
 #tutor-root .tu-mobileweek button { flex:1; min-width:0;padding:3px;font-size:12px; }
 #tutor-root .tu-mobileweek [aria-pressed=true]{background:var(--tu-tint);}
-@media(prefers-reduced-motion:no-preference){body:not([data-animations="off"]) .tu-lesson[data-status=current] .tu-badge {animation:tu-pulse 2s ease-in-out infinite;} @keyframes tu-pulse{50%{opacity:.65}}}
+@media(prefers-reduced-motion:no-preference){body:not(.no-ui-anim) .tu-lesson[data-status=current] .tu-badge {animation:tu-pulse 2s ease-in-out infinite;} @keyframes tu-pulse{50%{opacity:.65}}}
 @media(max-width:640px){ .tu-calendar{--hour:66px;} .tu-monthday {min-height:58px;padding:2px;} #tutor-root .tu-month .tu-lesson{font-size:10px;min-height:18px;max-height:30px;padding:2px;} .tu-month .tu-badge{display:none;} }
 
 
@@ -6013,4 +6013,8 @@ body.tutor-mode > :not(#tutor-root):not(#startup) { display:none !important; }
 .tu-summary { grid-template-columns:repeat(3,minmax(0,1fr)); }
 @media(max-width:1000px) { .tu-kpis{grid-template-columns:repeat(2,minmax(0,1fr));} }
 @media(max-width:720px) { .tu-charts,.tu-summary{grid-template-columns:1fr;} .tu-kpi,.tu-chart,.tu-ranking{padding:14px;} .tu-rank{font-size:13px;} }
+
+
+#tutor-return { pointer-events:auto; app-region:no-drag; white-space:nowrap; }
+@media(max-width:640px){#tutor-return:not([hidden]){position:fixed;right:12px;top:62px;z-index:4;box-shadow:0 2px 8px #0002;}}
 

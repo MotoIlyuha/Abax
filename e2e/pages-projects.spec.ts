@@ -779,7 +779,8 @@ test.describe('домашняя страница: проекты', () => {
 
     // своя картинка обрезается в квадрат 64×64
     await badge.click();
-    await expect(picker.locator('.ip-emoji.active')).toHaveText('🚀');
+    await picker.locator('.ip-search').fill('ракета');
+    await expect(picker.locator('.ip-results .ip-emoji.active')).toHaveText('🚀');
     const png = await page.evaluate(() => {
       const cv = document.createElement('canvas');
       cv.width = 120;

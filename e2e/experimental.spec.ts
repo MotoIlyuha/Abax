@@ -26,12 +26,12 @@ async function unlock(page: Page): Promise<void> {
 test.describe('раздел «Экспериментальные»', () => {
   test('появляется, если задержать логотип в «О проекте»; запоминается; скрывается кнопкой', async ({ board, page }) => {
     await openSection(page, 'about');
-    await expect(nav(page)).toHaveText(['Профиль', 'Подписка', 'Доска', 'Панель инструментов', 'Горячие клавиши', 'Дополнительные', 'О проекте']);
+    await expect(nav(page)).toHaveText(['Профиль', 'Подписка', 'Доска', 'Панель инструментов', 'Горячие клавиши', 'Дополнительные', 'Конфиденциальность', 'О проекте']);
     // короткий клик по логотипу — ничего
     await page.locator('#settings-dialog .sd-about-logo').click();
-    await expect(nav(page)).toHaveCount(7);
+    await expect(nav(page)).toHaveCount(8);
     await holdLogo(page);
-    await expect(nav(page)).toHaveText(['Профиль', 'Подписка', 'Доска', 'Панель инструментов', 'Горячие клавиши', 'Дополнительные', 'О проекте', 'Экспериментальные']);
+    await expect(nav(page)).toHaveText(['Профиль', 'Подписка', 'Доска', 'Панель инструментов', 'Горячие клавиши', 'Дополнительные', 'Конфиденциальность', 'О проекте', 'Экспериментальные']);
     await expect(nav(page).last()).toHaveClass(/sd-nav-new/);
     await expect(page.locator('#sd-title')).toHaveText('О проекте'); // раздел открыт прежний
 
@@ -50,11 +50,11 @@ test.describe('раздел «Экспериментальные»', () => {
     await board.ready();
     await openSection(page, 'experimental');
     await page.locator('.sd-exp-hide').click();
-    await expect(nav(page)).toHaveCount(7);
+    await expect(nav(page)).toHaveCount(8);
     await expect(page.locator('#sd-title')).toHaveText('Доска');
     await page.keyboard.press('Escape');
     await page.keyboard.press('Control+Comma');
-    await expect(nav(page)).toHaveCount(7);
+    await expect(nav(page)).toHaveCount(8);
   });
 
   test('цвета иконки: выбор показывается у заголовка, «Сохранить» меняет иконку приложения, «Сбросить» - обратно', async ({ board, page }) => {

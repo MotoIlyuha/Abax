@@ -5,7 +5,8 @@ afterEach(closeApps);
 
 it('изолирует кабинет, проверяет владельца доски и сохраняет историю после архивации', async () => {
   const app = await makeApp();
-  const owner = await anon(app), other = await anon(app);
+  const owner = await anon(app),
+    other = await anon(app);
   const path = '/api/tutor/students';
   expect((await call(app, 'GET', path)).status).toBe(401);
   await putProject(app, other.token, proj('foreign'));

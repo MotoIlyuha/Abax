@@ -236,7 +236,7 @@ export function browserUse(combo: string, env: KeyEnv): string | null {
 export function newPageKeyWarning(combo: string | null, env: KeyEnv): string | null {
   const use = combo ? browserUse(combo, env) : null;
   if (!combo || !use) return null;
-  return `В браузере ${comboLabel(combo)} — ${use}: сочетание может не сработать. `
+  return `В браузере ${comboLabel(combo)} - ${use}: сочетание может не сработать. `
     + 'В приложении для компьютера работает.';
 }
 

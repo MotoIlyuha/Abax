@@ -223,6 +223,7 @@ test.describe('прозрачность и скругление', () => {
 
     await page.reload();
     await board.ready();
+    await board.tool('p');
     expect((await board.state()).style.opacity).toBeCloseTo(opacity + 0.01, 5);
   });
 

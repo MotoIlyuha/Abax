@@ -115,6 +115,19 @@ export function apiBase(): string {
   return typeof __DEFAULT_API_URL__ === 'string' ? normalizeApiUrl(__DEFAULT_API_URL__) : '';
 }
 
+export function sharedSessionOrigin(): boolean {
+  return typeof location !== 'undefined' && /^https:\/\/(?:board\.|tutor\.)?abaxboard\.ru$/.test(location.origin);
+}
+
+/** На поддоменах cookie отражает последний вход, даже когда у клиента сохранился старый Bearer. */
+export async function restoreBrowserSession(api: ApiClient | null = getApi()): Promise<void> {
+  if (!api || api.base !== location.origin) return;
+  try {
+    const s = await api.request<{token:string}>('POST','/api/auth/session',{}, {anonymous:true});
+    saveSession(s.token);
+  } catch(e) { if (!(e instanceof ApiError && (e.status === 401 || e.status === 404 || e.isNetwork))) throw e; }
+}
+
 export function createApiClient(options: ApiClientOptions): ApiClient {
   const base = normalizeApiUrl(options.base);
   const doFetch = options.fetch ?? ((...a: Parameters<typeof fetch>) => fetch(...a));

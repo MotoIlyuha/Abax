@@ -171,7 +171,7 @@ test.describe('раздел «Горячие клавиши»: справка', 
     // картинки и так пропорциональны (настройка по умолчанию) — их сочетание не показываем
     await expect(row('Сохранить пропорции изображения')).toHaveCount(0);
     await page.locator('.sd-nav-item', { hasText: 'Доска' }).click();
-    await page.locator('.sd-general label', { hasText: 'Пропорциональный размер изображений' }).locator('input').uncheck();
+    await page.locator('#settings-dialog').getByRole('switch', { name: 'Пропорциональное редактирование' }).uncheck();
     await page.locator('.sd-nav-item', { hasText: 'Горячие клавиши' }).click();
     await expect(row('Сохранить пропорции изображения').locator('kbd')).toHaveText(['Shift', 'Ctrl']);
 
