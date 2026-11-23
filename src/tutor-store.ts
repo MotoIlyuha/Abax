@@ -84,6 +84,7 @@ export class TutorStore {
     cache.book = { students:snap.students,lessons:snap.lessons,payments:snap.payments };
     this.save(cache);
   }
+  reread(): void { this.publish(this.read()); }
   refresh(): Promise<void> {
     return this.lock(async () => {
       const cache = this.read();

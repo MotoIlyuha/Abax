@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <!-- script-src без 'unsafe-inline': даже если чужие данные попадут в разметку, скрипт не выполнится.
        worker-src blob: - воркер pdf.js встроен в сборку (?worker&inline); ws: - сервер совместной работы
        (автор в Electron открыт с file://); abaxboard.ru - проверка обновлений;
@@ -24,6 +24,7 @@
   </style>
 </head>
 <body>
+  <div id="tutor-root" hidden></div>
   <div id="startup" role="status" aria-live="polite">
     <div id="startup-status">
       <img src="logo.svg" alt="" />
@@ -51,6 +52,7 @@
         <input id="page-name" aria-label="Название страницы" spellcheck="false" autocomplete="off" />
         <button id="sync-indicator" type="button" hidden></button>
       </div>
+      <a id="tutor-return" href="?route=tutor" hidden>← В кабинет Tutor</a>
       <button id="btn-home" class="topbar-logo" title="Проекты (домашняя страница)" aria-label="Проекты (домашняя страница)"><img src="logo.svg" alt="Abax" /></button>
     </div>
     <div class="topbar-side topbar-left">

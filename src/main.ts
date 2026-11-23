@@ -1,4 +1,5 @@
 import './style.css';
+import { appHref, launchesTutor } from './tutor-launch';
 import { initRenderer, requestRender } from './renderer';
 import { initController } from './controller';
 import { initApp, importPdfFromDataUrl } from './app';
@@ -45,6 +46,7 @@ function watchGuestClose(opts: { roomFullHandled?: boolean } = {}): void {
 }
 
 async function boot(): Promise<void> {
+  if (launchesTutor()) { await (await import('./tutor-app')).bootTutor(); return; }
   initTooltips();
   initAppIcon();
   const canvas = document.getElementById('board') as HTMLCanvasElement;
@@ -131,6 +133,12 @@ async function boot(): Promise<void> {
     try {
       last = JSON.parse(localStorage.getItem('doska.last') || '{}');
     } catch { /* нет сохранённой позиции */ }
+    const tutorPid = q.get('tutorProject');
+    if (q.get('route') === 'board') {
+      const back = document.getElementById('tutor-return') as HTMLAnchorElement;
+      back.hidden = false; back.href = appHref('tutor');
+      if (tutorPid) last = { pid: tutorPid, pageId: q.get('tutorPage') ?? undefined };
+    }
     let project = last.pid ? await openFresh(last.pid) : null;
     if (!project && metas.length > 0) project = await storage.load(metas[0].id);
     if (!project) {
@@ -207,7 +215,7 @@ void boot().then(() => {
     const next = afterStartup;
     afterStartup = null;
     if (next) next();
-    else showAnalyticsBanner();
+    else if (!document.body.classList.contains('tutor-mode')) showAnalyticsBanner();
     document.getElementById('startup')!.hidden = true;
   }));
 }).catch((error: unknown) => {

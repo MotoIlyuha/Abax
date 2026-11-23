@@ -107,6 +107,7 @@ export function normalizeApiUrl(raw: unknown): string {
 export function apiBase(): string {
   const local = normalizeApiUrl(store(API_URL_KEY));
   if (local) return local;
+  if (typeof location !== 'undefined' && location.origin === 'https://tutor.abaxboard.ru') return location.origin;
   if (typeof __API_SAME_ORIGIN__ === 'boolean' && __API_SAME_ORIGIN__ && typeof location !== 'undefined') {
     const own = normalizeApiUrl(location.origin);
     if (own) return own;

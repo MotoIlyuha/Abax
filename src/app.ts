@@ -4431,7 +4431,12 @@ function renderHome(): void {
   // четвёртый проект на бесплатном тарифе — бейдж Pro
   newBtn.appendChild(proBadge('projects', { className: 'new-project-pro', needed: state.projects.length >= PLAN_LIMITS.free.maxProjects }));
   newBtn.addEventListener('click', () => { newProjectHandler(); });
-  tools.append(views, newBtn, profileButton());
+  const tutor = document.createElement('a');
+  tutor.className = 'home-tutor';
+  tutor.href = '?route=tutor';
+  tutor.textContent = 'Abax Tutor';
+  tutor.title = 'Кабинет репетитора (календарь и ученики)';
+  tools.append(tutor, views, newBtn, profileButton());
   head.append(logo, h, tools);
   home.appendChild(head);
   // приглашения по почте (SPEC_NIGHT5 §7): карточки над проектами; список обновляется не чаще раза в 30 с

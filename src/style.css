@@ -5881,3 +5881,72 @@ body.no-ui-anim #plans-dialog, body.no-ui-anim #plans-dialog * { transition: non
 .sub-empty { padding: 12px; color: var(--fg-tertiary); font-size: 13px; }
 .ps-tier-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .ps-tier-status { flex: 1; min-width: 0; color: var(--fg-tertiary); font-size: 13px; }
+
+/* Кабинет репетитора */
+body.tutor-mode > :not(#tutor-root):not(#startup) { display:none !important; }
+.home-tutor,#tutor-return { color:inherit; font:600 13px/1.2 inherit; text-decoration:none; padding:8px 12px; border-radius:10px; background:#e5efe9; color:#214f44; }
+#tutor-root { --tu-bg:#f4f5ef; --tu-card:#fffefa; --tu-ink:#1f332d; --tu-muted:#52675e; --tu-line:#cfdbd1; --tu-accent:#235e4e; --tu-on:#fff; --tu-tint:#e0ece1; position:fixed; inset:0; display:grid; grid-template-columns:212px minmax(0,1fr); color:var(--tu-ink); background:var(--tu-bg); font:15px/1.45 system-ui,sans-serif; user-select:text; padding:max(env(safe-area-inset-top),calc(var(--t-safe-top,0px) + var(--t-content-top,0px))) max(env(safe-area-inset-right),calc(var(--t-safe-right,0px) + var(--t-content-right,0px))) max(env(safe-area-inset-bottom),calc(var(--t-safe-bottom,0px) + var(--t-content-bottom,0px))) max(env(safe-area-inset-left),calc(var(--t-safe-left,0px) + var(--t-content-left,0px))); }
+#tutor-root[hidden],#tutor-root [hidden] { display:none !important; }
+#tutor-root[data-scheme="dark"] { --tu-bg:#17211e; --tu-card:#21302a; --tu-ink:#ecf2e9; --tu-muted:#bdcfc1; --tu-line:#42594d; --tu-accent:#add1bb; --tu-on:#18291f; --tu-tint:#35483d; color-scheme:dark; }
+@media(prefers-color-scheme:dark){ #tutor-root:not([data-scheme="light"]) { --tu-bg:#17211e; --tu-card:#21302a; --tu-ink:#ecf2e9; --tu-muted:#bdcfc1; --tu-line:#42594d; --tu-accent:#add1bb; --tu-on:#18291f; --tu-tint:#35483d; color-scheme:dark; } }
+#tutor-root * { box-sizing:border-box; }
+#tutor-root :is(h1,h2,h3,h4,p) { margin:0; }
+#tutor-root h1,#tutor-root h2 { font-family:Georgia,'Times New Roman',serif; font-weight:500; letter-spacing:-.035em; line-height:1.12; }
+#tutor-root h1 { font-size:clamp(32px,4vw,56px); }
+#tutor-root h2 { font-size:30px; }
+#tutor-root button { font:inherit; font-weight:550; color:inherit; border:1px solid var(--tu-line); background:var(--tu-card); border-radius:10px; padding:8px 14px; cursor:pointer; min-height:40px; }
+#tutor-root button:hover { background:var(--tu-tint); }
+#tutor-root button:disabled { opacity:.55; cursor:wait; }
+#tutor-root :focus-visible { outline:3px solid #629b89; outline-offset:2px; }
+#tutor-root .tu-primary { background:var(--tu-accent); border-color:var(--tu-accent); color:var(--tu-on); }
+.tu-rail { background:#173e34; color:#e7f2e9; display:flex; flex-direction:column; gap:40px; padding:36px 18px 20px; }
+.tu-brand { display:flex; align-items:center; gap:10px; padding:0 8px; font-size:23px; letter-spacing:-.045em; }
+.tu-brand img { width:34px; height:34px; background:#eff4e9; border-radius:10px; padding:4px; }
+.tu-nav { display:grid; gap:6px; }
+#tutor-root .tu-nav button,#tutor-root .tu-exit { background:transparent; border:0; color:#d8e7dd; text-align:left; display:flex; align-items:center; gap:12px; font-size:14px; }
+#tutor-root .tu-nav button[aria-current=page],#tutor-root .tu-nav button:hover { background:#34594a; color:#fff; }
+.tu-glyph { font-size:20px; min-width:22px; text-align:center; }
+.tu-exit { margin-top:auto; }
+.tu-main { min-width:0; width:100%; max-width:1640px; margin:auto; height:100%; overflow:auto; padding:clamp(24px,4vw,64px); scrollbar-width:thin; }
+.tu-heading,.tu-toolbar,.tu-line,.tu-actions,.tu-cardfacts,.tu-sheet-head { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.tu-heading,.tu-sheet-head { justify-content:space-between; }
+.tu-heading { margin:0 0 26px; }
+.tu-toolbar { justify-content:space-between; margin:0 0 20px; }
+.tu-segments { display:inline-flex; flex-wrap:wrap; border:1px solid var(--tu-line); border-radius:11px; padding:3px; gap:2px; }
+#tutor-root .tu-segments button { background:transparent; border:0; padding:5px 11px; min-height:32px; font-size:13px; }
+#tutor-root .tu-segments button[aria-pressed=true] { background:var(--tu-tint); color:var(--tu-accent); }
+#tutor-root :is(input:not([type=checkbox]),textarea,select) { color:var(--tu-ink); background:var(--tu-card); border:1px solid var(--tu-line); border-radius:8px; min-width:0; max-width:100%; padding:10px 11px; font:inherit; }
+.tu-field { display:flex; flex-direction:column; align-items:stretch; gap:5px; min-width:0; }
+.tu-field>span:first-child,.tu-muted,#tutor-root small { color:var(--tu-muted); }
+.tu-field>span:first-child { font-size:13px; font-weight:550; }
+.tu-field input[type=checkbox] { align-self:flex-start; width:20px;height:20px;accent-color:var(--tu-accent); }
+.tu-students { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(100%,325px),1fr)); gap:12px; }
+#tutor-root .tu-student { display:flex; align-items:center; gap:12px; text-align:left; min-height:92px; padding:16px; border-radius:16px; }
+.tu-avatar { flex:none; width:42px; height:42px; border-radius:50%; display:grid; place-items:center; font-weight:700; color:var(--tu-ink); background:color-mix(in srgb,var(--student) 29%,var(--tu-card)); border:2px solid var(--student); }
+.tu-cardtext,.tu-cardrate { display:grid; min-width:0; gap:3px; }
+.tu-cardtext strong { overflow-wrap:anywhere; }
+.tu-cardrate { margin-left:auto; white-space:nowrap; text-align:right; font-size:14px; }
+.tu-empty { grid-column:1/-1; min-height:190px; border:1px dashed var(--tu-line); border-radius:18px; display:flex; flex-direction:column; gap:18px; align-items:center; justify-content:center; text-align:center; }
+.tu-sheet { color:var(--tu-ink); background:var(--tu-card); border:1px solid var(--tu-line); border-radius:22px; width:min(560px,94vw); max-height:88dvh; padding:0; margin:auto; box-shadow:0 24px 80px #0c241e33; }
+.tu-sheet::backdrop { background:#102f2669; }
+.tu-sheet-head { position:sticky; top:0; z-index:1; background:var(--tu-card); padding:20px 24px; border-bottom:1px solid var(--tu-line); }
+.tu-sheet-body,.tu-form,.tu-review { display:grid; gap:14px; }
+.tu-sheet-body { padding:20px 24px 26px; }
+#tutor-root .tu-close { font-size:23px; min-height:34px; line-height:1; padding:4px 9px; }
+.tu-pair,.tu-slot { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.tu-slots { display:grid;gap:14px; }
+.tu-slot,.tu-review { background:var(--tu-bg);border-radius:10px;padding:12px; }
+.tu-details { border-top:1px solid var(--tu-line); padding-top:10px; }
+.tu-details summary { cursor:pointer; font-weight:600; }
+.tu-details[open] summary { margin-bottom:12px; }
+.tu-colors { display:flex; flex-wrap:wrap; gap:6px; }
+#tutor-root .tu-color { background:var(--student); width:28px; height:28px; min-height:28px; padding:0; border-radius:50%; border:3px solid var(--tu-card); }
+#tutor-root .tu-color[aria-pressed=true] { outline:2px solid var(--tu-ink); }
+.tu-cardfacts { gap:30px; background:var(--tu-tint); border-radius:12px; padding:16px; }
+.tu-cardfacts strong { font-size:22px; }
+.tu-feedback,.tu-toast { padding:12px 16px; background:var(--tu-accent); color:var(--tu-on); }
+.tu-feedback { position:sticky;bottom:0; }
+.tu-toast { position:fixed; bottom:80px; left:50%; transform:translateX(-50%); border-radius:12px; z-index:5; }
+@media(max-width:880px){ #tutor-root { grid-template-columns:162px minmax(0,1fr); } .tu-rail{padding-inline:10px;} .tu-main{padding:24px 18px;} .tu-brand{font-size:18px;} }
+@media(max-width:640px){ #tutor-root { display:flex; flex-direction:column-reverse; } .tu-rail { flex:none; padding:4px 8px; gap:0; } .tu-brand,.tu-rail .tu-exit{display:none!important;} .tu-nav{display:flex;justify-content:space-around;} #tutor-root .tu-nav button {flex:1; flex-direction:column; gap:0; font-size:12px; padding:4px;} .tu-main{flex:1;min-height:0;padding:24px 14px;} .tu-heading{gap:8px;margin-bottom:18px;} .tu-sheet { margin:auto 0 0; width:100%;max-width:none; max-height:92dvh; border-radius:18px 18px 0 0; padding-bottom:env(safe-area-inset-bottom); } .tu-sheet-head,.tu-sheet-body{padding-inline:16px;} .tu-toolbar input[type=search]{width:100%;} }
+

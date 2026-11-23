@@ -235,7 +235,7 @@ export function createAppServer(options: AppOptions, extraRoutes: RouteModule[] 
       if (reply && !reply.next) { send(res, method, reply, privateResponse); return; }
       if (url.pathname.startsWith('/api/')) throw new HttpError(404, 'not-found');
       if ((method === 'GET' || method === 'HEAD') && app.opts.staticDir) {
-        const file = await serveStatic(app.opts.staticDir, url.pathname);
+        const file = await serveStatic(app.opts.staticDir, /^\/tutor\/?$/.test(url.pathname) ? '/index.html' : url.pathname);
         if (file) { send(res, method, file); return; }
       }
       throw new HttpError(404, 'not-found');
