@@ -1,3 +1,4 @@
+import { registerStudents } from './tutor-students';
 import { registerMiniAppAuth } from './tma';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
@@ -180,6 +181,7 @@ export function createAppServer(options: AppOptions, extraRoutes: RouteModule[] 
   const router = new Router();
   registerAuthRoutes(router);
   registerMiniAppAuth(router);
+  registerStudents(router);
   registerAuthFlowRoutes(router);
   registerAssetRoutes(router);
   registerProjectRoutes(router);
