@@ -1,3 +1,4 @@
+import { registerCalendar } from './tutor-calendar';
 import { registerStudents } from './tutor-students';
 import { registerMiniAppAuth } from './tma';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
@@ -182,6 +183,7 @@ export function createAppServer(options: AppOptions, extraRoutes: RouteModule[] 
   registerAuthRoutes(router);
   registerMiniAppAuth(router);
   registerStudents(router);
+  registerCalendar(router);
   registerAuthFlowRoutes(router);
   registerAssetRoutes(router);
   registerProjectRoutes(router);

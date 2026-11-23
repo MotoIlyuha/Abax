@@ -1,3 +1,4 @@
+import { materialize } from './tutor-calendar';
 import { randomUUID } from 'node:crypto';
 import { integer, key, record, studentForm, TutorError, type Student } from '../src/tutor-model';
 import { requireUser } from './auth';
@@ -70,6 +71,7 @@ export function registerStudents(router: Router): void {
     const s = studentForm(body, id, now, old);
     if (s.project_id && getActiveProject(ctx.app, s.project_id)?.owner_id !== requireUser(ctx).id) throw new HttpError(404, 'project-not-found');
     saveStudent(ctx, s, create);
+    if (create || 'schedule' in body || 'archived' in body) materialize(ctx, s, now);
     return s;
   });
   router.post(path, edit(true));
@@ -77,6 +79,7 @@ export function registerStudents(router: Router): void {
   router.delete(path + '/:id', ctx => mutation(ctx, (_body, now) => {
     const s = { ...studentOf(ctx, ctx.params.id), archived: true, updated_at: now };
     saveStudent(ctx, s);
+    materialize(ctx, s, now);
     return s;
   }));
   router.post(path + '/:id/balance', ctx => mutation(ctx, (body, now) => {
