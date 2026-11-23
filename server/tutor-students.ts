@@ -36,14 +36,15 @@ export function saveStudent(ctx: Ctx, s: Student, create = false): void {
 }
 
 /** Операция и квитанция сохраняются одной транзакцией, в том числе при повторе после обрыва сети. */
-export async function mutation(ctx: Ctx, perform: (body: Record<string, unknown>, now: number) => unknown) {
+export async function mutation(ctx: Ctx, perform: (body: Record<string, unknown>, now: number, afterCommit: (effect: () => void) => void) => unknown) {
   const owner = requireUser(ctx).id;
   try {
     const body = record(await ctx.body() ?? {});
     const op = body.operationId === undefined ? null : key(body.operationId);
     const request = JSON.stringify([ctx.method, ctx.path, body]);
     const db = ctx.app.db;
-    return db.transaction(() => {
+    const effects: (() => void)[] = [];
+    const reply = db.transaction(() => {
       if (op) {
         const receipt = db.prepare('SELECT request,response FROM tutor_operations WHERE tutor_id=? AND id=?').get(owner, op) as { request: string; response: string } | undefined;
         if (receipt) {
@@ -51,10 +52,12 @@ export async function mutation(ctx: Ctx, perform: (body: Record<string, unknown>
           return { json: JSON.parse(receipt.response) };
         }
       }
-      const json = perform(body, ctx.app.now());
+      const json = perform(body, ctx.app.now(), fn => effects.push(fn));
       if (op) db.prepare('INSERT INTO tutor_operations VALUES (?,?,?,?)').run(owner, op, request, JSON.stringify(json));
       return { json };
     })();
+    for (const effect of effects) effect();
+    return reply;
   } catch (e) {
     if (e instanceof TutorError) throw new HttpError(e.status, e.code);
     throw e;

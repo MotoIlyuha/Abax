@@ -1,3 +1,4 @@
+import { registerTutorBoards } from './tutor-boards';
 import { registerCalendar } from './tutor-calendar';
 import { registerStudents } from './tutor-students';
 import { registerMiniAppAuth } from './tma';
@@ -184,6 +185,7 @@ export function createAppServer(options: AppOptions, extraRoutes: RouteModule[] 
   registerMiniAppAuth(router);
   registerStudents(router);
   registerCalendar(router);
+  registerTutorBoards(router);
   registerAuthFlowRoutes(router);
   registerAssetRoutes(router);
   registerProjectRoutes(router);

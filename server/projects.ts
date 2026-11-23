@@ -45,7 +45,7 @@ export function ownerPlanOf(app: AppContext, ownerId: string): PlanTier {
   return u ? effectivePlan(u, app.now()) : 'free';
 }
 
-function activeCount(app: AppContext, ownerId: string): number {
+export function activeCount(app: AppContext, ownerId: string): number {
   return (app.db.prepare('SELECT COUNT(*) n FROM projects WHERE owner_id = ? AND is_deleted = 0').get(ownerId) as { n: number }).n;
 }
 
