@@ -5950,3 +5950,41 @@ body.tutor-mode > :not(#tutor-root):not(#startup) { display:none !important; }
 @media(max-width:880px){ #tutor-root { grid-template-columns:162px minmax(0,1fr); } .tu-rail{padding-inline:10px;} .tu-main{padding:24px 18px;} .tu-brand{font-size:18px;} }
 @media(max-width:640px){ #tutor-root { display:flex; flex-direction:column-reverse; } .tu-rail { flex:none; padding:4px 8px; gap:0; } .tu-brand,.tu-rail .tu-exit{display:none!important;} .tu-nav{display:flex;justify-content:space-around;} #tutor-root .tu-nav button {flex:1; flex-direction:column; gap:0; font-size:12px; padding:4px;} .tu-main{flex:1;min-height:0;padding:24px 14px;} .tu-heading{gap:8px;margin-bottom:18px;} .tu-sheet { margin:auto 0 0; width:100%;max-width:none; max-height:92dvh; border-radius:18px 18px 0 0; padding-bottom:env(safe-area-inset-bottom); } .tu-sheet-head,.tu-sheet-body{padding-inline:16px;} .tu-toolbar input[type=search]{width:100%;} }
 
+
+.tu-period,.tu-filters,.tu-mobileweek { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.tu-period h3,.tu-daytitle { text-transform:capitalize; }
+#tutor-root .tu-period button { min-width:36px; min-height:34px; padding:4px 9px; }
+.tu-filters { margin:0 0 16px; align-items:end; }
+.tu-filters label { flex:1; min-width:96px; }
+.tu-calendar { --hour:70px; }
+.tu-timeline,.tu-month { background:var(--tu-card); border:1px solid var(--tu-line); border-radius:15px; overflow:hidden; display:grid; }
+.tu-timeline { grid-template-columns:46px repeat(var(--days),minmax(0,1fr)); }
+.tu-colhead,.tu-weekday { padding:12px 2px; text-align:center; font-size:13px; text-transform:capitalize; background:var(--tu-tint); }
+.tu-clockhead { background:var(--tu-tint); }
+.tu-hours { display:flex; flex-direction:column; }
+.tu-hours small { height:var(--hour); text-align:center; font-size:11px; padding-top:2px; }
+.tu-daycol { position:relative; min-width:0; border-left:1px solid var(--tu-line); }
+#tutor-root .tu-free { display:block; width:100%; height:var(--hour); min-height:0; padding:0; border:0; border-top:1px solid var(--tu-line); border-radius:0; background:transparent; }
+#tutor-root .tu-free:hover { background:var(--tu-tint); }
+#tutor-root .tu-lesson { display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-start; gap:3px; text-align:left; min-height:0; min-width:0; overflow:hidden; width:100%; padding:9px 12px; background:color-mix(in srgb,var(--student) 18%,var(--tu-card)); border:1px solid var(--student); border-left-width:5px; border-radius:9px; margin-bottom:5px; }
+#tutor-root .tu-lesson.compact { padding:4px; font-size:12px; line-height:1.23; }
+#tutor-root .tu-daycol .tu-lesson { position:absolute; left:2px; width:calc(100% - 4px); }
+#tutor-root .tu-lesson[data-status=current] { border:3px double var(--student); box-shadow:0 0 0 2px color-mix(in srgb,var(--student) 35%,transparent); }
+#tutor-root .tu-lesson[data-status=unpaid] { border:2px dashed #bd622c; }
+#tutor-root .tu-lesson[data-status=paid] { border:2px solid #39805c; }
+#tutor-root .tu-lesson[data-status=rescheduled] { border-style:dashed; background-image:repeating-linear-gradient(130deg,transparent 0 5px,color-mix(in srgb,var(--student) 14%,transparent) 5px 8px); }
+#tutor-root .tu-lesson[data-status=cancelled] { opacity:.55; border:1px dashed #808783; }
+.tu-lesson[data-status=cancelled] strong { text-decoration:line-through; }
+#tutor-root .tu-badge { color:var(--tu-ink); font-weight:500; }
+.tu-now { pointer-events:none; position:absolute; left:0;right:0; height:2px;background:#cb493f; z-index:1; }
+.tu-now::before { content:'';position:absolute; left:0;top:-3px;width:8px;height:8px;border-radius:50%;background:inherit; }
+.tu-month { grid-template-columns:repeat(7,minmax(0,1fr)); }
+.tu-monthday,.tu-otherday { padding:5px; min-height:104px;border-top:1px solid var(--tu-line);border-right:1px solid var(--tu-line); }
+#tutor-root .tu-date { padding:0 4px; border:0; min-height:25px;font-size:13px;background:transparent; }
+.tu-daytitle { margin:16px 0 8px!important; font-size:15px; }
+.tu-mobileweek { margin-bottom:10px; justify-content:space-between; flex-wrap:nowrap; }
+#tutor-root .tu-mobileweek button { flex:1; min-width:0;padding:3px;font-size:12px; }
+#tutor-root .tu-mobileweek [aria-pressed=true]{background:var(--tu-tint);}
+@media(prefers-reduced-motion:no-preference){body:not([data-animations="off"]) .tu-lesson[data-status=current] .tu-badge {animation:tu-pulse 2s ease-in-out infinite;} @keyframes tu-pulse{50%{opacity:.65}}}
+@media(max-width:640px){ .tu-calendar{--hour:66px;} .tu-monthday {min-height:58px;padding:2px;} #tutor-root .tu-month .tu-lesson{font-size:10px;min-height:18px;max-height:30px;padding:2px;} .tu-month .tu-badge{display:none;} }
+

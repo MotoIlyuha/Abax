@@ -1,6 +1,7 @@
 import { TutorStore } from './tutor-store';
 import { appHref, mountTelegram, telegramData } from './tutor-launch';
 import { el, errorText, group, type TutorUI, type View } from './tutor-ui';
+import { calendarView } from './tutor-calendar-ui';
 import { studentsView } from './tutor-students-ui';
 
 export async function bootTutor() {
@@ -14,7 +15,7 @@ export async function bootTutor() {
   const sheet=el('dialog','tu-sheet'), toast=el('div','tu-toast');toast.hidden=true;toast.setAttribute('role','status');
   root.append(rail,main,sheet,toast);rail.append(brand,nav);
   const store=new TutorStore();
-  let view:View='students';
+  let view:View='calendar';
   let toastTimer=0;
   let backVisible: (v:boolean)=>void=()=>{};
   const message=(text:string)=>{
@@ -40,19 +41,19 @@ export async function bootTutor() {
     render(){
       main.replaceChildren();
       for(const b of nav.querySelectorAll('button'))b.setAttribute('aria-current',b.dataset.view===view?'page':'false');
-      studentsView(ui);
-      backVisible(sheet.open||view!=='students');
+      if(view==='calendar')calendarView(ui);else studentsView(ui);
+      backVisible(sheet.open||view!=='calendar');
     },
   };
-  const links=[['students','Ученики','◉']] as const;
+  const links=[['calendar','Календарь','▦'],['students','Ученики','◉']] as const;
   for(const [id,text,icon] of links){
     const b=ui.button('',()=>ui.navigate(id));b.dataset.view=id;
     const glyph=el('span','tu-glyph',icon);glyph.setAttribute('aria-hidden','true');b.append(glyph,el('span','',text));nav.append(b);
   }
   const exit=ui.button('↗  Abax Board',()=>location.assign(appHref('board')),'tu-exit');rail.append(exit);
-  const back=()=>{if(sheet.open)sheet.close();else ui.navigate('students');};
+  const back=()=>{if(sheet.open)sheet.close();else ui.navigate('calendar');};
   backVisible=mountTelegram(root,back);
-  sheet.addEventListener('close',()=>backVisible(view!=='students'));
+  sheet.addEventListener('close',()=>backVisible(view!=='calendar'));
   sheet.addEventListener('click',e=>{if(e.target===sheet){const r=sheet.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)sheet.close();}});
   try {await store.init(telegramData());}
   catch(e){main.append(el('h1','','Кабинет репетитора'),el('p','',errorText(e)),ui.button('Повторить',()=>location.reload()));return;}
