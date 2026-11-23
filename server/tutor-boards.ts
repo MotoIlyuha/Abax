@@ -1,3 +1,4 @@
+import { analytics } from '../src/tutor-analytics';
 import { randomUUID } from 'node:crypto';
 import { canCreateProject, isOverPageLimit } from '../src/limits';
 import { addReviewTask, lessonPage, progressOf, studentBoard } from '../src/tutor-board';
@@ -44,6 +45,17 @@ function ensureBoard(ctx: Ctx, s: Student, body: Record<string, unknown>, now: n
   return project;
 }
 export function registerTutorBoards(router: Router): void {
+  router.get('/api/tutor/analytics', ctx => {
+    requireUser(ctx);
+    const from = Number(ctx.query.get('from')), to = Number(ctx.query.get('to'));
+    if (!Number.isSafeInteger(from) || !Number.isSafeInteger(to) || from < 0 || to <= from ||
+        to > Date.UTC(2200,0,1) || to - from > 10 * 366 * 86400000) throw new HttpError(400, 'bad-period');
+    const mode = ctx.query.get('mode') ?? 'month';
+    if (!['day','week','month','custom'].includes(mode) || (mode === 'day' && to-from > 25*3600000)) throw new HttpError(400, 'bad-period');
+    const students = allStudents(ctx);
+    const r = analytics(students,students.flatMap(s => lessonsOf(ctx,s.id)),new Date(from),new Date(to),mode==='day');
+    return { json: { ...r,bins:r.bins.map(b => ({ ...b,groups:[...b.groups.values()] })) } };
+  });
   router.get('/api/tutor/snapshot', ctx => {
     const owner = requireUser(ctx).id;
     const students = allStudents(ctx);

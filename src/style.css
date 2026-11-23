@@ -5988,3 +5988,29 @@ body.tutor-mode > :not(#tutor-root):not(#startup) { display:none !important; }
 @media(prefers-reduced-motion:no-preference){body:not([data-animations="off"]) .tu-lesson[data-status=current] .tu-badge {animation:tu-pulse 2s ease-in-out infinite;} @keyframes tu-pulse{50%{opacity:.65}}}
 @media(max-width:640px){ .tu-calendar{--hour:66px;} .tu-monthday {min-height:58px;padding:2px;} #tutor-root .tu-month .tu-lesson{font-size:10px;min-height:18px;max-height:30px;padding:2px;} .tu-month .tu-badge{display:none;} }
 
+
+.tu-kpis,.tu-summary,.tu-charts { display:grid; gap:14px; }
+.tu-kpis { grid-template-columns:repeat(4,minmax(0,1fr)); }
+.tu-kpi,.tu-chart,.tu-ranking { background:var(--tu-card); border:1px solid var(--tu-line); border-radius:16px; padding:18px; min-width:0; }
+.tu-kpi { display:flex; flex-direction:column; gap:8px; align-items:flex-start; font-variant-numeric:tabular-nums; }
+.tu-kpi strong { font-size:clamp(21px,2.5vw,38px); line-height:1.2; letter-spacing:-.035em; }
+#tutor-root .tu-kpi button { font-size:12px; padding:3px 8px; min-height:26px; }
+.tu-kpi-feature { background:#234d40; color:#fff; } #tutor-root .tu-kpi-feature small { color:#e2eddf; }
+.tu-chart-controls { margin:18px 0 10px;display:flex;justify-content:flex-end; }
+.tu-charts { grid-template-columns:minmax(0,2.5fr) minmax(190px,1fr); }
+.tu-chart-scroll { overflow-x:auto; scrollbar-width:thin; }
+.tu-chart svg { display:block;width:100%; color:var(--tu-muted); }
+.tu-chart svg text { fill:var(--tu-muted);font:10px system-ui,sans-serif; }
+.tu-gridline { stroke:var(--tu-line); } .tu-ring { stroke:var(--tu-line); }
+.tu-donut svg { width:min(100%,180px); margin:auto; }
+.tu-chart svg .tu-ring-total { fill:var(--tu-ink);font:bold 14px system-ui,sans-serif; }
+.tu-chart-tip { display:block;min-height:20px;font-size:13px; }
+.tu-legend { display:flex;gap:14px;font-size:12px;margin:8px 0; }
+.tu-legend span:before { content:'';display:inline-block;width:12px;height:12px;margin-right:5px;vertical-align:middle;background:var(--tu-accent); }
+.tu-legend .tu-plan-key:before { background:repeating-linear-gradient(45deg,var(--tu-accent) 0 1px,transparent 1px 3px);border:1px solid var(--tu-accent); }
+.tu-ranking { margin:14px 0; } .tu-rank { display:flex;align-items:center;gap:12px;margin-top:12px;padding-top:12px;border-top:1px solid var(--tu-line); }
+.tu-rank progress { width:100%;height:6px; }
+.tu-summary { grid-template-columns:repeat(3,minmax(0,1fr)); }
+@media(max-width:1000px) { .tu-kpis{grid-template-columns:repeat(2,minmax(0,1fr));} }
+@media(max-width:720px) { .tu-charts,.tu-summary{grid-template-columns:1fr;} .tu-kpi,.tu-chart,.tu-ranking{padding:14px;} .tu-rank{font-size:13px;} }
+

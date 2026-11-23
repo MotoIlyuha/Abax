@@ -1,6 +1,7 @@
 import { TutorStore } from './tutor-store';
 import { appHref, mountTelegram, telegramData } from './tutor-launch';
 import { el, errorText, group, type TutorUI, type View } from './tutor-ui';
+import { incomeView } from './tutor-income-ui';
 import { calendarView } from './tutor-calendar-ui';
 import { studentsView } from './tutor-students-ui';
 
@@ -41,11 +42,11 @@ export async function bootTutor() {
     render(){
       main.replaceChildren();
       for(const b of nav.querySelectorAll('button'))b.setAttribute('aria-current',b.dataset.view===view?'page':'false');
-      if(view==='calendar')calendarView(ui);else studentsView(ui);
+      if(view==='calendar')calendarView(ui);else if(view==='income')incomeView(ui);else studentsView(ui);
       backVisible(sheet.open||view!=='calendar');
     },
   };
-  const links=[['calendar','Календарь','▦'],['students','Ученики','◉']] as const;
+  const links=[['calendar','Календарь','▦'],['students','Ученики','◉'],['income','Доход','◒']] as const;
   for(const [id,text,icon] of links){
     const b=ui.button('',()=>ui.navigate(id));b.dataset.view=id;
     const glyph=el('span','tu-glyph',icon);glyph.setAttribute('aria-hidden','true');b.append(glyph,el('span','',text));nav.append(b);
