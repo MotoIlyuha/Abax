@@ -6230,22 +6230,14 @@ body.tutor-mode > :not(#tutor-root):not(#startup) { display:none !important; }
   gap: 8px; padding: 0 12px 12px;
 }
 .task-bank-filters { flex: none; display: grid; min-width: 0; gap: 8px; }
-.task-bank-subjects { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
-.task-bank-subject {
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
-  min-height: 42px; min-width: 0; padding: 3px 1px; border: 1px solid transparent; border-radius: 9px;
-  background: var(--surface-sunken); color: var(--fg-secondary); font-size: 11px; font-weight: 600;
+@media (max-width: 759.98px) {
+  #side-panel.sp-left .sp-head { padding-right: 8px; }
 }
-.task-bank-subject[aria-pressed="true"], .task-bank-pill[aria-pressed="true"] {
-  background: var(--accent-soft); border-color: var(--accent); color: var(--fg);
-}
-.task-bank-subject:disabled { cursor: default; color: var(--muted); }
-.task-bank-soon {
-  padding: 0 5px; border-radius: 999px; background: var(--panel); color: var(--muted);
-  font-size: 9px; font-weight: 600; line-height: 14px;
-}
-.task-bank-exams { width: 100%; }
-.task-bank-exams .seg-opt { flex: 1; }
+.task-bank-subject.ss-trigger { flex: none; height: 32px; font-size: 13px; }
+.ss-opt[aria-disabled="true"] { color: var(--muted); cursor: default; }
+.ss-opt[aria-disabled="true"] .ss-opt-badge { background: var(--surface-muted); color: var(--fg-secondary); }
+.task-bank-pill[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--fg); }
+.task-bank-exams .tp-tab { flex: 1; min-width: 0; min-height: 28px; padding-inline: 8px; }
 .task-bank-numbers {
   display: flex; gap: 4px; min-width: 0; padding: 2px 1px;
   overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain;

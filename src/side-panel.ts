@@ -230,6 +230,7 @@ function build(): Ui {
   document.addEventListener('keydown', e => {
     if (!isOpen || !leftPanel() || e.key !== 'Escape' || e.defaultPrevented || e.cancelBubble) return;
     if (e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+    if (e.target instanceof Element && e.target.closest('.sp-actions .ss-trigger[aria-expanded="true"]')) return;
     e.preventDefault();
     e.stopPropagation();
     closeSidePanel();

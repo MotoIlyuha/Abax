@@ -23,6 +23,8 @@ export interface SelectOption {
   label: string;
   /** Красная строка-действие (например, «Отозвать приглашение»): отделена от остальных. */
   danger?: boolean;
+  /** Недоступный пункт пропускается при выборе с клавиатуры. */
+  disabled?: boolean;
   /** Действие, а не значение: сообщается через onChange, но выбранным не становится. */
   action?: boolean;
   /** Подсказка строки. */
@@ -236,6 +238,7 @@ function buildMenu(it: Inst): HTMLElement {
     el.id = `${menu.id}-o${i}`;
     el.setAttribute('role', 'option');
     el.dataset.value = opt.value;
+    if (opt.disabled) el.setAttribute('aria-disabled', 'true');
     if (opt.title) el.title = opt.title;
     const selected = !opt.action && opt.value === it.value;
     el.setAttribute('aria-selected', String(selected));
@@ -252,13 +255,13 @@ function buildMenu(it: Inst): HTMLElement {
     el.append(text);
     const badge = document.createElement('span');
     badge.className = 'ss-opt-badge';
-    badge.setAttribute('aria-hidden', 'true');
+    if (!opt.disabled) badge.setAttribute('aria-hidden', 'true');
     badge.textContent = opt.badge ?? '';
     badge.hidden = !opt.badge;
     el.append(badge);
     if (opt.pro) el.append(proBadge(opt.pro, { className: 'ss-opt-pro' }));
     if (!opt.action) el.insertAdjacentHTML('beforeend', TICK); // константа из кода
-    el.addEventListener('pointermove', () => { if (it.isOpen) setHover(it, i); });
+    el.addEventListener('pointermove', () => { if (it.isOpen && !opt.disabled) setHover(it, i); });
     el.addEventListener('click', () => { if (it.isOpen) choose(it, i); });
     menu.append(el);
     const k = S(selected ? 1 : 0, 260, 26);
@@ -312,7 +315,8 @@ function openSel(it: Inst): void {
   place(it);
   it.trigger.setAttribute('aria-expanded', 'true');
   it.trigger.setAttribute('aria-controls', menu.id);
-  const sel = it.rows.findIndex(r => !r.opt.action && r.opt.value === it.value);
+  const sel = it.rows.findIndex(r => !r.opt.action && !r.opt.disabled && r.opt.value === it.value);
+  const initial = sel < 0 ? it.rows.findIndex(r => !r.opt.disabled) : sel;
   if (it.mode === 'enhanced') {
     it.H.t = it.MH;
     it.C.t = 1;
@@ -322,7 +326,7 @@ function openSel(it: Inst): void {
     menu.style.opacity = '0';
     for (const r of it.rows) { r.el.style.opacity = '0'; }
     it.TS.x = 0.965;
-    setHover(it, Math.max(0, sel), true);
+    if (initial >= 0) setHover(it, initial, true);
     moving.add(it);
     wake();
     return;
@@ -333,7 +337,7 @@ function openSel(it: Inst): void {
   const chev = it.trigger.querySelector<SVGElement>('.ss-chev');
   if (chev) chev.style.transform = 'rotate(180deg)';
   if (it.mode === 'normal') menu.classList.add('ss-in');
-  setHover(it, Math.max(0, sel), true);
+  if (initial >= 0) setHover(it, initial, true);
 }
 
 function closeInst(it: Inst, instant = false): void {
@@ -376,7 +380,7 @@ function closeInst(it: Inst, instant = false): void {
 
 function choose(it: Inst, i: number): void {
   const r = it.rows[i];
-  if (!r) return;
+  if (!r || r.opt.disabled) return;
   const opt = r.opt;
   if (!opt.action && opt.value !== it.value) {
     it.value = opt.value;
@@ -403,7 +407,7 @@ function choose(it: Inst, i: number): void {
 
 /** Счётчик на кнопке: первый невыбранный пункт со счётчиком. */
 function syncTriggerBadge(it: Inst): void {
-  const other = it.opts.options.find(o => !o.action && o.value !== it.value && o.badge);
+  const other = it.opts.options.find(o => !o.action && !o.disabled && o.value !== it.value && o.badge);
   const text = other?.badge ?? '';
   if (it.badge.textContent !== text && text) it.badge.textContent = text;
   it.badge.classList.toggle('on', !!text);
@@ -443,15 +447,16 @@ export function createSpringSelect(o: SpringSelectOptions): SpringSelect {
     else openSel(it);
   });
   trigger.addEventListener('keydown', e => {
-    const n = it.rows.length;
+    const enabled = it.rows.map((row, i) => row.opt.disabled ? -1 : i).filter(i => i >= 0);
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
       e.preventDefault();
       if (!it.isOpen) { openSel(it); return; }
       const d = e.key === 'ArrowDown' ? 1 : -1;
-      setHover(it, clamp((it.hov < 0 ? 0 : it.hov + d), 0, n - 1));
+      const current = enabled.indexOf(it.hov);
+      if (enabled.length) setHover(it, enabled[clamp(current < 0 ? 0 : current + d, 0, enabled.length - 1)]);
     } else if ((e.key === 'Home' || e.key === 'End') && it.isOpen) {
       e.preventDefault();
-      setHover(it, e.key === 'Home' ? 0 : n - 1);
+      if (enabled.length) setHover(it, e.key === 'Home' ? enabled[0] : enabled[enabled.length - 1]);
     } else if ((e.key === 'Enter' || e.key === ' ') && it.isOpen && it.hov >= 0) {
       e.preventDefault();
       choose(it, it.hov);

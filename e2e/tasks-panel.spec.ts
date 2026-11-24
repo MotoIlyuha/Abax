@@ -16,7 +16,7 @@ test('кнопка под меню и взаимоисключение пане�
   await button.click();
   await expect(button).toHaveAttribute('aria-label', 'Свернуть панель');
   await expect(button).toHaveAttribute('aria-expanded', 'true');
-  await expect(panel.getByRole('group', { name: 'Предмет' })).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'Предмет: Математика' })).toBeVisible();
   await expect.poll(async () => {
     const p = (await panel.boundingBox())!;
     const m = (await menu.boundingBox())!;
@@ -86,19 +86,27 @@ test('верхняя панель помещается между открыто
 
 test('банк: предметы, экзамены, номера, поиск и добавление на доску', async ({ board, page }) => {
   await page.locator('#btn-tasks').click();
-  const subjects = page.getByRole('group', { name: 'Предмет' });
-  await expect(subjects.getByRole('button', { name: 'Математика' })).toHaveAttribute('aria-pressed', 'true');
+  const subject = page.getByRole('button', { name: 'Предмет: Математика' });
+  await expect(subject).toBeVisible();
+  await subject.click();
+  const subjects = page.getByRole('listbox', { name: 'Предмет: Математика' });
+  await expect(subjects.getByRole('option', { name: 'Математика' })).toHaveAttribute('aria-selected', 'true');
   for (const name of ['Информатика', 'Физика', 'Русский']) {
-    await expect(subjects.getByRole('button', { name })).toBeDisabled();
-    await expect(subjects.getByRole('button', { name })).toContainText('Скоро');
+    await expect(subjects.getByRole('option', { name: name + ' Скоро' })).toBeDisabled();
   }
+  await subject.press('End');
+  const active = await subject.getAttribute('aria-activedescendant');
+  await expect(subjects.getByRole('option', { name: 'Математика' })).toHaveAttribute('id', active!);
+  await subject.press('Escape');
+  await expect(subject).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('#side-panel')).toBeVisible();
 
-  const exams = page.getByRole('radiogroup', { name: 'Тип экзамена' });
-  await expect(exams.getByRole('radio', { name: 'ОГЭ' })).toHaveAttribute('aria-checked', 'true');
+  const exams = page.getByRole('tablist', { name: 'Тип экзамена' });
+  await expect(exams.getByRole('tab', { name: 'ОГЭ' })).toHaveAttribute('aria-selected', 'true');
   const numbers = page.getByRole('group', { name: 'Номер задания' });
   const cards = page.locator('.task-bank-card');
   for (const [exam, last, count] of [['ВПР', 17, 2], ['ЕГЭ', 19, 2], ['ОГЭ', 25, 2]] as const) {
-    await exams.getByRole('radio', { name: exam }).click();
+    await exams.getByRole('tab', { name: exam }).click();
     await expect(numbers.getByRole('button', { name: 'Все' })).toHaveAttribute('aria-pressed', 'true');
     const pill = numbers.getByRole('button', { name: '№ ' + last, exact: true });
     await pill.click();

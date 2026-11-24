@@ -1,11 +1,6 @@
-import { BANK_EXAMS, bankNumbers, filterBankTasks, type BankExam, type BankSubject, type BankTask } from './fipi-bank';
+import { BANK_EXAMS, bankNumbers, filterBankTasks, type BankExam, type BankTask } from './fipi-bank';
 import { reduceMotion } from './motion';
-import { createSegmented } from './segmented';
-
-const SUBJECTS = [
-  ['math', 'Математика'], ['informatics', 'Информатика'], ['physics', 'Физика'], ['russian', 'Русский'],
-] as const satisfies readonly [BankSubject, string][];
-const SOON = 'Банк заданий появится в ближайшем обновлении';
+import { createTabPill } from './tab-pill';
 
 function make<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: string): HTMLElementTagNameMap[K] {
   const node = document.createElement(tag);
@@ -100,20 +95,6 @@ export function mountTaskBank(host: HTMLElement, add: (task: BankTask) => void, 
   let exam: BankExam = 'oge';
   let number: number | null = null;
   const filters = make('div', 'task-bank-filters');
-  const subjects = make('div', 'task-bank-subjects');
-  subjects.setAttribute('role', 'group');
-  subjects.setAttribute('aria-label', 'Предмет');
-  for (const [id, label] of SUBJECTS) {
-    const tab = button('task-bank-subject', label);
-    tab.setAttribute('aria-label', label);
-    tab.setAttribute('aria-pressed', String(id === 'math'));
-    if (id !== 'math') {
-      tab.disabled = true;
-      tab.title = SOON;
-      tab.append(make('span', 'task-bank-soon', 'Скоро'));
-    }
-    subjects.append(tab);
-  }
   const numbers = make('div', 'task-bank-numbers');
   numbers.setAttribute('role', 'group');
   numbers.setAttribute('aria-label', 'Номер задания');
@@ -155,8 +136,8 @@ export function mountTaskBank(host: HTMLElement, add: (task: BankTask) => void, 
     }));
     numbers.scrollLeft = 0;
   };
-  const exams = createSegmented({
-    options: Object.entries(BANK_EXAMS).map(([value, label]) => ({ value, label })),
+  const exams = createTabPill({
+    tabs: Object.entries(BANK_EXAMS).map(([value, label]) => ({ value, label })),
     value: exam,
     label: 'Тип экзамена',
     className: 'task-bank-exams',
@@ -168,7 +149,7 @@ export function mountTaskBank(host: HTMLElement, add: (task: BankTask) => void, 
     },
   });
   search.addEventListener('input', renderResults);
-  filters.append(subjects, exams.el, numbers, search);
+  filters.append(exams.el, numbers, search);
   host.replaceChildren(filters, results);
   renderNumbers();
   renderResults();

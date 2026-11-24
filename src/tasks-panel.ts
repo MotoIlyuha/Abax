@@ -1,5 +1,6 @@
 import { ICONS, PANEL_COLLAPSE_ICON } from './icons';
 import { onSidePanel, registerPanelMode, sidePanelMode, sidePanelOpen, toggleSidePanel } from './side-panel';
+import { createSpringSelect } from './spring-select';
 import type { BankTask } from './fipi-bank';
 
 const TASK_BANK_DRAG = 'application/x-abax-bank-task';
@@ -28,9 +29,21 @@ export function initTasksPanel(add: (task: BankTask) => void, available: () => b
       const body = document.createElement('div');
       body.id = 'tasks-panel-body';
       host.append(body);
+      const soon = { disabled: true, badge: 'Скоро', title: 'Банк заданий появится в ближайшем обновлении' };
+      const subject = createSpringSelect({
+        className: 'task-bank-subject', label: 'Предмет: Математика', align: 'end', value: 'math',
+        options: [
+          { value: 'math', label: 'Математика' },
+          { value: 'informatics', label: 'Информатика', ...soon },
+          { value: 'physics', label: 'Физика', ...soon },
+          { value: 'russian', label: 'Русский', ...soon },
+        ],
+        onChange() {},
+      });
       let loading = false;
       let loaded = false;
       return {
+        actions: subject.el,
         show() {
           if (loaded || loading || !available()) return;
           loading = true;
@@ -48,7 +61,7 @@ export function initTasksPanel(add: (task: BankTask) => void, available: () => b
             body.textContent = 'Не удалось загрузить каталог заданий. Закройте панель и откройте снова.';
           }).finally(() => { loading = false; });
         },
-        hide() { draggedTask = null; },
+        hide() { subject.close(true); draggedTask = null; },
       };
     },
   });
