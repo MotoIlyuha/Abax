@@ -6,8 +6,9 @@ import {
   addElement, setSelection, deleteSelected, undo, redo, pickTool, uid, commitPoly,
   bringForward, sendBackward, moveSelectionLayer, expandSelectionWithGroups, groupSelected, ungroupSelected, selectAll, selectInserted, opacityField,
   zoomAtPoint, ZOOM_MAX, ZOOM_MIN, insertCopies, isDraftId, touchProject, canCopyCurrentBoard, canTouchElement,
-  setFadeStrokeEnd,
+  setFadeStrokeEnd, type LiveStroke,
 } from './state';
+import { recognizeInkShape } from './ink-shape';
 import {
   type AABB, hitTest, erasePart, aabbIntersects, aabbUnion, alignGuides, alignShift, boxAnchors, boxHandles, elementAABB, elementHandles,
   applyHandle, insertPolyNode, removePolyNode, gridStepFor, resizeBox, scaleElement, shapeHoldsText, snapValue, translateElement,
@@ -19,7 +20,7 @@ import { cursorCss } from './cursors';
 import { myCursorId, onProfileChange } from './profile';
 import { fxForget, fxMove } from './cursor-fx';
 import { settingsDialogOpen } from './settings-dialog';
-import { presenting, requestRender, renderScene } from './renderer';
+import { animateInkRecognition, presenting, requestRender, renderScene } from './renderer';
 import { animateCameraTo, cancelCameraAnim, clampZoom, motionReduced } from './camera-anim';
 import { stopFollowByUser } from './follow';
 import { cancelActiveInteraction, onCancelInteraction } from './interaction';
@@ -67,6 +68,9 @@ function cursorFor(tool: ToolId): string {
   return tool === 'select' ? cursorCss(myCursorId()) : CURSORS[tool];
 }
 const MOVE_THRESHOLD_PX = 3;
+const INK_HOLD_MS = 500;
+const INK_HOLD_SLOP_PX = 3;
+const INK_SAMPLE_STEP_PX = 0.75;
 const AUTO_PAN_EDGE = 64;
 const AUTO_PAN_SPEED = 600; // px экрана в секунду у самого края
 /** Радиус примагничивания к направляющим соседей, px экрана. */
@@ -78,7 +82,7 @@ const POINTER_TOOLS = new Set<ToolId>(['laser', 'fadePen', 'flash']);
 const ZOOM_KEYS = new Set(['Equal', 'Minus']);
 
 type Action = { pid: number } & (
-  | { kind: 'draw' }
+  | { kind: 'draw'; hold?: InkHold }
   | { kind: 'erase'; pre: Element[]; removed: Element[]; last: { x: number; y: number } | null }
   | { kind: 'erasePart'; pre: Element[]; changed: boolean; last: { x: number; y: number } | null }
   | {
@@ -109,6 +113,13 @@ type Action = { pid: number } & (
 );
 
 interface Ptr { x: number; y: number; type: string }
+
+interface InkHold {
+  stroke: LiveStroke;
+  points: Pt[];
+  anchor: { x: number; y: number };
+  timer?: ReturnType<typeof setTimeout>;
+}
 
 export function initController(canvas: HTMLCanvasElement): void {
   const pointers = new Map<number, Ptr>();
@@ -553,6 +564,36 @@ export function initController(canvas: HTMLCanvasElement): void {
     st.pts.push({ x: last.x + (pt.x - last.x) * 0.6, y: last.y + (pt.y - last.y) * 0.6, p: pt.p });
   }
 
+  function clearInkHold(a: Extract<Action, { kind: 'draw' }>): void {
+    clearTimeout(a.hold?.timer);
+    a.hold = undefined;
+  }
+
+  function trackInkHold(a: Extract<Action, { kind: 'draw' }>, pos: { x: number; y: number }, point: Pt): void {
+    const hold = a.hold;
+    if (!hold || state.liveStroke !== hold.stroke) return;
+    const last = hold.points[hold.points.length - 1];
+    if (Math.hypot(point.x - last.x, point.y - last.y) * state.camera.zoom >= INK_SAMPLE_STEP_PX) hold.points.push(point);
+    if (Math.hypot(pos.x - hold.anchor.x, pos.y - hold.anchor.y) < INK_HOLD_SLOP_PX) return;
+
+    hold.anchor = pos;
+    clearTimeout(hold.timer);
+    hold.timer = setTimeout(() => {
+      if (action !== a || state.liveStroke !== hold.stroke || activeTool() !== 'pen' ||
+          state.view !== 'board' || !canEditBoard()) return;
+      const shape = recognizeInkShape(hold.points, state.camera.zoom);
+      if (!shape) return;
+
+      const { color, width, opacity } = hold.stroke;
+      clearInkHold(a);
+      // Действие продолжается до отпускания, но живого штриха больше нет.
+      state.liveStroke = null;
+      const target = { ...shape, id: uid(), color, width, ...opacityField(opacity) };
+      addElement(target);
+      animateInkRecognition(hold.stroke.pts, target);
+    }, INK_HOLD_MS);
+  }
+
   function finishAction(): void {
     stopAutoPan();
     const a = action;
@@ -563,7 +604,10 @@ export function initController(canvas: HTMLCanvasElement): void {
     }
     state.guides = [];
     switch (a.kind) {
-      case 'draw': endStroke(); break;
+      case 'draw':
+        clearInkHold(a);
+        if (state.liveStroke) endStroke();
+        break;
       case 'erase':
         if (a.removed.length) pushHistory(a.pre);
         update();
@@ -653,7 +697,7 @@ export function initController(canvas: HTMLCanvasElement): void {
     if (e.pointerType === 'touch' && touches.length === 2) {
       // жест двумя пальцами прерывает текущее действие; начатое первым пальцем рисование —
       // это не штрих, а начало жеста: отбрасываем, а не сохраняем точкой на доске
-      if (action?.kind === 'draw') { action = null; state.liveStroke = null; }
+      if (action?.kind === 'draw') { clearInkHold(action); action = null; state.liveStroke = null; }
       else if (action?.kind === 'shape') { action = null; state.liveShape = null; }
       else if (action?.kind === 'solid') { action = null; state.liveSolid = null; }
       else if (action?.kind === 'spread') { replaceElements(action.pre); action = null; state.spread = null; }
@@ -683,10 +727,14 @@ export function initController(canvas: HTMLCanvasElement): void {
     const tool = temporaryEraser ? 'partEraser' : activeTool();
     switch (tool) {
       case 'pen':
-      case 'highlighter':
-        beginStroke(tool, { x: s.x, y: s.y, p: pressureOf(e) });
-        action = { pid: e.pointerId, kind: 'draw' };
+      case 'highlighter': {
+        const point = { x: s.x, y: s.y, p: pressureOf(e) };
+        beginStroke(tool, point);
+        const stroke = state.liveStroke;
+        const hold = tool === 'pen' && stroke ? { stroke, points: [point], anchor: lp } : undefined;
+        action = { pid: e.pointerId, kind: 'draw', hold };
         break;
+      }
       case 'eraser': {
         const a: Extract<Action, { kind: 'erase' }> = { pid: e.pointerId, kind: 'erase', pre: state.board.elements, removed: [], last: null };
         action = a;
@@ -952,7 +1000,9 @@ export function initController(canvas: HTMLCanvasElement): void {
         for (const ev of coalesced(e)) {
           const c = localPos(ev);
           const s = toScene(c.x, c.y);
-          extendStroke({ x: s.x, y: s.y, p: pressureOf(ev) });
+          const point = { x: s.x, y: s.y, p: pressureOf(ev) };
+          trackInkHold(a, c, point);
+          extendStroke(point);
         }
         break;
       case 'laser': {
@@ -1534,6 +1584,11 @@ export function initController(canvas: HTMLCanvasElement): void {
     }
   }, true);
   for (const type of ['mousedown', 'mouseup', 'auxclick'] as const) window.addEventListener(type, e => {
+    // У мыши pointerup приходит только после отпускания последней из зажатых кнопок.
+    if (type === 'mouseup' && e.button === 0 && action?.kind === 'draw' && pointers.get(action.pid)?.type === 'mouse') {
+      pointers.delete(action.pid);
+      finishAction();
+    }
     if (mouseAction(e)) { e.preventDefault(); e.stopImmediatePropagation(); }
   }, true);
 
@@ -1541,6 +1596,7 @@ export function initController(canvas: HTMLCanvasElement): void {
   onCancelInteraction(() => {
     stopAutoPan();
     cancelCameraAnim();
+    if (action?.kind === 'draw') clearInkHold(action);
     // содержимое страницы не трогаем: следом приходит проект хаба, а правка здесь ушла бы ему патчем
     action = null;
     gesture = null;
@@ -1568,6 +1624,9 @@ export function initController(canvas: HTMLCanvasElement): void {
   canvas.addEventListener('pointermove', onPointerMove);
   canvas.addEventListener('pointerup', onPointerUp);
   canvas.addEventListener('pointercancel', onPointerUp);
+  canvas.addEventListener('lostpointercapture', e => {
+    if (action?.kind === 'draw' && action.pid === e.pointerId) onPointerUp(e);
+  });
   canvas.addEventListener('pointerleave', onPointerLeave);
   canvas.addEventListener('dblclick', onDblClick);
   canvas.addEventListener('wheel', onWheel, { passive: false });
@@ -1579,6 +1638,9 @@ export function initController(canvas: HTMLCanvasElement): void {
   window.addEventListener('keyup', onKeyUp);
   window.addEventListener('blur', endNudge); // стрелку отпустили в другом окне — keyup не придёт
   window.addEventListener('blur', stopAutoPan);
+  window.addEventListener('blur', () => {
+    if (action?.kind === 'draw') clearInkHold(action);
+  });
 }
 
 function pressureOf(e: PointerEvent): number {

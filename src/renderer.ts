@@ -1,4 +1,5 @@
-import type { Camera, Element, GridMode, ImageEl, LaserPt, Page, ShapeEl, SolidEl, TaskEl } from './types';
+import type { Camera, Element, GridMode, ImageEl, LaserPt, Page, PolyEl, Pt, ShapeEl, SolidEl, TaskEl } from './types';
+import { inkMorphFrame, prepareInkMorph } from './ink-morph';
 import { EXAM_LABELS, SUBJECT_LABELS, TASK_STATUS_LABEL, taskStatus } from './task-element';
 import { foreignSelections, readOnly } from './collab';
 import { mySelectionColor } from './profile';
@@ -802,6 +803,39 @@ function sameStamp(a: unknown[], b: unknown[]): boolean {
 const sceneIndexes = new WeakMap<Element[], SpatialIndex<Element>>();
 const seenScenes = new WeakSet<Element[]>();
 
+const INK_MORPH_MS = 240;
+let inkMorph: {
+  target: ShapeEl | PolyEl; started: number; path: ReturnType<typeof prepareInkMorph>;
+  elements: Element[]; backdrop: Page; above: Element[];
+} | null = null;
+
+export function animateInkRecognition(stroke: Pt[], target: ShapeEl | PolyEl): void {
+  if (state.settings.animationMode !== 'enhanced') return;
+  const elements = state.board.elements;
+  const index = elements.indexOf(target);
+  if (index < 0) return;
+  inkMorph = {
+    target, started: performance.now(), path: prepareInkMorph(stroke, target), elements,
+    backdrop: { ...state.board, elements: elements.slice(0, index) }, above: elements.slice(index + 1),
+  };
+  requestRender();
+}
+
+function recognitionPreview() {
+  if (!inkMorph) return;
+  const { target, started, path } = inkMorph;
+  const progress = (performance.now() - started) / INK_MORPH_MS;
+  if (progress >= 1 || state.settings.animationMode !== 'enhanced' || state.board.elements !== inkMorph.elements ||
+      state.liveEdit || state.layerPreview || state.dragHidden || state.hideElId) {
+    inkMorph = null;
+    return;
+  }
+  requestRender();
+  const frame: Element = { type: 'stroke', tool: 'pen', id: target.id, color: target.color,
+    width: target.width, opacity: target.opacity, pts: inkMorphFrame(path, progress) };
+  return { frame, backdrop: inkMorph.backdrop, above: inkMorph.above };
+}
+
 export function renderScene(
   ctx: CanvasRenderingContext2D, elements: Element[],
   cam: Camera, wCss: number, hCss: number, dpr: number, grid: GridMode,
@@ -908,6 +942,7 @@ class SceneCache {
   private pageId = state.pageId;
   /** Кэш показывает не ту страницу, что правят: выделение и перенос на ней ни при чём. */
   private held = false;
+  private morphing = false;
 
   resize(wPx: number, hPx: number): void {
     this.canvas.width = wPx;
@@ -916,7 +951,9 @@ class SceneCache {
   }
 
   /** Приводит кэш к текущей сцене; пока камера движется, резкая перерисовка откладывается. */
-  sync(cam: Camera, w: number, h: number, dpr: number, camSettled: boolean, board: Page = state.board, pageId: string = state.pageId, held = false): void {
+  sync(cam: Camera, w: number, h: number, dpr: number, camSettled: boolean, board: Page = state.board, pageId: string = state.pageId, held = false, morphing = false): void {
+    if (morphing !== this.morphing) camSettled = true;
+    this.morphing = morphing;
     if (board !== this.board || pageId !== this.pageId || held !== this.held) this.stale = true;
     this.board = board;
     this.pageId = pageId;
@@ -1282,12 +1319,21 @@ function drawGuides(ctx: CanvasRenderingContext2D, cam: Camera): void {
 }
 
 /** Содержимое доски без интерфейса: кэш статики и превью живых объектов. */
-function drawContent(ctx: CanvasRenderingContext2D, cache: SceneCache, cam: Camera, w: number, h: number, dpr: number): void {
+function drawContent(ctx: CanvasRenderingContext2D, cache: SceneCache, cam: Camera, w: number, h: number, dpr: number, camSettled: boolean): void {
   drawDpr = dpr;
+  const preview = recognitionPreview();
+  cache.sync(cam, w, h, dpr, camSettled, preview?.backdrop ?? state.board, state.pageId, false, !!preview);
   if (state.layerPreview) {
     renderScene(ctx, state.layerPreview, cam, w, h, dpr, state.board.grid, undefined, false, state.board.backgroundColor, state.board.coordLabels !== false);
   } else if (cache.cam) {
     cache.blit(ctx, cam, w, h, dpr);
+    if (preview) {
+      const z = dpr * cam.zoom;
+      ctx.setTransform(z, 0, 0, z, -cam.x * z, -cam.y * z);
+      const right = cam.x + w / cam.zoom, bottom = cam.y + h / cam.zoom;
+      drawElement(ctx, preview.frame, cam.x, cam.y, right, bottom);
+      for (const el of preview.above) drawElement(ctx, el, cam.x, cam.y, right, bottom);
+    }
     // во время перетаскивания выделенное исключено из кэша — рисуем поверх;
     // в покое выделенный рендерится в кэше на своём слое
     if (state.liveEdit && state.board.elements.length > HEAVY_BOARD && state.selection.size > 0) {
@@ -1321,7 +1367,8 @@ function drawContent(ctx: CanvasRenderingContext2D, cache: SceneCache, cam: Came
     const at = state.board.elements.findIndex(el => el.layerPin === 'top');
     const stroke: Element = { id: '', type: 'stroke', tool: ls.tool, color: ls.color,
       width: ls.tool === 'highlighter' ? ls.width * 3.2 : ls.width, opacity: ls.opacity, pts: ls.pts };
-    renderScene(ctx, [...state.board.elements.slice(0, at), stroke, ...state.board.elements.slice(at)], cam, w, h, dpr, state.board.grid, undefined, false, state.board.backgroundColor, state.board.coordLabels !== false);
+    const visible = preview ? [...preview.backdrop.elements, preview.frame, ...preview.above] : state.board.elements;
+    renderScene(ctx, [...visible.slice(0, at), stroke, ...visible.slice(at)], cam, w, h, dpr, state.board.grid, undefined, false, state.board.backgroundColor, state.board.coordLabels !== false);
   } else if (state.liveStroke) {
     const ls = state.liveStroke;
     const base = ls.tool === 'highlighter' ? ls.width * 3.2 : ls.width;
@@ -1400,8 +1447,7 @@ function draw(): void {
   }
   const camSettled = performance.now() - lastCamChange >= REBUILD_DELAY;
 
-  mainCache.sync(cam, cssW, cssH, dpr, camSettled);
-  drawContent(ctx, mainCache, cam, cssW, cssH, dpr);
+  drawContent(ctx, mainCache, cam, cssW, cssH, dpr, camSettled);
   // оверлеи в экранных координатах
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   if (state.flashes.length > 0) drawFlashes(ctx, cam, cssW, cssH, dpr, mainFlash);
@@ -1562,8 +1608,7 @@ function drawPresent(camSettled: boolean): void {
   }
   const cam = state.camera;
   const pcam = presentCamera(cam, cssW, cssH, w, h);
-  p.cache.sync(pcam, w, h, pdpr, camSettled);
-  drawContent(c, p.cache, pcam, w, h, pdpr);
+  drawContent(c, p.cache, pcam, w, h, pdpr, camSettled);
   if (state.liveText) {
     // текст в процессе ввода: в основном окне его показывает редактор поверх холста
     const zx = pdpr * pcam.zoom;
