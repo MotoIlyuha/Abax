@@ -8,10 +8,10 @@ import { showComments, showReactions } from './annot-prefs';
 import { notePerson } from './note-people';
 import {
   type AABB, type Caption, boxHandles, cornerRadius, elementAABB, elementHandles, imageFrame, pageLinkView, presentCamera, shapeCaption,
-  shapeHoldsText, wrapText, textLines, textSpans, TEXT_FONT, NOTE_PAD, NOTE_FONT, NOTE_TEXT_COLOR,
+  shapeHoldsText, wrapText, textSpans, TEXT_FONT, NOTE_PAD, NOTE_FONT, NOTE_TEXT_COLOR,
 } from './geom';
 import { ribbonPath, trimStrokeStart } from './stroke';
-import { styledSegments } from './text-runs';
+import { styledSegments, type TextStyle } from './text-runs';
 import { fitSolid, solidGeometry, type SolidPrim } from './solid';
 import { FADE_STROKE_DELAY_MS, state } from './state';
 import { assetHashOf } from './asset-store';
@@ -307,14 +307,34 @@ function drawShapeEl(ctx: CanvasRenderingContext2D, el: ShapeEl, text: Caption |
   if (rot) ctx.restore();
 }
 
+/** Рисует строку отрезками с их начертанием, цветом и текстовыми линиями. */
+function drawStyledLine(ctx: CanvasRenderingContext2D, el: TextStyle, text: string, start: number, size: number, x: number, y: number): void {
+  for (const { from, to, style } of styledSegments(el, start, start + text.length)) {
+    const part = text.slice(from - start, to - start);
+    ctx.font = TEXT_FONT(size, style.bold, style.italic);
+    // Некорректный Canvas-цвет оставляет прежний fillStyle.
+    ctx.fillStyle = '#000000';
+    ctx.fillStyle = el.color;
+    ctx.fillStyle = style.color;
+    ctx.fillText(part, x, y);
+    const width = ctx.measureText(part).width;
+    const thickness = Math.max(0.75, size / 16);
+    const middle = ctx.textBaseline === 'middle';
+    if (style.underline) ctx.fillRect(x, y + size * (middle ? 0.37 : 0.09), width, thickness);
+    if (style.strike) ctx.fillRect(x, y + size * (middle ? -0.02 : -0.28), width, thickness);
+    x += width;
+  }
+}
+
 /** Надпись в области текста фигуры — с её выравниванием и начертанием (поворот уже применён). */
 function drawShapeText(ctx: CanvasRenderingContext2D, el: ShapeEl, c: Caption): void {
-  ctx.font = TEXT_FONT(c.size, el.bold, el.italic);
-  ctx.fillStyle = el.color;
-  ctx.textAlign = c.align;
-  ctx.textBaseline = 'middle';
-  for (let i = 0; i < c.lines.length; i++) ctx.fillText(c.lines[i], c.x, c.top + (i + 0.5) * c.lh);
   ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  for (let i = 0; i < c.lines.length; i++) {
+    const width = c.widths[i];
+    const x = c.align === 'left' ? c.x : c.x - width * (c.align === 'center' ? 0.5 : 1);
+    drawStyledLine(ctx, el, c.lines[i], c.spans?.[i].start ?? 0, c.size, x, c.top + (i + 0.5) * c.lh);
+  }
   ctx.textBaseline = 'alphabetic';
 }
 
@@ -390,28 +410,13 @@ function drawElementBody(ctx: CanvasRenderingContext2D, el: Element, c: ElCacheE
       drawSolidEl(ctx, el);
       break;
     case 'text': {
-      ctx.font = TEXT_FONT(el.size, el.bold, el.italic);
-      ctx.fillStyle = el.color;
       ctx.textBaseline = 'alphabetic';
       const lh = el.size * 1.25;
-      if (el.runs) {
-        // смешанное форматирование: строка рисуется отрезками своего начертания и цвета
-        const spans = textSpans(el);
-        for (let i = 0; i < spans.length; i++) {
-          let x = el.x;
-          const sp = spans[i];
-          for (const seg of styledSegments(el, sp.start, sp.start + sp.text.length)) {
-            ctx.font = TEXT_FONT(el.size, seg.style.bold, seg.style.italic);
-            ctx.fillStyle = seg.style.color;
-            const part = el.text.slice(seg.from, seg.to);
-            ctx.fillText(part, x, el.y + el.size + i * lh);
-            x += ctx.measureText(part).width;
-          }
-        }
-        break;
+      const spans = textSpans(el);
+      for (let i = 0; i < spans.length; i++) {
+        const { text, start } = spans[i];
+        drawStyledLine(ctx, el, text, start, el.size, el.x, el.y + el.size + i * lh);
       }
-      const lines = textLines(el);
-      for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], el.x, el.y + el.size + i * lh);
       break;
     }
     case 'note': {

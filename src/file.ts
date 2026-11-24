@@ -57,7 +57,7 @@ const SPECS: Record<string, { req: Record<string, Check>; opt: Record<string, Ch
     req: { shape: v => SHAPES.includes(v as string), x: isNum, y: isNum, w: isNum, h: isNum, color: isStr, width: isNum },
     opt: {
       fill: isStr, fillOpacity: isNum, opacity: isNum, rot: isNum, radius: isNum, text: isStr, textSize: isNum,
-      bold: isBool, italic: isBool, align: v => ALIGNS.includes(v as string), valign: v => VALIGNS.includes(v as string),
+      bold: isBool, italic: isBool, underline: isBool, strike: isBool, runs: Array.isArray, align: v => ALIGNS.includes(v as string), valign: v => VALIGNS.includes(v as string),
     },
   },
   poly: {
@@ -66,7 +66,7 @@ const SPECS: Record<string, { req: Record<string, Check>; opt: Record<string, Ch
   },
   text: {
     req: { x: isNum, y: isNum, text: isStr, size: isNum, color: isStr },
-    opt: { w: isNum, opacity: isNum, bold: isBool, italic: isBool, runs: v => Array.isArray(v) },
+    opt: { w: isNum, opacity: isNum, bold: isBool, italic: isBool, underline: isBool, strike: isBool, runs: Array.isArray },
   },
   note: {
     req: { x: isNum, y: isNum, w: isNum, h: isNum, text: isStr, color: isStr },
@@ -136,8 +136,8 @@ export function sanitizeElement(rawInput: unknown): Element | null {
     if (!pts) return null;
     out.pts = pts;
   }
-  if (raw.type === 'text' && 'runs' in out) {
-    const runs = sanitizeRuns(out.runs, (out.text as string).length);
+  if ((raw.type === 'text' || raw.type === 'shape') && 'runs' in out) {
+    const runs = sanitizeRuns(out.runs, isStr(out.text) ? out.text.length : 0);
     if (runs) out.runs = runs;
     else delete out.runs;
   }

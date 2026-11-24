@@ -359,7 +359,7 @@ test.describe('текст и стикеры', () => {
   test('текст: ввод, Enter - сохранить; Shift+Enter - новая строка', async ({ board, page }) => {
     await board.tool('t');
     await board.click({ x: 400, y: 300 });
-    const ta = page.locator('#overlay textarea.inplace-edit');
+    const ta = page.locator('#overlay [contenteditable].inplace-edit');
     await expect(ta).toBeFocused();
     const click = await board.screen({ x: 400, y: 300 });
     const editor = (await ta.boundingBox())!;
@@ -390,14 +390,14 @@ test.describe('текст и стикеры', () => {
     await page.keyboard.press('Enter');
     await board.tool('v');
     await board.dblclick({ x: 410, y: 297 });
-    const ta = page.locator('textarea.inplace-edit');
-    await expect(ta).toHaveValue('abc');
+    const ta = page.locator('[contenteditable].inplace-edit');
+    await expect(ta).toHaveText('abc');
     await ta.fill('abcdef');
     await ta.press('Enter');
     expect((await board.elements())[0].text).toBe('abcdef');
 
     await board.dblclick({ x: 410, y: 297 });
-    await page.locator('textarea.inplace-edit').fill('');
+    await page.locator('[contenteditable].inplace-edit').fill('');
     await page.keyboard.press('Enter');
     expect(await board.count()).toBe(0);
     await page.keyboard.press('Control+z');

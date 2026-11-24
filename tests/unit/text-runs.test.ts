@@ -20,8 +20,8 @@ describe('фрагменты текста', () => {
   it('styledSegments: отрезки наследуют стиль блока', () => {
     const segs = styledSegments({ bold: false, italic: true, color: '#111111', runs: [{ n: 2, bold: true, color: '#ff0000' }] }, 0, 5);
     expect(segs).toEqual([
-      { from: 0, to: 2, style: { bold: true, italic: true, color: '#ff0000' } },
-      { from: 2, to: 5, style: { bold: false, italic: true, color: '#111111' } },
+      { from: 0, to: 2, style: { bold: true, italic: true, underline: false, strike: false, color: '#ff0000' } },
+      { from: 2, to: 5, style: { bold: false, italic: true, underline: false, strike: false, color: '#111111' } },
     ]);
   });
 

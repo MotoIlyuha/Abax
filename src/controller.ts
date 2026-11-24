@@ -1532,9 +1532,10 @@ export function initController(canvas: HTMLCanvasElement): void {
         // начертание выделенного текста и надписей фигур (в редакторе текста — там же, см. app.ts)
         case 'KeyB':
         case 'KeyI':
-          if (e.shiftKey || !canEditBoard()) return;
+        case 'KeyU':
+          if (e.shiftKey || !canEditBoard() || (e.code === 'KeyU' && state.selection.size === 0)) return;
           e.preventDefault();
-          toggleTextFlag(e.code === 'KeyB' ? 'bold' : 'italic');
+          toggleTextFlag(e.code === 'KeyB' ? 'bold' : e.code === 'KeyI' ? 'italic' : 'underline');
           return;
         // Ctrl+C / Ctrl+X / Ctrl+V — события copy/cut/paste (см. app.ts): так работает и системный буфер
         case 'KeyD': e.preventDefault(); duplicateSelection(); return;

@@ -134,6 +134,7 @@ test.describe('выделение и перемещение', () => {
     // вставленный текст сразу выделен, включено выделение
     expect((await board.state()).tool).toBe('select');
     expect((await board.state()).selection).toHaveLength(1);
+    await board.quickMenu.getByRole('button', { name: 'Форматирование', exact: true }).click();
     await board.quickMenu.locator('.qm-text-b').click();
     await expect(board.quickMenu.locator('.qm-text-b')).toHaveClass(/active/);
     await board.quickMenu.locator('.qm-text-i').click();

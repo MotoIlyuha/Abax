@@ -21,9 +21,10 @@ test.describe('ввод текста', () => {
 
   test('меню выделения при вводе остаётся; Ctrl+B и Ctrl+I; Ctrl+Z, X, C, V - с текстом', async ({ board, page }) => {
     await startText(board, 'abc');
-    const editor = page.locator('#overlay textarea');
+    const editor = page.locator('#overlay [contenteditable].inplace-edit');
     const qm = board.quickMenu;
     await expect(qm).toBeVisible();
+    await qm.getByRole('button', { name: 'Форматирование', exact: true }).click();
     await expect(qm.locator('.qm-text-b')).toBeVisible();
     await expect(qm.locator('.qm-font-val')).toHaveValue('24');
 
@@ -42,14 +43,14 @@ test.describe('ввод текста', () => {
     await page.keyboard.press('Control+c');
     await page.keyboard.press('End');
     await page.keyboard.press('Control+v');
-    await expect(editor).toHaveValue('abcabc');
+    await expect(editor).toHaveText('abcabc');
     await page.keyboard.press('Control+z');
-    await expect(editor).toHaveValue('abc');
+    await expect(editor).toHaveText('abc');
     await page.keyboard.press('Control+a');
     await page.keyboard.press('Control+x');
-    await expect(editor).toHaveValue('');
+    await expect(editor).toHaveText('');
     await page.keyboard.press('Control+v');
-    await expect(editor).toHaveValue('abc');
+    await expect(editor).toHaveText('abc');
     expect(await board.count()).toBe(0);
 
     await page.keyboard.press('Enter');
@@ -117,7 +118,7 @@ test.describe('кегль текста', () => {
 
   test('кегль нового текста меняют прямо при вводе - фокус остаётся в редакторе', async ({ board, page }) => {
     await startText(board, 'ab');
-    const editor = page.locator('#overlay textarea');
+    const editor = page.locator('#overlay [contenteditable].inplace-edit');
     await board.quickMenu.locator('.qm-font-step').first().click();
     await expect(editor).toBeFocused();
     await board.quickMenu.locator('.qm-font-val').click();
@@ -134,7 +135,7 @@ test.describe('надпись в фигуре', () => {
   test('выравнивание по горизонтали и вертикали; кегль - свой или «Авто»', async ({ board, page }) => {
     await board.rect(400, 300, 640, 460);
     await page.keyboard.type('ab');
-    const editor = page.locator('#overlay textarea.inplace-edit.shape');
+    const editor = page.locator('#overlay [contenteditable].inplace-edit.shape');
     const qm = board.quickMenu;
     await expect(qm.locator('.qm-align')).toBeVisible();
     await qm.locator('.qm-align').click();
@@ -167,5 +168,65 @@ test.describe('надпись в фигуре', () => {
     const r = (await board.elements())[0];
     expect(r).not.toHaveProperty('align');
     expect(r).not.toHaveProperty('valign');
+  });
+});
+
+test.describe('форматирование фрагмента', () => {
+  test('начертание и цвет остаются на выделенном слове после сохранения и повторного открытия', async ({ board, page }) => {
+    await startText(board, 'обычный важный');
+    const editor = page.getByRole('textbox', { name: 'Текст', exact: true });
+    const qm = board.quickMenu;
+    for (let i = 0; i < 'важный'.length; i++) await editor.press('Shift+ArrowLeft');
+
+    await expect(qm.getByRole('button', { name: 'Подчёркнутый' })).toHaveCount(0);
+    await qm.getByRole('button', { name: 'Форматирование', exact: true }).click();
+    for (const name of ['Полужирный', 'Курсив', 'Подчёркнутый', 'Зачёркнутый']) {
+      await qm.getByRole('button', { name }).click();
+    }
+    await qm.locator('.qm-style').click();
+    await page.locator('.ctx-swatches [data-c="#bd0a0a"]').click();
+    await expect(editor).toBeFocused();
+    const word = editor.getByText('важный', { exact: true });
+    await expect(word).toHaveCSS('text-decoration-line', 'underline line-through');
+    await expect(word).toHaveCSS('color', 'rgb(189, 10, 10)');
+
+    await editor.press('Enter');
+    const runs = [{ n: 8 }, { n: 6, bold: true, italic: true, underline: true, strike: true, color: '#bd0a0a' }];
+    expect((await board.elements())[0]).toMatchObject({ text: 'обычный важный', color: '#1f2329', runs });
+
+    await expect.poll(async () => (await board.state()).dirty).toBe(false);
+    await page.reload();
+    await board.ready();
+    await board.dblclick({ x: 410, y: 297 });
+    await expect(word).toHaveCSS('color', 'rgb(189, 10, 10)');
+    await editor.press('ArrowLeft');
+    await editor.press('Shift+ArrowLeft');
+    await editor.press('Control+u');
+    await editor.press('Enter');
+    expect((await board.elements())[0].runs).toEqual([
+      { n: 8 },
+      { ...runs[1], n: 4 },
+      { n: 1, bold: true, italic: true, strike: true, color: '#bd0a0a' },
+      { ...runs[1], n: 1 },
+    ]);
+    await page.keyboard.press('Control+z');
+    expect((await board.elements())[0].runs).toEqual(runs);
+  });
+
+  test('у надписи внутри фигуры цвет фрагмента сохраняется отдельно от цвета рамки', async ({ board, page }) => {
+    const rect = await board.rect(400, 300, 640, 460);
+    await page.keyboard.type('red blue');
+    const editor = page.getByRole('textbox', { name: 'Надпись фигуры' });
+    for (let i = 0; i < 4; i++) await editor.press('Shift+ArrowLeft');
+    await editor.press('Control+u');
+    await board.quickMenu.locator('.qm-style').click();
+    await expect(page.getByRole('button', { name: 'Текст', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await page.locator('.ctx-swatches [data-c="#305bab"]').click();
+    await editor.press('Enter');
+    expect((await board.elements())[0]).toMatchObject({
+      color: rect.color,
+      text: 'red blue',
+      runs: [{ n: 4 }, { n: 4, underline: true, color: '#305bab' }],
+    });
   });
 });

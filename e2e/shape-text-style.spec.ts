@@ -82,9 +82,9 @@ test.describe('надпись в фигуре', () => {
 
     // буква — не горячая клавиша (V, P…), а начало надписи
     await page.keyboard.type('Vp 1');
-    const editor = page.locator('#overlay textarea.inplace-edit.shape');
+    const editor = page.locator('#overlay [contenteditable].inplace-edit.shape');
     await expect(editor).toBeFocused();
-    await expect(editor).toHaveValue('Vp 1');
+    await expect(editor).toHaveText('Vp 1');
     await expect(page.locator('.shape-caret')).toHaveCount(0);
     expect((await board.state()).tool).toBe('select');
     await page.keyboard.press('Shift+Enter');
@@ -99,7 +99,7 @@ test.describe('надпись в фигуре', () => {
 
     // Enter — дописать; Esc в редакторе — «готово», текст остаётся
     await page.keyboard.press('Enter');
-    await expect(editor).toHaveValue('Vp 1\nx');
+    await expect(editor).toHaveText('Vp 1\nx');
     await page.keyboard.type('y');
     await page.keyboard.press('Escape');
     expect((await board.elements())[0].text).toBe('Vp 1\nxy');
@@ -141,9 +141,9 @@ test.describe('надпись в фигуре', () => {
     expect((await board.state()).selection).toEqual([]);
 
     await board.dblclick({ x: 450, y: 320 });
-    const editor = page.locator('#overlay textarea.inplace-edit.shape');
+    const editor = page.locator('#overlay [contenteditable].inplace-edit.shape');
     await expect(editor).toBeFocused();
-    await expect(editor).toHaveValue('abc');
+    await expect(editor).toHaveText('abc');
     await editor.fill('');
     await page.keyboard.press('Enter');
     const [r] = await board.elements();
@@ -165,9 +165,9 @@ test.describe('надпись в фигуре', () => {
     await board.drag([{ x: 387, y: 287 }, { x: 470, y: 220 }, { x: 563, y: 237 }], { steps: 10 });
     await expect(page.locator('.shape-caret')).toBeVisible();
     await page.keyboard.press('Backspace');
-    const editor = page.locator('#overlay textarea.inplace-edit.shape');
+    const editor = page.locator('#overlay [contenteditable].inplace-edit.shape');
     await expect(editor).toBeFocused();
-    await expect(editor).toHaveValue('ab');
+    await expect(editor).toHaveText('ab');
     await page.keyboard.press('Backspace');
     await page.keyboard.press('Enter');
     const els = await board.elements();

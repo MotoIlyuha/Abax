@@ -1,5 +1,5 @@
 import { clearStickyTool, stickyTool } from './sticky-tool';
-import { clearRunField } from './text-runs';
+import { clearRunField, TEXT_FLAGS } from './text-runs';
 import { clearStarter, starterId } from './sync-state';
 import type {
   BoardSettings, Camera, Element, PlanTier, FadeStroke, Flash, GridMode, Guide, LaserPt, RemoteLaser, NoteEl, Page, Project, ProjectMeta, Pt, ShapeEl, SolidKind,
@@ -627,6 +627,8 @@ export interface StylePatch {
   /** Начертание — у текста и надписей фигур. */
   bold?: boolean;
   italic?: boolean;
+  underline?: boolean;
+  strike?: boolean;
   /** Кегль текста и надписей фигур; 0 — у надписи фигуры снова подбирается под её размер. */
   size?: number;
   /** Выравнивание надписи внутри фигуры. */
@@ -650,16 +652,15 @@ function styledElement(el: Element, p: StylePatch): Element {
     if (p.width !== undefined && el.type !== 'text') set.width = p.width;
     const caption = shapeHoldsText(el);
     if (el.type === 'text' || caption) {
-      if (p.bold !== undefined) set.bold = p.bold;
-      if (p.italic !== undefined) set.italic = p.italic;
+      for (const key of TEXT_FLAGS) if (p[key] !== undefined) set[key] = p[key];
     }
     if (el.type === 'text' && p.size) set.size = p.size;
     // общий цвет/начертание блока перекрывают отдельные фрагменты
-    if (el.type === 'text' && el.runs) {
+    if ((el.type === 'text' || caption) && el.runs) {
       let runs = el.runs;
-      if (p.color !== undefined) runs = clearRunField(runs, 'color', el.text.length) ?? [];
-      if (p.bold !== undefined) runs = clearRunField(runs, 'bold', el.text.length) ?? [];
-      if (p.italic !== undefined) runs = clearRunField(runs, 'italic', el.text.length) ?? [];
+      const len = (el.text ?? '').length;
+      if (p.color !== undefined && el.type === 'text') runs = clearRunField(runs, 'color', len) ?? [];
+      for (const key of TEXT_FLAGS) if (p[key] !== undefined) runs = clearRunField(runs, key, len) ?? [];
       if (runs !== el.runs) set.runs = runs.length > 0 ? runs : undefined;
     }
     if (caption) {
@@ -686,8 +687,7 @@ function styledElement(el: Element, p: StylePatch): Element {
     if (out.textSize === 0) delete out.textSize;
     if (out.align === 'center') delete out.align;
     if (out.valign === 'middle') delete out.valign;
-    if (out.bold === false) delete out.bold;
-    if (out.italic === false) delete out.italic;
+    for (const key of TEXT_FLAGS) if (out[key] === false) delete out[key];
   }
   return out as unknown as Element;
 }

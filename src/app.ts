@@ -23,7 +23,8 @@ import {
   canCopyCurrentBoard, canCloneCurrentProject, canAddPageTo, PAGE_LIMIT_TEXT, projectPlan,
 } from './state';
 import { readClipboardText, type PastedText } from './paste-text';
-import { remapRuns } from './text-runs';
+import { remapRuns, styledSegments, TEXT_FLAGS, type TextFlag } from './text-runs';
+import { RichTextEditor } from './rich-text-editor';
 import type { PresetKind, StylePatch, StyleValue } from './state';
 import { doskaApi, storage } from './storage';
 import { isNativeApp, sharePng } from './native';
@@ -35,7 +36,7 @@ import { capturePageTransition } from './page-transition';
 import { PAGE_TRANSITIONS, boardSettingsLabel, renderBoardMotionSettings } from './board-settings';
 import { hasBaseSides, SIDES_MAX, SIDES_MIN, solidSides } from './solid';
 import {
-  type AABB, aabbUnion, elementAABB, hitTest, imageFrame, lineWidth, parseTextSize, shapeCaption, shapeHoldsText, stepTextSize,
+  type AABB, aabbUnion, elementAABB, hitTest, imageFrame, parseTextSize, shapeCaption, shapeHoldsText, stepTextSize,
   NOTE_W, NOTE_H, NOTE_PAD, NOTE_FONT, NOTE_TEXT_COLOR, SHAPE_TEXT_LH, TEXT_SIZE, TEXT_SIZE_MAX, TEXT_SIZE_MIN, TEXT_SIZES,
 } from './geom';
 import * as pdfjsLib from 'pdfjs-dist';
@@ -257,14 +258,26 @@ function applyUndoRedoVisibility(animate = false): void {
   setTopbarGroupHidden(document.querySelector<HTMLElement>('.undo-group')!, state.settings.hideUndoRedo, setClass);
 }
 
-let styleColorTab: 'border' | 'fill' = 'border';
+let styleColorTab: 'border' | 'fill' | 'text' = 'border';
+
+function textColorEditor(): RichTextEditor | null {
+  if (editing?.target === 'text' || (styleColorTab === 'text' && editing?.target === 'shape')) return editing.rich;
+  return null;
+}
+
+function editedTextColor(): string | undefined {
+  const styles = textColorEditor()?.styles();
+  if (!styles) return undefined;
+  const first = styles[0]?.color;
+  return styles.every(s => s.color === first) ? first : '';
+}
 
 function currentPanelColor(): string {
   if (styleColorTab === 'fill') {
     const shape = selectedForStyle().find((e): e is ShapeEl => e.type === 'shape' && e.shape !== 'line' && e.shape !== 'arrow');
     return shape?.fill ?? '';
   }
-  return state.style.color;
+  return editedTextColor() ?? state.style.color;
 }
 
 /** Выбор цвета: применяется к выделению (если есть) и становится текущим. */
@@ -279,7 +292,13 @@ function chooseColor(c: string): void {
     refresh();
     return;
   }
+  const rich = textColorEditor();
+  if (rich) {
+    if (editedTextColor() !== c) rich.format('color', c, styleColorTab === 'text');
+    return;
+  }
   if (state.selection.size > 0 && state.tool !== 'laser') applyStyleToSelection({ color: c });
+  if (editing) syncLiveText();
   setStyleColor(c);
   persistStyle();
   // панель не пересобираем: живой HSV-пикер должен остаться на месте;
@@ -347,9 +366,10 @@ interface Editing {
   at: { x: number; y: number } | null;
   /** shape — надпись внутри прямоугольника, эллипса или треугольника. */
   target: 'text' | 'note' | 'shape';
-  ta: HTMLTextAreaElement;
-  /** Кегль и начертание нового текста (у существующего — в самом элементе, их меняет меню выделения). */
-  draft: { size: number; bold: boolean; italic: boolean };
+  field: HTMLElement;
+  note: HTMLTextAreaElement | null;
+  rich: RichTextEditor | null;
+  size: number;
 }
 let editing: Editing | null = null;
 
@@ -371,19 +391,26 @@ export function beginTextEdit(opts: { el?: TextEl | NoteEl | ShapeEl; at?: { x: 
   closeEditor(true);
   const el = opts.el ?? null;
   const target: Editing['target'] = el ? (el.type === 'note' ? 'note' : el.type === 'shape' ? 'shape' : 'text') : (opts.target ?? 'text');
-  const ta = document.createElement('textarea');
-  ta.rows = 1;
-  ta.spellcheck = false;
-  ta.className = target === 'text' ? 'inplace-edit' : `inplace-edit ${target}`;
-  if (el?.type === 'shape') {
-    const chars = Array.from(el.text ?? ''); // по кодовым точкам: эмодзи стирается целиком
-    if (opts.backspace) chars.pop();
-    ta.value = chars.join('') + (opts.append ?? '');
-    state.hideTextId = el.id; // контур остаётся на холсте, надпись живёт в редакторе
-  } else if (el) {
-    ta.value = el.text;
-    state.hideElId = el.id; // прячем канвасную версию, текст живёт в редакторе
+  const before = el?.text ?? '';
+  const text = opts.backspace ? Array.from(before).slice(0, -1).join('') : before + (opts.append ?? '');
+  const source = el?.type === 'text' || el?.type === 'shape' ? el : null;
+  const changed = () => { syncLiveText(); update(); };
+  const rich = target === 'note' ? null : new RichTextEditor(text, remapRuns(source?.runs, before, text), () => {
+    const current = source && state.board.elements.find(el => el.id === source.id);
+    return current?.type === 'text' || current?.type === 'shape' ? current : source ?? { color: state.style.color };
+  }, changed);
+  const note = target === 'note' ? document.createElement('textarea') : null;
+  if (note) {
+    note.rows = 1;
+    note.value = text;
+    note.addEventListener('input', changed);
   }
+  const field: HTMLElement = rich?.el ?? note!;
+  if (target === 'shape') field.setAttribute('aria-label', 'Надпись фигуры');
+  field.spellcheck = false;
+  field.className = target === 'text' ? 'inplace-edit' : 'inplace-edit ' + target;
+  if (target === 'shape' && el) state.hideTextId = el.id;
+  else if (el) state.hideElId = el.id;
   if (target === 'note' && !el && opts.at) {
     state.liveNote = { x: opts.at.x - NOTE_W / 2, y: opts.at.y - NOTE_H / 2, w: NOTE_W, h: NOTE_H, color: state.noteColor };
     // сразу возвращаем выделение, чтобы случайные клики не плодили стикеры
@@ -397,31 +424,38 @@ export function beginTextEdit(opts: { el?: TextEl | NoteEl | ShapeEl; at?: { x: 
     // меню выделения при вводе — у правящегося элемента
     setSelection([el.id]);
   }
-  document.getElementById('overlay')!.appendChild(ta);
-  editing = { el, at: opts.at ?? null, target, ta, draft: { size: TEXT_SIZE, bold: false, italic: false } };
+  document.getElementById('overlay')!.appendChild(field);
+  editing = { el, at: opts.at ?? null, target, field, note, rich, size: TEXT_SIZE };
   positionEditor();
-  syncLiveText();
-  update();
-  ta.focus();
-  ta.setSelectionRange(ta.value.length, ta.value.length);
-  ta.addEventListener('keydown', e => {
+  changed();
+  if (rich) rich.focus();
+  if (note) {
+    note.focus();
+    note.setSelectionRange(text.length, text.length);
+  }
+  field.addEventListener('keydown', e => {
     e.stopPropagation();
-    // Ctrl+B и Ctrl+I — начертание; Ctrl+Z, X, C, V остаются у поля ввода: работают с текстом
-    if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && (e.code === 'KeyB' || e.code === 'KeyI') && target !== 'note') {
-      e.preventDefault();
-      toggleTextFlag(e.code === 'KeyB' ? 'bold' : 'italic');
-      return;
+    if (e.isComposing || e.keyCode === 229) return;
+    if (rich && (e.ctrlKey || e.metaKey) && !e.altKey) {
+      const flag = TEXT_SHORTCUTS[e.code];
+      if (flag && !e.shiftKey) {
+        e.preventDefault();
+        toggleTextFlag(flag);
+        return;
+      }
+      if (e.code === 'KeyZ' || e.code === 'KeyY') {
+        e.preventDefault();
+        rich.history(e.shiftKey || e.code === 'KeyY');
+        return;
+      }
     }
-    // Esc у надписи фигуры — «готово», как в Miro (фигура остаётся выделенной); у текста и стикера — отмена
-    if (e.key === 'Escape') { e.preventDefault(); closeEditor(target === 'shape'); }
-    else if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); closeEditor(true); }
-    // Shift+Enter — перевод строки (стандартное поведение textarea)
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      closeEditor(target === 'shape');
+    } else if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); closeEditor(true); }
+    else if (rich && e.key === 'Enter') { e.preventDefault(); rich.insert('\n'); }
   });
-  ta.addEventListener('input', () => {
-    syncLiveText();
-    update(); // подписчик заодно подгоняет размер редактора
-  });
-  ta.addEventListener('blur', e => {
+  field.addEventListener('blur', e => {
     if (!insideTextMenus(e.relatedTarget)) closeEditor(true);
   });
 }
@@ -432,42 +466,56 @@ function editedEl<T extends TextEl | NoteEl | ShapeEl>(e: Editing): T {
   return (cur?.type === e.el!.type ? cur : e.el) as T;
 }
 
-function editedShape(e: Editing): ShapeEl {
-  return editedEl<ShapeEl>(e);
+/** Текст и начертание черновика поверх актуальных параметров элемента. */
+function draftText<T extends TextEl | ShapeEl>(el: T, rich: RichTextEditor, trim = false): T {
+  const style = rich.style;
+  let text = rich.text;
+  let runs = style.runs;
+  if (trim) {
+    const clean = (pattern: RegExp) => {
+      for (const match of [...text.matchAll(pattern)].reverse()) {
+        const from = match.index, to = from + match[0].length;
+        const next = text.slice(0, from) + text.slice(to);
+        runs = remapRuns(runs, text, next, { from, to });
+        text = next;
+      }
+    };
+    clean(/[ \t]+$/gm);
+    clean(/\s+$/g);
+  }
+  const next = { ...el, text, color: style.color };
+  for (const key of TEXT_FLAGS) {
+    if (style[key] || (style[key] === false && el.type === 'text' && el.id)) next[key] = style[key];
+    else delete next[key];
+  }
+  if (runs) next.runs = runs;
+  else delete next.runs;
+  if (el.type === 'shape' && !text) delete (next as ShapeEl).text;
+  return next;
+}
+
+function draftTextBlock(e: Editing, trim = false): TextEl {
+  const base: TextEl = e.el ? editedEl<TextEl>(e) : {
+    id: '', type: 'text', x: e.at!.x, y: e.at!.y - e.size * 1.25 / 2,
+    size: e.size, color: state.style.color, text: '', ...opacityField(state.style.opacity),
+  };
+  return draftText(base, e.rich!, trim);
 }
 
 /** Вводимый текст — в state.liveText: окно демонстрации рисует его вместо редактора. */
 function syncLiveText(): void {
   const e = editing;
   if (!e) { state.liveText = null; return; }
-  const text = e.ta.value;
   if (e.target === 'shape') {
-    // без id: надпись фигуры с этим id не рисуется (её показывает редактор)
-    state.liveText = { ...editedShape(e), id: '', text };
-  } else if (e.el) {
-    const ed = editedEl<TextEl | NoteEl>(e);
-    state.liveText = ed.type === 'text' ? withRuns(ed, text) : { ...ed, text };
+    state.liveText = { ...draftText(editedEl<ShapeEl>(e), e.rich!), id: '' };
   } else if (e.target === 'text') {
-    state.liveText = { id: '', ...newTextProps(e), text };
+    state.liveText = draftTextBlock(e);
+  } else if (e.el) {
+    state.liveText = { ...editedEl<NoteEl>(e), text: e.note!.value };
   } else {
     const n = state.liveNote;
-    state.liveText = n ? { id: '', type: 'note', x: n.x, y: n.y, w: n.w, h: n.h, text, color: n.color } : null;
+    state.liveText = n ? { id: '', type: 'note', ...n, text: e.note!.value } : null;
   }
-}
-
-/** Текстовый блок с новым текстом: смешанное форматирование переезжает вместе с неизменённым текстом. */
-function withRuns(el: TextEl, text: string): TextEl {
-  const { runs: _old, ...rest } = el;
-  const runs = remapRuns(el.runs, el.text, text);
-  return runs ? { ...rest, text, runs } : { ...rest, text };
-}
-
-/** Новый текст по черновику: место, кегль, начертание и текущий цвет. */
-function newTextProps(e: Editing): Omit<TextEl, 'id' | 'text'> {
-  return {
-    type: 'text', x: e.at!.x, y: e.at!.y - e.draft.size * 1.25 / 2, size: e.draft.size, color: state.style.color,
-    ...(e.draft.bold ? { bold: true } : {}), ...(e.draft.italic ? { italic: true } : {}), ...opacityField(state.style.opacity),
-  };
 }
 
 function positionEditor(): void {
@@ -475,9 +523,9 @@ function positionEditor(): void {
   if (!e) return;
   const cam = state.camera;
   const z = cam.zoom;
-  const ta = e.ta;
+  const ta = e.field;
   if (e.target === 'shape') {
-    positionShapeEditor(ta, editedShape(e));
+    positionShapeEditor(ta, draftText(editedEl<ShapeEl>(e), e.rich!));
     return;
   }
   if (e.target === 'note') {
@@ -491,7 +539,7 @@ function positionEditor(): void {
     ta.style.color = NOTE_TEXT_COLOR;
     ta.style.maxHeight = `${(n.h - NOTE_PAD * 2) * z}px`;
   } else {
-    const t = e.el ? editedEl<TextEl>(e) : { ...newTextProps(e), text: '' };
+    const t = draftTextBlock(e);
     ta.style.left = `${(t.x - cam.x) * z}px`;
     ta.style.top = `${(t.y - cam.y) * z}px`;
     ta.style.fontSize = `${t.size * z}px`;
@@ -503,20 +551,18 @@ function positionEditor(): void {
     ta.style.whiteSpace = t.w !== undefined ? 'pre-wrap' : 'pre';
     ta.style.overflowWrap = t.w !== undefined ? 'anywhere' : 'normal';
     if (t.w !== undefined) ta.style.width = `${t.w * z}px`;
-    else {
-      ta.style.width = '10px';
-      ta.style.width = `${Math.max(60, ta.scrollWidth + 12)}px`;
-    }
+    else ta.style.width = 'max-content';
+    return;
   }
   ta.style.height = 'auto';
   ta.style.height = `${ta.scrollHeight + 2}px`;
 }
 
 /** Редактор надписи — в области текста фигуры, тем же кеглем, начертанием, выравниванием и поворотом. */
-function positionShapeEditor(ta: HTMLTextAreaElement, s: ShapeEl): void {
+function positionShapeEditor(ta: HTMLElement, s: ShapeEl): void {
   const cam = state.camera;
   const z = cam.zoom;
-  const c = shapeCaption(s, ta.value);
+  const c = shapeCaption(s);
   const box = c.box;
   ta.style.width = `${box.w * z}px`;
   ta.style.fontSize = `${c.size * z}px`;
@@ -527,8 +573,7 @@ function positionShapeEditor(ta: HTMLTextAreaElement, s: ShapeEl): void {
   ta.style.color = s.color;
   ta.style.opacity = String(s.opacity ?? 1);
   ta.style.height = 'auto';
-  const h = ta.scrollHeight;
-  ta.style.height = `${h}px`;
+  const h = ta.offsetHeight;
   const left = (box.x - cam.x) * z;
   // по вертикали — как на холсте: у верхнего края, по центру или у нижнего
   const top = c.valign === 'top' ? (box.y - cam.y) * z
@@ -545,52 +590,44 @@ export function closeEditor(commit: boolean): void {
   const e = editing;
   if (!e) return;
   editing = null;
-  const text = e.ta.value.replace(/[ \t]+$/gm, '').replace(/\s+$/, '');
-  e.ta.remove();
+  e.field.remove();
   state.hideElId = null;
   state.hideTextId = null;
   state.liveText = null;
-  if (e.target === 'shape') {
-    commitShapeText(editedShape(e), commit ? text : null);
-    return;
-  }
   const liveNote = state.liveNote;
   state.liveNote = null;
-  // элемент, который правили, — с доски: кегль и начертание могли поменять, пока шёл ввод
-  const cur = e.el ? state.board.elements.find(x => x.id === e.el!.id) as TextEl | NoteEl | undefined : undefined;
-  if (!commit || text === '') {
-    if (commit && cur) {
-      // очистили текст существующего элемента — удаляем его
-      pushHistory(state.board.elements);
-      replaceElements(state.board.elements.filter(x => x.id !== cur.id));
-    } else {
-      update();
-    }
+  const cur = e.el && state.board.elements.find(x => x.id === e.el!.id);
+  if (!commit || (e.el && cur?.type !== e.el.type)) { update(); return; }
+  if (cur?.type === 'shape') {
+    commitEditorChange(cur, draftText(cur, e.rich!, true));
     return;
   }
-  if (e.el) {
-    // элемент успели удалить или текст не изменился — в истории нечего записывать
-    if (!cur || cur.text === text) { update(); return; }
-    pushHistory(state.board.elements);
-    replaceElements(state.board.elements.map(x => (x.id === cur.id ? (cur.type === 'text' ? withRuns(cur, text) : { ...cur, text }) as Element : x)));
-  } else if (e.target === 'text') {
-    const id = uid();
-    addElement({ id, ...newTextProps(e), text });
-    // вставленный текст выделен: его сразу можно двигать и оформлять
-    selectInserted(id);
-  } else if (liveNote) {
-    addElement({ id: uid(), type: 'note', x: liveNote.x, y: liveNote.y, w: liveNote.w, h: liveNote.h, text, color: liveNote.color });
+  if (e.target === 'text') {
+    const next = draftTextBlock(e, true);
+    if (cur?.type === 'text') commitEditorChange(cur, next.text ? next : null);
+    else if (next.text) {
+      const id = uid();
+      addElement({ ...next, id });
+      selectInserted(id);
+    } else update();
+    return;
   }
+  const text = e.note!.value.replace(/[ \t]+$/gm, '').replace(/\s+$/, '');
+  if (cur?.type === 'note') commitEditorChange(cur, text ? { ...cur, text } : null);
+  else if (liveNote && text) addElement({ id: uid(), type: 'note', ...liveNote, text });
+  else update();
 }
 
-/** Надпись фигуры (null — отмена): пустая убирается, фигура остаётся; без изменений — без записи в историю. */
-function commitShapeText(s: ShapeEl, text: string | null): void {
-  const cur = state.board.elements.find(x => x.id === s.id);
-  if (text === null || cur?.type !== 'shape' || (cur.text ?? '') === text) { update(); return; }
-  const next: ShapeEl = { ...cur, text };
-  if (!text) delete next.text;
+function commitEditorChange(cur: TextEl | ShapeEl | NoteEl, next: TextEl | ShapeEl | NoteEl | null): void {
+  if (next && cur.text === next.text && (
+    cur.type === 'note' || (next.type !== 'note' && cur.color === next.color
+      && TEXT_FLAGS.every(key => !!cur[key] === !!next[key])
+      && JSON.stringify(cur.runs) === JSON.stringify(next.runs))
+  )) { update(); return; }
   pushHistory(state.board.elements);
-  replaceElements(state.board.elements.map(x => (x.id === cur.id ? next : x)));
+  replaceElements(next
+    ? state.board.elements.map(el => el.id === cur.id ? next : el)
+    : state.board.elements.filter(el => el.id !== cur.id));
 }
 
 /**
@@ -629,7 +666,7 @@ function syncShapeCaret(): void {
   }
   const c = shapeCaption(el);
   const n = c.lines.length;
-  const last = lineWidth(c.lines[n - 1] ?? '', c.size, el.bold, el.italic);
+  const last = c.widths[n - 1] ?? 0;
   // верхний конец курсора в системе фигуры, затем — поворот вокруг её центра
   const lx = (c.align === 'left' ? c.x + last : c.align === 'right' ? c.x : c.x + last / 2) + 1;
   const ly = c.top + (n - 1) * c.lh;
@@ -652,10 +689,8 @@ function textTargets(): (TextEl | ShapeEl)[] {
     state.selection.has(e.id) && (e.type === 'text' || (shapeHoldsText(e) && (!!e.text || editing?.el?.id === e.id))));
 }
 
-interface TextProps {
+interface TextProps extends Record<TextFlag, boolean> {
   size: number;
-  bold: boolean;
-  italic: boolean;
   /** Кегль надписи подбирается под фигуру. */
   auto: boolean;
   /** Среди оформляемого есть надписи фигур: у них — «Авто» и выравнивание. */
@@ -667,16 +702,16 @@ interface TextProps {
 /** Оформление того, что сейчас правят (новый текст — по черновику) или выделено. null — текста нет. */
 function textProps(): TextProps | null {
   const e = editing;
-  if (e && editingNewText()) return { ...e.draft, auto: false, shapes: false, align: 'center', valign: 'middle' };
+  if (e && editingNewText()) return { size: e.size, ...activeTextFlags(), auto: false, shapes: false, align: 'center', valign: 'middle' };
   const els = textTargets();
   if (els.length === 0) return null;
   const first = els[0];
   const shape = els.find((x): x is ShapeEl => x.type === 'shape');
   // у надписи с подобранным кеглем показываем тот, что получился (с учётом набираемого текста)
   const size = first.type === 'text' ? first.size
-    : shapeCaption(first, e?.el?.id === first.id ? e.ta.value : first.text).size;
+    : shapeCaption(e?.el?.id === first.id && e.rich ? draftText(first, e.rich) : first).size;
   return {
-    size, bold: els.every(x => !!x.bold), italic: els.every(x => !!x.italic),
+    size, ...activeTextFlags(els),
     auto: first.type === 'shape' && !first.textSize, shapes: !!shape,
     align: shape?.align ?? 'center', valign: shape?.valign ?? 'middle',
   };
@@ -686,20 +721,28 @@ function textProps(): TextProps | null {
 function setTextProps(patch: StylePatch, history = true): void {
   const e = editing;
   if (e && editingNewText()) {
-    if (patch.size) e.draft.size = patch.size;
-    if (patch.bold !== undefined) e.draft.bold = patch.bold;
-    if (patch.italic !== undefined) e.draft.italic = patch.italic;
+    if (patch.size) e.size = patch.size;
     syncLiveText();
     update();
     return;
   }
   applyStyleToSelection(patch, history);
+  if (e) syncLiveText();
 }
 
-/** Полужирный или курсив (кнопки B и I, Ctrl+B и Ctrl+I): у всего текстового — включить, если не у всех. */
-export function toggleTextFlag(key: 'bold' | 'italic'): void {
-  const p = textProps();
-  if (p) setTextProps({ [key]: !p[key] });
+function activeTextFlags(els = textTargets()): Record<TextFlag, boolean> {
+  const rich = editing?.rich;
+  const styles = rich ? rich.styles() : els.flatMap(el => styledSegments(el, 0, el.text?.length || 1).map(seg => seg.style));
+  const all = (key: TextFlag) => styles.length > 0 && styles.every(style => style[key]);
+  return { bold: all('bold'), italic: all('italic'), underline: all('underline'), strike: all('strike') };
+}
+
+const TEXT_SHORTCUTS: Partial<Record<string, TextFlag>> = { KeyB: 'bold', KeyI: 'italic', KeyU: 'underline' };
+
+export function toggleTextFlag(key: TextFlag): void {
+  const rich = editing?.rich;
+  if (rich) rich.format(key, !activeTextFlags()[key]);
+  else if (textTargets().length) setTextProps({ [key]: !activeTextFlags()[key] });
 }
 
 // ----- Контекстная панель (цвет и толщина / стикеры) -----
@@ -757,7 +800,7 @@ export function closeCtxPanel(): void {
 }
 
 function openCtxPanel(kind: CtxKind, source: CtxSource): void {
-  if (kind === 'style') styleColorTab = 'border';
+  if (kind === 'style') styleColorTab = source === 'quick' && editing?.target === 'shape' ? 'text' : 'border';
   // пристыкованное место одно, а вид панели не дублируется
   closeCtxPanel();
   const same = panelOf(kind);
@@ -1132,7 +1175,9 @@ function buildStylePanel(cp: CtxPanel): void {
   p.dataset.selection = `${state.pageId}:${[...state.selection].sort().join(',')}`;
   const selected = selectedForStyle();
   const hasFill = selected.some(e => e.type === 'shape' && e.shape !== 'line' && e.shape !== 'arrow');
-  if (!hasFill) styleColorTab = 'border';
+  const hasCaption = cp.source === 'quick' && editing?.target === 'shape';
+  p.dataset.caption = String(hasCaption);
+  if (!hasFill || (!hasCaption && styleColorTab === 'text')) styleColorTab = 'border';
   p.style.setProperty('--ink', currentPanelColor() || 'transparent');
   if (styleNeedsWidth(cp.source)) {
     // как у прозрачности и скругления: иконка — «капля» — значение
@@ -1175,7 +1220,9 @@ function buildStylePanel(cp: CtxPanel): void {
   if (hasFill) {
     const tabs = document.createElement('div');
     tabs.className = 'ctx-color-tabs';
-    for (const [tab, label] of [['border', 'Рамка'], ['fill', 'Заливка']] as const) {
+    const tabsList = [['border', 'Рамка'], ['fill', 'Заливка']] as const;
+    const entries = hasCaption ? [...tabsList, ['text', 'Текст'] as const] : tabsList;
+    for (const [tab, label] of entries) {
       const button = document.createElement('button');
       button.textContent = label;
       button.className = tab === styleColorTab ? 'active' : '';
@@ -1251,7 +1298,7 @@ function buildStylePanel(cp: CtxPanel): void {
   mine.append(myHeader, pickerHost, custom); dropZone(mine, true);
   const allSection = document.createElement('div'); allSection.append(allHeader, allWrap); dropZone(allSection, false);
   // прозрачность — в самом низу «Всех цветов»; не в сворачиваемой обёртке, чтобы не пропадала при сворачивании
-  if (styleNeedsOpacity(cp.source)) {
+  if (styleColorTab !== 'text' && styleNeedsOpacity(cp.source)) {
     allSection.appendChild(buildRange({
       kind: 'opacity', title: 'Прозрачность', min: OPACITY_MIN, max: 1, step: 0.01, value: styleColorTab === 'fill' ? ((selected.find((e): e is ShapeEl => e.type === 'shape' && e.shape !== 'line' && e.shape !== 'arrow')?.fillOpacity) ?? (selected.find((e): e is ShapeEl => e.type === 'shape' && e.shape !== 'line' && e.shape !== 'arrow')?.opacity) ?? 1) : (state.style.opacity ?? 1),
       format: v => `${Math.round(v * 100)}%`, icon: () => OPACITY_ICON, onChange: chooseOpacity,
@@ -1558,7 +1605,7 @@ function finishFontEdit(size: number | null): void {
   const cur = textProps();
   if (size !== null && cur && (size !== Math.round(cur.size) || (size === 0) !== cur.auto)) setTextProps({ size });
   // ввод текста продолжается с того же места
-  if (editing) editing.ta.focus();
+  if (editing) { if (editing.rich) editing.rich.focus(); else editing.field.focus(); }
   else f.input.blur();
   refresh();
 }
@@ -1811,6 +1858,89 @@ function sendToChatButton(): HTMLButtonElement | null {
   return b;
 }
 
+const FORMAT_BUTTONS = [
+  ['bold', 'b', 'B', 'Полужирный (Ctrl+B)'],
+  ['italic', 'i', 'I', 'Курсив (Ctrl+I)'],
+  ['underline', 'u', 'U', 'Подчёркнутый (Ctrl+U)'],
+  ['strike', 's', 'S', 'Зачёркнутый'],
+] as const;
+let formatOpen = false;
+let formatSelection = '';
+
+function closeTextFormatting(): void {
+  if (!formatOpen) return;
+  formatOpen = false;
+  quickMenuEl().classList.remove('format-expanded');
+  const toggle = quickMenuEl().querySelector('.qm-format-toggle');
+  toggle?.classList.remove('active');
+  toggle?.setAttribute('aria-expanded', 'false');
+  quickMenuEl().querySelector('.qm-format-options')?.remove();
+  if (!quickMenuEl().hidden) positionQuickMenu();
+}
+
+function buildTextFormatting(props: TextProps): HTMLElement {
+  const control = document.createElement('div');
+  control.className = 'qm-format';
+  const toggle = document.createElement('button');
+  toggle.className = 'qm-btn qm-format-toggle' + (formatOpen ? ' active' : '');
+  toggle.textContent = 'Форматирование';
+  toggle.setAttribute('aria-expanded', String(formatOpen));
+  toggle.addEventListener('click', event => {
+    formatOpen = !formatOpen;
+    updateQuickMenu();
+    if (event.detail === 0) quickMenuEl().querySelector<HTMLButtonElement>('.qm-format-toggle')?.focus();
+  });
+  control.appendChild(toggle);
+  if (!formatOpen) return control;
+  const options = document.createElement('div');
+  options.className = 'qm-format-options';
+  options.setAttribute('role', 'group');
+  options.setAttribute('aria-label', 'Форматирование текста');
+  for (const [flag, suffix, glyph, label] of FORMAT_BUTTONS) {
+    const button = document.createElement('button');
+    button.className = 'qm-btn qm-text-' + suffix + (props[flag] ? ' active' : '');
+    button.dataset.textFlag = flag;
+    button.textContent = glyph;
+    button.title = macKeys(label);
+    button.setAttribute('aria-label', label.split(' (')[0]);
+    button.setAttribute('aria-pressed', String(props[flag]));
+    button.addEventListener('click', event => {
+      toggleTextFlag(flag);
+      if (event.detail === 0) quickMenuEl().querySelector<HTMLButtonElement>('[data-text-flag="' + flag + '"]')?.focus();
+    });
+    options.appendChild(button);
+  }
+  control.appendChild(options);
+  return control;
+}
+
+document.addEventListener('pointerdown', e => {
+  if (e.target instanceof Node && !insideTextMenus(e.target) && !editing?.field.contains(e.target)) closeTextFormatting();
+});
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape' || !formatOpen || dockedPanel()) return;
+  e.preventDefault();
+  e.stopPropagation();
+  closeTextFormatting();
+}, { capture: true });
+document.addEventListener('selectionchange', () => {
+  if (!editing?.rich) return;
+  editing.rich.rememberSelection();
+  if (formatOpen) {
+    const flags = activeTextFlags();
+    for (const button of quickMenuEl().querySelectorAll<HTMLButtonElement>('[data-text-flag]')) {
+      const active = flags[button.dataset.textFlag as TextFlag];
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', String(active));
+    }
+  }
+  const panel = panelOf('style');
+  if (panel) updateSwatchActive(panel.el, currentPanelColor());
+  const indicator = quickMenuEl().querySelector<HTMLElement>('.qm-style .style-ind');
+  const color = editedTextColor();
+  if (indicator && color !== undefined) (indicator.firstElementChild as HTMLElement).style.background = color || 'transparent';
+});
+
 function updateQuickMenu(): void {
   const qm = quickMenuEl();
   // кегль набирают в поле меню — меню не пересобираем, иначе поле пропадёт из-под курсора
@@ -1818,12 +1948,15 @@ function updateQuickMenu(): void {
   const selEls = state.board.elements.filter(e => state.selection.has(e.id));
   // при вводе текста меню остаётся (у нового текста — над редактором); у стикера — нет: оформлять нечего
   if (state.view !== 'board' || (selEls.length === 0 && !editingNewText()) || editing?.target === 'note') {
+    formatOpen = false;
     qm.hidden = true;
     return;
   }
   const selectionKey = selEls.map(e => e.id).sort().join(',');
+  if (formatSelection !== selectionKey) { formatOpen = false; formatSelection = selectionKey; }
   if (selectionKey !== layerPanelSelection) { layerPanelOpen = false; layerPanelSelection = selectionKey; }
   qm.hidden = false;
+  qm.classList.toggle('format-expanded', formatOpen);
   qm.textContent = '';
   // читатель (править доску не может): если автор разрешил — копия картинкой и в чат; реакции и комментарии —
   // кнопками под объектом (src/annot-layer.ts)
@@ -1838,12 +1971,12 @@ function updateQuickMenu(): void {
   // цвет и толщина — одна кнопка и одна панель; толщина — только для «линейных» элементов и рамок картинок
   const hasInk = selEls.some(e => e.type === 'stroke' || e.type === 'shape' || e.type === 'poly' || e.type === 'solid' || e.type === 'image');
   // у задания нет ни цвета, ни толщины: кнопка «Цвет» ничего бы не делала
-  if (!selEls.every(e => e.type === 'task')) {
+  if (editingNewText() || !selEls.every(e => e.type === 'task')) {
     const sBtn = document.createElement('button');
     sBtn.className = 'qm-btn qm-style' + (ctxOpenFrom('style', 'quick') ? ' active' : '');
     sBtn.dataset.ctx = 'style';
-    sBtn.title = selEls.every(e => e.type === 'image') ? 'Рамка и скругление' : hasInk ? 'Цвет и толщина' : 'Цвет';
-    sBtn.appendChild(styleIndicator(hasInk));
+    sBtn.title = selEls.length > 0 && selEls.every(e => e.type === 'image') ? 'Рамка и скругление' : hasInk ? 'Цвет и толщина' : 'Цвет';
+    sBtn.appendChild(styleIndicator(hasInk, { ...state.style, color: editedTextColor() ?? state.style.color }));
     sBtn.addEventListener('mousedown', e => e.preventDefault());
     sBtn.addEventListener('click', () => toggleStylePanel('quick'));
     qm.appendChild(sBtn);
@@ -1871,19 +2004,7 @@ function updateQuickMenu(): void {
   // жирность, курсив и кегль — у текста и надписей фигур, выравнивание — у надписей
   const tp = textProps();
   if (tp) {
-    const bBtn = document.createElement('button');
-    bBtn.className = 'qm-btn qm-text-b' + (tp.bold ? ' active' : '');
-    bBtn.title = macKeys('Полужирный (Ctrl+B)');
-    bBtn.textContent = 'B';
-    bBtn.addEventListener('mousedown', e => e.preventDefault());
-    bBtn.addEventListener('click', () => toggleTextFlag('bold'));
-    const iBtn = document.createElement('button');
-    iBtn.className = 'qm-btn qm-text-i' + (tp.italic ? ' active' : '');
-    iBtn.title = macKeys('Курсив (Ctrl+I)');
-    iBtn.textContent = 'I';
-    iBtn.addEventListener('mousedown', e => e.preventDefault());
-    iBtn.addEventListener('click', () => toggleTextFlag('italic'));
-    qm.append(bBtn, iBtn, fontSizeControl(tp));
+    qm.append(buildTextFormatting(tp), fontSizeControl(tp));
     if (tp.shapes) {
       const aBtn = document.createElement('button');
       aBtn.className = 'qm-btn qm-align' + (ctxOpenFrom('align', 'quick') ? ' active' : '');
@@ -1980,7 +2101,7 @@ function updateQuickMenu(): void {
 /** Где на экране то, над чем стоит меню: выделенное или (у нового текста) редактор. */
 function quickMenuTarget(wr: DOMRect): { sx: number; sy: number; sw: number; topGap: number } | null {
   if (editing && editingNewText()) {
-    const r = editing.ta.getBoundingClientRect();
+    const r = editing.field.getBoundingClientRect();
     return { sx: r.left - wr.left, sy: r.top - wr.top, sw: r.width, topGap: 10 };
   }
   const cam = state.camera;
@@ -2919,7 +3040,8 @@ export function openProjectFile(): void {
 
 /** Событие буфера обмена относится к доске, а не к полю ввода или окну настроек. */
 function boardClipboardEvent(e: ClipboardEvent): boolean {
-  return state.view === 'board' && !settingsDialogOpen() && !isTypingField(e.target);
+  return !e.defaultPrevented && state.view === 'board' && !settingsDialogOpen()
+    && !isTypingField(e.target) && !isTypingField(document.activeElement);
 }
 
 /** Можно менять содержимое активной страницы (в совместной работе — нужно право edit). */
@@ -5892,8 +6014,9 @@ function refresh(): void {
   updateQuickMenu();
   const stylePanel = panelOf('style');
   const selectionKey = `${state.pageId}:${[...state.selection].sort().join(',')}`;
-  if (stylePanel && stylePanel.el.dataset.selection !== selectionKey) {
-    styleColorTab = 'border';
+  const captionColor = stylePanel?.source === 'quick' && editing?.target === 'shape';
+  if (stylePanel && (stylePanel.el.dataset.selection !== selectionKey || stylePanel.el.dataset.caption !== String(captionColor))) {
+    styleColorTab = captionColor ? 'text' : 'border';
     rebuildPanel(stylePanel);
   } else if (stylePanel) {
     updateSwatchActive(stylePanel.el, currentPanelColor());
@@ -6005,7 +6128,7 @@ export function initApp(c: HTMLCanvasElement): void {
   }
   // фокус ушёл из редактора текста не в меню и не в панели (в название страницы и т. п.) — ввод закончен
   document.addEventListener('focusin', e => {
-    if (editing && e.target !== editing.ta && !insideTextMenus(e.target)) closeEditor(true);
+    if (editing && e.target !== editing.field && !insideTextMenus(e.target)) closeEditor(true);
   });
   document.addEventListener('focusout', () => queueMicrotask(syncShapeCaret));
   try { refresh(); } catch (err) { console.error('[doska] refresh failed:', err); }

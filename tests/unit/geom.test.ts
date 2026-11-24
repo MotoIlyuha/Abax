@@ -76,7 +76,7 @@ describe('надпись в фигуре', () => {
   });
 
   it('кегль уменьшается, пока текст не влезет', () => {
-    expect(fitShapeText('ab', 200, 100)).toEqual({ size: SHAPE_TEXT_MAX, lines: ['ab'] });
+    expect(fitShapeText('ab', 200, 100)).toMatchObject({ size: SHAPE_TEXT_MAX, lines: ['ab'] });
     const long = 'один два три четыре пять шесть семь восемь';
     const fit = fitShapeText(long, 120, 60);
     expect(fit.size).toBeLessThan(SHAPE_TEXT_MAX);

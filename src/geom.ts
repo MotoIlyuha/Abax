@@ -1,7 +1,7 @@
 import type { Camera, Element, Guide, Handle, HandlePos, ImageEl, PolyEl, Pt, ShapeEl, StrokeEl, TextAlign, TextEl, TextVAlign } from './types';
 import { applySolidParam, solidGeometry, solidHandles } from './solid';
 import { widthAt } from './stroke';
-import { styledSegments } from './text-runs';
+import { styledSegments, type TextStyle } from './text-runs';
 
 export interface AABB { x0: number; y0: number; x1: number; y1: number }
 
@@ -18,7 +18,7 @@ export const TEXT_FONT = (size: number, bold = false, italic = false) =>
 export interface TextSpan { text: string; start: number }
 
 /** Ширина куска [from, to) текста блока с учётом фрагментов разного начертания. */
-function measureRange(ctx: CanvasRenderingContext2D, el: TextEl, from: number, to: number): number {
+function measureRange(ctx: CanvasRenderingContext2D, el: TextStyle & { text: string; size: number }, from: number, to: number): number {
   if (!el.runs) {
     ctx.font = TEXT_FONT(el.size, el.bold, el.italic);
     return ctx.measureText(el.text.slice(from, to)).width;
@@ -44,7 +44,7 @@ export function textLines(el: TextEl): string[] {
 }
 
 /** Строки блока (с переносом по ширине, если она задана) вместе со смещениями в тексте. */
-export function textSpans(el: TextEl): TextSpan[] {
+export function textSpans(el: TextStyle & { text: string; size: number; w?: number }): TextSpan[] {
   const result: TextSpan[] = [];
   let pos = 0;
   const paragraphs = el.text.split('\n');
@@ -165,20 +165,24 @@ export function shapeTextBox(s: ShapeEl): { x: number; y: number; w: number; h: 
 }
 
 /** Начертание надписи: заданный кегль (нет — подбирается) и жирность с курсивом. */
-export interface CaptionFont { size?: number; bold?: boolean; italic?: boolean }
+export interface CaptionFont { size?: number; bold?: boolean; italic?: boolean; runs?: TextEl['runs'] }
 
 /**
  * Кегль и строки надписи в области w×h. Кегль задан — только переносим строки;
  * нет — от SHAPE_TEXT_MAX вниз, пока не влезет (не меньше SHAPE_TEXT_MIN).
  */
-export function fitShapeText(text: string, w: number, h: number, font: CaptionFont = {}): { size: number; lines: string[] } {
+export function fitShapeText(text: string, w: number, h: number, font: CaptionFont = {}): { size: number; lines: string[]; spans?: TextSpan[]; widths: number[] } {
   const b = !!font.bold, i = !!font.italic;
-  if (font.size) return { size: font.size, lines: wrapText(text, font.size, w, b, i) };
-  let size = SHAPE_TEXT_MAX;
+  let size = font.size ?? SHAPE_TEXT_MAX;
   for (;;) {
-    const lines = wrapText(text, size, w, b, i);
-    const fits = lines.length * size * SHAPE_TEXT_LH <= h && lines.every(l => lineWidth(l, size, b, i) <= w);
-    if (fits || size <= SHAPE_TEXT_MIN) return { size, lines };
+    const block = { ...font, text, size, w, color: '' };
+    const spans = font.runs ? textSpans(block) : undefined;
+    const lines = spans ? spans.map(span => span.text) : wrapText(text, size, w, b, i);
+    const widths = spans
+      ? spans.map(span => measureRange(mctx(), block, span.start, span.start + span.text.length))
+      : lines.map(line => lineWidth(line, size, b, i));
+    const fits = lines.length * size * SHAPE_TEXT_LH <= h && widths.every(width => width <= w);
+    if (font.size || fits || size <= SHAPE_TEXT_MIN) return { size, lines, spans, widths };
     size = Math.max(SHAPE_TEXT_MIN, size - Math.max(1, Math.round(size * 0.1)));
   }
 }
@@ -188,6 +192,8 @@ export interface Caption {
   box: { x: number; y: number; w: number; h: number };
   size: number;
   lines: string[];
+  spans?: TextSpan[];
+  widths: number[];
   lh: number;
   align: TextAlign;
   valign: TextVAlign;
@@ -199,14 +205,14 @@ export interface Caption {
 /** Надпись фигуры s — с её текстом или с text (то, что сейчас набирают в редакторе). */
 export function shapeCaption(s: ShapeEl, text = s.text ?? ''): Caption {
   const box = shapeTextBox(s);
-  const { size, lines } = fitShapeText(text, box.w, box.h, { size: s.textSize, bold: s.bold, italic: s.italic });
+  const { size, lines, spans, widths } = fitShapeText(text, box.w, box.h, { size: s.textSize, bold: s.bold, italic: s.italic, runs: s.runs });
   const lh = size * SHAPE_TEXT_LH;
   const align = s.align ?? 'center';
   const valign = s.valign ?? 'middle';
   const x = align === 'left' ? box.x : align === 'right' ? box.x + box.w : box.x + box.w / 2;
   const free = box.h - lines.length * lh;
   const top = valign === 'top' ? box.y : valign === 'bottom' ? box.y + free : box.y + free / 2;
-  return { box, size, lines, lh, align, valign, x, top };
+  return { box, size, lines, spans, widths, lh, align, valign, x, top };
 }
 
 /** Радиус скругления, который реально помещается в элемент (не больше половины меньшей стороны). */

@@ -120,7 +120,7 @@ const MOVE_KEYS = new Set(['x', 'y', 'pts', 'baseId']);
 const GEOMETRY_KEYS = new Set(['x', 'y', 'w', 'h', 'd', 'pts', 'baseId']);
 /** Оформление: цвет, толщина, прозрачность, начертание, выравнивание, кегль, скругление. */
 const STYLE_KEYS = new Set([
-  'color', 'width', 'opacity', 'fill', 'fillOpacity', 'bold', 'italic', 'align', 'valign', 'radius', 'size', 'textSize', 'runs',
+  'color', 'width', 'opacity', 'fill', 'fillOpacity', 'bold', 'italic', 'underline', 'strike', 'align', 'valign', 'radius', 'size', 'textSize', 'runs',
 ]);
 /** Правка текста может заодно поменять разметку фрагментов и размер блока. */
 const TEXT_EXTRA_KEYS = new Set(['text', 'runs', 'w', 'h']);

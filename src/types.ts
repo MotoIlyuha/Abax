@@ -71,6 +71,9 @@ export interface ShapeEl extends BaseEl {
   textSize?: number;
   bold?: boolean;
   italic?: boolean;
+  underline?: boolean;
+  strike?: boolean;
+  runs?: TextRun[];
   /** Выравнивание надписи; нет поля — по центру. */
   align?: TextAlign;
   valign?: TextVAlign;
@@ -91,6 +94,8 @@ export interface TextRun {
   n: number;
   bold?: boolean;
   italic?: boolean;
+  underline?: boolean;
+  strike?: boolean;
   color?: string;
 }
 
@@ -106,6 +111,8 @@ export interface TextEl extends BaseEl {
   opacity?: number;
   bold?: boolean;
   italic?: boolean;
+  underline?: boolean;
+  strike?: boolean;
   /** Смешанное форматирование: фрагменты идут подряд по `text`; символы после последнего — в стиле блока. */
   runs?: TextRun[];
 }

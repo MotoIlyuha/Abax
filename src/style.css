@@ -1170,7 +1170,12 @@ body:not(.no-motion) .ctx-panel[data-kind="shapes"] { animation: none; }
 .ctx-frame-off:hover { text-decoration: underline; }
 .ctx-frame-off[hidden] { display: none; }
 
-/* B/I в плавающем меню */
+/* Форматирование раскрывается в строке рядом с кнопкой. */
+.qm-format, .qm-format-options { display: flex; align-items: center; gap: 2px; }
+.qm-format .qm-format-toggle { width: auto; padding: 0 7px; font-size: 12px; }
+.qm-text-u { text-decoration: underline; }
+.qm-text-s { text-decoration: line-through; }
+.qm-text-u, .qm-text-s { font-weight: 600; }
 .qm-text-b { font-weight: 800; font-size: 14px; }
 .qm-text-i { font-style: italic; font-weight: 600; font-family: Georgia, serif; font-size: 15px; }
 .qm-btn.active { background: var(--accent-soft); color: var(--accent); }
@@ -1187,6 +1192,7 @@ body:not(.no-motion) .ctx-panel[data-kind="shapes"] { animation: none; }
   padding: 4px;
   z-index: 9;
 }
+#quick-menu.format-expanded { box-sizing: border-box; max-width: calc(100% - 16px); flex-wrap: wrap; }
 .qm-btn {
   width: 30px;
   height: 30px;
@@ -2388,7 +2394,8 @@ body.tbe-grabbing, body.tbe-grabbing * { cursor: grabbing !important; }
 
 /* ----- Редактор текста на месте ----- */
 #overlay { position: absolute; inset: 0; pointer-events: none; z-index: 8; }
-#overlay textarea {
+#overlay textarea,
+#overlay [contenteditable].inplace-edit {
   pointer-events: auto;
   position: absolute;
   background: rgba(255, 255, 255, 0.94);
@@ -2403,10 +2410,10 @@ body.tbe-grabbing, body.tbe-grabbing * { cursor: grabbing !important; }
   white-space: pre;
   min-width: 40px;
 }
-/* стикер редактируется на месте: без фона и рамок */
-#overlay textarea.inplace-edit { border: none; padding: 0; }
+#overlay [contenteditable].inplace-edit { display: block; min-width: 60px; touch-action: auto; user-select: text; }
+#overlay :is(textarea, [contenteditable]).inplace-edit { border: none; padding: 0; }
 /* надпись фигуры: по центру, с переносом строк — как её рисует холст */
-#overlay textarea.inplace-edit.shape {
+#overlay [contenteditable].inplace-edit.shape {
   min-width: 0;
   background: transparent;
   box-shadow: none;
@@ -2466,7 +2473,7 @@ body.collab-guest.readonly-mode #toolbar.can-comment .tool-group:first-child > :
 body.collab-guest.readonly-mode #toolbar.can-comment .readonly-comment { display: grid; }
 body.comment-tool #task-overlay .task-foot { pointer-events: none; }
 #overlay textarea.inplace-edit.note { background: transparent; box-shadow: none; }
-#overlay textarea.inplace-edit:not(.note):not(.shape) { background: rgba(255, 255, 255, 0.85); box-shadow: 0 0 0 1.5px rgba(50, 115, 245, 0.35); border-radius: 3px; }
+#overlay .inplace-edit:not(.note):not(.shape) { background: rgba(255, 255, 255, 0.85); box-shadow: 0 0 0 1.5px rgba(50, 115, 245, 0.35); border-radius: 3px; }
 
 /* ----- Подсказки (tooltip) ----- */
 #tooltip {
