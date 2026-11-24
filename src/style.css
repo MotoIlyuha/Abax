@@ -5150,12 +5150,68 @@ body.no-ui-anim :is(.pv-row, .pv-row-icon, .hist-btn, .hist-entry, .hist-dot, .h
   :is(.pv-row, .pv-row-icon, .hist-btn, .hist-entry, .hist-dot, .hlp-search-field) { transition: none; }
 }
 
-/* ----- Правая боковая панель (src/side-panel.ts, SPEC_CHAT §5) ----- */
-:root { --side-panel-w: 360px; --side-panel-shift: 0px; --side-panel-shift-b: 0px; --side-panel-tuck: 0px; }
-/* правая сторона шапки и нижний правый угол уезжают влево от панели; в режиме ЧУ место кнопки ЧУ — под кнопкой закрытия */
-.topbar-left { translate: calc(var(--side-panel-tuck) - var(--side-panel-shift)) 0; }
+/* ----- Боковые панели (src/side-panel.ts) ----- */
+:root {
+  --side-panel-w: 360px;
+  --side-panel-shift: 0px;
+  --side-panel-shift-b: 0px;
+  --side-panel-tuck: 0px;
+  --left-panel-shift: 0px;
+  --tasks-gradient: linear-gradient(135deg, color-mix(in srgb, var(--accent) 65%, #000), #5b217f);
+}
+/* Внутренние отступы оставляют шапке только свободную часть окна, включая место для сжатия названий. */
+#topbar {
+  padding-left: max(0px, var(--left-panel-shift));
+  padding-right: max(0px, calc(var(--side-panel-shift) - var(--side-panel-tuck)));
+}
+.tasks-button {
+  position: fixed; z-index: 11; top: 72px; left: calc(12px + var(--left-panel-shift));
+  overflow: visible; border-color: transparent; background: var(--tasks-gradient); color: #fff;
+}
+.tasks-button[aria-expanded="false"]:hover { filter: brightness(1.12); }
+.tasks-button[aria-expanded="false"]:active { filter: brightness(.9); }
+.tasks-button[aria-expanded="true"] { border-color: var(--border); background: var(--panel); color: var(--icon-secondary); }
+.tasks-button[aria-expanded="true"]:hover { background: var(--surface-sunken); color: var(--fg); }
+.tasks-button[aria-expanded="true"]:active { background: var(--hover); }
+.tasks-button:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.tasks-button-book, .tasks-button-collapse { display: flex; }
+.tasks-button-collapse { scale: -1 1; }
+.tasks-button[aria-expanded="false"] .tasks-button-collapse,
+.tasks-button[aria-expanded="true"] :is(.tasks-button-book, .tutor-badge) { display: none; }
+.tutor-badge {
+  display: inline-flex; align-items: center; border-radius: 999px; padding: 1px 5px;
+  background: #eee9ff; color: #38205e; font-size: 10px; font-weight: 700; line-height: 16px;
+}
+.tutor-badge[hidden] { display: none; }
+.tasks-button .tutor-badge { position: absolute; right: -8px; top: -7px; }
+body:is(.collab-guest, .link-view, :has(#home:not([hidden]))) #btn-tasks { display: none; }
+body:not(.collab-guest, .link-view) #toolbar[data-pos="left"]:not(.floating) {
+  left: calc(12px + var(--left-panel-shift)); top: 126px;
+}
+#toolbar:is([data-pos="top"], [data-pos="bottom"]):not(.floating) { left: calc(50% + var(--left-panel-shift) / 2); }
+#pages-dock, #main-menu { left: calc(12px + var(--left-panel-shift)); }
+#main-menu .main-submenu { max-width: calc(100vw - 292px - var(--left-panel-shift)); }
+@media (max-width: 560px) {
+  #main-menu .main-submenu { max-width: none; }
+}
+.sp-heading { display: none; align-items: center; gap: 8px; padding: 0 8px; font-size: 14px; }
+#side-panel.sp-left { left: 12px; right: auto; }
+#side-panel.sp-left .sp-heading { display: flex; }
+#side-panel.sp-left .sp-mode { display: none; }
+#side-panel.sp-left.sp-css:not(.sp-open) { transform: translateX(-24px); }
+.sp-backdrop { display: none; }
+#tasks-panel-body { height: 100%; }
+.tasks-placeholder { height: 100%; display: grid; place-content: center; justify-items: center; gap: 12px; padding: 24px; text-align: center; color: var(--muted); }
+.tasks-placeholder svg { width: 42px; height: 42px; }
+@media (max-width: 759.98px) {
+  #side-panel.sp-left { right: 12px; }
+  body:not(.collab-guest, .link-view).side-panel-open #side-panel .sp-head { padding-left: 60px; }
+  body.side-panel-open .tasks-button { z-index: 62; }
+  body.side-panel-left .sp-backdrop { display: block; position: fixed; z-index: 59; inset: 68px 0 0; touch-action: none; }
+}
 #bottombar { translate: calc(-1 * var(--side-panel-shift-b)) 0; }
-body.no-motion :is(.topbar-left, #bottombar) { transition: translate .3s cubic-bezier(.23, 1, .32, 1), transform 0.38s cubic-bezier(0.22, 0.8, 0.24, 1); }
+body.no-motion #topbar { transition: padding-right .3s cubic-bezier(.23, 1, .32, 1); }
+body.no-motion #bottombar { transition: translate .3s cubic-bezier(.23, 1, .32, 1), transform .38s cubic-bezier(.22, .8, .24, 1); }
 body.no-motion .notify-btn { transition: background-color .15s ease, color .15s ease, opacity .2s ease, visibility 0s linear 0s; }
 /* кнопка ЧУ «влилась» в кнопку закрытия: скрыта целиком, со счётчиком и полумесяцем */
 .notify-btn.sp-merged { opacity: 0; visibility: hidden; pointer-events: none; }
@@ -5228,10 +5284,10 @@ body.no-motion .notify-btn.sp-merged { transition: background-color .15s ease, c
 #side-panel.sp-css:not(.sp-open) { transform: translateX(24px); opacity: 0; }
 .sp-close.sp-css { transition: opacity .22s ease, scale .22s cubic-bezier(.23, 1, .32, 1), background-color .15s, translate .15s cubic-bezier(.23, 1, .32, 1); }
 .sp-close.sp-css:not(.on) { opacity: 0; scale: .8; }
-body.no-ui-anim :is(#side-panel, .sp-close, .topbar-left, #bottombar, .notify-btn, .sp-view) { transition: none !important; animation: none !important; }
+body.no-ui-anim :is(#side-panel, .sp-close, #topbar, #bottombar, .notify-btn, .sp-view) { transition: none !important; animation: none !important; }
 body.no-ui-anim .ss-badge.on { animation: none; }
 @media (prefers-reduced-motion: reduce) {
-  :is(#side-panel, .sp-close, .topbar-left, #bottombar, .notify-btn, .sp-view, .ss-badge) { transition: none !important; animation: none !important; }
+  :is(#side-panel, .sp-close, #topbar, #bottombar, .notify-btn, .sp-view, .ss-badge) { transition: none !important; animation: none !important; }
 }
 /* узкий экран: лист под шапкой, кнопка закрытия — в шапке панели справа, шапка доски на месте */
 @media (max-width: 759.98px) {

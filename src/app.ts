@@ -95,6 +95,7 @@ import { setChatAttachActions } from './chat-attach-view';
 import { attachSelection, selectionAttachBlock } from './chat-attach';
 import { chatAvailable, chatCanWrite, openChat } from './collab-chat';
 import { registerPanelModes } from './panel-modes';
+import { initTasksPanel } from './tasks-panel';
 import { closeSidePanel, onSidePanel, sidePanelMode, sidePanelOpen, toggleSidePanel } from './side-panel';
 import { initSyncIndicator } from './sync-indicator';
 import { openShareDialog as openShareDialogUi, type ShareApi } from './share-dialog';
@@ -5482,6 +5483,7 @@ function wireTopbar(): void {
   document.getElementById('btn-present')!.addEventListener('click', togglePresent);
   registerPanelActions();
   registerPanelModes();
+  initTasksPanel();
   wireHelpButton();
   initTopbarFit();
   // список страниц внизу не должен заходить под правый нижний угол

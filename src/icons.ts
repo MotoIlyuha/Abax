@@ -64,6 +64,7 @@ export const ICONS = {
   textFormat: svg('<path d="m3 17 6-13 6 13M5.5 12h7M3 21h18M17 8h4M17 13h4"/>'),
   crop: svg('<path d="M6 3v13a2 2 0 0 0 2 2h13M3 6h13a2 2 0 0 1 2 2v13"/>'),
   link: svg('<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>'),
+  bookOpen: svg('<path d="M12 6c-2-2-5-3-9-2v14c4-1 7 0 9 2m0-14c2-2 5-3 9-2v14c-4-1-7 0-9 2m0-14v14"/>'),
   homeBack: svg('<path d="M19 12H5M11 6l-6 6 6 6"/>'),
   share: svg('<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/>'),
   menu: svg('<path d="M4 7h16M4 12h16M4 17h16"/>'),

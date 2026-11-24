@@ -25,7 +25,7 @@ import { claimMenu, menuMotion, releaseMenu, type MenuMotion } from './menu-moti
 import { createSpringSelect, type SelectOption, type SpringSelect } from './spring-select';
 import { formatUnread, onNotices, unreadCount } from './notify-center';
 import { NOTIFY_ICON, PANEL_COLLAPSE_ICON } from './icons';
-import { setTopbarReserve } from './topbar-fit';
+import { refitTopbar, setTopbarReserve } from './topbar-fit';
 import type { PanelMode, PanelModeDef, PanelView } from './panel-types';
 
 export type { PanelMode, PanelModeDef, PanelView } from './panel-types';
@@ -38,6 +38,7 @@ export const SIDE_PANEL_NARROW = 760;
 export const SIDE_PANEL_W = 360;
 const BTN = 48;      // кнопка ЧУ
 const BAR_GAP = 12;  // промежуток между кнопками шапки
+const LEFT_SHIFT = SIDE_PANEL_W + BAR_GAP;
 /** Язычок «Свернуть панель», прикреплённый к левому краю панели (как --sp-tab-* в style.css). */
 const TAB_W = 18;
 const TAB_H = 34;
@@ -74,6 +75,7 @@ interface Ui {
   cloud: HTMLElement;
   cross: HTMLElement;
   select: SpringSelect;
+  events: AbortController;
 }
 let ui: Ui | null = null;
 
@@ -95,12 +97,14 @@ export function setSidePanelPref(patch: Record<string, unknown>): void {
 
 function savedMode(): PanelMode | null {
   const m = sidePanelPref().mode;
-  return typeof m === 'string' && modes.has(m as PanelMode) ? m as PanelMode : null;
+  return typeof m === 'string' && modes.has(m as PanelMode) && !modes.get(m as PanelMode)?.def.side ? m as PanelMode : null;
 }
 
 // ----- Разметка -----
 
 const narrow = (): boolean => window.innerWidth < SIDE_PANEL_NARROW;
+const leftPanel = (): boolean => modes.get(current)?.def.side === 'left';
+const dedicatedTrigger = (): HTMLButtonElement | undefined => modes.get(current)?.def.trigger;
 const notifyBtn = (): HTMLElement | null => document.getElementById('btn-notify');
 
 /**
@@ -133,7 +137,7 @@ function optionValue(mode: PanelMode): string {
 
 function modeOptions(): SelectOption[] {
   const badge = formatUnread(unreadCount());
-  return [...modes.values()].flatMap(({ def }) => {
+  return [...modes.values()].filter(({ def }) => !def.side).flatMap(({ def }) => {
     const list = entries.get(def.id);
     if (list) return list.map(e => ({ value: e.value, label: e.label, icon: e.icon, badge: e.badge?.() ?? '' }));
     return [{ value: def.id, label: def.label, icon: def.icon, badge: def.id === 'notify' ? badge : '', ...(def.pro ? { pro: def.pro } : {}) }];
@@ -161,6 +165,7 @@ function build(): Ui {
   panel.id = 'side-panel';
   panel.setAttribute('role', 'complementary');
   panel.setAttribute('aria-label', 'Боковая панель');
+  panel.tabIndex = -1;
   panel.hidden = true;
   const inner = document.createElement('div');
   inner.className = 'sp-inner';
@@ -173,7 +178,13 @@ function build(): Ui {
   });
   const actions = document.createElement('div');
   actions.className = 'sp-actions';
-  head.append(select.el, actions);
+  const leftTitle = document.createElement('div');
+  leftTitle.className = 'sp-heading';
+  const title = document.createElement('strong');
+  const badge = document.createElement('span');
+  badge.className = 'tutor-badge';
+  leftTitle.append(title, badge);
+  head.append(select.el, leftTitle, actions);
   const body = document.createElement('div');
   body.className = 'sp-body';
   inner.append(head, body);
@@ -201,6 +212,7 @@ function build(): Ui {
 
   const onKey = (e: KeyboardEvent) => {
     if (e.key === 'Escape') {
+      if (leftPanel()) return;
       // открытый выпадающий список закрывается первым (spring-select сам гасит событие)
       if (e.defaultPrevented || select.open) return;
       e.preventDefault();
@@ -213,10 +225,28 @@ function build(): Ui {
   };
   panel.addEventListener('keydown', onKey);
   close.addEventListener('keydown', onKey);
-  document.body.append(panel, close);
+  const events = new AbortController();
+  const eventOptions = { capture: true, signal: events.signal };
+  document.addEventListener('keydown', e => {
+    if (!isOpen || !leftPanel() || e.key !== 'Escape' || e.defaultPrevented || e.cancelBubble) return;
+    if (e.target instanceof Element && e.target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])')) return;
+    e.preventDefault();
+    e.stopPropagation();
+    closeSidePanel();
+    dedicatedTrigger()?.focus({ preventScroll: true });
+  }, eventOptions);
+  const backdrop = document.createElement('div');
+  backdrop.className = 'sp-backdrop';
+  backdrop.setAttribute('aria-hidden', 'true');
+  backdrop.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    closeSidePanel();
+  });
+  document.body.append(panel, close, backdrop);
   onNotices(() => syncPanelSelect());
   window.addEventListener('resize', onResize);
-  return { panel, inner, head, actions, body, close, cloud, cross, select };
+  events.signal.addEventListener('abort', () => backdrop.remove(), { once: true });
+  return { panel, inner, head, actions, body, close, cloud, cross, select, events };
 }
 
 function ensureUi(): Ui {
@@ -296,7 +326,7 @@ function focusInto(m: PanelMode): void {
   const host = e?.host;
   const target = host?.querySelector<HTMLElement>('input:not([disabled]), textarea:not([disabled]), button:not([disabled]), [href], [tabindex]:not([tabindex="-1"])')
     ?? host?.querySelector<HTMLElement>('[tabindex="-1"]')
-    ?? u.select.el;
+    ?? (leftPanel() ? u.panel : u.select.el);
   target.focus({ preventScroll: true });
 }
 
@@ -353,8 +383,10 @@ function render(): void {
 /** Кадр пружин в DOM. */
 function paint(u: Ui): void {
   const root = document.documentElement.style;
-  root.setProperty('--side-panel-shift', `${SH.x.toFixed(2)}px`);
-  root.setProperty('--side-panel-shift-b', `${(SH.x * BOTTOM_K).toFixed(2)}px`);
+  const leftSide = leftPanel();
+  root.setProperty('--left-panel-shift', `${(leftSide ? SH.x : 0).toFixed(2)}px`);
+  root.setProperty('--side-panel-shift', `${(leftSide ? 0 : SH.x).toFixed(2)}px`);
+  root.setProperty('--side-panel-shift-b', `${(leftSide ? 0 : SH.x * BOTTOM_K).toFixed(2)}px`);
   root.setProperty('--side-panel-tuck', `${TK.x.toFixed(2)}px`);
   // кнопка закрытия — на месте кнопки ЧУ (с учётом сдвига шапки) или у панели
   // в полёте кнопка закрытия — кнопка ЧУ (48×48 на её месте), у панели — узкий язычок без правого скругления
@@ -377,12 +409,14 @@ function paint(u: Ui): void {
   u.cloud.style.opacity = clamp(1 - m * 1.6, 0, 1).toFixed(3);
   u.cross.style.transform = `rotate(${(-90 * (1 - m)).toFixed(2)}deg) scale(${(0.3 + 0.7 * m).toFixed(3)})`;
   u.cross.style.opacity = clamp(m * 1.6 - 0.6, 0, 1).toFixed(3);
-  // панель растёт из правого верхнего угла — там, где стоит кнопка ЧУ
+  // Панель растёт из угла со стороны своей кнопки.
   const g = clamp(G.x, 0, 1);
   const w = u.panel.offsetWidth || SIDE_PANEL_W;
   const h = u.panel.offsetHeight || 600;
   const ins = (v: number) => `${v.toFixed(2)}px`;
-  u.panel.style.clipPath = `inset(0 0 ${ins((h - BTN) * (1 - g))} ${ins((w - BTN) * (1 - g))} round ${ins(12 + 4 * g)})`;
+  u.panel.style.clipPath = leftSide
+    ? `inset(0 ${ins((w - BTN) * (1 - g))} ${ins((h - BTN) * (1 - g))} 0 round ${ins(12 + 4 * g)})`
+    : `inset(0 0 ${ins((h - BTN) * (1 - g))} ${ins((w - BTN) * (1 - g))} round ${ins(12 + 4 * g)})`;
   u.inner.style.opacity = clamp(F.x, 0, 1).toFixed(3);
   u.inner.style.translate = `0 ${((1 - clamp(F.x, 0, 1)) * -6).toFixed(2)}px`;
   if (viewFading) {
@@ -425,12 +459,13 @@ function settle(): void {
   u.inner.style.removeProperty('opacity');
   u.inner.style.removeProperty('translate');
   if (viewFading) { viewFading.style.removeProperty('opacity'); viewFading.style.removeProperty('translate'); viewFading = null; }
+  refitTopbar();
   if (!isOpen && !absorbed) { absorbed = true; document.dispatchEvent(new CustomEvent('doska:side-panel-absorb')); }
 }
 
 // ----- Целевое состояние -----
 
-const targetShift = (): number => (isOpen && !narrow() ? SIDE_PANEL_SHIFT : 0);
+const targetShift = (): number => isOpen && !narrow() ? (leftPanel() ? LEFT_SHIFT : SIDE_PANEL_SHIFT) : 0;
 const targetTuck = (): number => (isOpen && !narrow() && current === 'notify' ? TUCK : 0);
 const targetJoin = (): number => (!isOpen || narrow() || current === 'notify' ? 1 : 0);
 
@@ -443,22 +478,25 @@ function syncMerged(ready: boolean): void {
 /** Конечное состояние без пружин: классы, переменные и видимость («Обычные», «Выкл» и конец анимации). */
 function applyStatic(): void {
   const root = document.documentElement.style;
-  root.setProperty('--side-panel-shift', `${targetShift()}px`);
-  root.setProperty('--side-panel-shift-b', `${(targetShift() * BOTTOM_K).toFixed(2).replace(/\.00$/, '')}px`);
+  const leftSide = leftPanel();
+  root.setProperty('--left-panel-shift', `${leftSide ? targetShift() : 0}px`);
+  root.setProperty('--side-panel-shift', `${leftSide ? 0 : targetShift()}px`);
+  root.setProperty('--side-panel-shift-b', `${(leftSide ? 0 : targetShift() * BOTTOM_K).toFixed(2).replace(/\.00$/, '')}px`);
   root.setProperty('--side-panel-tuck', `${targetTuck()}px`);
   document.body.classList.toggle('side-panel-open', isOpen);
+  document.body.classList.toggle('side-panel-left', isOpen && leftPanel());
   document.body.classList.toggle('side-panel-notify', isOpen && current === 'notify');
   syncMerged(true);
   const u = ui;
   if (!u) return;
   u.panel.classList.toggle('sp-open', isOpen);
   u.close.classList.toggle('on', isOpen);
-  if (isOpen) { u.panel.hidden = false; u.close.hidden = false; }
+  if (isOpen) { u.panel.hidden = false; u.close.hidden = leftSide; }
   else if (!cssTimer) { u.panel.hidden = true; u.close.hidden = true; }
 }
 
 function syncReserve(): void {
-  setTopbarReserve(isOpen && !narrow() ? SIDE_PANEL_SHIFT - targetTuck() : 0);
+  setTopbarReserve(isOpen && !narrow() ? targetShift() - targetTuck() : 0);
 }
 
 function onResize(): void {
@@ -479,6 +517,7 @@ function emit(): void {
 /** Пружины к новым целям; from — откуда начинается (только что открыта: кнопка закрытия выходит из ЧУ). */
 function animateTo(anim: MenuMotion, opening: boolean, closing: boolean): void {
   const u = ensureUi();
+  if (leftPanel() && document.body.classList.contains('no-motion')) anim = 'off';
   clearTimeout(cssTimer);
   cssTimer = 0;
   if (anim === 'enhanced') {
@@ -504,9 +543,10 @@ function animateTo(anim: MenuMotion, opening: boolean, closing: boolean): void {
     if (closing) absorbed = false;
     if (isOpen && J.t === 1 && J.x < 0.9) caught = false;
     document.body.classList.toggle('side-panel-open', isOpen);
+    document.body.classList.toggle('side-panel-left', isOpen && leftPanel());
     document.body.classList.toggle('side-panel-notify', isOpen && current === 'notify');
     u.panel.hidden = false;
-    u.close.hidden = false;
+    u.close.hidden = leftPanel();
     u.panel.classList.toggle('sp-open', isOpen);
     u.close.classList.toggle('on', isOpen);
     if (opening) flyBadge(u);
@@ -520,7 +560,7 @@ function animateTo(anim: MenuMotion, opening: boolean, closing: boolean): void {
   u.close.classList.toggle('sp-css', css);
   if (opening) {
     u.panel.hidden = false;
-    u.close.hidden = false;
+    u.close.hidden = leftPanel();
     if (css) { void u.panel.offsetWidth; } // старт CSS-перехода из закрытого вида
   }
   if (closing && css) {
@@ -587,6 +627,10 @@ export function openSidePanel(mode?: PanelMode, opts: { focus?: boolean } = {}):
     next = modes.has('notify') ? 'notify' : [...modes.keys()][0];
     if (!next) return;
   }
+  if (modes.get(current)?.def.side !== modes.get(next)?.def.side) {
+    if (isOpen) closeSidePanel(true);
+    else if (animating) settle();
+  }
   const u = ensureUi();
   const anim = menuMotion();
   const opening = !isOpen;
@@ -599,8 +643,18 @@ export function openSidePanel(mode?: PanelMode, opts: { focus?: boolean } = {}):
   if (!opening) hideView(current);
   current = next;
   isOpen = true;
-  setSidePanelPref({ mode: next });
-  if (u.select.value !== optionValue(next)) u.select.setValue(optionValue(next), opening);
+  const left = modes.get(next)?.def.side === 'left';
+  u.panel.classList.toggle('sp-left', left);
+  const def = modes.get(next)?.def;
+  u.panel.setAttribute('aria-label', left ? def?.label ?? '' : 'Боковая панель');
+  if (left) {
+    u.head.querySelector<HTMLElement>('.sp-heading strong')!.textContent = def?.label ?? '';
+    const badge = u.head.querySelector<HTMLElement>('.sp-heading .tutor-badge')!;
+    badge.textContent = def?.badge ?? '';
+    badge.hidden = !def?.badge;
+  }
+  if (!left) setSidePanelPref({ mode: next });
+  if (!left && u.select.value !== optionValue(next)) u.select.setValue(optionValue(next), opening);
   showView(next, opening ? 'off' : anim);
   animateTo(anim, opening, false);
   syncReserve();
@@ -623,7 +677,7 @@ export function closeSidePanel(instant = false): void {
   animateTo(instant ? 'off' : menuMotion(), false, true);
   syncReserve();
   emit();
-  if (hadFocus) notifyBtn()?.focus({ preventScroll: true });
+  if (hadFocus) (dedicatedTrigger() ?? notifyBtn())?.focus({ preventScroll: true });
 }
 
 /** Открыть в режиме mode или закрыть, если панель уже открыта в нём. */
@@ -648,9 +702,14 @@ export function resetSidePanelForTests(): void {
   modes.clear();
   entries.clear();
   // подписчики (кнопка ЧУ, стопка) живут всё время модуля — не сбрасываются
+  ui?.events.abort();
   ui?.panel.remove();
   ui?.close.remove();
   window.removeEventListener('resize', onResize);
   ui = null;
+  document.body.classList.remove('side-panel-left');
+  for (const prop of ['--left-panel-shift', '--side-panel-shift', '--side-panel-shift-b', '--side-panel-tuck']) {
+    document.documentElement.style.removeProperty(prop);
+  }
   setTopbarReserve(0);
 }
