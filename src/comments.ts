@@ -113,7 +113,8 @@ export function preserveLiveFields(snapshotElements: readonly Element[], current
 export interface CreateThreadParams {
   x: number;
   y: number;
-  targetElementId: string;
+  targetElementId?: string;
+  offset?: CommentThread['offset'];
   authorId: string;
   authorName: string;
   text: string;
@@ -128,18 +129,19 @@ function withComments(page: Page, comments: CommentThread[]): Page {
 }
 
 /**
- * Новая ветка с первым сообщением у существующего объекта.
+ * Новая ветка с первым сообщением на доске или у существующего объекта.
  * При неверных данных или отсутствии объекта страница остаётся без изменений.
  */
 export function createCommentThread(page: Page, params: CreateThreadParams): Page {
   const text = cleanCommentText(params.text);
   if (!text || !Number.isFinite(params.x) || !Number.isFinite(params.y) || !isUserId(params.authorId)) return page;
-  if (!params.targetElementId || !page.elements.some(e => e.id === params.targetElementId)) return page;
+  if (params.targetElementId !== undefined && !page.elements.some(e => e.id === params.targetElementId)) return page;
   const thread: CommentThread = {
     id: params.id ?? newId(),
     x: params.x,
     y: params.y,
-    targetElementId: params.targetElementId,
+    ...(params.targetElementId === undefined ? {} : { targetElementId: params.targetElementId }),
+    ...(params.targetElementId && validCommentOffset(params.offset) ? { offset: params.offset } : {}),
     messages: [{
       id: params.messageId ?? newId(), authorId: params.authorId, authorName: cleanAuthorName(params.authorName), text,
       createdAt: params.now ?? Date.now(),
@@ -169,6 +171,35 @@ export function resolveCommentThread(page: Page, threadId: string, resolved = tr
     const { resolved: _old, ...rest } = t;
     return resolved ? { ...rest, resolved: true } : rest;
   }));
+}
+
+function validCommentOffset(offset: CommentThread['offset']): boolean {
+  return !!offset && Number.isFinite(offset.x) && Number.isFinite(offset.y);
+}
+
+export function moveCommentThread(page: Page, id: string, x: number, y: number, offset?: CommentThread['offset']): Page {
+  const thread = page.comments?.find(t => t.id === id);
+  if (!thread || !Number.isFinite(x) || !Number.isFinite(y)) return page;
+  const next = { ...thread, x, y };
+  if (thread.targetElementId && validCommentOffset(offset)) next.offset = offset;
+  if (thread.x === x && thread.y === y && thread.offset?.x === next.offset?.x && thread.offset?.y === next.offset?.y) return page;
+  return withComments(page, page.comments!.map(t => t === thread ? next : t));
+}
+
+export function deleteCommentThread(page: Page, id: string): Page {
+  const comments = page.comments?.filter(t => t.id !== id);
+  if (!comments || comments.length === page.comments!.length) return page;
+  return withComments(page, comments);
+}
+
+export function commentPoint(thread: CommentThread, target?: Element): { x: number; y: number } {
+  if (!target) return thread;
+  const { x0, x1, y0 } = elementAABB(target);
+  return thread.offset ? { x: x0 + thread.offset.x, y: y0 + thread.offset.y } : { x: x1, y: y0 };
+}
+
+export function hasUnresolvedComments(page: Page, ids: ReadonlySet<string>): boolean {
+  return page.comments?.some(t => !!t.targetElementId && ids.has(t.targetElementId) && !t.resolved) ?? false;
 }
 
 const EPS = 1e-9;

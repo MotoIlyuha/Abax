@@ -1,6 +1,6 @@
 import type { CommentThread, Element } from './types';
 import { onChange, onDraft, replaceElements, state, touchProject, update } from './state';
-import { addCommentReply, cleanCommentText, createCommentThread, MAX_COMMENT_TEXT, resolveCommentThread, toggleElementReaction } from './comments';
+import { addCommentReply, cleanCommentText, commentPoint, createCommentThread, deleteCommentThread, MAX_COMMENT_TEXT, moveCommentThread, resolveCommentThread, toggleElementReaction } from './comments';
 import { elementAABB } from './geom';
 import { canEditPagesNote, noteName, sendComment, sendReaction, type CommentRequest } from './collab-notes';
 import { clientId } from './identity';
@@ -67,10 +67,12 @@ export function removeReaction(elId: string, emoji: string): void {
 // и поле ввода чата (src/chat-composer.ts). Выходит из кнопки «Комментировать» по трём уровням анимации
 // (src/menu-motion.ts). Ветку без объекта можно открыть из вкладки «Комментарии».
 
-type PopState = { kind: 'element'; elId: string } | { kind: 'thread'; id: string };
+type Point = { x: number; y: number };
+type PopState = { kind: 'element'; elId: string; at?: Point } | { kind: 'thread'; id: string } | { kind: 'draft'; at: Point };
 interface Pop {
   el: HTMLElement;
   state: PopState;
+  pageId: string;
   title: HTMLElement;
   sub: HTMLElement;
   resolve: HTMLButtonElement;
@@ -108,6 +110,7 @@ function make<K extends keyof HTMLElementTagNameMap>(parent: HTMLElement | null,
 /** Ветки, которые показывает панель. */
 function popThreads(st: PopState): CommentThread[] {
   if (st.kind === 'element') return elementThreads(state.board.comments, st.elId);
+  if (st.kind === 'draft') return [];
   const t = threadOf(st.id);
   return t ? [t] : [];
 }
@@ -150,11 +153,17 @@ export function startComment(el: Element): void {
 }
 
 /** Открывает ветку из вкладки «Комментарии». Для объекта показывает всё его обсуждение. */
-export function openThread(id: string): void {
+export function openThread(id: string, from?: HTMLElement): void {
   const t = threadOf(id);
   if (!annotationsAvailable() || !t) return;
-  if (t.targetElementId && state.board.elements.some(e => e.id === t.targetElementId)) { openDiscussion(t.targetElementId); return; }
-  openPop({ kind: 'thread', id }, null);
+  if (!from && t.targetElementId && state.board.elements.some(e => e.id === t.targetElementId)) { openDiscussion(t.targetElementId); return; }
+  if (from && pop?.state.kind === 'thread' && pop.state.id === id) { closeThread(); return; }
+  openPop({ kind: 'thread', id }, from ?? null);
+}
+
+export function commentAt(at: Point, target: Element | null): void {
+  if (!canAnnotate()) return;
+  openPop(target ? { kind: 'element', elId: target.id, at } : { kind: 'draft', at }, null);
 }
 
 function openPop(st: PopState, from: HTMLElement | null): void {
@@ -196,7 +205,7 @@ function openPop(st: PopState, from: HTMLElement | null): void {
   const anchor = from && from.isConnected ? from : null;
   anchor?.setAttribute('aria-expanded', 'true');
   anchor?.classList.add('open');
-  pop = { el, state: st, title, sub, resolve, list, banner, foot, composer, sig: '', anchor };
+  pop = { el, state: st, pageId: state.pageId, title, sub, resolve, list, banner, foot, composer, sig: '', anchor };
   refresh();
   const p = pop;
   openMenu(el, {
@@ -221,6 +230,25 @@ function change(req: CommentRequest, local: (page: typeof state.board) => typeof
   return true;
 }
 
+function offsetFrom(target: Element, point: Point): Point {
+  const box = elementAABB(target);
+  return { x: point.x - box.x0, y: point.y - box.y0 };
+}
+
+export function moveComment(id: string, point: Point): void {
+  const thread = threadOf(id);
+  if (!thread) return;
+  const target = state.board.elements.find(el => el.id === thread.targetElementId);
+  const offset = target ? offsetFrom(target, point) : undefined;
+  change({ op: 'move', threadId: id, ...point, offset }, page => moveCommentThread(page, id, point.x, point.y, offset));
+}
+
+export function deleteComment(id: string): void {
+  if (!canAnnotate() || !threadOf(id)) return;
+  if (!window.confirm('Удалить комментарий вместе со всеми ответами?')) return;
+  change({ op: 'delete', threadId: id }, page => deleteCommentThread(page, id));
+}
+
 function submit(raw: string): ChatSendResult {
   const p = pop;
   if (!p) return 'empty';
@@ -229,7 +257,11 @@ function submit(raw: string): ChatSendResult {
   if (!canAnnotate()) return 'readonly';
   const author = { authorId: clientId(), authorName: noteName() };
   let ok: boolean;
-  if (p.state.kind === 'thread') {
+  if (p.state.kind === 'draft') {
+    const at = p.state.at;
+    ok = change({ op: 'create', ...at, text }, page => createCommentThread(page, { ...at, ...author, text }));
+    if (ok) closeThread();
+  } else if (p.state.kind === 'thread') {
     const id = p.state.id;
     ok = change({ op: 'reply', threadId: id, text }, page => addCommentReply(page, id, { ...author, text }));
   } else {
@@ -240,10 +272,11 @@ function submit(raw: string): ChatSendResult {
     } else {
       const el = state.board.elements.find(e => e.id === elId);
       if (!el) return 'empty';
-      // Точка нужна для перехода к обсуждению из списка после удаления объекта.
       const a = elementAABB(el);
-      ok = change({ op: 'create', x: a.x1, y: a.y0, targetElementId: elId, text },
-        page => createCommentThread(page, { x: a.x1, y: a.y0, targetElementId: elId, ...author, text }));
+      const at = p.state.at ?? { x: a.x1, y: a.y0 };
+      const offset = p.state.at ? offsetFrom(el, at) : undefined;
+      const params = { ...at, offset, targetElementId: elId, text };
+      ok = change({ op: 'create', ...params }, page => createCommentThread(page, { ...params, ...author }));
     }
   }
   return ok ? 'ok' : 'offline';
@@ -308,11 +341,11 @@ function renderMessages(p: Pop, msgs: readonly DiscussionMessage[], fresh: Reado
 function refresh(): void {
   const p = pop;
   if (!p) return;
-  if (!annotationsAvailable()) { closeThread(); return; }
+  if (!annotationsAvailable() || p.pageId !== state.pageId) { closeThread(); return; }
   if (p.state.kind === 'element') {
     const id = p.state.elId;
     if (!state.board.elements.some(e => e.id === id)) { closeThread(); return; }
-  } else if (!threadOf(p.state.id)) { closeThread(); return; }
+  } else if (p.state.kind === 'thread' && !threadOf(p.state.id)) { closeThread(); return; }
   const threads = popThreads(p.state);
   const msgs = discussionMessages(threads);
   const resolved = discussionResolved(threads);
@@ -321,9 +354,10 @@ function refresh(): void {
   if (sig !== p.sig) {
     const before = new Set(p.sig ? (JSON.parse(p.sig) as [string[]])[0] : msgs.map(m => m.id));
     p.sig = sig;
-    const el = p.state.kind === 'element' ? state.board.elements.find(e => e.id === (p.state as { elId: string }).elId) : undefined;
+    const targetId = p.state.kind === 'element' ? p.state.elId : threads[0]?.targetElementId;
+    const el = state.board.elements.find(e => e.id === targetId);
     p.title.textContent = msgs.length === 0 ? 'Новый комментарий' : `Комментарии · ${msgs.length}`;
-    p.sub.textContent = p.state.kind === 'element' ? elementLabel(el) : 'Комментарий на доске';
+    p.sub.textContent = el ? elementLabel(el) : 'Комментарий на доске';
     p.resolve.hidden = msgs.length === 0 || !can;
     p.resolve.classList.toggle('on', resolved);
     p.resolve.title = resolved ? 'Вернуть в обсуждение' : 'Отметить как решённое';
@@ -369,10 +403,13 @@ function place(p: Pop): void {
     if (p.state.kind === 'element') {
       const id = p.state.elId;
       const el = state.board.elements.find(e => e.id === id);
-      if (el) { const a = elementAABB(el); pt = { x: a.x1, y: a.y1 }; }
+      if (p.state.at) pt = p.state.at;
+      else if (el) { const a = elementAABB(el); pt = { x: a.x1, y: a.y1 }; }
+    } else if (p.state.kind === 'draft') {
+      pt = p.state.at;
     } else {
       const t = threadOf(p.state.id);
-      if (t) pt = { x: t.x, y: t.y };
+      if (t) pt = commentPoint(t, state.board.elements.find(e => e.id === t.targetElementId));
     }
     ax1 = (wrap?.left ?? 0) + (pt.x - cam.x) * cam.zoom;
     ay0 = ay1 = (wrap?.top ?? 0) + (pt.y - cam.y) * cam.zoom;
@@ -400,6 +437,6 @@ export function initCommentsUi(): void {
   document.addEventListener('pointerdown', e => {
     const t = e.target as HTMLElement | null;
     // Кнопка «Комментировать» сама переключает обсуждение.
-    if (pop && !(t instanceof Node && pop.el.contains(t)) && !t?.closest?.('.an-comment, #icon-picker')) closeThread();
+    if (pop && !(t instanceof Node && pop.el.contains(t)) && !t?.closest?.('.an-comment, .an-pin, #icon-picker')) closeThread();
   }, true);
 }

@@ -5,7 +5,7 @@ export type SolidKind =
 
 export type ToolId =
   | 'select' | 'pen' | 'highlighter' | 'eraser' | 'partEraser' | 'pan'
-  | 'text' | 'note' | 'task' | 'spread' | 'rect' | 'ellipse' | 'triangle' | 'line' | 'arrow' | 'poly'
+  | 'text' | 'note' | 'task' | 'comment' | 'spread' | 'rect' | 'ellipse' | 'triangle' | 'line' | 'arrow' | 'poly'
   | PointerKind
   | SolidKind;
 
@@ -243,6 +243,8 @@ export interface CommentThread {
   y: number;
   /** Если привязан к элементу доски — двигается вместе с ним. */
   targetElementId?: string;
+  /** Смещение от верхнего левого угла рамки объекта. */
+  offset?: { x: number; y: number };
   resolved?: boolean;
   messages: CommentMessage[];
 }
@@ -312,7 +314,7 @@ export interface LaserPt {
 export interface RemoteLaser { down: boolean; pts: LaserPt[] }
 
 /** Росчерк исчезающего маркера; endT — когда оторвали перо (с этого момента гаснет). */
-export interface FadeStroke { color: string; width: number; opacity?: number; pts: Pt[]; endT: number | null }
+export interface FadeStroke { color: string; width: number; opacity?: number; pts: Pt[]; endT: number | null; by?: number }
 
 /** Кратковременная подсветка контура элементов; t — момент начала, ms — длительность (нет — по умолчанию). */
 export interface Flash { ids: string[]; t: number; ms?: number }
@@ -377,6 +379,8 @@ export interface BoardSettings {
   animationMode: AnimationMode;
   /** Скрыть кнопки «Отменить» и «Повторить» в шапке (Ctrl+Z / Ctrl+Y работают). */
   hideUndoRedo: boolean;
+  /** Показывать пункт открытия окна демонстрации в главном меню. */
+  showPresentInMenu: boolean;
   /** Изображения (и страницы PDF) меняют размер только пропорционально — без Shift и Ctrl. */
   keepImageAspect: boolean;
   /** Плавное перемещение: небольшая инерция камеры после перетаскивания холста. */

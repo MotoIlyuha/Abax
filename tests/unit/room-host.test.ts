@@ -53,6 +53,24 @@ function setup(opts: Partial<RoomHubOptions> = {}, project: Project = demo()) {
   return { hub, host, join };
 }
 
+describe('комментарии на холсте', () => {
+  it('рассылает создание, перемещение и удаление ветки всем участникам с доступом к странице', () => {
+    const { host, join } = setup({ plan: 'pro' });
+    const guest = join().s;
+    const command = { t: 'comment', pageId: 'pg1', userId: 'guest' };
+    guest.recv({ ...command, op: 'create', targetElementId: 'missing', x: 10, y: 20, text: 'Открытый вопрос' });
+    expect(host.last('comments')).toBeUndefined();
+    guest.recv({ ...command, op: 'create', x: 10, y: 20, text: 'Открытый вопрос' });
+    const thread = host.last('comments')?.comments[0];
+    expect(thread).toMatchObject({ x: 10, y: 20, messages: [{ text: 'Открытый вопрос' }] });
+    expect(thread).not.toHaveProperty('targetElementId');
+    guest.recv({ ...command, op: 'move', threadId: thread.id, x: 70, y: 80 });
+    expect(guest.last('comments')?.comments).toEqual([{ ...thread, x: 70, y: 80 }]);
+    guest.recv({ ...command, op: 'delete', threadId: thread.id });
+    expect(host.last('comments')?.comments).toEqual([]);
+  });
+});
+
 describe('подключение и лимит гостей', () => {
   it('автор получает init, гость - проект и права', () => {
     const { host, join } = setup({ plan: 'pro' });

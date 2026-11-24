@@ -179,6 +179,8 @@ export function sanitizeComments(raw: unknown): CommentThread[] {
     out.push({
       id: t.id, x: t.x, y: t.y,
       ...(isStr(t.targetElementId) && t.targetElementId !== '' ? { targetElementId: t.targetElementId } : {}),
+      ...(isStr(t.targetElementId) && t.targetElementId !== '' && isObj(t.offset) && isNum(t.offset.x) && isNum(t.offset.y)
+        ? { offset: { x: t.offset.x, y: t.offset.y } } : {}),
       ...(t.resolved === true ? { resolved: true } : {}),
       messages,
     });

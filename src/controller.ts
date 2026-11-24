@@ -3,10 +3,12 @@ import { geometricFoundationFor, rebindAttachment, reattachMoved, withAttached }
 import type { Camera, Element, FadeStroke, Handle, ImageEl, Pt, ShapeEl, ToolId } from './types';
 import {
   state, update, onChange, beginStroke, extendStroke, endStroke, pushHistory, replaceElements,
-  addElement, setSelection, deleteSelected, undo, redo, pickTool, uid, commitPoly,
+  addElement, setSelection, confirmElementDeletion, deleteSelected, undo, redo, pickTool, uid, commitPoly,
   bringForward, sendBackward, moveSelectionLayer, expandSelectionWithGroups, groupSelected, ungroupSelected, selectAll, selectInserted, opacityField,
   zoomAtPoint, ZOOM_MAX, ZOOM_MIN, insertCopies, isDraftId, touchProject, canCopyCurrentBoard, canTouchElement,
+  setFadeStrokeEnd, type LiveStroke,
 } from './state';
+import { recognizeInkShape } from './ink-shape';
 import {
   type AABB, hitTest, erasePart, aabbIntersects, aabbUnion, alignGuides, alignShift, boxAnchors, boxHandles, elementAABB, elementHandles,
   applyHandle, insertPolyNode, removePolyNode, gridStepFor, resizeBox, scaleElement, shapeHoldsText, snapValue, translateElement,
@@ -18,7 +20,7 @@ import { cursorCss } from './cursors';
 import { myCursorId, onProfileChange } from './profile';
 import { fxForget, fxMove } from './cursor-fx';
 import { settingsDialogOpen } from './settings-dialog';
-import { presenting, requestRender, renderScene } from './renderer';
+import { animateInkRecognition, presenting, requestRender, renderScene } from './renderer';
 import { animateCameraTo, cancelCameraAnim, clampZoom, motionReduced } from './camera-anim';
 import { stopFollowByUser } from './follow';
 import { cancelActiveInteraction, onCancelInteraction } from './interaction';
@@ -36,7 +38,8 @@ import { DRAFT_KEY, comboFromEvent, pageNumberFromEvent } from './hotkeys';
 import { devModeEnabled, devPlanStep, limitsEnforced, setLimitsEnforced, setUserPlan, userPlan } from './plan';
 import { PLAN_TITLES } from './billing';
 import { showToast } from './about';
-import { ERASER_PATHS, ERASER_TIP } from './icons';
+import { canAnnotate, commentAt } from './comments-ui';
+import { COMMENT_TOOL_PATHS, ERASER_PATHS, ERASER_TIP } from './icons';
 import { TOOL_DEFS, toolByKey } from './toolbar';
 import {
   arrowDirection, arrowStep, isArrowKey, NUDGE_FAST, NUDGE_HOLD_MS, NUDGE_SPEED, NUDGE_STEP, NUDGE_STEP_FAST,
@@ -53,7 +56,13 @@ const ERASER_CURSOR = (() => {
     + `<g fill="#fff" stroke="#fff" stroke-width="4">${paths}</g><g stroke="#1f2329" stroke-width="1.8">${paths}</g></svg>`;
   return `url("data:image/svg+xml,${encodeURIComponent(svg)}") ${ERASER_TIP.x} ${ERASER_TIP.y}, crosshair`;
 })();
+const COMMENT_CURSOR = (() => {
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">'
+    + `<g stroke="#fff" stroke-width="4">${COMMENT_TOOL_PATHS}</g><g stroke="#1f2329" stroke-width="1.8">${COMMENT_TOOL_PATHS}</g></svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}") 4 20, crosshair`;
+})();
 const CURSORS: Record<ToolId, string> = {
+  comment: COMMENT_CURSOR,
   select: 'default', pen: 'crosshair', highlighter: 'crosshair', eraser: ERASER_CURSOR, partEraser: 'none',
   pan: 'grab', text: 'text', note: 'crosshair', task: 'default', spread: 'row-resize', rect: 'crosshair',
   ellipse: 'crosshair', triangle: 'crosshair', line: 'crosshair', arrow: 'crosshair', poly: 'crosshair',
@@ -66,6 +75,9 @@ function cursorFor(tool: ToolId): string {
   return tool === 'select' ? cursorCss(myCursorId()) : CURSORS[tool];
 }
 const MOVE_THRESHOLD_PX = 3;
+const INK_HOLD_MS = 500;
+const INK_HOLD_SLOP_PX = 3;
+const INK_SAMPLE_STEP_PX = 0.75;
 const AUTO_PAN_EDGE = 64;
 const AUTO_PAN_SPEED = 600; // px экрана в секунду у самого края
 /** Радиус примагничивания к направляющим соседей, px экрана. */
@@ -77,9 +89,10 @@ const POINTER_TOOLS = new Set<ToolId>(['laser', 'fadePen', 'flash']);
 const ZOOM_KEYS = new Set(['Equal', 'Minus']);
 
 type Action = { pid: number } & (
-  | { kind: 'draw' }
-  | { kind: 'erase'; pre: Element[]; removed: Element[]; last: { x: number; y: number } | null }
-  | { kind: 'erasePart'; pre: Element[]; changed: boolean; last: { x: number; y: number } | null }
+  | { kind: 'draw'; hold?: InkHold }
+  | { kind: 'comment'; sx: number; sy: number; point: { x: number; y: number }; targetId?: string }
+  | { kind: 'erase'; pre: Element[]; removed: Element[]; skipped: Set<string>; last: { x: number; y: number } | null }
+  | { kind: 'erasePart'; pre: Element[]; changed: boolean; skipped: Set<string>; last: { x: number; y: number } | null }
   | {
     kind: 'move'; pre: Element[]; start: Pt; orig: Map<string, Element>; moved: boolean; deselectOnUp: boolean; duplicate: boolean; source: Element[];
     /** Общая рамка переносимого до начала переноса и рамки соседей для направляющих (null — выключены). */
@@ -109,9 +122,17 @@ type Action = { pid: number } & (
 
 interface Ptr { x: number; y: number; type: string }
 
+interface InkHold {
+  stroke: LiveStroke;
+  points: Pt[];
+  anchor: { x: number; y: number };
+  timer?: ReturnType<typeof setTimeout>;
+}
+
 export function initController(canvas: HTMLCanvasElement): void {
   const pointers = new Map<number, Ptr>();
   let gesture: { dist: number; mx: number; my: number; cam: Camera } | null = null;
+  let penDown = false;
   let touchBlocked = false; // после жеста оставшийся палец не должен рисовать
   let action: Action | null = null;
   let autoPan: { event: PointerEvent; raf: number; last: number } | null = null;
@@ -402,7 +423,7 @@ export function initController(canvas: HTMLCanvasElement): void {
     // радиус маленький, шагов много: проверяем только элементы, чья рамка задевает путь
     const path = { x0: Math.min(from.x, x), y0: Math.min(from.y, y), x1: Math.max(from.x, x), y1: Math.max(from.y, y) };
     const near = state.board.elements.filter(el => {
-      if (el.type !== 'stroke' || !canTouchElement(el)) return false; // чужие штрихи при защите не стираются
+      if (el.type !== 'stroke' || a.skipped.has(el.id) || !canTouchElement(el)) return false; // чужие штрихи при защите не стираются
       const pad = r + ('width' in el ? el.width : 0); // у линии рамка без толщины
       const b = elementAABB(el);
       return aabbIntersects({ x0: b.x0 - pad, y0: b.y0 - pad, x1: b.x1 + pad, y1: b.y1 + pad }, path);
@@ -416,6 +437,10 @@ export function initController(canvas: HTMLCanvasElement): void {
       }
     }
     if (removed.size === 0) return;
+    if (!confirmElementDeletion(new Set([...removed].map(el => el.id)))) {
+      for (const el of removed) a.skipped.add(el.id);
+      return;
+    }
     a.removed.push(...removed);
     replaceElements(state.board.elements.filter(el => !removed.has(el)));
   }
@@ -433,10 +458,15 @@ export function initController(canvas: HTMLCanvasElement): void {
       const py = from.y + ((y - from.y) * i) / steps;
       const out: Element[] = [];
       for (const el of next) {
-        if (el.type !== 'stroke' || !canTouchElement(el)) { out.push(el); continue; }
+        if (el.type !== 'stroke' || a.skipped.has(el.id) || !canTouchElement(el)) { out.push(el); continue; }
         const stroke = el;
         const pieces = erasePart(stroke.pts, stroke.width, px, py, r);
         if (!pieces) { out.push(stroke); continue; }
+        if (pieces.length === 0 && !confirmElementDeletion(new Set([stroke.id]))) {
+          a.skipped.add(stroke.id);
+          out.push(stroke);
+          continue;
+        }
         changed = true;
         // куски — на месте линии (порядок слоёв сохраняется); первый оставляет её id
         pieces.forEach((pts, k) => out.push({ ...stroke, id: k === 0 ? stroke.id : uid(), pts }));
@@ -552,6 +582,36 @@ export function initController(canvas: HTMLCanvasElement): void {
     st.pts.push({ x: last.x + (pt.x - last.x) * 0.6, y: last.y + (pt.y - last.y) * 0.6, p: pt.p });
   }
 
+  function clearInkHold(a: Extract<Action, { kind: 'draw' }>): void {
+    clearTimeout(a.hold?.timer);
+    a.hold = undefined;
+  }
+
+  function trackInkHold(a: Extract<Action, { kind: 'draw' }>, pos: { x: number; y: number }, point: Pt): void {
+    const hold = a.hold;
+    if (!hold || state.liveStroke !== hold.stroke) return;
+    const last = hold.points[hold.points.length - 1];
+    if (Math.hypot(point.x - last.x, point.y - last.y) * state.camera.zoom >= INK_SAMPLE_STEP_PX) hold.points.push(point);
+    if (Math.hypot(pos.x - hold.anchor.x, pos.y - hold.anchor.y) < INK_HOLD_SLOP_PX) return;
+
+    hold.anchor = pos;
+    clearTimeout(hold.timer);
+    hold.timer = setTimeout(() => {
+      if (action !== a || state.liveStroke !== hold.stroke || activeTool() !== 'pen' ||
+          state.view !== 'board' || !canEditBoard()) return;
+      const shape = recognizeInkShape(hold.points, state.camera.zoom);
+      if (!shape) return;
+
+      const { color, width, opacity } = hold.stroke;
+      clearInkHold(a);
+      // Действие продолжается до отпускания, но живого штриха больше нет.
+      state.liveStroke = null;
+      const target = { ...shape, id: uid(), color, width, ...opacityField(opacity) };
+      addElement(target);
+      animateInkRecognition(hold.stroke.pts, target);
+    }, INK_HOLD_MS);
+  }
+
   function finishAction(): void {
     stopAutoPan();
     const a = action;
@@ -562,7 +622,10 @@ export function initController(canvas: HTMLCanvasElement): void {
     }
     state.guides = [];
     switch (a.kind) {
-      case 'draw': endStroke(); break;
+      case 'draw':
+        clearInkHold(a);
+        if (state.liveStroke) endStroke();
+        break;
       case 'erase':
         if (a.removed.length) pushHistory(a.pre);
         update();
@@ -602,7 +665,7 @@ export function initController(canvas: HTMLCanvasElement): void {
         update();
         break;
       case 'fade':
-        a.stroke.endT = performance.now(); // перо оторвано — след гаснет
+        setFadeStrokeEnd(undefined, performance.now());
         sendFadeStroke(a.sid, a.stroke, [], true);
         update();
         break;
@@ -621,6 +684,18 @@ export function initController(canvas: HTMLCanvasElement): void {
   }
 
   function onPointerDown(e: PointerEvent): void {
+    // A hand resting on the screen must not interrupt an active stylus stroke.
+    if (e.pointerType === 'touch' && penDown) { e.preventDefault(); return; }
+    if (e.pointerType === 'pen') {
+      penDown = true;
+      // The hand can touch the screen before the pen. Discard its unfinished ink.
+      if (action && pointers.get(action.pid)?.type === 'touch') {
+        if (action.kind === 'draw') { clearInkHold(action); action = null; state.liveStroke = null; update(); }
+        else finishAction();
+      }
+      if (gesture) gesture = null;
+      if (touchPtrs().length) touchBlocked = true;
+    }
     canvas.setPointerCapture(e.pointerId);
     if (e.pointerType !== 'mouse') {
       // палец и перо: после pointerup браузер шлёт эмулированный mousedown, и он снимал фокус
@@ -637,7 +712,7 @@ export function initController(canvas: HTMLCanvasElement): void {
 
 
     // совместный режим: на странице без права edit правки запрещены
-    if (!canEditBoard() && activeTool() !== 'pan' && !POINTER_TOOLS.has(activeTool()) && e.button !== 1) {
+    if (!canEditBoard() && !(activeTool() === 'comment' && canAnnotate()) && activeTool() !== 'pan' && !POINTER_TOOLS.has(activeTool()) && e.button !== 1) {
       // читатель может выделить объект — для реакций и копирования, — если автор копировать не запретил
       if (activeTool() === 'select' && e.button === 0 && state.linkMode === null && canCopyCurrentBoard()) {
         const at = toScene(lp.x, lp.y);
@@ -652,7 +727,7 @@ export function initController(canvas: HTMLCanvasElement): void {
     if (e.pointerType === 'touch' && touches.length === 2) {
       // жест двумя пальцами прерывает текущее действие; начатое первым пальцем рисование —
       // это не штрих, а начало жеста: отбрасываем, а не сохраняем точкой на доске
-      if (action?.kind === 'draw') { action = null; state.liveStroke = null; }
+      if (action?.kind === 'draw') { clearInkHold(action); action = null; state.liveStroke = null; }
       else if (action?.kind === 'shape') { action = null; state.liveShape = null; }
       else if (action?.kind === 'solid') { action = null; state.liveSolid = null; }
       else if (action?.kind === 'spread') { replaceElements(action.pre); action = null; state.spread = null; }
@@ -665,7 +740,7 @@ export function initController(canvas: HTMLCanvasElement): void {
       };
       return;
     }
-    if (gesture || action) return;
+    if (gesture || action || (touchBlocked && e.pointerType === 'touch')) return;
 
     if (e.button === 1 || activeTool() === 'pan') {
       e.preventDefault();
@@ -681,19 +756,26 @@ export function initController(canvas: HTMLCanvasElement): void {
     const s = toScene(lp.x, lp.y);
     const tool = temporaryEraser ? 'partEraser' : activeTool();
     switch (tool) {
-      case 'pen':
-      case 'highlighter':
-        beginStroke(tool, { x: s.x, y: s.y, p: pressureOf(e) });
-        action = { pid: e.pointerId, kind: 'draw' };
+      case 'comment':
+        if (canAnnotate()) action = { pid: e.pointerId, kind: 'comment', sx: lp.x, sy: lp.y, point: s, targetId: topHit(s.x, s.y)?.id };
         break;
+      case 'pen':
+      case 'highlighter': {
+        const point = { x: s.x, y: s.y, p: pressureOf(e) };
+        beginStroke(tool, point);
+        const stroke = state.liveStroke;
+        const hold = tool === 'pen' && stroke ? { stroke, points: [point], anchor: lp } : undefined;
+        action = { pid: e.pointerId, kind: 'draw', hold };
+        break;
+      }
       case 'eraser': {
-        const a: Extract<Action, { kind: 'erase' }> = { pid: e.pointerId, kind: 'erase', pre: state.board.elements, removed: [], last: null };
+        const a: Extract<Action, { kind: 'erase' }> = { pid: e.pointerId, kind: 'erase', pre: state.board.elements, removed: [], skipped: new Set(), last: null };
         action = a;
         eraseAt(s.x, s.y, a);
         break;
       }
       case 'partEraser': {
-        const a: Extract<Action, { kind: 'erasePart' }> = { pid: e.pointerId, kind: 'erasePart', pre: state.board.elements, changed: false, last: null };
+        const a: Extract<Action, { kind: 'erasePart' }> = { pid: e.pointerId, kind: 'erasePart', pre: state.board.elements, changed: false, skipped: new Set(), last: null };
         action = a;
         erasePartAt(s.x, s.y, a);
         break;
@@ -861,6 +943,7 @@ export function initController(canvas: HTMLCanvasElement): void {
           color: state.style.color, width: state.style.width * 3.2, ...opacityField(state.style.opacity),
           pts: [{ x: s.x, y: s.y, p: pressureOf(e) }], endT: null,
         };
+        setFadeStrokeEnd(undefined, null);
         state.fadeStrokes.push(stroke);
         const sid = uid();
         action = { pid: e.pointerId, kind: 'fade', stroke, sid };
@@ -907,6 +990,7 @@ export function initController(canvas: HTMLCanvasElement): void {
   }
 
   function onPointerMove(e: PointerEvent): void {
+    if (e.pointerType === 'touch' && penDown) return;
     const lp = localPos(e);
     const ptr = pointers.get(e.pointerId);
     if (ptr) { ptr.x = lp.x; ptr.y = lp.y; }
@@ -917,6 +1001,14 @@ export function initController(canvas: HTMLCanvasElement): void {
     if (e.pointerType === 'mouse' && state.tool === 'select' && !spacePan) fxMove('me', lp.x, lp.y, myCursorId());
     if (!action && e.pointerType !== 'touch') { const sp = toScene(lp.x, lp.y); hoverForeign(sp.x, sp.y); }
     if (collabActive()) noteCursor(lp.x / state.camera.zoom + state.camera.x, lp.y / state.camera.zoom + state.camera.y);
+    if (state.tool === 'comment') {
+      const pt = toScene(lp.x, lp.y);
+      const id = !spacePan && !gesture && !action && e.pointerType !== 'touch' && canAnnotate() ? topHit(pt.x, pt.y)?.id ?? null : null;
+      if (id !== state.commentHoverId) {
+        state.commentHoverId = id;
+        requestRender();
+      }
+    }
     if (state.tool === 'partEraser') update(); // кружок ластика под курсором
     else if (state.tool === 'spread' || presenting()) requestRender(); // линия разреза под курсором, курсор в окне демонстрации
 
@@ -950,8 +1042,11 @@ export function initController(canvas: HTMLCanvasElement): void {
         for (const ev of coalesced(e)) {
           const c = localPos(ev);
           const s = toScene(c.x, c.y);
-          extendStroke({ x: s.x, y: s.y, p: pressureOf(ev) });
+          const point = { x: s.x, y: s.y, p: pressureOf(ev) };
+          trackInkHold(a, c, point);
+          extendStroke(point, false);
         }
+        update();
         break;
       case 'laser': {
         const out: Pt[] = [];
@@ -1177,6 +1272,7 @@ export function initController(canvas: HTMLCanvasElement): void {
   }
 
   function onPointerUp(e: PointerEvent): void {
+    if (e.pointerType === 'pen') penDown = false;
     if (action?.pid === e.pointerId) stopAutoPan();
     pointers.delete(e.pointerId);
     if (gesture) {
@@ -1189,6 +1285,14 @@ export function initController(canvas: HTMLCanvasElement): void {
     if (touchBlocked && touchPtrs().length === 0) touchBlocked = false;
     if (action && action.pid !== e.pointerId) return;
     const a = action;
+    if (a?.kind === 'comment') {
+      action = null;
+      const lp = localPos(e);
+      if (e.type !== 'pointerup' || activeTool() !== 'comment' || Math.hypot(lp.x - a.sx, lp.y - a.sy) > MOVE_THRESHOLD_PX) return;
+      const target = a.targetId ? state.board.elements.find(el => el.id === a.targetId) : null;
+      if (target !== undefined) commentAt(a.point, target);
+      return;
+    }
     if (transfer && a?.kind === 'move') {
       const tr=transfer;
       if (tr.transition) { void tr.transition.then(() => { if (transfer === tr && action === a) onPointerUp(e); }); return; }
@@ -1221,6 +1325,10 @@ export function initController(canvas: HTMLCanvasElement): void {
 
   function onPointerLeave(): void {
     state.hover = null;
+    if (state.commentHoverId !== null) {
+      state.commentHoverId = null;
+      requestRender();
+    }
     resetEraser();
     fxForget('me');
     if (state.tool === 'partEraser' || state.tool === 'laser' || state.tool === 'spread') update();
@@ -1532,6 +1640,11 @@ export function initController(canvas: HTMLCanvasElement): void {
     }
   }, true);
   for (const type of ['mousedown', 'mouseup', 'auxclick'] as const) window.addEventListener(type, e => {
+    // У мыши pointerup приходит только после отпускания последней из зажатых кнопок.
+    if (type === 'mouseup' && e.button === 0 && action?.kind === 'draw' && pointers.get(action.pid)?.type === 'mouse') {
+      pointers.delete(action.pid);
+      finishAction();
+    }
     if (mouseAction(e)) { e.preventDefault(); e.stopImmediatePropagation(); }
   }, true);
 
@@ -1539,11 +1652,14 @@ export function initController(canvas: HTMLCanvasElement): void {
   onCancelInteraction(() => {
     stopAutoPan();
     cancelCameraAnim();
+    if (action?.kind === 'draw') clearInkHold(action);
     // содержимое страницы не трогаем: следом приходит проект хаба, а правка здесь ушла бы ему патчем
     action = null;
     gesture = null;
     pointers.clear();
+    state.commentHoverId = null;
     touchBlocked = false;
+    penDown = false;
     clearTransfer();
     state.liveStroke = null;
     state.liveShape = null;
@@ -1566,6 +1682,9 @@ export function initController(canvas: HTMLCanvasElement): void {
   canvas.addEventListener('pointermove', onPointerMove);
   canvas.addEventListener('pointerup', onPointerUp);
   canvas.addEventListener('pointercancel', onPointerUp);
+  canvas.addEventListener('lostpointercapture', e => {
+    if ((action?.kind === 'draw' || action?.kind === 'comment') && action.pid === e.pointerId) onPointerUp(e);
+  });
   canvas.addEventListener('pointerleave', onPointerLeave);
   canvas.addEventListener('dblclick', onDblClick);
   canvas.addEventListener('wheel', onWheel, { passive: false });
@@ -1577,6 +1696,9 @@ export function initController(canvas: HTMLCanvasElement): void {
   window.addEventListener('keyup', onKeyUp);
   window.addEventListener('blur', endNudge); // стрелку отпустили в другом окне — keyup не придёт
   window.addEventListener('blur', stopAutoPan);
+  window.addEventListener('blur', () => {
+    if (action?.kind === 'draw') clearInkHold(action);
+  });
 }
 
 function pressureOf(e: PointerEvent): number {

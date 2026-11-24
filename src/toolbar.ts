@@ -51,13 +51,14 @@ export const TOOL_DEFS: ToolDef[] = [
   // указка: показать, не оставляя следов на доске
   { id: 'laser', title: 'Лазерная указка', icon: TOOL_ICONS.laser },
   { id: 'fadePen', title: 'Исчезающий маркер', icon: TOOL_ICONS.fadePen },
+  { id: 'comment', title: 'Комментировать', icon: TOOL_ICONS.comment },
   { id: 'flash', title: 'Подсветка объектов', icon: TOOL_ICONS.flash },
 ];
 
 const DEF_BY_ID = new Map(TOOL_DEFS.map(t => [t.id, t]));
 
 /** Инструменты без цвета: у стикеров своя палитра, подсветка — фиксированного цвета (у лазерной указки цвет выбирается). */
-const COLORLESS_TOOLS = new Set<ToolId>(['select', 'pan', 'eraser', 'partEraser', 'note', 'task', 'spread', 'flash']);
+const COLORLESS_TOOLS = new Set<ToolId>(['select', 'pan', 'eraser', 'partEraser', 'note', 'task', 'comment', 'spread', 'flash']);
 
 /** Нужен ли инструменту выбор цвета и толщины на панели инструментов. */
 export function toolUsesColor(id: ToolId): boolean {
@@ -124,7 +125,7 @@ export function defaultToolbar(): ToolbarConfig {
     items: [
       tool('select'),
       { type: 'group', id: 'draw', name: 'Рисование', tools: ['pen', 'highlighter', 'eraser', 'partEraser'] },
-      tool('text'), tool('note'), tool('spread'),
+      tool('text'), tool('note'), tool('spread'), tool('comment'),
       { type: 'group', id: 'shapes', name: 'Фигуры', tools: ['rect', 'ellipse', 'triangle', 'line', 'arrow', 'poly'] },
       { type: 'group', id: 'solids', name: 'Стереометрия', tools: ['cube', 'box', 'prism', 'pyramid', 'truncPyramid', 'cylinder', 'cone', 'truncCone', 'sphere'] },
       { type: 'group', id: 'pointer', name: 'Указка', tools: ['laser', 'fadePen', 'flash'] },

@@ -1,6 +1,6 @@
 import type { CommentThread, Element, FadeStroke, GridMode, Page, PageRight, Project, ProjectMeta, Pt } from './types';
 import { roleLabel, type AccessRole, type ParticipantCaps } from './access';
-import { state, openProject, setSelection, setCopyGuard, setTouchGuard, isDraftId, onDraft, onChange, touchProject, update } from './state';
+import { state, openProject, setSelection, setCopyGuard, setTouchGuard, isDraftId, onDraft, onChange, touchProject, update, setFadeStrokeEnd } from './state';
 import { MAX_PATCH_OPS, applyBoardPatch, diffElements, isBoardPatch, type BoardPatch } from './delta';
 import { gestureActive } from './gesture';
 import { sanitizeComments } from './file';
@@ -388,6 +388,7 @@ export function connectCollab(t: CollabTransport, asHost: boolean): Promise<void
       if (usersKnown) showUserEvents(diffUsers(users, next, myUserId), u => collabAvatar(u));
       usersKnown = true;
       users = next;
+      releaseRemoteFades(new Set(next.map(user => user.userId)));
       followHostPages(next);
       renderRemoteCursors();
     } else if (m.t === 'avatar') {
@@ -850,8 +851,6 @@ const TRAIL_FLUSH_MS = 40;
 const TRAIL_CHUNK = 64;
 const TRAIL_MAX_PTS = 400;
 const FADE_MAX_PTS = 4000;
-/** Росчерк, от которого давно нет вестей (связь оборвалась), считаем оторванным. */
-const REMOTE_STALE_MS = 8000;
 const POINTER_COLOR = /^#[0-9a-fA-F]{6}$/;
 
 interface TrailOut { base: Record<string, unknown>; pts: Pt[]; last: Pt | null; timer: number }
@@ -905,22 +904,23 @@ export function sendFlash(ids: string[]): void {
   send({ t: 'pointer', k: 'flash', pageId: state.pageId, ids });
 }
 
-/** Чужие исчезающие росчерки, которые ещё тянутся: ключ — «участник:росчерк». */
-const remoteFades = new Map<string, { stroke: FadeStroke; at: number }>();
+/** Текущий штрих каждого удалённого участника. */
+const remoteFades = new Map<number, { pageId: string; sid: string; stroke: FadeStroke }>();
 
-function releaseRemoteFades(onlyStale: boolean): void {
+function releaseRemoteFades(remainingUsers?: Set<number>): void {
   const now = performance.now();
-  for (const [key, f] of remoteFades) {
-    if (onlyStale && now - f.at < REMOTE_STALE_MS) continue;
-    f.stroke.endT = now;
-    remoteFades.delete(key);
+  for (const by of remoteFades.keys()) {
+    if (remainingUsers?.has(by)) continue;
+    setFadeStrokeEnd(by, now);
+    remoteFades.delete(by);
+    update();
   }
 }
 
 function dropRemotePointers(): void {
   for (const [key, o] of trailOut) { clearTimeout(o.timer); trailOut.delete(key); }
   state.remoteLasers.clear();
-  releaseRemoteFades(false);
+  releaseRemoteFades();
 }
 
 const finiteNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -928,8 +928,17 @@ const finiteNum = (v: unknown): v is number => typeof v === 'number' && Number.i
 /** Указка другого участника. Хаб уже проверил форму, но клиент не полагается на это: проект и сообщения могут прийти откуда угодно. */
 function applyIncomingPointer(m: Record<string, unknown>): void {
   const by = m.by;
-  if (!finiteNum(by) || by === myUserId || m.pageId !== state.pageId) return;
-  releaseRemoteFades(true);
+  if (!finiteNum(by) || by === myUserId || typeof m.pageId !== 'string') return;
+  if (m.pageId !== state.pageId) {
+    // Отрыв может прийти уже после того, как наблюдатель сменил страницу.
+    const active = remoteFades.get(by);
+    if (m.k === 'fade' && m.end === true && active?.pageId === m.pageId && active.sid === m.sid) {
+      setFadeStrokeEnd(by, performance.now());
+      remoteFades.delete(by);
+      update();
+    }
+    return;
+  }
   const now = performance.now();
   if (m.k === 'flash') {
     if (!Array.isArray(m.ids)) return;
@@ -963,18 +972,17 @@ function applyIncomingPointer(m: Record<string, unknown>): void {
     return;
   }
   if (typeof m.sid !== 'string' || !finiteNum(m.width) || m.width <= 0 || m.width > 200) return;
-  const key = `${by}:${m.sid}`;
-  let f = remoteFades.get(key);
-  if (!f) {
+  let f = remoteFades.get(by);
+  if (!f || f.sid !== m.sid) {
+    setFadeStrokeEnd(by, null);
     const opacity = finiteNum(m.opacity) && m.opacity < 1 ? Math.max(0, m.opacity) : undefined;
-    const stroke: FadeStroke = { color, width: m.width, ...(opacity !== undefined ? { opacity } : {}), pts: [], endT: null };
-    f = { stroke, at: now };
-    remoteFades.set(key, f);
+    const stroke: FadeStroke = { color, width: m.width, ...(opacity !== undefined ? { opacity } : {}), pts: [], endT: null, by };
+    f = { pageId: m.pageId, sid: m.sid, stroke };
+    remoteFades.set(by, f);
     state.fadeStrokes.push(stroke);
   }
-  f.at = now;
   if (f.stroke.pts.length < FADE_MAX_PTS) f.stroke.pts.push(...pts);
-  if (end) { f.stroke.endT = now; remoteFades.delete(key); }
+  if (end) { setFadeStrokeEnd(by, now); remoteFades.delete(by); }
   update();
 }
 
@@ -1000,7 +1008,9 @@ export function sendAttention(pageId: string, elId: string, emoji: string): bool
 }
 
 export type CommentRequest =
-  | { op: 'create'; x: number; y: number; targetElementId: string; text: string }
+  | { op: 'create'; x: number; y: number; targetElementId?: string; text: string; offset?: { x: number; y: number } }
+  | { op: 'move'; threadId: string; x: number; y: number; offset?: { x: number; y: number } }
+  | { op: 'delete'; threadId: string }
   | { op: 'reply'; threadId: string; text: string }
   | { op: 'resolve'; threadId: string; resolved: boolean };
 

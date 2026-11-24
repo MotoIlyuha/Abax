@@ -11,7 +11,7 @@ import { imageFrame, shapeHoldsText, translateElement } from './geom';
 import { attachNewElement, freezeAttachments, rebindAttachment } from './attachment';
 import { canCreatePage, effectivePermissions, planOf } from './limits';
 import { limitsEnforced } from './plan';
-import { preserveLiveFields, syncCommentsWithMovedElements } from './comments';
+import { hasUnresolvedComments, preserveLiveFields, syncCommentsWithMovedElements } from './comments';
 import { describeChange } from './history-diff';
 
 export interface LiveStroke {
@@ -119,6 +119,7 @@ export interface AppState {
   spread: { y: number; dy: number } | null;
   /** Позиция курсора в экранных координатах (для ластика). */
   hover: { x: number; y: number } | null;
+  commentHoverId: string | null;
   /** След лазерной указки (экранные координаты + метка времени). */
   laserPts: LaserPt[];
   /** Кнопка зажата — указка оставляет след и тянет его к курсору. */
@@ -180,7 +181,7 @@ export const state: AppState = {
   noteColor: '#ffe066',
   settings: {
     toolbarPos: 'left', toolbarDetachable: false, toolbarFloat: null, snapToGrid: false, wheelMode: 'zoom', pageTransition: 'slide',
-    pageKeyMod: 'alt', mouseMode: 'pages', mouseBindings: { '1': null, '3': null, '4': null }, newPageKey: DEFAULT_NEW_PAGE_KEY, animationMode: 'enhanced', hideUndoRedo: false,
+    pageKeyMod: 'alt', mouseMode: 'pages', mouseBindings: { '1': null, '3': null, '4': null }, newPageKey: DEFAULT_NEW_PAGE_KEY, animationMode: 'enhanced', hideUndoRedo: false, showPresentInMenu: true,
     keepImageAspect: true, smoothPan: true, alignGuides: true, closePagesOnPick: false, thumbViewport: true, pageLinks: false, recursionEnabled: false,
   },
   selection: new Set(),
@@ -200,6 +201,7 @@ export const state: AppState = {
   guides: [],
   spread: null,
   hover: null,
+  commentHoverId: null,
   laserPts: [],
   laserDown: false,
   remoteLasers: new Map(),
@@ -322,29 +324,32 @@ function followComments(prev: Element[]): void {
   state.board.comments = syncCommentsWithMovedElements(state.board, prev, state.board.elements).comments;
 }
 
-export function undo(): void {
-  const prev = undoStack.pop();
-  if (!prev) return;
-  redoStack.push(state.board.elements);
-  redoTimes.push(undoTimes.pop() ?? Date.now());
+function restoreHistory(back: boolean): boolean {
+  const from = back ? undoStack : redoStack;
+  const to = back ? redoStack : undoStack;
+  const fromTimes = back ? undoTimes : redoTimes;
+  const toTimes = back ? redoTimes : undoTimes;
+  const snapshot = from.at(-1);
+  if (!snapshot) return false;
   const before = state.board.elements;
-  state.board.elements = preserveLiveFields(guardedSnapshot(prev, before), before);
+  const next = guardedSnapshot(snapshot, before);
+  if (state.board.comments?.some(t => t.targetElementId && !t.resolved)) {
+    const nextIds = new Set(next.map(el => el.id));
+    const removed = before.filter(el => !nextIds.has(el.id));
+    if (!confirmElementDeletion(new Set(removed.map(el => el.id)))) return false;
+  }
+  from.pop();
+  to.push(before);
+  toTimes.push(fromTimes.pop() ?? Date.now());
+  state.board.elements = preserveLiveFields(next, before);
   followComments(before);
   state.selection = new Set();
   update(true);
+  return true;
 }
 
-export function redo(): void {
-  const next = redoStack.pop();
-  if (!next) return;
-  undoStack.push(state.board.elements);
-  undoTimes.push(redoTimes.pop() ?? Date.now());
-  const before = state.board.elements;
-  state.board.elements = preserveLiveFields(guardedSnapshot(next, before), before);
-  followComments(before);
-  state.selection = new Set();
-  update(true);
-}
+export function undo(): void { restoreHistory(true); }
+export function redo(): void { restoreHistory(false); }
 
 /** Запись ленты «История изменений»: подпись, время и положение относительно текущего состояния. */
 export interface HistoryRecord {
@@ -383,8 +388,8 @@ export function historyTimeline(): HistoryRecord[] {
 export function jumpToHistory(index: number): void {
   if (!Number.isInteger(index)) return;
   const target = Math.max(0, Math.min(index, undoStack.length + redoStack.length));
-  while (undoStack.length > target) undo();
-  while (undoStack.length < target && redoStack.length > 0) redo();
+  while (undoStack.length > target) if (!restoreHistory(true)) return;
+  while (undoStack.length < target && redoStack.length > 0) if (!restoreHistory(false)) return;
 }
 
 // ----- Мутации сцены (элементы заменяются, никогда не правятся на месте) -----
@@ -406,12 +411,18 @@ export function addElement(el: Element): void {
   replaceElements([...state.board.elements, attachNewElement(el, state.board.elements)]);
 }
 
-export function deleteSelected(): void {
-  if (state.selection.size === 0) return;
+export function confirmElementDeletion(ids: ReadonlySet<string>): boolean {
+  return !hasUnresolvedComments(state.board, ids)
+    || window.confirm('Удалить выбранные объекты? У них есть нерешённые комментарии. Обсуждения останутся доступны на вкладке «Комментарии».');
+}
+
+export function deleteSelected(): boolean {
+  if (state.selection.size === 0 || !confirmElementDeletion(state.selection)) return false;
   pushHistory(state.board.elements);
   replaceElements(state.board.elements.filter(e => !state.selection.has(e.id)));
   state.selection = new Set();
   update();
+  return true;
 }
 
 /** Выделенные элементы в порядке слоёв. */
@@ -593,6 +604,7 @@ export function setTool(tool: ToolId): void {
   clearStickyTool(); // режим массового добавления снимается выбором другого инструмента
   const kindChanged = presetKind(state.tool) !== presetKind(tool);
   state.tool = tool;
+  state.commentHoverId = null;
   if (tool === 'pen' || tool === 'highlighter') state.selection = new Set();
   if (kindChanged) state.style = { ...activePreset() };
   state.liveStroke = null;
@@ -778,7 +790,7 @@ export function beginStroke(tool: 'pen' | 'highlighter', pt: Pt): void {
 }
 
 /** Добавляет точку с лёгким сглаживанием; слишком близкие точки сливает. */
-export function extendStroke(pt: Pt): void {
+export function extendStroke(pt: Pt, notify = true): void {
   const ls = state.liveStroke;
   if (!ls) return;
   const last = ls.pts[ls.pts.length - 1];
@@ -786,9 +798,14 @@ export function extendStroke(pt: Pt): void {
     last.p = (last.p + pt.p) / 2;
     return;
   }
-  // сглаживание к сырой точке на 60%: убирает дрожание пера, сохраняя отклик
-  ls.pts.push({ x: last.x + (pt.x - last.x) * 0.6, y: last.y + (pt.y - last.y) * 0.6, p: pt.p });
-  update();
+  // The latest sample stays under the pointer; smooth only the previous sample.
+  if (ls.pts.length > 1) {
+    const prev = ls.pts[ls.pts.length - 2];
+    last.x = last.x * 0.6 + (prev.x + pt.x) * 0.2;
+    last.y = last.y * 0.6 + (prev.y + pt.y) * 0.2;
+  }
+  ls.pts.push({ ...pt });
+  if (notify) update();
 }
 
 export function endStroke(): void {
@@ -1096,4 +1113,17 @@ export function expandSelectionWithGroups(ids: Set<string>): string[] {
   );
   if (gids.size === 0) return [...ids];
   return state.board.elements.filter(e => ids.has(e.id) || (e.groupId && gids.has(e.groupId))).map(e => e.id);
+}
+
+export const FADE_STROKE_DELAY_MS = 2000;
+
+/** Общее время отрыва для всех видимых штрихов одного автора. */
+export function setFadeStrokeEnd(by: number | undefined, endT: number | null): void {
+  const now = endT ?? performance.now();
+  for (const stroke of state.fadeStrokes) {
+    if (stroke.by !== by) continue;
+    if (stroke.endT === null || (endT === null && now - stroke.endT < FADE_STROKE_DELAY_MS)) {
+      stroke.endT = endT;
+    }
+  }
 }

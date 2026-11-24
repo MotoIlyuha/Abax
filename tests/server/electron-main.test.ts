@@ -21,6 +21,14 @@ class FakeWindow {
   icon: unknown = null;
   destroyed = false;
   minimized = false;
+  maximized = false;
+  minimize() { this.minimized = true; }
+  maximize() { this.maximized = true; this.windowListeners.get('maximize')?.(); }
+  unmaximize() { this.maximized = false; this.windowListeners.get('unmaximize')?.(); }
+  isMaximized() { return this.maximized; }
+  close() { this.destroyed = true; }
+  windowListeners = new Map<string, () => void>();
+  on(event: string, listener: () => void) { this.windowListeners.set(event, listener); }
   visible = true;
   focused = false;
   setIcon(img: unknown) { this.icon = img; }
@@ -33,6 +41,8 @@ class FakeWindow {
   listeners = new Map<string, (...a: unknown[]) => void>();
   openHandler: ((d: { url?: string; frameName: string }) => Record<string, any>) | null = null;
   webContents = {
+    mainFrame: {},
+    send: vi.fn(),
     on: (ev: string, fn: (...a: unknown[]) => void) => { this.listeners.set(ev, fn); },
     setWindowOpenHandler: (fn: (d: { url?: string; frameName: string }) => Record<string, any>) => { this.openHandler = fn; },
   };
@@ -125,6 +135,32 @@ describe('окно', () => {
     const prefs = w.opts.webPreferences as Record<string, unknown>;
     expect(prefs).toMatchObject({ contextIsolation: true, nodeIntegration: false });
     expect(prefs.preload).toBe(PRELOAD);
+    expect(prefs.additionalArguments).toContain('--abax-window-titlebar');
+    expect(w.opts.frame).toBe(false);
+  });
+
+  it('управляет окном только из главного фрейма и сообщает о разворачивании', async () => {
+    await loadMain();
+    const w = FakeWindow.all[0];
+    const control = handlers.get('window:control')!;
+    const event = { sender: w.webContents, senderFrame: w.webContents.mainFrame };
+
+    await control({ ...event, senderFrame: {} }, 'close');
+    await control({ ...event, sender: {} }, 'close');
+    expect(w.destroyed).toBe(false);
+    expect(await control(event, 'status')).toBe(false);
+
+    await control(event, 'maximize');
+    expect(w.maximized).toBe(true);
+    expect(w.webContents.send).toHaveBeenLastCalledWith('window:maximized', true);
+    await control(event, 'maximize');
+    expect(w.maximized).toBe(false);
+    expect(w.webContents.send).toHaveBeenLastCalledWith('window:maximized', false);
+
+    await control(event, 'minimize');
+    expect(w.minimized).toBe(true);
+    await control(event, 'close');
+    expect(w.destroyed).toBe(true);
   });
 
   it('в сборке грузит dist/index.html', async () => {

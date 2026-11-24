@@ -12,7 +12,7 @@ import { CHAT_HISTORY, chatMessageFor, cleanChatAttachment, createRateLimiter, n
 import { cleanCursorId } from './cursors';
 import { avatarKey, cleanAvatar, isAvatarPhoto } from './avatar-value';
 import { guardPageReplace, guardPatch, type GuardWho } from './element-guard';
-import { addCommentReply, createCommentThread, resolveCommentThread, toggleElementReaction } from './comments';
+import { addCommentReply, createCommentThread, deleteCommentThread, moveCommentThread, resolveCommentThread, toggleElementReaction } from './comments';
 import { mergeGuestTask, mergeHostTask, projectTaskForRole, submitTaskAttempt, updateStudentDraft } from './task-element';
 
 export { PROTO };
@@ -1217,10 +1217,18 @@ export function createRoomHub(options: RoomHubOptions): RoomHub {
     const author = { authorId, authorName: info.name };
     if (!info.noteId) noteIdOf(info, m.userId);
     let next = page;
+    const offset = isObj(m.offset) && isNum(m.offset.x) && isNum(m.offset.y) ? { x: m.offset.x, y: m.offset.y } : undefined;
     if (m.op === 'create') {
       if (!isNum(m.x) || !isNum(m.y) || typeof m.text !== 'string') return;
-      if (!isId(m.targetElementId)) return;
-      next = createCommentThread(page, { x: m.x, y: m.y, targetElementId: m.targetElementId, ...author, text: m.text });
+      const target = m.targetElementId;
+      if (target !== undefined && !isId(target)) return;
+      next = createCommentThread(page, { x: m.x, y: m.y, targetElementId: target, offset, ...author, text: m.text });
+    } else if (m.op === 'move') {
+      if (!isId(m.threadId) || !isNum(m.x) || !isNum(m.y)) return;
+      next = moveCommentThread(page, m.threadId, m.x, m.y, offset);
+    } else if (m.op === 'delete') {
+      if (!isId(m.threadId)) return;
+      next = deleteCommentThread(page, m.threadId);
     } else if (m.op === 'reply') {
       if (!isId(m.threadId) || typeof m.text !== 'string') return;
       next = addCommentReply(page, m.threadId, { ...author, text: m.text });

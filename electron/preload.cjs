@@ -1,7 +1,29 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-if (process.platform !== 'darwin' && typeof window !== 'undefined') {
-  window.addEventListener('DOMContentLoaded', () => document.documentElement.classList.add('window-controls-overlay'));
+if (process.argv.includes('--abax-window-titlebar')) {
+  window.addEventListener('DOMContentLoaded', () => {
+    const titlebar = document.getElementById('desktop-titlebar');
+    if (!titlebar) return;
+
+    const maximize = titlebar.querySelector('[data-window-action="maximize"]');
+    const updateMaximized = (maximized) => {
+      const label = maximized ? 'Восстановить размер окна' : 'Развернуть окно';
+      maximize.dataset.maximized = String(maximized);
+      maximize.title = label;
+      maximize.setAttribute('aria-label', label);
+    };
+    ipcRenderer.on('window:maximized', (_event, maximized) => updateMaximized(maximized));
+    void ipcRenderer.invoke('window:control', 'status').then(updateMaximized);
+    for (const button of titlebar.querySelectorAll('[data-window-action]')) {
+      button.addEventListener('click', () => {
+        void ipcRenderer.invoke('window:control', button.dataset.windowAction);
+      });
+    }
+    titlebar.addEventListener('pointerover', (event) => {
+      titlebar.toggleAttribute('data-mouse-hover', event.pointerType === 'mouse');
+    });
+    titlebar.hidden = false;
+  }, { once: true });
 }
 
 contextBridge.exposeInMainWorld('doskaAPI', {

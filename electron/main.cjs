@@ -44,18 +44,19 @@ async function createWindow() {
     minHeight: 600,
     backgroundColor: '#ffffff',
     autoHideMenuBar: true,
-    ...(process.platform !== 'darwin' ? {
-      titleBarStyle: 'hidden',
-      titleBarOverlay: { color: '#00000000', symbolColor: '#20242b', height: 46 },
-    } : {}),
+    frame: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
+      additionalArguments: ['--abax-window-titlebar'],
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
     },
   });
   mainWindow = win;
+  const publishMaximized = () => win.webContents.send('window:maximized', win.isMaximized());
+  win.on('maximize', publishMaximized);
+  win.on('unmaximize', publishMaximized);
   if (isDev) {
     win.loadURL('http://localhost:5173');
   } else {
@@ -75,6 +76,7 @@ async function createWindow() {
     return {
       action: 'allow',
       overrideBrowserWindowOptions: {
+        frame: true,
         autoHideMenuBar: true,
         backgroundColor: '#ffffff',
         minWidth: 320,
@@ -161,6 +163,22 @@ function boardsDir() {
   fss.mkdirSync(d, { recursive: true });
   return d;
 }
+
+ipcMain.handle('window:control', (event, action) => {
+  const win = mainWindow;
+  if (!win || win.isDestroyed() || event.sender !== win.webContents ||
+      event.senderFrame !== win.webContents.mainFrame) return;
+
+  switch (action) {
+    case 'minimize': win.minimize(); break;
+    case 'maximize':
+      if (win.isMaximized()) win.unmaximize();
+      else win.maximize();
+      break;
+    case 'close': win.close(); break;
+    case 'status': return win.isMaximized();
+  }
+});
 
 // ОС и переносная ли версия: обновление предлагает файл под неё (установщик или переносной exe).
 // Переносной exe electron-builder распаковывает и запускает с PORTABLE_EXECUTABLE_FILE в окружении.

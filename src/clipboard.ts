@@ -25,9 +25,9 @@ export function copySelection(data?: DataTransfer | null, cut = false): boolean 
   if (!canCopyCurrentBoard()) return false;
   const els = selectedElements();
   if (els.length === 0) return false;
+  if (cut && !deleteSelected()) return false;
   clip = { key: uid(), pageId: state.pageId, elements: structuredClone(els), pastes: 0, cut };
   data?.setData(CLIP_MIME, JSON.stringify({ key: clip.key, pageId: clip.pageId, elements: clip.elements }));
-  if (cut) deleteSelected();
   return true;
 }
 
