@@ -1,7 +1,8 @@
 import './style.css';
+import { appHref, launchesTutor } from './tutor-launch';
 import { initRenderer, requestRender } from './renderer';
 import { initController } from './controller';
-import { initApp, importPdfFromDataUrl } from './app';
+import { initApp, importPdfFromDataUrl, openAllSettings } from './app';
 import { state, openProject, blankProject, projectMeta, onChange, undo, redo } from './state';
 import { storage, setStorage } from './storage';
 import { startCollab, connectCollab, netStorage, closedNotice, showCollabNotice, relayNotice, type CollabClosedDetail } from './collab';
@@ -12,7 +13,7 @@ import { initAppIcon } from './app-icon';
 import { linkModeOf, parseBoardUrl } from './router';
 import { enterLinkView, startLinkViewCamera } from './link-view-ui';
 import { joinCloudInvite, watchOwnerRoom } from './cloud-room';
-import { cloudEnabled } from './api-client';
+import { cloudEnabled, restoreBrowserSession, sharedSessionOrigin } from './api-client';
 import { localGuestTransport, localRoomCode } from './local-transport';
 import { startLocalRoom } from './browser-host';
 import { initCloudSync, mergeRemoteMetas, openFresh, startBackgroundSync } from './cloud-sync';
@@ -45,6 +46,7 @@ function watchGuestClose(opts: { roomFullHandled?: boolean } = {}): void {
 }
 
 async function boot(): Promise<void> {
+  if (launchesTutor()) { await (await import('./tutor-app')).bootTutor(); return; }
   initTooltips();
   initAppIcon();
   const canvas = document.getElementById('board') as HTMLCanvasElement;
@@ -99,6 +101,7 @@ async function boot(): Promise<void> {
   });
 
   // вернулись от провайдера входа (#abaxAuth=…) — завершить вход до открытия доски
+  if (!viewRoute && sharedSessionOrigin()) await restoreBrowserSession();
   const authOutcome = viewRoute ? null : await completePendingAuth();
 
   let metas = await storage.list();
@@ -131,7 +134,14 @@ async function boot(): Promise<void> {
     try {
       last = JSON.parse(localStorage.getItem('doska.last') || '{}');
     } catch { /* нет сохранённой позиции */ }
+    const tutorPid = q.get('tutorProject');
+    if (q.get('route') === 'board') {
+      const back = document.getElementById('tutor-return') as HTMLAnchorElement;
+      back.hidden = false; back.href = appHref('tutor');
+      if (tutorPid) last = { pid: tutorPid, pageId: q.get('tutorPage') ?? undefined };
+    }
     let project = last.pid ? await openFresh(last.pid) : null;
+    if (tutorPid && !project) throw new Error('tutor-board-unavailable');
     if (!project && metas.length > 0) project = await storage.load(metas[0].id);
     if (!project) {
       // стартовая заглушка: пока пользователь в ней ничего не сделал, в облако она не уходит (SPEC_NIGHT5 §2.1)
@@ -182,7 +192,7 @@ async function boot(): Promise<void> {
   (window as unknown as Record<string, unknown>).__doska = { state, undo, redo, requestRender, importPdfFromDataUrl, startLocalRoom, notify: pushNotice };
 
   // окно первого входа — на обычной доске (не в просмотре по ссылке), когда интерфейс уже показан
-  if (!viewRoute) afterStartup = () => startOnboarding(authOutcome);
+  if (!viewRoute) afterStartup = q.has('tutorProfile') && !authOutcome ? () => openAllSettings('profile') : () => startOnboarding(authOutcome);
 }
 
 /** Что сделать, когда экран загрузки скрыт. */
@@ -207,11 +217,17 @@ void boot().then(() => {
     const next = afterStartup;
     afterStartup = null;
     if (next) next();
-    else showAnalyticsBanner();
+    else if (!document.body.classList.contains('tutor-mode')) showAnalyticsBanner();
     document.getElementById('startup')!.hidden = true;
   }));
 }).catch((error: unknown) => {
   console.error('Не удалось запустить приложение', error);
-  document.getElementById('startup-message')!.textContent = 'Не удалось загрузить приложение.';
+  const status = document.getElementById('startup-message')!;
+  status.textContent = 'Не удалось загрузить приложение.';
+  if (error instanceof Error && error.message === 'tutor-board-unavailable') {
+    status.textContent = 'Не удалось открыть закреплённую доску. ';
+    const back = document.createElement('a'); back.href = appHref('tutor'); back.textContent = 'В кабинет Tutor';
+    status.append(back);
+  }
   document.getElementById('startup-retry')!.hidden = false;
 });

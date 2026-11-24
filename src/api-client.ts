@@ -107,11 +107,25 @@ export function normalizeApiUrl(raw: unknown): string {
 export function apiBase(): string {
   const local = normalizeApiUrl(store(API_URL_KEY));
   if (local) return local;
+  if (typeof location !== 'undefined' && location.origin === 'https://tutor.abaxboard.ru') return location.origin;
   if (typeof __API_SAME_ORIGIN__ === 'boolean' && __API_SAME_ORIGIN__ && typeof location !== 'undefined') {
     const own = normalizeApiUrl(location.origin);
     if (own) return own;
   }
   return typeof __DEFAULT_API_URL__ === 'string' ? normalizeApiUrl(__DEFAULT_API_URL__) : '';
+}
+
+export function sharedSessionOrigin(): boolean {
+  return typeof location !== 'undefined' && /^https:\/\/(?:board\.|tutor\.)?abaxboard\.ru$/.test(location.origin);
+}
+
+/** На поддоменах cookie отражает последний вход, даже когда у клиента сохранился старый Bearer. */
+export async function restoreBrowserSession(api: ApiClient | null = getApi()): Promise<void> {
+  if (!api || api.base !== location.origin) return;
+  try {
+    const s = await api.request<{token:string}>('POST','/api/auth/session',{}, {anonymous:true});
+    saveSession(s.token);
+  } catch(e) { if (!(e instanceof ApiError && (e.status === 401 || e.status === 404 || e.isNetwork))) throw e; }
 }
 
 export function createApiClient(options: ApiClientOptions): ApiClient {

@@ -1,3 +1,7 @@
+import { registerTutorBoards } from './tutor-boards';
+import { registerCalendar } from './tutor-calendar';
+import { registerStudents } from './tutor-students';
+import { registerMiniAppAuth } from './tma';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { LocalFsAssetBackend, type AssetStorageBackend } from './asset-storage';
@@ -48,6 +52,7 @@ export interface AppOptions {
   prettyLinks?: boolean;
   trustProxy?: boolean;
   secureCookies?: boolean;
+  cookieDomain?: string;
   adminOrigin?: string;
   adminAccounts?: [string, string][];
   anonRateMax?: number;
@@ -133,6 +138,7 @@ function resolveOptions(o: AppOptions): ResolvedOptions {
     prettyLinks: o.prettyLinks ?? !!o.staticDir,
     trustProxy: o.trustProxy === true,
     secureCookies: o.secureCookies === true,
+    cookieDomain: o.cookieDomain === '.abaxboard.ru' ? o.cookieDomain : '',
     adminOrigin: adminOrigin(o.adminOrigin, o.secureCookies === true),
     adminAccounts,
     anonRateMax: o.anonRateMax ?? 30,
@@ -161,6 +167,7 @@ export function createAppServer(options: AppOptions, extraRoutes: RouteModule[] 
   const log = options.log ?? (() => {});
   const logError = (e: unknown) => log(`Ошибка обработчика: ${e instanceof Error ? e.stack ?? e.message : String(e)}`);
   const app: AppContext = {
+    liveProject: id => rooms.projectOf(id),
     db,
     opts: resolveOptions(options),
     assets: options.assetBackend ?? new LocalFsAssetBackend(options.assetsDir),
@@ -176,6 +183,10 @@ export function createAppServer(options: AppOptions, extraRoutes: RouteModule[] 
   };
   const router = new Router();
   registerAuthRoutes(router);
+  registerMiniAppAuth(router);
+  registerStudents(router);
+  registerCalendar(router);
+  registerTutorBoards(router);
   registerAuthFlowRoutes(router);
   registerAssetRoutes(router);
   registerProjectRoutes(router);
@@ -225,7 +236,8 @@ export function createAppServer(options: AppOptions, extraRoutes: RouteModule[] 
       if (reply && !reply.next) { send(res, method, reply, privateResponse); return; }
       if (url.pathname.startsWith('/api/')) throw new HttpError(404, 'not-found');
       if ((method === 'GET' || method === 'HEAD') && app.opts.staticDir) {
-        const file = await serveStatic(app.opts.staticDir, url.pathname);
+        if (url.pathname === '/tutor/') { send(res, method, { status:308, headers:{Location:'/tutor' + url.search} }); return; }
+        const file = await serveStatic(app.opts.staticDir, /^\/tutor\/?$/.test(url.pathname) ? '/index.html' : url.pathname);
         if (file) { send(res, method, file); return; }
       }
       throw new HttpError(404, 'not-found');

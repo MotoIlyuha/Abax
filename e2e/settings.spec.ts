@@ -50,7 +50,8 @@ async function drag(page: Page, from: Locator, to: Locator, at = 0.5, dx = 0.5):
   await page.mouse.up();
 }
 
-test.describe('окно «Все настройки»', () => {
+test.describe('настройка конфиденциальности', () => {
+  test.use({analyticsPrompt:true});
   test('Яндекс Метрика переключается в разделе «Конфиденциальность»', async ({ page }) => {
     await page.route('https://mc.yandex.ru/**', route => route.abort());
     const banner = page.locator('#analytics-banner');
@@ -72,6 +73,9 @@ test.describe('окно «Все настройки»', () => {
     await expect.poll(() => page.evaluate(() => localStorage.getItem('abax.analytics-consent'))).toBe('rejected');
   });
 
+});
+
+test.describe('окно «Все настройки»', () => {
   test('открывается из настроек доски и по Ctrl+, закрывается Esc, крестиком и кликом мимо', async ({ page }) => {
     await page.locator('#btn-settings').dispatchEvent('click');
     await page.locator('#settings-popover .settings-all').click();

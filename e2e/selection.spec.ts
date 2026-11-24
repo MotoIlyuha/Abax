@@ -310,10 +310,11 @@ test.describe('камера', () => {
   test('«Показать всё» вписывает содержимое', async ({ board, page }) => {
     await board.rect(400, 300, 500, 400);
     // дальний элемент рисуем, отъехав камерой
-    for (let i = 0; i < 6; i++) await page.keyboard.press('Minus');
+    for (let i = 0; i < 12; i++) await page.keyboard.press('Minus');
     await board.settleCamera();
     await board.rect(2500, 1700, 2600, 1800);
-    for (let i = 0; i < 9; i++) await page.keyboard.press('Equal');
+    expect(await board.count('shape')).toBe(2);
+    for (let i = 0; i < 16; i++) await page.keyboard.press('Equal');
     await board.settleCamera();
     expect((await board.state()).camera.zoom).toBeGreaterThan(1.5);
     await page.locator('#btn-fit').click();

@@ -295,7 +295,7 @@ it('миграция V9 сохраняет старые тарифы, платё
     } finally { old.close(); }
     const migrated = openDb(path);
     try {
-      expect(migrated.pragma('user_version', { simple: true })).toBe(10);
+      expect(migrated.pragma('user_version', { simple: true })).toBe(12);
       expect(migrated.pragma('integrity_check', { simple: true })).toBe('ok');
       expect(migrated.prepare('SELECT plan, plan_expires_at FROM users').get()).toEqual({ plan: 'pro', plan_expires_at: null });
       expect(migrated.prepare('SELECT status, resolved_at FROM payments').get()).toEqual({ status: 'paid', resolved_at: null });

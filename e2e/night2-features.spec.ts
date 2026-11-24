@@ -254,7 +254,7 @@ async function addTask(page: Page, v: { statement: string; answer: string; unit?
 
 test.describe('задания', () => {
   test('автор добавляет задание формой; ответ проверяется, результат и решение видны', async ({ board, page }) => {
-    await board.open();
+    await board.open('/?route=board');
     await addTask(page, { statement: 'Скорость 5 м за 1 с. Найдите v.', answer: '5', unit: 'м/с', solution: 'v = s/t', subject: 'physics' });
     expect(await board.count('task')).toBe(1);
     const panel = page.locator('.task-panel');
@@ -282,7 +282,7 @@ test.describe('задания', () => {
   });
 
   test('кнопка «Задание» на панели открывает форму и не остаётся инструментом', async ({ board, page }) => {
-    await board.open();
+    await board.open('/?route=board');
     await page.locator('#toolbar [data-tool="task"]').click();
     await expect(page.locator('#task-dialog')).toBeVisible();
     await page.locator('#task-dialog .td-actions button', { hasText: 'Отмена' }).click();
@@ -291,7 +291,7 @@ test.describe('задания', () => {
   });
 
   test('двойной клик открывает правку; условие меняется, ввод остаётся, шаг - в историю', async ({ board, page }) => {
-    await board.open();
+    await board.open('/?route=board');
     await addTask(page, { statement: 'Старое условие', answer: '1' });
     await page.locator('.task-input').fill('2');
     await page.locator('.task-input').press('Enter');
@@ -311,7 +311,7 @@ test.describe('задания', () => {
   });
 
   test('учитель в комнате и ученик: ответ скрыт, ввод виден вживую, проверяет хаб', async ({ board, page, context }) => {
-    await board.open();
+    await board.open('/?route=board');
     await addTask(page, { statement: 'Сколько будет 2 + 3?', answer: '5', solution: 'Сложить', code: 'print(2 + 3)', subject: 'informatics' });
     await startBrowserRoom(page, 'task1');
     const student = await joinLocal(context, 'task1', 'Маша');

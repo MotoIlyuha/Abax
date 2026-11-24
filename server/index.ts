@@ -40,6 +40,7 @@ async function main(): Promise<void> {
     // чистые ссылки /j/… (по умолчанию — когда сервер раздаёт клиента); ABAX_PRETTY_LINKS=0 — выключить
     ...(env.ABAX_PRETTY_LINKS !== undefined ? { prettyLinks: env.ABAX_PRETTY_LINKS === '1' } : {}),
     trustProxy: truthy(env.TRUST_PROXY),
+    cookieDomain: env.COOKIE_DOMAIN,
     secureCookies: env.NODE_ENV === 'production',
     adminOrigin: env.ABAX_ADMIN_ORIGIN,
     adminAccounts: adminAccountEntries(env.ABAX_ADMIN_ACCOUNTS),

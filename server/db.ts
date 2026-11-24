@@ -1,3 +1,4 @@
+import { tutorSchema } from './tutor-schema';
 import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -405,7 +406,8 @@ CREATE INDEX idx_admin_audit_operation ON admin_audit(operation, id);
 CREATE INDEX idx_admin_audit_admin ON admin_audit(admin_id, id);
 `;
 
-const MIGRATIONS: string[] = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10];
+const MIGRATIONS: string[] = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10, tutorSchema,
+  'ALTER TABLE tutor_lessons ADD COLUMN removed_at INTEGER'];
 
 /** target — до какой версии (по умолчанию — до последней; меньше — только в тестах миграций). */
 export function migrate(db: Db, target = MIGRATIONS.length): void {

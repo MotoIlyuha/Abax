@@ -43,6 +43,7 @@ function abaxDevServer(): Plugin {
           assetsDir: join(dataDir, 'assets'),
           jwtSecret: loadJwtSecret(process.env, dataDir),
           telegramBotToken: process.env.TELEGRAM_BOT_TOKEN,
+          cookieDomain: process.env.COOKIE_DOMAIN,
           yookassaShopId: process.env.YOOKASSA_SHOP_ID,
           yookassaSecretKey: process.env.YOOKASSA_SECRET_KEY,
           enforceLimits: truthy(process.env.ABAX_ENFORCE_LIMITS),

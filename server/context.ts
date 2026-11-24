@@ -36,6 +36,7 @@ export interface ResolvedOptions {
   trustProxy: boolean;
   /** Помечать cookie сессии как Secure. */
   secureCookies: boolean;
+  cookieDomain: string;
   adminOrigin: URL | null;
   adminAccounts: ReadonlyMap<string, string>;
   /** Сколько новых анонимов с одного адреса в окне. */
@@ -56,6 +57,7 @@ export interface AccessEvent { projectId: string; kind: 'deleted' | 'invite-revo
 
 /** Общее состояние сервера, которое получают все обработчики. */
 export interface AppContext {
+  liveProject(id: string): Project | null;
   db: Db;
   opts: ResolvedOptions;
   assets: AssetStorageBackend;

@@ -19,6 +19,8 @@ import { tierSummary } from './subscription-settings';
 export interface ProfileSettingsOptions {
   /** Сообщение о входе после возврата от провайдера (показывается один раз). */
   notice?: { text: string; kind: 'error' | 'info' } | null;
+  /** Настройки кабинета репетитора без выбора курсора. */
+  tutor?: boolean;
   /** «Подписка»: раздел настроек «Подписка». */
   openSubscription?: () => void;
 }
@@ -49,7 +51,7 @@ export function renderProfileSettings(host: HTMLElement, rerender: () => void, o
   limited.set(profile.name, false);
   name.addEventListener('change', () => { setProfile({ name: name.value }); limited.set(getProfile().name); });
   name.addEventListener('keydown', e => { if (e.key === 'Enter') name.blur(); });
-  nameField.append(nameRowWithDice(name, limited.el), el('span', 'ps-hint', 'Его видят участники совместной работы рядом с вашим курсором.'));
+  nameField.append(nameRowWithDice(name, limited.el), el('span', 'ps-hint', opts.tutor ? 'Его видят участники совместной работы.' : 'Его видят участники совместной работы рядом с вашим курсором.'));
 
   // ----- аватар: буквы, смайл или фото — слева от имени -----
   const avatar = createAvatarEditor({
@@ -57,7 +59,7 @@ export function renderProfileSettings(host: HTMLElement, rerender: () => void, o
     name: profile.name || 'Вы',
     cursorId: profile.cursorId,
     overDialog: true,
-    onChange: v => { setProfile({ avatar: v }); picker.setAvatar(v); },
+    onChange: v => { setProfile({ avatar: v }); picker?.setAvatar(v); },
   });
   const identity = el('div', 'ps-identity');
   identity.append(avatar.el, nameField);
@@ -66,15 +68,15 @@ export function renderProfileSettings(host: HTMLElement, rerender: () => void, o
   const cursorBlock = el('div', 'ps-block');
   cursorBlock.appendChild(el('div', 'ps-caption', 'Курсор, цвет выделения и бейдж'));
   const entitled = cursorEntitled();
-  const picker = createCursorPicker({
+  const picker = opts.tutor ? null : createCursorPicker({
     choice: initialChoice(profile.cursorId, entitled),
     entitled,
     name: profile.name || 'Вы',
     avatar: profile.avatar,
     onChange: c => { avatar.setCursor(c.preview); if (!previewLocked(c)) setProfile({ cursorId: c.saved }); },
   });
-  name.addEventListener('input', () => { picker.setName(name.value.trim() || 'Вы'); avatar.setName(name.value.trim() || 'Вы'); });
-  cursorBlock.appendChild(picker.el);
+  name.addEventListener('input', () => { picker?.setName(name.value.trim() || 'Вы'); avatar.setName(name.value.trim() || 'Вы'); });
+  if (picker) cursorBlock.appendChild(picker.el);
 
   // ----- тариф: текущий уровень (подробности — в разделе «Подписка») -----
   const tierBlock = el('div', 'ps-block ps-tier');
@@ -103,10 +105,10 @@ export function renderProfileSettings(host: HTMLElement, rerender: () => void, o
   msg.hidden = true;
   const say = (text: string, kind: 'error' | 'info' = 'error') => { msg.hidden = false; msg.textContent = text; msg.dataset.kind = kind; };
   const formHost = el('div', 'ob-email-host');
-  const resume = () => ({ where: 'settings' as const });
+  const resume = () => ({ where: opts.tutor ? 'tutor-profile' as const : 'settings' as const });
 
   if (!getApi()) {
-    acc.appendChild(el('p', 'ps-text', 'Облачный сервер не подключён в этой сборке: имя и курсор хранятся на этом устройстве.'));
+    acc.appendChild(el('p', 'ps-text', opts.tutor ? 'Облачный сервер не подключён в этой сборке: профиль хранится на этом устройстве.' : 'Облачный сервер не подключён в этой сборке: имя и курсор хранятся на этом устройстве.'));
   } else if (signedIn()) {
     const me = account()!;
     acc.appendChild(el('p', 'ps-text ps-status', 'Вы вошли. Доски синхронизируются между устройствами.'));
@@ -159,9 +161,11 @@ export function renderProfileSettings(host: HTMLElement, rerender: () => void, o
   acc.appendChild(msg);
   if (opts.notice) say(opts.notice.text, opts.notice.kind);
 
-  box.append(identity, tierBlock, cursorBlock, acc);
+  box.append(identity, tierBlock);
+  if (picker) box.append(cursorBlock);
+  box.append(acc);
   host.appendChild(box);
   // вошли / вышли / сменился тариф — раздел перерисовывается
   const off = onAccountChange(() => rerender());
-  return { dispose: () => { off(); offBilling(); limited.destroy(); picker.dispose(); avatar.dispose(); } };
+  return { dispose: () => { off(); offBilling(); limited.destroy(); picker?.dispose(); avatar.dispose(); } };
 }

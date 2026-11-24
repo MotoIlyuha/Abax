@@ -62,7 +62,7 @@ test.describe('откреплённая панель инструментов', 
     const g3 = (await grip.boundingBox())!;
     await page.mouse.move(g3.x + g3.width / 2, g3.y + 6);
     await expect(page.locator('#tooltip')).toContainText('удерживайте - прикрепить обратно');
-    await expect(page.locator('#toolbar .mt-hl')).toHaveCSS('opacity', '0');
+    await expect(page.locator('#toolbar .mt-hl').filter({visible:true}).evaluateAll(nodes => nodes.every(n => getComputedStyle(n).opacity === '0'))).resolves.toBe(true);
     await page.mouse.down();
     await expect(tb).not.toHaveClass(/floating/);
     await page.mouse.up();

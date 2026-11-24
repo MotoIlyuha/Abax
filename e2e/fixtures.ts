@@ -27,14 +27,15 @@ export interface Snapshot {
  * Окно первого входа (Ночь №4) не мешает старым тестам: до загрузки страницы кладётся готовый профиль
  * (знакомство пройдено, имени нет — автор по-прежнему «Автор»). Если тест положил свой профиль — он не трогается.
  */
-export async function skipOnboarding(ctx: BrowserContext): Promise<void> {
-  await ctx.addInitScript(() => {
+export async function skipOnboarding(ctx: BrowserContext, analyticsPrompt = false): Promise<void> {
+  await ctx.addInitScript(showPrompt => {
     try {
+      if (!showPrompt && !localStorage.getItem('abax.analytics-consent')) localStorage.setItem('abax.analytics-consent','rejected');
       if (!localStorage.getItem('doska.profile')) {
         localStorage.setItem('doska.profile', JSON.stringify({ name: '', cursorId: 'default', onboarded: true, updatedAt: 1 }));
       }
     } catch { /* хранилище недоступно */ }
-  });
+  }, analyticsPrompt);
 }
 
 /** Страница-доска: чтение состояния и рисование в координатах сцены. */
@@ -47,12 +48,12 @@ export class Board {
     this.quickMenu = page.locator('#quick-menu');
   }
 
-  async open(path = '/', initialTool: 'pen' | 'select' | null = 'pen'): Promise<void> {
+  async open(path = '/', initialTool: 'pen' | 'select' | null = 'pen', analyticsPrompt = false): Promise<void> {
     // в сеть тесты не ходят: проверка обновлений при запуске видит «нет связи»
     // (тесты обновлений подставляют свой ответ GitHub, см. e2e/updates.spec.ts); на весь контекст —
     // и ссылки «Скачать», открытые в новой вкладке
     await this.page.context().route(/^https:\/\/(api\.)?github\.com\//, route => route.abort());
-    await skipOnboarding(this.page.context());
+    await skipOnboarding(this.page.context(), analyticsPrompt);
     await this.page.goto(path);
     await this.ready();
     if (initialTool) await this.tool(initialTool === 'pen' ? 'p' : 'v');
@@ -268,14 +269,15 @@ export function byTip(scope: Page | Locator, tip: string): Locator {
   return scope.locator(`[title="${tip}"], [data-tip="${tip}"]`);
 }
 
-export const test = base.extend<{ board: Board; initialTool: 'pen' | 'select' | null }>({
+export const test = base.extend<{ board: Board; initialTool: 'pen' | 'select' | null; analyticsPrompt: boolean }>({
   initialTool: ['pen', { option: true }],
+  analyticsPrompt: [false, { option: true }],
   // auto: страница открыта в каждом тесте, даже если он работает только с page
-  board: [async ({ page, initialTool }, use) => {
+  board: [async ({ page, initialTool, analyticsPrompt }, use) => {
     const errors: string[] = [];
     page.on('pageerror', e => errors.push(String(e)));
     const board = new Board(page);
-    await board.open('/', initialTool);
+    await board.open('/', initialTool, analyticsPrompt);
     await use(board);
     expect(errors, 'ошибки JS на странице').toEqual([]);
   }, { auto: true }],
