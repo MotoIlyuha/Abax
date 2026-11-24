@@ -502,8 +502,8 @@ describe('инструменты и живые объекты', () => {
   it('штрих пера: сглаживание и слияние близких точек', () => {
     beginStroke('pen', { x: 0, y: 0, p: 0.5 });
     extendStroke({ x: 10, y: 0, p: 0.5 });
-    expect(state.liveStroke!.pts[1]).toEqual({ x: 6, y: 0, p: 0.5 });
-    extendStroke({ x: 6.1, y: 0, p: 1 }); // ближе 0.4px — давление усредняется
+    expect(state.liveStroke!.pts[1]).toEqual({ x: 10, y: 0, p: 0.5 });
+    extendStroke({ x: 10.1, y: 0, p: 1 }); // ближе 0.4px — давление усредняется
     expect(state.liveStroke!.pts).toHaveLength(2);
     expect(state.liveStroke!.pts[1].p).toBe(0.75);
     endStroke();

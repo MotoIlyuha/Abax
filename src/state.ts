@@ -790,7 +790,7 @@ export function beginStroke(tool: 'pen' | 'highlighter', pt: Pt): void {
 }
 
 /** Добавляет точку с лёгким сглаживанием; слишком близкие точки сливает. */
-export function extendStroke(pt: Pt): void {
+export function extendStroke(pt: Pt, notify = true): void {
   const ls = state.liveStroke;
   if (!ls) return;
   const last = ls.pts[ls.pts.length - 1];
@@ -798,9 +798,14 @@ export function extendStroke(pt: Pt): void {
     last.p = (last.p + pt.p) / 2;
     return;
   }
-  // сглаживание к сырой точке на 60%: убирает дрожание пера, сохраняя отклик
-  ls.pts.push({ x: last.x + (pt.x - last.x) * 0.6, y: last.y + (pt.y - last.y) * 0.6, p: pt.p });
-  update();
+  // The latest sample stays under the pointer; smooth only the previous sample.
+  if (ls.pts.length > 1) {
+    const prev = ls.pts[ls.pts.length - 2];
+    last.x = last.x * 0.6 + (prev.x + pt.x) * 0.2;
+    last.y = last.y * 0.6 + (prev.y + pt.y) * 0.2;
+  }
+  ls.pts.push({ ...pt });
+  if (notify) update();
 }
 
 export function endStroke(): void {

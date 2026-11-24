@@ -132,6 +132,7 @@ interface InkHold {
 export function initController(canvas: HTMLCanvasElement): void {
   const pointers = new Map<number, Ptr>();
   let gesture: { dist: number; mx: number; my: number; cam: Camera } | null = null;
+  let penDown = false;
   let touchBlocked = false; // после жеста оставшийся палец не должен рисовать
   let action: Action | null = null;
   let autoPan: { event: PointerEvent; raf: number; last: number } | null = null;
@@ -683,6 +684,18 @@ export function initController(canvas: HTMLCanvasElement): void {
   }
 
   function onPointerDown(e: PointerEvent): void {
+    // A hand resting on the screen must not interrupt an active stylus stroke.
+    if (e.pointerType === 'touch' && penDown) { e.preventDefault(); return; }
+    if (e.pointerType === 'pen') {
+      penDown = true;
+      // The hand can touch the screen before the pen. Discard its unfinished ink.
+      if (action && pointers.get(action.pid)?.type === 'touch') {
+        if (action.kind === 'draw') { clearInkHold(action); action = null; state.liveStroke = null; update(); }
+        else finishAction();
+      }
+      if (gesture) gesture = null;
+      if (touchPtrs().length) touchBlocked = true;
+    }
     canvas.setPointerCapture(e.pointerId);
     if (e.pointerType !== 'mouse') {
       // палец и перо: после pointerup браузер шлёт эмулированный mousedown, и он снимал фокус
@@ -977,6 +990,7 @@ export function initController(canvas: HTMLCanvasElement): void {
   }
 
   function onPointerMove(e: PointerEvent): void {
+    if (e.pointerType === 'touch' && penDown) return;
     const lp = localPos(e);
     const ptr = pointers.get(e.pointerId);
     if (ptr) { ptr.x = lp.x; ptr.y = lp.y; }
@@ -1030,8 +1044,9 @@ export function initController(canvas: HTMLCanvasElement): void {
           const s = toScene(c.x, c.y);
           const point = { x: s.x, y: s.y, p: pressureOf(ev) };
           trackInkHold(a, c, point);
-          extendStroke(point);
+          extendStroke(point, false);
         }
+        update();
         break;
       case 'laser': {
         const out: Pt[] = [];
@@ -1257,6 +1272,7 @@ export function initController(canvas: HTMLCanvasElement): void {
   }
 
   function onPointerUp(e: PointerEvent): void {
+    if (e.pointerType === 'pen') penDown = false;
     if (action?.pid === e.pointerId) stopAutoPan();
     pointers.delete(e.pointerId);
     if (gesture) {
@@ -1643,6 +1659,7 @@ export function initController(canvas: HTMLCanvasElement): void {
     pointers.clear();
     state.commentHoverId = null;
     touchBlocked = false;
+    penDown = false;
     clearTransfer();
     state.liveStroke = null;
     state.liveShape = null;
