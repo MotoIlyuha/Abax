@@ -14,6 +14,8 @@
 
 ## Кабинет репетитора
 
+Релизы Tutor на VPS выполняет `.github/workflows/release.yml`. Сценарии ограниченной выкладки, закреплённый ключ и одноразовая настройка доступа описаны в `deploy/tutor/README.md`. Не переключайте `/opt/abax/current` вручную во время релизного workflow.
+
 Для tutor.abaxboard.ru используется та же сборка dist, Node-сервер, база и JWT_SECRET, что и для доски. Настройте DNS и TLS для домена кабинета, добавьте его в server_name веб-приложения и проксируйте /api и WebSocket на тот же backend. Маршруты /tutor и /?route=tutor открывают кабинет на основном домене. На отдельном домене кабинет открывается на /.
 
 Для общего входа укажите COOKIE_DOMAIN=.abaxboard.ru в окружении сервера. В production сервер ставит Secure и HttpOnly. Добавьте https://tutor.abaxboard.ru в ALLOWED_ORIGINS для возвратов после входа. Отдельная cookie панели администратора сохраняет свою область действия.
