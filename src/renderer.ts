@@ -18,6 +18,7 @@ import { assetHashOf } from './asset-store';
 import { ERASER_PATHS, ERASER_TIP } from './icons';
 import { eraserRadius, eraserSettled } from './eraser-size';
 import { SpatialIndex } from './spatial-index';
+import { atRest, clamp, reduceMotion, S, spring, step, type Spring } from './motion';
 
 /** Сколько картинок догрузилось: кэш сцены, собранный с заглушкой, устаревает. */
 let imgEpoch = 0;
@@ -1141,11 +1142,10 @@ function drawHandles(ctx: CanvasRenderingContext2D, cam: Camera): void {
 export function drawSelectionPreview(ctx: CanvasRenderingContext2D, el: Element, cam: Camera, color: string): void {
   const prev = selColor;
   selColor = color;
-  const a = cacheOf(el).aabb;
   ctx.strokeStyle = color;
   ctx.lineWidth = 1.5;
   ctx.setLineDash([5, 4]);
-  ctx.strokeRect((a.x0 - cam.x) * cam.zoom - 4, (a.y0 - cam.y) * cam.zoom - 4, (a.x1 - a.x0) * cam.zoom + 8, (a.y1 - a.y0) * cam.zoom + 8);
+  strokeSelectionBox(ctx, cam, cacheOf(el).aabb);
   ctx.setLineDash([]);
   drawElHandles(ctx, cam, el);
   selColor = prev;
@@ -1440,6 +1440,115 @@ function drawContent(ctx: CanvasRenderingContext2D, cache: SceneCache, cam: Came
 /** Цвет своего выделения на этот кадр: задаётся курсором пользователя (SPEC_NIGHT4 §4). */
 let selColor = '#3273f5';
 
+interface SelectionOutline {
+  box: AABB;
+  opacity: number;
+  grouped: boolean;
+}
+
+let selectionPage = '';
+let selectionIds: ReadonlySet<string> | null = null;
+let selectionOutline: SelectionOutline | null = null;
+let selectionTargetBox: AABB | undefined;
+let selectionTransition: { from: SelectionOutline; progress: Spring; last: number; started: number } | null = null;
+let selectionSpring: [number, number] | undefined;
+
+/** Уменьшает рамку вокруг её центра в координатах доски. */
+function contractSelection(box: AABB): AABB {
+  const dx = (box.x1 - box.x0) * 0.24, dy = (box.y1 - box.y0) * 0.24;
+  return { x0: box.x0 + dx, y0: box.y0 + dy, x1: box.x1 - dx, y1: box.y1 - dy };
+}
+
+function strokeSelectionBox(ctx: CanvasRenderingContext2D, cam: Camera, box: AABB): void {
+  ctx.strokeRect((box.x0 - cam.x) * cam.zoom - 4, (box.y0 - cam.y) * cam.zoom - 4,
+    (box.x1 - box.x0) * cam.zoom + 8, (box.y1 - box.y0) * cam.zoom + 8);
+}
+
+function drawLocalSelection(ctx: CanvasRenderingContext2D, cam: Camera, now: number): void {
+  const selected = state.selection.size
+    ? state.board.elements.filter(el => state.selection.has(el.id) && el.id !== state.hideElId)
+    : [];
+  const grouped = selected.length > 1;
+  const target: SelectionOutline | null = selected.length
+    ? { box: grouped ? contentBBox(selected) : cacheOf(selected[0]).aabb, opacity: 1, grouped }
+    : null;
+  const page = state.view === 'board' ? `${state.project.id}:${state.pageId}` : '';
+  const samePage = selectionPage === page;
+  const changed = selectionIds !== state.selection
+    && (!selectionIds || selectionIds.size !== state.selection.size || [...state.selection].some(id => !selectionIds!.has(id)));
+  const prevBox = selectionTargetBox;
+  const box = target?.box;
+  // Нажатие уже готовит перенос, но прерываем анимацию только когда геометрия действительно меняется.
+  const moving = state.liveEdit && !changed && box && prevBox
+    && (box.x0 !== prevBox.x0 || box.y0 !== prevBox.y0 || box.x1 !== prevBox.x1 || box.y1 !== prevBox.y1);
+  selectionPage = page;
+  selectionIds = state.selection;
+  selectionTargetBox = box;
+  const mode = state.settings.animationMode;
+  const reduced = (changed || selectionTransition) && reduceMotion();
+  if (!samePage || !page || mode === 'off' || moving || state.hideElId || reduced) {
+    selectionTransition = null;
+  } else if (changed) {
+    const from = selectionOutline ?? (target && { ...target, box: contractSelection(target.box), opacity: 0 });
+    if (from) {
+      selectionSpring ??= spring('--menu-grow', [320, 28]);
+      const progress = S(0, ...selectionSpring);
+      progress.t = 1;
+      selectionTransition = { from, progress, last: now, started: now };
+    }
+  }
+  const transition = selectionTransition;
+  let detailOpacity = 1;
+  if (transition) {
+    const { from, progress } = transition;
+    const dt = clamp((now - transition.last) / 1000, 0, 0.05);
+    transition.last = now;
+    for (let i = 0; i < 4; i++) step(progress, dt / 4);
+    const t = mode === 'enhanced' ? progress.x : 1 - (1 - clamp((now - transition.started) / 150, 0, 1)) ** 3;
+    if (mode === 'enhanced' ? atRest(progress, 0.005) : t === 1) {
+      selectionTransition = null;
+      selectionOutline = target;
+    } else {
+      const to = target?.box ?? contractSelection(from.box);
+      detailOpacity = clamp(t, 0, 1);
+      const interpolate = (a: number, b: number) => a + (b - a) * detailOpacity;
+      selectionOutline = {
+        box: mode === 'enhanced' ? {
+          x0: interpolate(from.box.x0, to.x0), y0: interpolate(from.box.y0, to.y0),
+          x1: interpolate(from.box.x1, to.x1), y1: interpolate(from.box.y1, to.y1),
+        } : target?.box ?? from.box,
+        opacity: interpolate(from.opacity, target?.opacity ?? 0),
+        grouped: target?.grouped ?? from.grouped,
+      };
+      requestRender();
+    }
+  } else selectionOutline = target;
+
+  if (!selectionOutline) {
+    if (state.hideElId && state.selection.size === 1 && !state.linkMode && !readOnly()) drawHandles(ctx, cam);
+    return;
+  }
+  ctx.save();
+  ctx.strokeStyle = selColor;
+  ctx.lineWidth = 1.5;
+  ctx.globalAlpha = selectionOutline.opacity;
+  ctx.setLineDash(selectionOutline.grouped ? [] : [5, 4]);
+  strokeSelectionBox(ctx, cam, selectionOutline.box);
+  if (target) {
+    const editable = !state.linkMode && !readOnly();
+    // Ручки всегда остаются в точках, по которым срабатывает перетаскивание.
+    ctx.globalAlpha = detailOpacity;
+    if (target.grouped) {
+      ctx.setLineDash([5, 4]);
+      for (const el of selected) strokeSelectionBox(ctx, cam, cacheOf(el).aabb);
+    }
+    ctx.setLineDash([]);
+    if (editable && state.selection.size === 1) drawElHandles(ctx, cam, selected[0]);
+    else if (editable) drawBoxHandles(ctx, cam, target.box);
+  }
+  ctx.restore();
+}
+
 const mainFlash: FlashScratch = { shape: document.createElement('canvas'), ring: document.createElement('canvas') };
 
 function draw(): void {
@@ -1473,26 +1582,7 @@ function draw(): void {
     }
     ctx.setLineDash([]);
   }
-  if (state.selection.size > 0) {
-    ctx.strokeStyle = selColor;
-    ctx.lineWidth = 1.5;
-    const selected = state.board.elements.filter(el => state.selection.has(el.id) && el.id !== state.hideElId);
-    if (selected.length > 1) {
-      const bb = contentBBox(selected);
-      ctx.setLineDash([]);
-      ctx.strokeRect((bb.x0 - cam.x) * cam.zoom - 4, (bb.y0 - cam.y) * cam.zoom - 4, bb.w * cam.zoom + 8, bb.h * cam.zoom + 8);
-    }
-    ctx.setLineDash([5, 4]);
-    for (const el of selected) {
-      const a = cacheOf(el).aabb;
-      ctx.strokeRect((a.x0 - cam.x) * cam.zoom - 4, (a.y0 - cam.y) * cam.zoom - 4, (a.x1 - a.x0) * cam.zoom + 8, (a.y1 - a.y0) * cam.zoom + 8);
-    }
-    ctx.setLineDash([]);
-    // читатель выделять может (копировать, реакции), но менять — нет: ручек у него нет
-    const editable = !state.linkMode && !readOnly();
-    if (state.selection.size === 1) { if (editable) drawHandles(ctx, cam); }
-    else if (editable) drawBoxHandles(ctx, cam, contentBBox(selected));
-  }
+  drawLocalSelection(ctx, cam, performance.now());
   if (state.tool === 'comment' && state.commentHoverId) {
     const target = state.board.elements.find(el => el.id === state.commentHoverId);
     if (target) {

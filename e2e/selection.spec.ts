@@ -12,6 +12,53 @@ test.describe('выделение и перемещение', () => {
     await expect(board.quickMenu).toBeHidden();
   });
 
+  test('рамка выделения расширяется и сворачивается, а при уменьшении движения рисуется сразу', async ({ board, page }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await board.rect(400, 300, 550, 400);
+    await board.click({ x: 700, y: 460 });
+    await expect(board.quickMenu).toBeHidden();
+    await board.settled();
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await page.evaluate(() => {
+      const frames: { width: number; opacity: number }[] = [];
+      (window as typeof window & { selectionFrames: typeof frames }).selectionFrames = frames;
+      const strokeRect = CanvasRenderingContext2D.prototype.strokeRect;
+      CanvasRenderingContext2D.prototype.strokeRect = function (x, y, w, h) {
+        if (this.canvas.id === 'board' && this.lineWidth === 1.5 && this.getLineDash()[0] === 5) {
+          frames.push({ width: w, opacity: this.globalAlpha });
+        }
+        strokeRect.call(this, x, y, w, h);
+      };
+    });
+    const takeFrames = () => page.evaluate(() =>
+      (window as typeof window & { selectionFrames: { width: number; opacity: number }[] }).selectionFrames);
+    const resetFrames = () => page.evaluate(() => {
+      (window as typeof window & { selectionFrames: unknown[] }).selectionFrames.length = 0;
+    });
+
+    const center = await board.screen({ x: 470, y: 350 });
+    await page.mouse.move(center.x, center.y);
+    await page.mouse.down();
+    await expect.poll(async () => (await takeFrames()).some(f => f.opacity > 0 && f.opacity < 1)).toBe(true);
+    await page.mouse.up();
+    await expect.poll(async () => (await takeFrames()).some(f => f.opacity === 1)).toBe(true);
+    const opening = await takeFrames();
+    const fullWidth = Math.max(...opening.map(f => f.width));
+    expect(opening[0].width).toBeLessThan(fullWidth - 2);
+    expect(opening.some(f => f.width < fullWidth - 2 && f.opacity > 0 && f.opacity < 1)).toBe(true);
+
+    await resetFrames();
+    await board.click({ x: 700, y: 460 });
+    expect((await board.state()).selection).toEqual([]);
+    await expect.poll(async () => (await takeFrames()).some(f => f.width < fullWidth - 2 && f.opacity < 1)).toBe(true);
+
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await resetFrames();
+    await board.click({ x: 470, y: 350 });
+    await expect.poll(async () => (await takeFrames()).at(-1)).toEqual({ width: fullWidth, opacity: 1 });
+    expect((await takeFrames()).every(f => f.width === fullWidth && f.opacity === 1)).toBe(true);
+  });
+
   test('несколько выделенных переносятся за пустое место общей рамки', async ({ board }) => {
     const a = await board.rect(400, 300, 450, 350);
     const b = await board.rect(500, 300, 550, 350);
