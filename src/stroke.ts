@@ -44,3 +44,24 @@ export function ribbonPath(pts: Pt[], base: number): Path2D {
   path.closePath();
   return path;
 }
+
+/** Убирает начало штриха пропорционально пройденному вдоль него расстоянию. */
+export function trimStrokeStart(pts: Pt[], fraction: number): Pt[] {
+  if (fraction <= 0 || pts.length < 2) return pts;
+  let length = 0;
+  for (let i = 1; i < pts.length; i++) {
+    length += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+  }
+  if (length === 0) return pts;
+  let distance = length * fraction;
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i];
+    const segment = Math.hypot(b.x - a.x, b.y - a.y);
+    if (distance < segment) {
+      const t = distance / segment;
+      return [{ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, p: a.p + (b.p - a.p) * t }, ...pts.slice(i)];
+    }
+    distance -= segment;
+  }
+  return [];
+}

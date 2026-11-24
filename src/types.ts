@@ -312,7 +312,7 @@ export interface LaserPt {
 export interface RemoteLaser { down: boolean; pts: LaserPt[] }
 
 /** Росчерк исчезающего маркера; endT — когда оторвали перо (с этого момента гаснет). */
-export interface FadeStroke { color: string; width: number; opacity?: number; pts: Pt[]; endT: number | null }
+export interface FadeStroke { color: string; width: number; opacity?: number; pts: Pt[]; endT: number | null; by?: number }
 
 /** Кратковременная подсветка контура элементов; t — момент начала, ms — длительность (нет — по умолчанию). */
 export interface Flash { ids: string[]; t: number; ms?: number }

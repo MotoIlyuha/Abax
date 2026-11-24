@@ -9,10 +9,10 @@ import {
   type AABB, type Caption, boxHandles, cornerRadius, elementAABB, elementHandles, imageFrame, pageLinkView, presentCamera, shapeCaption,
   shapeHoldsText, wrapText, textLines, textSpans, TEXT_FONT, NOTE_PAD, NOTE_FONT, NOTE_TEXT_COLOR,
 } from './geom';
-import { ribbonPath } from './stroke';
+import { ribbonPath, trimStrokeStart } from './stroke';
 import { styledSegments } from './text-runs';
 import { fitSolid, solidGeometry, type SolidPrim } from './solid';
-import { state } from './state';
+import { FADE_STROKE_DELAY_MS, state } from './state';
 import { assetHashOf } from './asset-store';
 import { ERASER_PATHS, ERASER_TIP } from './icons';
 import { eraserRadius, eraserSettled } from './eraser-size';
@@ -85,7 +85,8 @@ const GRID_STEP = 40; // юниты сцены
 const LASER_TTL = 700; // мс жизни точки следа указки
 const LASER_R = 4.5; // полуширина следа у головы, px экрана
 const LASER_COLOR = '#ff2d2d'; // цвет указки по умолчанию
-const FADE_MS = 650; // мс угасания росчерка исчезающего маркера
+const FADE_STROKE_ANIMATION_MS = { off: 0, normal: 650, enhanced: 280 };
+let fadeRenderTimer: number | undefined;
 const FLASH_MS = 1400; // мс подсветки контура
 const FLASH_IN = 140;
 const FLASH_OUT = 600;
@@ -1640,18 +1641,33 @@ function drawPointer(ctx: CanvasRenderingContext2D, x: number, y: number): void 
   ctx.restore();
 }
 
-/** Росчерки исчезающего маркера: рисуются маркером, после отрыва гаснут. */
 function drawFadeStrokes(ctx: CanvasRenderingContext2D): void {
   const now = performance.now();
-  state.fadeStrokes = state.fadeStrokes.filter(f => f.endT === null || now - f.endT < FADE_MS);
-  for (const f of state.fadeStrokes) {
-    const k = f.endT === null ? 1 : 1 - (now - f.endT) / FADE_MS;
-    ctx.globalAlpha = k * k * (f.opacity ?? 1); // к концу гаснет быстрее
-    ctx.fillStyle = hexA(f.color, HIGHLIGHTER_ALPHA); // полупрозрачный, как маркер
-    ctx.fill(ribbonPath(f.pts, f.width));
+  const mode = state.settings.animationMode;
+  const duration = FADE_STROKE_ANIMATION_MS[mode];
+  clearTimeout(fadeRenderTimer);
+  let nextStart = Infinity;
+  let animating = false;
+  state.fadeStrokes = state.fadeStrokes.filter(
+    stroke => stroke.endT === null || now - stroke.endT < FADE_STROKE_DELAY_MS + duration,
+  );
+  for (const stroke of state.fadeStrokes) {
+    const start = stroke.endT === null ? Infinity : stroke.endT + FADE_STROKE_DELAY_MS;
+    let progress = 0;
+    if (now >= start) {
+      animating = true;
+      progress = (now - start) / duration;
+    } else {
+      nextStart = Math.min(nextStart, start);
+    }
+    const points = mode === 'enhanced' ? trimStrokeStart(stroke.pts, progress) : stroke.pts;
+    ctx.globalAlpha = (stroke.opacity ?? 1) * (1 - progress);
+    ctx.fillStyle = hexA(stroke.color, HIGHLIGHTER_ALPHA);
+    ctx.fill(ribbonPath(points, stroke.width));
   }
   ctx.globalAlpha = 1;
-  if (state.fadeStrokes.some(f => f.endT !== null)) requestRender();
+  if (animating) requestRender();
+  else if (Number.isFinite(nextStart)) fadeRenderTimer = window.setTimeout(requestRender, Math.ceil(nextStart - now));
 }
 
 // Подсветка контура: силуэт элементов «раздувается» сдвинутыми копиями,

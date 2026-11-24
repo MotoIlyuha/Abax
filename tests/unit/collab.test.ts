@@ -809,6 +809,12 @@ describe('указка в совместной работе', () => {
     send({ k: 'fade', sid: 's', color: '#305bab', width: 12.8, pts: [{ x: 4, y: 4 }], end: true });
     await until(() => st.state.fadeStrokes[0].endT !== null);
     expect(st.state.fadeStrokes).toHaveLength(1);
+    send({ k: 'fade', sid: 'next', width: 12.8, pts: [{ x: 5, y: 5 }] });
+    await until(() => st.state.fadeStrokes.length === 2);
+    expect(st.state.fadeStrokes.map(stroke => stroke.endT)).toEqual([null, null]);
+    send({ k: 'fade', sid: 'next', width: 12.8, pts: [{ x: 6, y: 6 }], end: true });
+    await until(() => st.state.fadeStrokes[1].endT !== null);
+    expect(st.state.fadeStrokes[0].endT).toBe(st.state.fadeStrokes[1].endT);
 
     send({ k: 'flash', ids: ['a'] });
     await until(() => st.state.flashes.length === 1);

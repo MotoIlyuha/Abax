@@ -1097,3 +1097,16 @@ export function expandSelectionWithGroups(ids: Set<string>): string[] {
   if (gids.size === 0) return [...ids];
   return state.board.elements.filter(e => ids.has(e.id) || (e.groupId && gids.has(e.groupId))).map(e => e.id);
 }
+
+export const FADE_STROKE_DELAY_MS = 2000;
+
+/** Общее время отрыва для всех видимых штрихов одного автора. */
+export function setFadeStrokeEnd(by: number | undefined, endT: number | null): void {
+  const now = endT ?? performance.now();
+  for (const stroke of state.fadeStrokes) {
+    if (stroke.by !== by) continue;
+    if (stroke.endT === null || (endT === null && now - stroke.endT < FADE_STROKE_DELAY_MS)) {
+      stroke.endT = endT;
+    }
+  }
+}

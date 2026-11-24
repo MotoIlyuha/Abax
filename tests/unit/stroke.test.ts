@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ribbonPath, widthAt } from '../../src/stroke';
+import { ribbonPath, trimStrokeStart, widthAt } from '../../src/stroke';
 
 type Op = [string, ...number[]];
 const opsOf = (p: Path2D) => (p as unknown as { ops: Op[] }).ops;
@@ -43,5 +43,21 @@ describe('ribbonPath', () => {
   it('совпадающие точки не дают NaN в нормалях', () => {
     const ops = opsOf(ribbonPath([{ x: 5, y: 5, p: 0.5 }, { x: 5, y: 5, p: 0.5 }], 4));
     for (const op of ops) for (const v of op.slice(1)) expect(Number.isFinite(v)).toBe(true);
+  });
+});
+
+describe('trimStrokeStart', () => {
+  it('стирает от начала по длине пути и интерполирует давление на срезе', () => {
+    const points = [{ x: 0, y: 0, p: 0 }, { x: 3, y: 0, p: 0 }, { x: 3, y: 9, p: 1 }];
+    expect(trimStrokeStart(points, 0)).toBe(points);
+    expect(trimStrokeStart(points, 0.25)).toEqual(points.slice(1));
+    expect(trimStrokeStart(points, 0.625)).toEqual([{ x: 3, y: 4.5, p: 0.5 }, points[2]]);
+    expect(trimStrokeStart(points, 1)).toEqual([]);
+  });
+
+  it('сохраняет геометрию точки для плавного затухания', () => {
+    const point = { x: 2, y: 3, p: 0.5 };
+    expect(trimStrokeStart([point], 0.5)).toEqual([point]);
+    expect(trimStrokeStart([point, point], 0.5)).toEqual([point, point]);
   });
 });

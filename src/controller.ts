@@ -6,6 +6,7 @@ import {
   addElement, setSelection, deleteSelected, undo, redo, pickTool, uid, commitPoly,
   bringForward, sendBackward, moveSelectionLayer, expandSelectionWithGroups, groupSelected, ungroupSelected, selectAll, selectInserted, opacityField,
   zoomAtPoint, ZOOM_MAX, ZOOM_MIN, insertCopies, isDraftId, touchProject, canCopyCurrentBoard, canTouchElement,
+  setFadeStrokeEnd,
 } from './state';
 import {
   type AABB, hitTest, erasePart, aabbIntersects, aabbUnion, alignGuides, alignShift, boxAnchors, boxHandles, elementAABB, elementHandles,
@@ -602,7 +603,7 @@ export function initController(canvas: HTMLCanvasElement): void {
         update();
         break;
       case 'fade':
-        a.stroke.endT = performance.now(); // перо оторвано — след гаснет
+        setFadeStrokeEnd(undefined, performance.now());
         sendFadeStroke(a.sid, a.stroke, [], true);
         update();
         break;
@@ -861,6 +862,7 @@ export function initController(canvas: HTMLCanvasElement): void {
           color: state.style.color, width: state.style.width * 3.2, ...opacityField(state.style.opacity),
           pts: [{ x: s.x, y: s.y, p: pressureOf(e) }], endT: null,
         };
+        setFadeStrokeEnd(undefined, null);
         state.fadeStrokes.push(stroke);
         const sid = uid();
         action = { pid: e.pointerId, kind: 'fade', stroke, sid };

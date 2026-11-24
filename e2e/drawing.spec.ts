@@ -548,4 +548,31 @@ test.describe('указка', () => {
     // след гаснет сам
     await expect.poll(async () => (await board.state()).fadeStrokes, { timeout: 3000 }).toBe(0);
   });
+
+  test('маркер сохраняет все штрихи до двух секунд после последнего отрыва', async ({ board, page }) => {
+    await page.keyboard.press('Control+Comma');
+    await page.locator('.sd-general').getByRole('tab', { name: 'Выкл' }).click();
+    await page.keyboard.press('Escape');
+    expect((await board.state()).settings.animationMode).toBe('off');
+    await board.groupTool('pointer', 'fadePen');
+    const time = new Date();
+    await page.clock.install({ time });
+    await page.clock.pauseAt(new Date(time.getTime() + 1000));
+
+    await board.drag([{ x: 300, y: 400 }, { x: 400, y: 420 }]);
+    await page.clock.runFor(1500);
+    expect((await board.state()).fadeStrokes).toBe(1);
+
+    await board.move({ x: 450, y: 440 });
+    await page.mouse.down();
+    await board.move({ x: 550, y: 460 });
+    await page.clock.runFor(3000);
+    expect((await board.state()).fadeStrokes).toBe(2);
+
+    await page.mouse.up();
+    await page.clock.runFor(1999);
+    expect((await board.state()).fadeStrokes).toBe(2);
+    await page.clock.runFor(20);
+    expect((await board.state()).fadeStrokes).toBe(0);
+  });
 });
