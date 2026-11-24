@@ -12,7 +12,7 @@ describe('Панель заданий', () => {
       <button id="btn-tasks"><span class="tasks-button-book"></span><span class="tasks-button-collapse"></span></button>
     `;
     registerPanelMode({ id: 'notify', label: 'Уведомления', icon: '', mount: () => ({}) });
-    initTasksPanel();
+    initTasksPanel(() => {}, () => true);
     const button = document.getElementById('btn-tasks') as HTMLButtonElement;
     expect(button.getAttribute('aria-expanded')).toBe('false');
     expect(button.getAttribute('aria-label')).toBe('Задания');
@@ -23,7 +23,7 @@ describe('Панель заданий', () => {
     expect(button.getAttribute('aria-label')).toBe('Свернуть панель');
     expect(document.documentElement.style.getPropertyValue('--left-panel-shift')).toBe('372px');
     expect(document.documentElement.style.getPropertyValue('--side-panel-shift')).toBe('0px');
-    expect(tasksPanelBody()?.textContent).toContain('Здесь появится банк заданий ОГЭ/ЕГЭ');
+    expect(tasksPanelBody()).not.toBeNull();
     openSidePanel('notify');
     expect(sidePanelMode()).toBe('notify');
     expect(document.documentElement.style.getPropertyValue('--left-panel-shift')).toBe('0px');

@@ -196,6 +196,8 @@ export interface TaskEl extends BaseEl {
   taskId: string;
   examType: TaskExamType;
   topic: string;
+  /** Заголовок карточки из банка заданий. */
+  title?: string;
   statementMd: string;
   /** Правильный ответ; несколько допустимых — через «|». Ученику не отправляется. */
   answer: string;

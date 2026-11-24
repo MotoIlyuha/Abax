@@ -29,7 +29,7 @@ import type { PresetKind, StylePatch, StyleValue } from './state';
 import { doskaApi, storage } from './storage';
 import { isNativeApp, sharePng } from './native';
 import { RELEASES_URL, openDesktopApp } from './desktop-app';
-import { renderScene, contentBBox, imageEpoch, imagesLoaded, linkView, presentCanvas, renderNow, requestRender, advanceRecursion } from './renderer';
+import { bankTaskHeight, renderScene, contentBBox, imageEpoch, imagesLoaded, linkView, presentCanvas, renderNow, requestRender, advanceRecursion } from './renderer';
 import { easeInOut, linkCameras, lockInput, newPageLink, zoomDuration, zoomPath } from './page-links';
 import { makeSortable, reordering } from './reorder';
 import { capturePageTransition } from './page-transition';
@@ -95,8 +95,9 @@ import { setChatAttachActions } from './chat-attach-view';
 import { attachSelection, selectionAttachBlock } from './chat-attach';
 import { chatAvailable, chatCanWrite, openChat } from './collab-chat';
 import { registerPanelModes } from './panel-modes';
-import { initTasksPanel } from './tasks-panel';
-import { closeSidePanel, onSidePanel, sidePanelMode, sidePanelOpen, toggleSidePanel } from './side-panel';
+import { draggedBankTask, initTasksPanel } from './tasks-panel';
+import type { BankTask } from './fipi-bank';
+import { SIDE_PANEL_NARROW, closeSidePanel, onSidePanel, sidePanelMode, sidePanelOpen, toggleSidePanel } from './side-panel';
 import { initSyncIndicator } from './sync-indicator';
 import { openShareDialog as openShareDialogUi, type ShareApi } from './share-dialog';
 import { onCancelInteraction } from './interaction';
@@ -108,7 +109,7 @@ import { initAnnotLayer } from './annot-layer';
 import { initAttention } from './attention';
 import { initNoteNotices } from './note-notices';
 import { openTaskDialog, taskDialogOpen, type TaskFormValues } from './task-dialog';
-import { TASK_H, TASK_W, createTaskElement } from './task-element';
+import { EXAM_LABELS, TASK_H, TASK_W, createTaskElement } from './task-element';
 import { createToggleSwitch, setToggleChecked } from './toggle-switch';
 import { ALIGN_ICONS, BACKGROUND_ICON, BACK_ARROW_ICON, COORD_ICON_ZERO, FONT_ICON, GRID_ICONS, GRIP_ICON, ICONS, OPACITY_ICON, PIN_ICON, PROFILE_ICON, SLIDER_TRACK_ICON, GUIDES_ICON, INTERACTIONS_ICON, SMOOTH_PAN_ICON, SNAP_ICON, PROPORTIONAL_ICON, VALIGN_ICONS, WIDTH_ICON, svg } from './icons';
 import { setTopbarGroupHidden } from './topbar-hide';
@@ -3109,6 +3110,42 @@ function addTaskFromForm(v: TaskFormValues): void {
   selectInserted(el.id);
 }
 
+let lastBankPage = '';
+let bankOffset = 0;
+
+/** Добавляет карточку через общий механизм истории и выделения объектов. */
+function addBankTask(task: BankTask, at?: { x: number; y: number }): void {
+  if (state.view !== 'board' || !canEditBoard() || !isTeacher()) return;
+  const r = canvas.getBoundingClientRect();
+  const narrow = window.innerWidth < SIDE_PANEL_NARROW;
+  const panel = document.getElementById('side-panel');
+  const left = !narrow && panel && sidePanelOpen() && sidePanelMode() === 'tasks'
+    ? Math.max(r.left, panel.getBoundingClientRect().right + 12) : r.left;
+  const cam = state.camera;
+  const h = bankTaskHeight(task.statementMd);
+  const page = state.project.id + ':' + state.pageId;
+  if (lastBankPage !== page) { lastBankPage = page; bankOffset = 0; }
+  const visibleWidth = r.right - left;
+  const offset = (bankOffset % 5) * 18;
+  // При крупном масштабе ограничиваем каскад так, чтобы центр карточки оставался виден.
+  const room = (viewport: number, size: number): number =>
+    size < viewport - 24 ? (viewport - size) / 2 - 12 : viewport / 8;
+  const dx = Math.min(offset, room(visibleWidth, TASK_W * cam.zoom));
+  const dy = Math.min(offset, room(r.height, h * cam.zoom));
+  const point = at ?? { x: left + visibleWidth / 2 + dx, y: r.top + r.height / 2 + dy };
+  const title = EXAM_LABELS[task.examType] + ' № ' + task.number + (task.code ? ' · ФИПИ #' + task.code : '');
+  const el = createTaskElement({
+    taskId: uid(), title, subject: 'math', examType: task.examType, topic: task.topic, h,
+    statementMd: task.statementMd, answer: task.answer, solutionMd: task.solutionMd, solutionVisibleToStudent: false,
+    x: cam.x + (point.x - r.left) / cam.zoom - TASK_W / 2,
+    y: cam.y + (point.y - r.top) / cam.zoom - h / 2,
+  });
+  if (!at) bankOffset++;
+  if (narrow && sidePanelOpen() && sidePanelMode() === 'tasks') closeSidePanel();
+  addElement(el);
+  selectInserted(el.id);
+}
+
 /** Правка формой: условие, ответ, решение и остальное; положение, размер, попытки и ввод ученика остаются. */
 function applyTaskForm(id: string, v: TaskFormValues): void {
   const prev = state.board.elements;
@@ -3196,6 +3233,8 @@ function wireImageInput(): void {
   wrap.addEventListener('dragover', e => e.preventDefault());
   wrap.addEventListener('drop', e => {
     e.preventDefault();
+    const task = draggedBankTask(e.dataTransfer);
+    if (task) { addBankTask(task, { x: e.clientX, y: e.clientY }); return; }
     const f = e.dataTransfer?.files?.[0];
     if (f) importDroppedFile(f);
   });
@@ -5483,7 +5522,7 @@ function wireTopbar(): void {
   document.getElementById('btn-present')!.addEventListener('click', togglePresent);
   registerPanelActions();
   registerPanelModes();
-  initTasksPanel();
+  initTasksPanel(addBankTask, isTeacher);
   wireHelpButton();
   initTopbarFit();
   // список страниц внизу не должен заходить под правый нижний угол

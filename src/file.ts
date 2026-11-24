@@ -82,7 +82,7 @@ const SPECS: Record<string, { req: Record<string, Check>; opt: Record<string, Ch
       statementMd: isStr, answer: isStr,
     },
     opt: {
-      solutionMd: isStr, studentDraft: isStr, attempts: Array.isArray, markedHard: isBool, solutionVisibleToStudent: isBool,
+      title: isStr, solutionMd: isStr, studentDraft: isStr, attempts: Array.isArray, markedHard: isBool, solutionVisibleToStudent: isBool,
       subject: v => SUBJECTS.includes(v as never), answerUnit: isStr, codeSnippet: codeSnippetCheck,
     },
   },

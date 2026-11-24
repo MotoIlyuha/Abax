@@ -1,6 +1,6 @@
 import type { Camera, Element, GridMode, ImageEl, LaserPt, Page, PolyEl, Pt, ShapeEl, SolidEl, TaskEl } from './types';
 import { inkMorphFrame, prepareInkMorph } from './ink-morph';
-import { EXAM_LABELS, SUBJECT_LABELS, TASK_STATUS_LABEL, taskStatus } from './task-element';
+import { EXAM_LABELS, SUBJECT_LABELS, TASK_H, TASK_STATUS_LABEL, TASK_W, taskStatus } from './task-element';
 import { foreignSelections, readOnly } from './collab';
 import { mySelectionColor } from './profile';
 import { ROW_H, ITEM_GAP, MORE_W, commentWidth, layoutAnnotRows, pillWidth } from './annotations';
@@ -495,6 +495,12 @@ const TASK_PAD = 14;
 const TASK_HEAD_H = 34;
 const TASK_FOOT_H = 30;
 const TASK_LH = TASK_FONT * 1.4;
+/** Высота задания из банка с учётом полного текста и отдельной строки заголовка. */
+export function bankTaskHeight(statementMd: string): number {
+  const lines = wrapText(statementMd, TASK_FONT, TASK_W - TASK_PAD * 2).length;
+  return Math.max(TASK_H, Math.ceil(TASK_HEAD_H + TASK_FOOT_H + TASK_PAD * 2 + TASK_LH * (lines + 1) + 4));
+}
+
 const TASK_STATUS_COLOR = { solved: '#2f9e44', unsolved: '#bd0a0a', none: '#7a8291' } as const;
 
 /**
@@ -553,10 +559,11 @@ function drawTaskEl(ctx: CanvasRenderingContext2D, el: TaskEl, lines: string[]):
   ctx.beginPath();
   ctx.rect(x, y + TASK_HEAD_H + 1, w, bodyBottom - y - TASK_HEAD_H - 1);
   ctx.clip();
-  if (el.topic) {
+  const title = el.title || el.topic;
+  if (title) {
     ctx.font = TEXT_FONT(TASK_FONT, true);
     ctx.fillStyle = '#1f2329';
-    ctx.fillText(el.topic, x + TASK_PAD, top + TASK_FONT * 0.8, w - TASK_PAD * 2);
+    ctx.fillText(title, x + TASK_PAD, top + TASK_FONT * 0.8, w - TASK_PAD * 2);
     top += TASK_LH + 4;
   }
   ctx.font = TEXT_FONT(TASK_FONT);

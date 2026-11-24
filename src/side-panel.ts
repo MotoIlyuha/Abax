@@ -238,10 +238,14 @@ function build(): Ui {
   const backdrop = document.createElement('div');
   backdrop.className = 'sp-backdrop';
   backdrop.setAttribute('aria-hidden', 'true');
-  backdrop.addEventListener('pointerdown', e => {
+  document.addEventListener('pointerdown', e => {
+    if (!isOpen || !leftPanel() || !narrow()) return;
+    // Сенсорный браузер может выбрать ближайший элемент панели вместо точки касания на подложке.
+    if (e.target !== backdrop && (e.pointerType !== 'touch' || document.elementFromPoint(e.clientX, e.clientY) !== backdrop)) return;
     e.preventDefault();
+    e.stopPropagation();
     closeSidePanel();
-  });
+  }, eventOptions);
   document.body.append(panel, close, backdrop);
   onNotices(() => syncPanelSelect());
   window.addEventListener('resize', onResize);
