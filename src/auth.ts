@@ -18,7 +18,7 @@ export interface Providers {
 
 /** Что восстановить после возврата от провайдера: где был пользователь и что успел выбрать. */
 export interface AuthResume {
-  where: 'onboarding' | 'settings';
+  where: 'onboarding' | 'settings' | 'tutor-profile';
   name?: string;
   cursorId?: string;
   placeholder?: string;

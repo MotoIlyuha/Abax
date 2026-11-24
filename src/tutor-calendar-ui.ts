@@ -1,4 +1,5 @@
 import { appHref } from './tutor-launch';
+import { createTutorSegments } from './tutor-segments';
 import { lessonLanes, reminder, statusNames, type Lesson, type LessonStatus } from './tutor-lessons';
 import { studentEditor } from './tutor-students-ui';
 import {
@@ -20,6 +21,7 @@ import type { Student } from './tutor-model';
 
 export type CalendarMode = 'day' | 'week' | 'month' | 'agenda';
 export const calendar = { mode: 'week' as CalendarMode, date: new Date(), student: '', subject: '', status: '' };
+const calendarSegments = new WeakMap<TutorUI, ReturnType<typeof createTutorSegments<CalendarMode>>>();
 const symbols: Record<LessonStatus, string> = {
   scheduled: '○',
   current: '●',
@@ -299,20 +301,14 @@ export function calendarView(ui: TutorUI) {
       ),
     ),
   );
-  const modes = group('tu-segments');
-  for (const [id, label] of [
-    ['day', 'День'],
-    ['week', 'Неделя'],
-    ['month', 'Месяц'],
-    ['agenda', 'Список'],
-  ] as const) {
-    const b = ui.button(label, () => {
-      calendar.mode = id;
-      ui.render();
-    });
-    b.setAttribute('aria-pressed', String(mode === id));
-    modes.append(b);
+  let modes = calendarSegments.get(ui);
+  if (!modes) {
+    modes = createTutorSegments<CalendarMode>([
+      ['day', 'День'], ['week', 'Неделя'], ['month', 'Месяц'], ['agenda', 'Список'],
+    ], mode, 'Вид календаря', id => { calendar.mode = id; ui.render(); });
+    calendarSegments.set(ui, modes);
   }
+  modes.sync(mode);
   const title =
     mode === 'week'
       ? dayLabel(+start) + ' – ' + dayLabel(+dates(end, -1))
@@ -336,7 +332,7 @@ export function calendarView(ui: TutorUI) {
           ui.render();
         }),
       ),
-      modes,
+      modes.el,
     ),
   );
   const filters = group('tu-filters');

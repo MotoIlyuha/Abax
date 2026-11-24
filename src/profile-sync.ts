@@ -91,10 +91,10 @@ let timer: ReturnType<typeof setTimeout> | null = null;
 let stopWatch: (() => void) | null = null;
 
 /** Следить за профилем: изменения уходят на сервер (с небольшой паузой). Без облака — ничего. */
-export function startProfileSync(delayMs = 400): void {
+export function startProfileSync(delayMs = 400, includeNotOnboarded = false): void {
   if (stopWatch || !getApi()) return;
   stopWatch = onProfileChange(() => {
-    if (applying || !getProfile().onboarded) return;
+    if (applying || (!includeNotOnboarded && !getProfile().onboarded)) return;
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => { timer = null; void pushProfile(); }, delayMs);
   });

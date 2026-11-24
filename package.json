@@ -1,6 +1,6 @@
 {
-  "name": "doska",
-  "version": "2.12.0",
+  "name": "abax",
+  "version": "2.13.0",
   "relayUrl": "wss://relay.95-174-92-156.sslip.io",
   "apiUrl": "",
   "private": true,

@@ -71,6 +71,21 @@ describe('раздел «Профиль»', () => {
     expect($('.ps-account').textContent).toContain('Облачный сервер не подключён');
   });
 
+  it('в Tutor доступны настройки профиля без выбора курсора', () => {
+    setProfile({ name: 'Лемур', cursorId: 'amber' });
+    const m = mount({ tutor: true });
+    disposers.push(m.dispose);
+    expect(m.host.querySelector('.ps-name')).not.toBeNull();
+    expect(m.host.querySelector('.ps-tier')).not.toBeNull();
+    expect(m.host.querySelector('.ps-account')).not.toBeNull();
+    expect(m.host.querySelector('.cp')).toBeNull();
+    const name = m.host.querySelector<HTMLInputElement>('.ps-name')!;
+    name.value = 'Енот';
+    name.dispatchEvent(new Event('change'));
+    expect(getProfile().name).toBe('Енот');
+    expect(getProfile().cursorId).toBe('amber');
+  });
+
   it('кнопка-рандомайзер в «Профиле» сохраняет случайное имя', () => {
     setProfile({ name: 'Лемур', onboarded: true });
     const m = mount();

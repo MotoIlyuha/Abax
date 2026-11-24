@@ -16,6 +16,7 @@ import {
 } from './tutor-ui';
 import { uid } from './tutor-local';
 import { appHref } from './tutor-launch';
+import { createTutorSegments } from './tutor-segments';
 
 const weekdays = ['Воскресенье', 'Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота'];
 const colors = [
@@ -40,18 +41,13 @@ export function studentsView(ui: TutorUI, archived = false) {
   const search = input('', 'search');
   search.placeholder = 'Найти по имени или предмету';
   search.setAttribute('aria-label', 'Поиск учеников');
-  const tabs = group('tu-segments');
-  for (const [text, value] of [
-    ['Активные', false],
-    ['Архив', true],
-  ] as const) {
-    const btn = ui.button(text, () => {
-      ui.main.replaceChildren();
-      studentsView(ui, value);
-    });
-    btn.setAttribute('aria-pressed', String(archived === value));
-    tabs.append(btn);
-  }
+  const tabs = createTutorSegments([
+    ['active', 'Активные'], ['archive', 'Архив'],
+  ] as const, archived ? 'archive' : 'active', 'Список учеников', value => {
+    archived = value === 'archive';
+    search.value = '';
+    filter();
+  });
   const list = group('tu-students');
   function filter() {
     list.replaceChildren();
@@ -85,7 +81,7 @@ export function studentsView(ui: TutorUI, archived = false) {
   }
   search.addEventListener('input', filter);
   filter();
-  ui.main.append(group('tu-toolbar', tabs, search), list);
+  ui.main.append(group('tu-toolbar', tabs.el, search), list);
 }
 
 export async function studentEditor(ui: TutorUI, s?: Student) {

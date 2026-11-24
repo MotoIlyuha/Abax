@@ -6,7 +6,7 @@ export function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text
   if (text) n.textContent = text;
   return n;
 }
-export type View = 'students' | 'calendar' | 'income';
+export type View = 'students' | 'calendar' | 'income' | 'profile' | 'subscription';
 export interface TutorUI {
   store: TutorStore;
   main: HTMLElement;

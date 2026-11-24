@@ -6,6 +6,15 @@ import { el, errorText, group, type TutorUI, type View } from './tutor-ui';
 import { incomeView } from './tutor-income-ui';
 import { calendarView } from './tutor-calendar-ui';
 import { studentsView } from './tutor-students-ui';
+import { renderProfileSettings } from './profile-settings';
+import { renderSubscriptionSettings } from './subscription-settings';
+import { startProfileSync, syncAccount } from './profile-sync';
+import { authErrorText, completePendingAuth } from './auth';
+import type { SectionView } from './settings-dialog';
+import { setUpgradeHandler } from './pro-badge';
+import { openPlansDialog, setPlansDialogHooks } from './plans-dialog';
+import { mountTutorNavMotion } from './tutor-nav-motion';
+import { mountTutorSidebar } from './tutor-sidebar';
 
 export async function bootTutor() {
   const root = document.getElementById('tutor-root')!;
@@ -15,9 +24,13 @@ export async function bootTutor() {
   const rail = el('nav', 'tu-rail');
   rail.setAttribute('aria-label', 'Разделы кабинета');
   const logo = el('img');
-  logo.src = 'logo.svg';
+  logo.src = 'tutor-logo.svg';
   logo.alt = '';
-  const brand = group('tu-brand', logo, el('strong', '', 'Abax Tutor'));
+  const brand = group('tu-brand', logo, el('strong', 'tu-sidebar-label', 'Abax Tutor'));
+  const collapse = el('button', 'tu-sidebar-toggle');
+  collapse.type = 'button';
+  collapse.append(el('span', 'tu-sidebar-chevron'));
+  const railHead = group('tu-rail-head', brand, collapse);
   const nav = group('tu-nav');
   const main = el('main', 'tu-main');
   main.tabIndex = -1;
@@ -26,7 +39,7 @@ export async function bootTutor() {
   toast.hidden = true;
   toast.setAttribute('role', 'status');
   root.append(rail, main, sheet, toast);
-  rail.append(brand, nav);
+  rail.append(railHead, nav);
   let prefs;
   try {
     prefs = JSON.parse(localStorage.getItem('doska.settings') ?? 'null');
@@ -37,9 +50,16 @@ export async function bootTutor() {
   document.body.classList.toggle('no-ui-anim', motion === 'off');
   document.body.classList.toggle('no-motion', motion !== 'enhanced');
   const store = new TutorStore();
-  let view: View = 'calendar';
+  const authOutcome = await completePendingAuth();
+  let view: View = authOutcome?.resume?.where === 'tutor-profile' ? 'profile' : 'calendar';
+  const profileNotice = authOutcome?.resume?.where === 'tutor-profile' ? {
+    text: authOutcome.ok ? (authOutcome.mode === 'link' ? 'Способ входа привязан' : 'Вы вошли в аккаунт') : authErrorText(authOutcome.error ?? 'auth-failed'),
+    kind: authOutcome.ok ? 'info' as const : 'error' as const,
+  } : null;
+  let section: SectionView | null = null;
   let toastTimer = 0;
   let backVisible: (v: boolean) => void = () => {};
+  let updateNav = () => {};
   const message = (text: string) => {
     pushNotice({ kind: 'system', title: text, quiet: true });
     window.clearTimeout(toastTimer);
@@ -114,16 +134,29 @@ export async function bootTutor() {
       ui.render();
     },
     render() {
+      section?.dispose?.();
+      section = null;
       main.replaceChildren();
       for (const b of nav.querySelectorAll('button'))
         b.setAttribute('aria-current', b.dataset.view === view ? 'page' : 'false');
+      updateNav();
       if (view === 'calendar') calendarView(ui);
       else if (view === 'income') incomeView(ui);
-      else studentsView(ui);
+      else if (view === 'students') studentsView(ui);
+      else {
+        main.append(el('h1', 'tu-heading', view === 'profile' ? 'Профиль' : 'Подписка'));
+        const content = el('div', 'tu-profile-content');
+        main.append(content);
+        section = view === 'profile'
+          ? renderProfileSettings(content, () => ui.render(), { tutor: true, notice: profileNotice, openSubscription: () => ui.navigate('subscription') })
+          : renderSubscriptionSettings(content, { openLogin: () => ui.navigate('profile') });
+      }
       if (store.api && store.pending) main.prepend(el('p', 'tu-pending', 'Ожидают синхронизации: ' + store.pending));
       backVisible(sheet.open || view !== 'calendar');
     },
   };
+  setUpgradeHandler(f => openPlansDialog(f));
+  setPlansDialogHooks({ openLogin: () => ui.navigate('profile'), openPromo: () => ui.navigate('subscription') });
   const links = [
     ['calendar', 'Календарь', '▦'],
     ['students', 'Ученики', '◉'],
@@ -134,23 +167,29 @@ export async function bootTutor() {
     b.dataset.view = id;
     const glyph = el('span', 'tu-glyph', icon);
     glyph.setAttribute('aria-hidden', 'true');
-    b.append(glyph, el('span', '', text));
+    b.setAttribute('aria-label', text);
+    b.title = text;
+    b.append(glyph, el('span', 'tu-nav-label', text));
     nav.append(b);
   }
-  const exit = ui.button('↗  Abax Board', () => location.assign(appHref('board')), 'tu-exit');
-  if (store.api) {
-    const profile = ui.button(
-      'Профиль',
-      () => {
-        const url = new URL(appHref('board'));
-        url.searchParams.set('tutorProfile', '1');
-        location.assign(url.href);
-      },
-      'tu-profile',
-    );
-    nav.append(profile);
-  }
+  const exit = ui.button('', () => location.assign(appHref('board')), 'tu-exit');
+  exit.setAttribute('aria-label', 'Открыть Abax Board');
+  exit.title = 'Открыть Abax Board';
+  const exitIcon = el('span', 'tu-glyph', '↗');
+  exitIcon.setAttribute('aria-hidden', 'true');
+  exit.append(exitIcon, el('span', 'tu-sidebar-label', 'Abax Board'));
+  const profile = ui.button('', () => ui.navigate('profile'), 'tu-profile');
+  profile.dataset.view = 'profile';
+  profile.setAttribute('aria-label', 'Профиль');
+  profile.title = 'Профиль';
+  const profileGlyph = el('span', 'tu-glyph', '◯');
+  profileGlyph.setAttribute('aria-hidden', 'true');
+  profile.append(profileGlyph, el('span', 'tu-nav-label', 'Профиль'));
+  nav.append(profile);
   rail.append(exit);
+  const updateMobileNav = mountTutorNavMotion(nav);
+  const updateSidebar = mountTutorSidebar(root, rail, nav, collapse, logo);
+  updateNav = () => { updateMobileNav(); updateSidebar(); };
   const back = () => {
     if (sheet.open) sheet.close();
     else ui.navigate('calendar');
@@ -178,6 +217,8 @@ export async function bootTutor() {
     );
     return;
   }
+  await syncAccount();
+  startProfileSync(400, true);
   ui.render();
   const refresh = () => {
     void store

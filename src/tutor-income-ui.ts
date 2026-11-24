@@ -1,8 +1,10 @@
 import { analytics, type Detail, type ChartGroup } from './tutor-analytics';
 import { period, lessonDetails } from './tutor-calendar-ui';
+import { createTutorSegments } from './tutor-segments';
 import { avatar, dateInput, dayLabel, el, field, group, heading, input, rub, select, type TutorUI } from './tutor-ui';
 
 type RangeMode = 'day' | 'week' | 'month' | 'custom';
+const incomeSegments = new WeakMap<TutorUI, ReturnType<typeof createTutorSegments<RangeMode>>>();
 const income = {
   mode: 'month' as RangeMode,
   date: new Date(),
@@ -140,20 +142,14 @@ function donut(r: Report) {
 }
 export function incomeView(ui: TutorUI) {
   ui.main.append(heading('Доход и аналитика'));
-  const modes = group('tu-segments');
-  for (const [k, label] of [
-    ['day', 'День'],
-    ['week', 'Неделя'],
-    ['month', 'Месяц'],
-    ['custom', 'Период'],
-  ] as const) {
-    const b = ui.button(label, () => {
-      income.mode = k;
-      ui.render();
-    });
-    b.setAttribute('aria-pressed', String(k === income.mode));
-    modes.append(b);
+  let modes = incomeSegments.get(ui);
+  if (!modes) {
+    modes = createTutorSegments<RangeMode>([
+      ['day', 'День'], ['week', 'Неделя'], ['month', 'Месяц'], ['custom', 'Период'],
+    ], income.mode, 'Период аналитики', value => { income.mode = value; ui.render(); });
+    incomeSegments.set(ui, modes);
   }
+  modes.sync(income.mode);
   const a = new Date(income.from + 'T00:00'),
     z = new Date(income.to + 'T00:00');
   z.setDate(z.getDate() + 1);
@@ -182,7 +178,7 @@ export function incomeView(ui: TutorUI) {
         el('h3', '', dayLabel(+start) + (income.mode === 'day' ? '' : ' – ' + dayLabel(+end - 1))),
         ui.button('›', () => jump(1)),
       ),
-      modes,
+      modes.el,
     ),
   );
   if (income.mode === 'custom') {

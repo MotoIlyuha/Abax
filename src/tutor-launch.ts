@@ -64,11 +64,24 @@ export function mountTelegram(root: HTMLElement, back: () => void) {
     }
   };
   const theme = (params: Record<string, string> = {}, scheme?: string) => {
+    const colors = ['bg_color', 'secondary_bg_color', 'section_bg_color', 'text_color', 'hint_color',
+      'subtitle_text_color', 'button_color', 'button_text_color', 'accent_text_color', 'link_color',
+      'section_separator_color', 'bottom_bar_bg_color'];
+    let hasColors = false;
+    for (const key of colors) {
+      const value = params?.[key];
+      const property = '--tu-tg-' + key.replaceAll('_', '-');
+      if (typeof value === 'string' && /^#[\da-f]{6}$/i.test(value)) {
+        root.style.setProperty(property, value);
+        hasColors = true;
+      } else root.style.removeProperty(property);
+    }
+    root.toggleAttribute('data-telegram-theme', hasColors);
     if (scheme === 'dark' || scheme === 'light') root.dataset.scheme = scheme;
     if (/^#[\da-f]{6}$/i.test(params.bg_color ?? '')) {
       const n = Number.parseInt(params.bg_color.slice(1), 16);
       root.dataset.scheme =
-        scheme ?? ((n >> 16) * 299 + ((n >> 8) & 255) * 587 + (n & 255) * 114 < 128000 ? 'dark' : 'light');
+        scheme === 'dark' || scheme === 'light' ? scheme : ((n >> 16) * 299 + ((n >> 8) & 255) * 587 + (n & 255) * 114 < 128000 ? 'dark' : 'light');
     }
   };
   if (app) {
