@@ -3346,7 +3346,7 @@ form.ob-email { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin
   font-family: inherit; font-size: 16px; font-weight: 500; line-height: 24px; font-kerning: none; letter-spacing: 0;
   color: transparent; caret-color: transparent;
 }
-.em-input::selection { background: var(--accent-soft); color: transparent; }
+.em-input::selection { background: var(--accent-ring); color: transparent; }
 .em-caret {
   position: absolute; left: 0; top: 2px; width: 2px; height: 20px; border-radius: 2px;
   background: var(--accent); opacity: 0; pointer-events: none; transform-origin: left center;
@@ -3684,7 +3684,7 @@ form.ob-email { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin
   caret-color: transparent;
 }
 .ob-limit-input::placeholder { color: var(--fg-placeholder); }
-.ob-limit-input::selection { background: var(--accent-soft); color: transparent; }
+.ob-limit-input::selection { background: var(--accent-ring); color: transparent; }
 .ob-limit-caret {
   position: absolute; left: 0; top: 50%; width: 2px; height: 20px; margin-top: -10px; border-radius: 2px;
   background: var(--accent); opacity: 0; pointer-events: none; transform-origin: left center;

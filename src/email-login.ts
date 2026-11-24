@@ -203,7 +203,7 @@ function springyView(value: string, fromPill: boolean, sent: (addr: string, dev?
   layerOut.appendChild(layer);
   const input = el('input', 'em-input');
   input.id = id;
-  input.type = 'email';
+  input.type = 'text';
   input.name = 'email';
   input.inputMode = 'email';
   input.autocomplete = 'email';
@@ -278,7 +278,6 @@ function springyView(value: string, fromPill: boolean, sent: (addr: string, dev?
   }
 
   function caretTarget(): number {
-    // у type="email" нет selectionEnd — курсор стоит в конце
     const i = input.selectionEnd ?? spans.length;
     if (!spans.length) return 0;
     if (i < spans.length) return spans[i].offsetLeft;
@@ -384,7 +383,7 @@ function springyView(value: string, fromPill: boolean, sent: (addr: string, dev?
       // растяжка тянется позади направления движения
       caret.style.transform = `translateX(${C.x - scroll - (C.v > 0 ? stretch : 0)}px)`;
       const idle = performance.now() - lastMove > 550 && speed < 5;
-      caret.style.opacity = focused && !busy ? '1' : '0';
+      caret.style.opacity = focused && !busy && input.selectionStart === input.selectionEnd ? '1' : '0';
       caret.classList.toggle('blink', focused && idle);
 
       const f = LB.x;
