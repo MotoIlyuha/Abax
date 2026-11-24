@@ -12,10 +12,12 @@
 
 import { onChange, state } from './state';
 import { onBoardFrame, requestRender } from './renderer';
+import type { CommentThread } from './types';
+import { commentPoint } from './comments';
 import { layoutAnnotRows, type AnnotRow } from './annotations';
 import { onAnnotView, recentReactions, showComments, showReactions } from './annot-prefs';
 import { notePerson, peopleLabel } from './note-people';
-import { addReaction, annotationsAvailable, canAnnotate, openDiscussion, removeReaction } from './comments-ui';
+import { addReaction, annotationsAvailable, canAnnotate, closeThread, deleteComment, moveComment, openDiscussion, openThread, removeReaction } from './comments-ui';
 import { attractAttention } from './attention';
 import { createIconButton, type IconButton } from './icon-button';
 import { closeIconPicker, iconPickerOpen } from './icon-picker';
@@ -40,6 +42,144 @@ interface RowNode {
 
 let layer: HTMLElement | null = null;
 const rows = new Map<string, RowNode>();
+const pins = new Map<string, CommentPin>();
+let pinPageId = '';
+
+interface CommentPin {
+  button: HTMLButtonElement;
+  preview: { x: number; y: number } | null;
+}
+
+function buildPin(id: string, root: HTMLElement): CommentPin {
+  const button = el('button', 'an-pin');
+  button.type = 'button';
+  button.dataset.thread = id;
+  button.setAttribute('aria-expanded', 'false');
+  button.innerHTML = COMMENT_ICON; // константа каталога иконок
+  const pin: CommentPin = { button, preview: null };
+  let drag: { pointerId: number; x: number; y: number; dx: number; dy: number } | null = null;
+  let suppressClick = false;
+  let holdTimer = 0;
+  let menu: HTMLElement | null = null;
+  const cancelHold = () => { window.clearTimeout(holdTimer); holdTimer = 0; };
+  const toWorld = (e: PointerEvent) => {
+    const rect = root.getBoundingClientRect();
+    const { x, y, zoom } = state.camera;
+    return { x: x + (e.clientX - rect.left) / zoom, y: y + (e.clientY - rect.top) / zoom };
+  };
+  button.addEventListener('pointerdown', e => {
+    if (e.button !== 0 || drag) return;
+    suppressClick = false;
+    if (state.tool !== 'comment' || !canAnnotate()) return;
+    const thread = state.board.comments?.find(t => t.id === id);
+    if (!thread) return;
+    const target = state.board.elements.find(el => el.id === thread.targetElementId);
+    const point = commentPoint(thread, target);
+    const cursor = toWorld(e);
+    drag = { pointerId: e.pointerId, x: e.clientX, y: e.clientY, dx: point.x - cursor.x, dy: point.y - cursor.y };
+    button.setPointerCapture?.(e.pointerId);
+    if (e.pointerType === 'touch') {
+      cancelHold();
+      holdTimer = window.setTimeout(() => {
+        holdTimer = 0;
+        if (!drag || !button.isConnected || state.tool !== 'comment' || !canAnnotate()) return;
+        drag = null;
+        suppressClick = true;
+        menu?.remove();
+        menu = el('div', 'an-pin-menu');
+        menu.setAttribute('role', 'menu');
+        const remove = el('button', '', 'Удалить комментарий');
+        remove.type = 'button';
+        remove.setAttribute('role', 'menuitem');
+        remove.addEventListener('click', ev => { ev.stopPropagation(); menu?.remove(); menu = null; document.removeEventListener('pointerdown', dismiss, true); deleteComment(id); });
+        menu.append(remove);
+        button.after(menu);
+        menu.style.translate = button.style.translate;
+        remove.focus();
+        const dismiss = (ev: PointerEvent) => {
+          if (menu?.contains(ev.target as Node)) return;
+          menu?.remove(); menu = null;
+          document.removeEventListener('pointerdown', dismiss, true);
+        };
+        document.addEventListener('pointerdown', dismiss, true);
+      }, HOLD_MS);
+    }
+  });
+  const dragPoint = (e: PointerEvent) => {
+    if (!drag || drag.pointerId !== e.pointerId) return null;
+    if (!pin.preview && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) <= 4) return null;
+    cancelHold();
+    const cursor = toWorld(e);
+    return { x: cursor.x + drag.dx, y: cursor.y + drag.dy };
+  };
+  button.addEventListener('pointermove', e => {
+    const next = dragPoint(e);
+    if (!next) return;
+    if (!pin.preview) closeThread();
+    pin.preview = next;
+    button.classList.add('dragging');
+    syncAnnotLayer();
+  });
+  const end = (e: PointerEvent) => {
+    cancelHold();
+    if (drag?.pointerId !== e.pointerId) return;
+    const point = e.type === 'pointerup' ? dragPoint(e) : null;
+    suppressClick = !!point || !!pin.preview;
+    drag = null;
+    pin.preview = null;
+    button.classList.remove('dragging');
+    if (point && button.isConnected && state.tool === 'comment' && canAnnotate()) moveComment(id, point);
+    syncAnnotLayer();
+  };
+  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) button.addEventListener(type, end);
+  button.addEventListener('click', e => {
+    if (!suppressClick || e.detail === 0) openThread(id, button);
+    suppressClick = false;
+  });
+  button.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (state.tool === 'comment' && !menu) deleteComment(id);
+  });
+  return pin;
+}
+
+function syncPins(root: HTMLElement, threads: readonly CommentThread[], editing: boolean): void {
+  if (pinPageId !== state.pageId) {
+    for (const pin of pins.values()) pin.button.remove();
+    pins.clear();
+    pinPageId = state.pageId;
+  }
+  const seen = new Set<string>();
+  const targets = editing ? new Map(state.board.elements.map(el => [el.id, el])) : null;
+  const cam = state.camera;
+  for (const thread of threads) {
+    const target = thread.targetElementId ? targets?.get(thread.targetElementId) : undefined;
+    if (thread.targetElementId && !target) continue;
+    seen.add(thread.id);
+    let pin = pins.get(thread.id);
+    if (!pin) {
+      pin = buildPin(thread.id, root);
+      pins.set(thread.id, pin);
+      root.append(pin.button);
+    }
+    const position = editing && pin.preview ? pin.preview : commentPoint(thread, target);
+    pin.button.style.translate = `${(position.x - cam.x) * cam.zoom - 4}px ${(position.y - cam.y) * cam.zoom}px`;
+    pin.button.classList.toggle('resolved', !!thread.resolved);
+    pin.button.classList.toggle('editable', editing);
+    let label = thread.resolved ? 'Решённый комментарий' : 'Открыть комментарий';
+    if (editing) label += '. Перетащите для перемещения или нажмите ПКМ для удаления';
+    if (pin.button.title !== label) {
+      pin.button.title = label;
+      pin.button.setAttribute('aria-label', label);
+    }
+  }
+  for (const [id, pin] of pins) {
+    if (seen.has(id)) continue;
+    pin.button.remove();
+    pins.delete(id);
+  }
+}
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: string): HTMLElementTagNameMap[K] {
   const n = document.createElement(tag);
@@ -295,11 +435,13 @@ export function syncAnnotLayer(): void {
   const root = host();
   if (!root) return;
   const seen = new Set<string>();
-  if (annotationsAvailable() && !state.layerPreview) {
+  const available = annotationsAvailable() && !state.layerPreview;
+  const editing = available && state.tool === 'comment' && canAnnotate();
+  if (available) {
     const w = root.clientWidth || window.innerWidth;
     const h = root.clientHeight || window.innerHeight;
     const list = layoutAnnotRows(state.board.elements, state.board.comments, state.camera, w, h, {
-      toolsFor: toolsTarget(), showReactions: showReactions(), showComments: showComments(),
+      toolsFor: editing ? null : toolsTarget(), showReactions: showReactions(), showComments: showComments() && !editing,
     });
     for (const r of list) {
       seen.add(r.elId);
@@ -326,6 +468,7 @@ export function syncAnnotLayer(): void {
     if (menuFor === id) closeReactionsMenu(true);
   }
   if (menuFor && seen.has(menuFor)) refreshReactionsMenu();
+  syncPins(root, available && (editing || showComments()) ? state.board.comments ?? [] : [], editing);
 }
 
 /** Узел строки объекта (для тестов и панели обсуждения: откуда она «выходит»). */
@@ -474,6 +617,8 @@ export function resetAnnotLayer(): void {
   closeReactionsMenu(true);
   for (const n of rows.values()) n.root.remove();
   rows.clear();
+  for (const pin of pins.values()) pin.button.remove();
+  pins.clear();
   layer?.remove();
   layer = null;
 }

@@ -933,10 +933,18 @@ function createRoomHub({ code, openEdit = false, maxGuests, canFollowHost = true
     const author = { authorId: notes.cleanUserId(m.userId) || `u${info.uid}`, authorName: info.name };
     if (!info.noteId) noteIdOf(info, m.userId);
     let next = page;
+    const offset = isObj(m.offset) && isNum(m.offset.x) && isNum(m.offset.y) ? { x: m.offset.x, y: m.offset.y } : undefined;
     if (m.op === 'create') {
       if (!isNum(m.x) || !isNum(m.y) || typeof m.text !== 'string') return;
-      if (!isId(m.targetElementId)) return;
-      next = notes.createCommentThread(page, { x: m.x, y: m.y, targetElementId: m.targetElementId, ...author, text: m.text });
+      const target = m.targetElementId;
+      if (target !== undefined && !isId(target)) return;
+      next = notes.createCommentThread(page, { x: m.x, y: m.y, targetElementId: target, offset, ...author, text: m.text });
+    } else if (m.op === 'move') {
+      if (!isId(m.threadId) || !isNum(m.x) || !isNum(m.y)) return;
+      next = notes.moveCommentThread(page, m.threadId, m.x, m.y, offset);
+    } else if (m.op === 'delete') {
+      if (!isId(m.threadId)) return;
+      next = notes.deleteCommentThread(page, m.threadId);
     } else if (m.op === 'reply') {
       if (!isId(m.threadId) || typeof m.text !== 'string') return;
       next = notes.addCommentReply(page, m.threadId, { ...author, text: m.text });

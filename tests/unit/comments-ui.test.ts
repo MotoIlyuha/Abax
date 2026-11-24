@@ -1,13 +1,13 @@
 // Реакции и комментарии: постановка и снятие реакций, открытие обсуждения.
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  addReaction, annotationsAvailable, closeThread, hasMyReaction, initCommentsUi, openDiscussion, openDiscussionId, openThread,
+  addReaction, annotationsAvailable, closeThread, commentAt, deleteComment, moveComment, hasMyReaction, initCommentsUi, openDiscussion, openDiscussionId, openThread,
   removeReaction, startComment, threadOpen, toggleReactionOn,
 } from '../../src/comments-ui';
 import { recentReactions } from '../../src/annot-prefs';
 import { clientId, resetClientId } from '../../src/identity';
-import { createCommentThread } from '../../src/comments';
-import { addElement, blankProject, canUndo, openProject, state, update } from '../../src/state';
+import { createCommentThread, resolveCommentThread } from '../../src/comments';
+import { addElement, blankProject, canUndo, deleteSelected, openProject, setSelection, state, update } from '../../src/state';
 import type { ShapeEl } from '../../src/types';
 
 const rect = (id: string, x = 100, y = 100): ShapeEl =>
@@ -74,6 +74,43 @@ describe('обсуждение объекта у автора без комна�
     i.dispatchEvent(new Event('input'));
     i.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
   };
+
+  it('создаёт, перемещает и удаляет ветку на холсте', () => {
+    commentAt({ x: 80, y: 120 }, null);
+    send('Обсудить');
+    const thread = state.board.comments![0];
+    expect(thread).toMatchObject({ x: 80, y: 120, messages: [{ text: 'Обсудить' }] });
+    expect(thread).not.toHaveProperty('targetElementId');
+    expect(threadOpen()).toBe(false);
+
+    moveComment(thread.id, { x: 140, y: 170 });
+    expect(state.board.comments![0]).toEqual({ ...thread, x: 140, y: 170 });
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true);
+    try {
+      deleteComment(thread.id);
+      expect(state.board.comments).toHaveLength(1);
+      deleteComment(thread.id);
+      expect(state.board.comments).toHaveLength(0);
+    } finally { confirm.mockRestore(); }
+  });
+
+  it('запрашивает подтверждение только для объектов с нерешённой веткой', () => {
+    commentAt({ x: 110, y: 110 }, state.board.elements[0]);
+    send('Проверить');
+    const thread = state.board.comments![0];
+    expect(thread).toMatchObject({ targetElementId: 'a', offset: { x: 10, y: 10 } });
+    setSelection(['a']);
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    try {
+      expect(deleteSelected()).toBe(false);
+      expect(state.selection.has('a')).toBe(true);
+      expect(confirm).toHaveBeenCalledTimes(1);
+      state.board.comments = resolveCommentThread(state.board, thread.id).comments;
+      expect(deleteSelected()).toBe(true);
+      expect(confirm).toHaveBeenCalledTimes(1);
+      expect(state.board.comments![0].id).toBe(thread.id);
+    } finally { confirm.mockRestore(); }
+  });
 
   it('новое обсуждение: «Новый комментарий», первое сообщение - новая ветка у объекта; панель остаётся открытой', () => {
     startComment(state.board.elements[0]);

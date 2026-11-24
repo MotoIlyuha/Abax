@@ -5,7 +5,7 @@ export type SolidKind =
 
 export type ToolId =
   | 'select' | 'pen' | 'highlighter' | 'eraser' | 'partEraser' | 'pan'
-  | 'text' | 'note' | 'task' | 'spread' | 'rect' | 'ellipse' | 'triangle' | 'line' | 'arrow' | 'poly'
+  | 'text' | 'note' | 'task' | 'comment' | 'spread' | 'rect' | 'ellipse' | 'triangle' | 'line' | 'arrow' | 'poly'
   | PointerKind
   | SolidKind;
 
@@ -243,6 +243,8 @@ export interface CommentThread {
   y: number;
   /** Если привязан к элементу доски — двигается вместе с ним. */
   targetElementId?: string;
+  /** Смещение от верхнего левого угла рамки объекта. */
+  offset?: { x: number; y: number };
   resolved?: boolean;
   messages: CommentMessage[];
 }

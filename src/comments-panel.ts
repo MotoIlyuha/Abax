@@ -22,7 +22,7 @@ import { clientId } from './identity';
 
 /** Сколько последних сообщений видно в свёрнутой карточке. */
 export const PREVIEW_MAX = 3;
-export const COMMENTS_EMPTY_TEXT = 'Комментариев пока нет - выделите объект и нажмите «Комментировать»';
+export const COMMENTS_EMPTY_TEXT = 'Комментариев пока нет. Выберите «Комментировать» и нажмите на холст или объект.';
 
 const GOTO_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17L17 7"/><path d="M9 7h8v8"/></svg>';
 
@@ -105,20 +105,45 @@ export interface CommentsView {
 export function createCommentsView(): CommentsView {
   const root = el('div', 'cm');
   const frame = el('div', 'cm-frame');
+  const controls = el('div', 'cm-controls');
+  const filter = el('button', 'cm-filter', 'Нерешённые');
+  filter.type = 'button';
+  filter.setAttribute('aria-pressed', 'false');
+  const next = el('button', 'cm-next', 'Следующая открытая ветка');
+  next.type = 'button';
+  controls.append(filter, next);
   const list = el('div', 'cm-list');
   list.setAttribute('role', 'feed');
-  list.setAttribute('aria-label', 'Комментарии к объектам');
+  list.setAttribute('aria-label', 'Комментарии');
   frame.append(list);
   const empty = el('div', 'np-empty cm-empty');
   const icon = el('span', 'np-empty-icon');
   icon.setAttribute('aria-hidden', 'true');
   icon.innerHTML = COMMENT_ICON; // константа кода
   empty.append(icon, el('div', 'np-empty-text', COMMENTS_EMPTY_TEXT));
-  root.append(frame, empty);
+  root.append(controls, frame, empty);
   let overlay: OverlayScroll | null = null;
   let refs: unknown[] = [];
   let unread: ReadonlySet<string> = new Set();
   const expanded = new Set<string>();
+  let unresolvedOnly = false;
+  let lastThread = '';
+  filter.addEventListener('click', () => {
+    unresolvedOnly = !unresolvedOnly;
+    filter.setAttribute('aria-pressed', String(unresolvedOnly));
+    render(true);
+  });
+  next.addEventListener('click', () => {
+    const threads = commentCards(state.project.pages, state.pageId).flatMap(c =>
+      c.threads.filter(t => !t.resolved).map(t => ({ card: c, thread: t })));
+    if (!threads.length) return;
+    const index = threads.findIndex(item => item.thread.id === lastThread);
+    const item = threads[(index + 1) % threads.length];
+    lastThread = item.thread.id;
+    void goTo(item.card).then(ok => {
+      if (ok && state.pageId === item.card.pageId) openThread(item.thread.id);
+    });
+  });
 
   /** Данные не менялись: те же массивы элементов и комментариев страниц, та же текущая страница. */
   const sameRefs = (): boolean => {
@@ -144,7 +169,7 @@ export function createCommentsView(): CommentsView {
     if (meta.length) titles.append(el('div', 'cm-meta', meta.join(' · ')));
     const go = el('button', 'cm-go');
     go.type = 'button';
-    go.title = 'Перейти к объекту';
+    go.title = c.elId ? 'Перейти к объекту' : 'Перейти к комментарию';
     go.setAttribute('aria-label', `Перейти: ${c.label}`);
     go.innerHTML = GOTO_ICON; // константа кода
     go.addEventListener('click', () => { void goTo(c); });
@@ -220,7 +245,11 @@ export function createCommentsView(): CommentsView {
 
   const render = (force = false): void => {
     if (sameRefs() && !force) return;
-    const cards = commentCards(state.project.pages, state.pageId);
+    const allCards = commentCards(state.project.pages, state.pageId);
+    const cards = unresolvedOnly ? allCards.map(c => ({ ...c, threads: c.threads.filter(t => !t.resolved), reactions: [] as [string, string[]][] })).filter(c => c.threads.length > 0) : allCards;
+    next.disabled = !allCards.some(c => c.threads.some(t => !t.resolved));
+    const emptyText = empty.querySelector<HTMLElement>('.np-empty-text');
+    if (emptyText) emptyText.textContent = unresolvedOnly ? 'Нерешённых комментариев нет.' : COMMENTS_EMPTY_TEXT;
     const top = list.scrollTop;
     list.textContent = '';
     let page = '';
@@ -251,6 +280,7 @@ export function createCommentsView(): CommentsView {
       if (changed) render(true);
     },
     reveal(key) {
+      if (unresolvedOnly) { unresolvedOnly = false; filter.setAttribute('aria-pressed', 'false'); render(true); }
       render();
       const target = [...list.querySelectorAll<HTMLElement>('.cm-card')].find(n => n.dataset.key === key);
       if (!target) return false;

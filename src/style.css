@@ -2459,7 +2459,12 @@ body.tbe-grabbing, body.tbe-grabbing * { cursor: grabbing !important; }
 }
 body.collab-guest .page-add { display: none; }
 body.collab-guest .page-del { display: none !important; }
-body.collab-guest.readonly-mode #toolbar { display: none; }
+#toolbar .readonly-comment { display: none; }
+body.collab-guest.readonly-mode #toolbar:not(.can-comment) { display: none; }
+body.collab-guest.readonly-mode #toolbar.can-comment > :not(.tool-group:first-child),
+body.collab-guest.readonly-mode #toolbar.can-comment .tool-group:first-child > :not(.readonly-comment) { display: none; }
+body.collab-guest.readonly-mode #toolbar.can-comment .readonly-comment { display: grid; }
+body.comment-tool #task-overlay .task-foot { pointer-events: none; }
 #overlay textarea.inplace-edit.note { background: transparent; box-shadow: none; }
 #overlay textarea.inplace-edit:not(.note):not(.shape) { background: rgba(255, 255, 255, 0.85); box-shadow: 0 0 0 1.5px rgba(50, 115, 245, 0.35); border-radius: 3px; }
 
@@ -2965,6 +2970,30 @@ body.no-ui-anim .cp-msg.cp-new { animation: none; }
 .an-comment.open:not(.an-counter) { box-shadow: 0 0 0 3px var(--accent-soft); }
 /* ----- Плашки объектов: реакции и комментарии (src/annot-layer.ts, SPEC_COMMENTS §1–4) ----- */
 #annot-layer { position: absolute; inset: 0; pointer-events: none; z-index: 8; overflow: hidden; }
+.an-pin {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--border);
+  margin-top: -30px;
+  border-radius: 12px 12px 12px 3px;
+  background: var(--accent);
+  color: #fff;
+  box-shadow: var(--shadow-hover);
+  pointer-events: auto;
+  touch-action: none;
+  cursor: pointer;
+}
+.an-pin svg { width: 18px; height: 18px; }
+.an-pin.resolved { background: var(--accent-soft); color: var(--accent-strong); }
+.an-pin.editable { cursor: grab; }
+.an-pin.dragging { cursor: grabbing; z-index: 1; }
+.an-pin:hover, .an-pin:focus-visible { outline: 2px solid var(--accent-strong); outline-offset: 2px; }
 .an-row {
   position: absolute; left: 0; top: 0; display: flex; align-items: center; gap: 4px; height: 26px;
   pointer-events: none; will-change: transform; white-space: nowrap;
@@ -6127,3 +6156,8 @@ body.tutor-mode > :not(#tutor-root):not(#startup) { display:none !important; }
 
 /* Настройки профиля и подписки в кабинете репетитора. */
 .tu-profile-content { max-width: 760px; }
+.cm-controls { display: flex; gap: 8px; padding: 8px 12px; flex-wrap: wrap; }
+.cm-controls button, .an-pin-menu button { cursor: pointer; border: 1px solid var(--border, #d6d9df); border-radius: 8px; background: var(--surface, #fff); color: inherit; padding: 7px 10px; }
+.cm-filter[aria-pressed="true"] { border-color: #2160dd; color: #2160dd; }
+.cm-controls button:disabled { opacity: .5; cursor: default; }
+.an-pin-menu { position: absolute; z-index: 4; pointer-events: auto; margin: 28px 0 0 0; }

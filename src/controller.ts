@@ -3,7 +3,7 @@ import { geometricFoundationFor, rebindAttachment, reattachMoved, withAttached }
 import type { Camera, Element, FadeStroke, Handle, ImageEl, Pt, ShapeEl, ToolId } from './types';
 import {
   state, update, onChange, beginStroke, extendStroke, endStroke, pushHistory, replaceElements,
-  addElement, setSelection, deleteSelected, undo, redo, pickTool, uid, commitPoly,
+  addElement, setSelection, confirmElementDeletion, deleteSelected, undo, redo, pickTool, uid, commitPoly,
   bringForward, sendBackward, moveSelectionLayer, expandSelectionWithGroups, groupSelected, ungroupSelected, selectAll, selectInserted, opacityField,
   zoomAtPoint, ZOOM_MAX, ZOOM_MIN, insertCopies, isDraftId, touchProject, canCopyCurrentBoard, canTouchElement,
   setFadeStrokeEnd, type LiveStroke,
@@ -38,7 +38,8 @@ import { DRAFT_KEY, comboFromEvent, pageNumberFromEvent } from './hotkeys';
 import { devModeEnabled, devPlanStep, limitsEnforced, setLimitsEnforced, setUserPlan, userPlan } from './plan';
 import { PLAN_TITLES } from './billing';
 import { showToast } from './about';
-import { ERASER_PATHS, ERASER_TIP } from './icons';
+import { canAnnotate, commentAt } from './comments-ui';
+import { COMMENT_TOOL_PATHS, ERASER_PATHS, ERASER_TIP } from './icons';
 import { TOOL_DEFS, toolByKey } from './toolbar';
 import {
   arrowDirection, arrowStep, isArrowKey, NUDGE_FAST, NUDGE_HOLD_MS, NUDGE_SPEED, NUDGE_STEP, NUDGE_STEP_FAST,
@@ -55,7 +56,13 @@ const ERASER_CURSOR = (() => {
     + `<g fill="#fff" stroke="#fff" stroke-width="4">${paths}</g><g stroke="#1f2329" stroke-width="1.8">${paths}</g></svg>`;
   return `url("data:image/svg+xml,${encodeURIComponent(svg)}") ${ERASER_TIP.x} ${ERASER_TIP.y}, crosshair`;
 })();
+const COMMENT_CURSOR = (() => {
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">'
+    + `<g stroke="#fff" stroke-width="4">${COMMENT_TOOL_PATHS}</g><g stroke="#1f2329" stroke-width="1.8">${COMMENT_TOOL_PATHS}</g></svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}") 4 20, crosshair`;
+})();
 const CURSORS: Record<ToolId, string> = {
+  comment: COMMENT_CURSOR,
   select: 'default', pen: 'crosshair', highlighter: 'crosshair', eraser: ERASER_CURSOR, partEraser: 'none',
   pan: 'grab', text: 'text', note: 'crosshair', task: 'default', spread: 'row-resize', rect: 'crosshair',
   ellipse: 'crosshair', triangle: 'crosshair', line: 'crosshair', arrow: 'crosshair', poly: 'crosshair',
@@ -83,8 +90,9 @@ const ZOOM_KEYS = new Set(['Equal', 'Minus']);
 
 type Action = { pid: number } & (
   | { kind: 'draw'; hold?: InkHold }
-  | { kind: 'erase'; pre: Element[]; removed: Element[]; last: { x: number; y: number } | null }
-  | { kind: 'erasePart'; pre: Element[]; changed: boolean; last: { x: number; y: number } | null }
+  | { kind: 'comment'; sx: number; sy: number; point: { x: number; y: number }; targetId?: string }
+  | { kind: 'erase'; pre: Element[]; removed: Element[]; skipped: Set<string>; last: { x: number; y: number } | null }
+  | { kind: 'erasePart'; pre: Element[]; changed: boolean; skipped: Set<string>; last: { x: number; y: number } | null }
   | {
     kind: 'move'; pre: Element[]; start: Pt; orig: Map<string, Element>; moved: boolean; deselectOnUp: boolean; duplicate: boolean; source: Element[];
     /** Общая рамка переносимого до начала переноса и рамки соседей для направляющих (null — выключены). */
@@ -414,7 +422,7 @@ export function initController(canvas: HTMLCanvasElement): void {
     // радиус маленький, шагов много: проверяем только элементы, чья рамка задевает путь
     const path = { x0: Math.min(from.x, x), y0: Math.min(from.y, y), x1: Math.max(from.x, x), y1: Math.max(from.y, y) };
     const near = state.board.elements.filter(el => {
-      if (el.type !== 'stroke' || !canTouchElement(el)) return false; // чужие штрихи при защите не стираются
+      if (el.type !== 'stroke' || a.skipped.has(el.id) || !canTouchElement(el)) return false; // чужие штрихи при защите не стираются
       const pad = r + ('width' in el ? el.width : 0); // у линии рамка без толщины
       const b = elementAABB(el);
       return aabbIntersects({ x0: b.x0 - pad, y0: b.y0 - pad, x1: b.x1 + pad, y1: b.y1 + pad }, path);
@@ -428,6 +436,10 @@ export function initController(canvas: HTMLCanvasElement): void {
       }
     }
     if (removed.size === 0) return;
+    if (!confirmElementDeletion(new Set([...removed].map(el => el.id)))) {
+      for (const el of removed) a.skipped.add(el.id);
+      return;
+    }
     a.removed.push(...removed);
     replaceElements(state.board.elements.filter(el => !removed.has(el)));
   }
@@ -445,10 +457,15 @@ export function initController(canvas: HTMLCanvasElement): void {
       const py = from.y + ((y - from.y) * i) / steps;
       const out: Element[] = [];
       for (const el of next) {
-        if (el.type !== 'stroke' || !canTouchElement(el)) { out.push(el); continue; }
+        if (el.type !== 'stroke' || a.skipped.has(el.id) || !canTouchElement(el)) { out.push(el); continue; }
         const stroke = el;
         const pieces = erasePart(stroke.pts, stroke.width, px, py, r);
         if (!pieces) { out.push(stroke); continue; }
+        if (pieces.length === 0 && !confirmElementDeletion(new Set([stroke.id]))) {
+          a.skipped.add(stroke.id);
+          out.push(stroke);
+          continue;
+        }
         changed = true;
         // куски — на месте линии (порядок слоёв сохраняется); первый оставляет её id
         pieces.forEach((pts, k) => out.push({ ...stroke, id: k === 0 ? stroke.id : uid(), pts }));
@@ -682,7 +699,7 @@ export function initController(canvas: HTMLCanvasElement): void {
 
 
     // совместный режим: на странице без права edit правки запрещены
-    if (!canEditBoard() && activeTool() !== 'pan' && !POINTER_TOOLS.has(activeTool()) && e.button !== 1) {
+    if (!canEditBoard() && !(activeTool() === 'comment' && canAnnotate()) && activeTool() !== 'pan' && !POINTER_TOOLS.has(activeTool()) && e.button !== 1) {
       // читатель может выделить объект — для реакций и копирования, — если автор копировать не запретил
       if (activeTool() === 'select' && e.button === 0 && state.linkMode === null && canCopyCurrentBoard()) {
         const at = toScene(lp.x, lp.y);
@@ -710,7 +727,7 @@ export function initController(canvas: HTMLCanvasElement): void {
       };
       return;
     }
-    if (gesture || action) return;
+    if (gesture || action || (touchBlocked && e.pointerType === 'touch')) return;
 
     if (e.button === 1 || activeTool() === 'pan') {
       e.preventDefault();
@@ -726,6 +743,9 @@ export function initController(canvas: HTMLCanvasElement): void {
     const s = toScene(lp.x, lp.y);
     const tool = temporaryEraser ? 'partEraser' : activeTool();
     switch (tool) {
+      case 'comment':
+        if (canAnnotate()) action = { pid: e.pointerId, kind: 'comment', sx: lp.x, sy: lp.y, point: s, targetId: topHit(s.x, s.y)?.id };
+        break;
       case 'pen':
       case 'highlighter': {
         const point = { x: s.x, y: s.y, p: pressureOf(e) };
@@ -736,13 +756,13 @@ export function initController(canvas: HTMLCanvasElement): void {
         break;
       }
       case 'eraser': {
-        const a: Extract<Action, { kind: 'erase' }> = { pid: e.pointerId, kind: 'erase', pre: state.board.elements, removed: [], last: null };
+        const a: Extract<Action, { kind: 'erase' }> = { pid: e.pointerId, kind: 'erase', pre: state.board.elements, removed: [], skipped: new Set(), last: null };
         action = a;
         eraseAt(s.x, s.y, a);
         break;
       }
       case 'partEraser': {
-        const a: Extract<Action, { kind: 'erasePart' }> = { pid: e.pointerId, kind: 'erasePart', pre: state.board.elements, changed: false, last: null };
+        const a: Extract<Action, { kind: 'erasePart' }> = { pid: e.pointerId, kind: 'erasePart', pre: state.board.elements, changed: false, skipped: new Set(), last: null };
         action = a;
         erasePartAt(s.x, s.y, a);
         break;
@@ -967,6 +987,14 @@ export function initController(canvas: HTMLCanvasElement): void {
     if (e.pointerType === 'mouse' && state.tool === 'select' && !spacePan) fxMove('me', lp.x, lp.y, myCursorId());
     if (!action && e.pointerType !== 'touch') { const sp = toScene(lp.x, lp.y); hoverForeign(sp.x, sp.y); }
     if (collabActive()) noteCursor(lp.x / state.camera.zoom + state.camera.x, lp.y / state.camera.zoom + state.camera.y);
+    if (state.tool === 'comment') {
+      const pt = toScene(lp.x, lp.y);
+      const id = !spacePan && !gesture && !action && e.pointerType !== 'touch' && canAnnotate() ? topHit(pt.x, pt.y)?.id ?? null : null;
+      if (id !== state.commentHoverId) {
+        state.commentHoverId = id;
+        requestRender();
+      }
+    }
     if (state.tool === 'partEraser') update(); // кружок ластика под курсором
     else if (state.tool === 'spread' || presenting()) requestRender(); // линия разреза под курсором, курсор в окне демонстрации
 
@@ -1241,6 +1269,14 @@ export function initController(canvas: HTMLCanvasElement): void {
     if (touchBlocked && touchPtrs().length === 0) touchBlocked = false;
     if (action && action.pid !== e.pointerId) return;
     const a = action;
+    if (a?.kind === 'comment') {
+      action = null;
+      const lp = localPos(e);
+      if (e.type !== 'pointerup' || activeTool() !== 'comment' || Math.hypot(lp.x - a.sx, lp.y - a.sy) > MOVE_THRESHOLD_PX) return;
+      const target = a.targetId ? state.board.elements.find(el => el.id === a.targetId) : null;
+      if (target !== undefined) commentAt(a.point, target);
+      return;
+    }
     if (transfer && a?.kind === 'move') {
       const tr=transfer;
       if (tr.transition) { void tr.transition.then(() => { if (transfer === tr && action === a) onPointerUp(e); }); return; }
@@ -1273,6 +1309,10 @@ export function initController(canvas: HTMLCanvasElement): void {
 
   function onPointerLeave(): void {
     state.hover = null;
+    if (state.commentHoverId !== null) {
+      state.commentHoverId = null;
+      requestRender();
+    }
     resetEraser();
     fxForget('me');
     if (state.tool === 'partEraser' || state.tool === 'laser' || state.tool === 'spread') update();
@@ -1601,6 +1641,7 @@ export function initController(canvas: HTMLCanvasElement): void {
     action = null;
     gesture = null;
     pointers.clear();
+    state.commentHoverId = null;
     touchBlocked = false;
     clearTransfer();
     state.liveStroke = null;
@@ -1625,7 +1666,7 @@ export function initController(canvas: HTMLCanvasElement): void {
   canvas.addEventListener('pointerup', onPointerUp);
   canvas.addEventListener('pointercancel', onPointerUp);
   canvas.addEventListener('lostpointercapture', e => {
-    if (action?.kind === 'draw' && action.pid === e.pointerId) onPointerUp(e);
+    if ((action?.kind === 'draw' || action?.kind === 'comment') && action.pid === e.pointerId) onPointerUp(e);
   });
   canvas.addEventListener('pointerleave', onPointerLeave);
   canvas.addEventListener('dblclick', onDblClick);

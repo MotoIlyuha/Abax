@@ -101,7 +101,7 @@ import { onCancelInteraction } from './interaction';
 import { incomingInvites, incomingInvitesSection, onIncomingInvites, refreshIncomingInvites } from './incoming-invites';
 import { addGestureProbe } from './gesture';
 import { initTaskOverlay, isTeacher } from './task-overlay';
-import { initCommentsUi } from './comments-ui';
+import { canAnnotate, initCommentsUi } from './comments-ui';
 import { initAnnotLayer } from './annot-layer';
 import { initAttention } from './attention';
 import { initNoteNotices } from './note-notices';
@@ -4990,6 +4990,14 @@ function buildToolbar(): void {
     task.addEventListener('click', () => openTaskForm(null));
     tools.append(task);
   }
+  const guestComment = document.createElement('button');
+  guestComment.type = 'button';
+  guestComment.className = 'tool readonly-comment';
+  guestComment.dataset.readonlyComment = '';
+  guestComment.title = toolTip('comment');
+  guestComment.innerHTML = toolDef('comment').icon;
+  guestComment.addEventListener('click', () => pickTool('comment'));
+  tools.append(guestComment);
   if (tools.childElementCount > 0) {
     tb.appendChild(tools);
     const sep = makeVsep();
@@ -5772,7 +5780,7 @@ async function openShareDialog(): Promise<void> {
 }
 
 /** Инструменты, которые читателю безвредны: ничего не рисуют и не меняют. */
-const READER_TOOLS = new Set<ToolId>(['select', 'pan', 'laser', 'fadePen', 'flash']);
+const READER_TOOLS = new Set<ToolId>(['select', 'pan', 'laser', 'fadePen', 'flash', 'comment']);
 /** Указка: лазер, исчезающий маркер, подсветка. */
 const POINTER_KINDS = new Set<ToolId>(['laser', 'fadePen', 'flash']);
 /** Инструмент гостя до того, как ему оставили только чтение. */
@@ -5785,7 +5793,7 @@ function refresh(): void {
     // читателю панели нет: инструмент — «Выделение» (реакции, копирование), а если копировать нельзя — «Панорама»;
     // без указки (роль «Читатель», SPEC_NIGHT6 §2.3) лазер, исчезающий маркер и подсветка недоступны
     const noPointer = myCollabCaps()?.pointer === false;
-    const allowed = (t: ToolId) => READER_TOOLS.has(t) && !(noPointer && POINTER_KINDS.has(t));
+    const allowed = (t: ToolId) => READER_TOOLS.has(t) && !(noPointer && POINTER_KINDS.has(t)) && (t !== 'comment' || canAnnotate());
     if (noPointer && POINTER_KINDS.has(state.tool)) setTool(canCopyCurrentBoard() ? 'select' : 'pan');
     if (readOnly()) {
       if (!allowed(state.tool) || (state.tool === 'select' && !canCopyCurrentBoard())) {
@@ -5800,7 +5808,12 @@ function refresh(): void {
     }
   }
   const tb = document.getElementById('toolbar')!;
+  tb.classList.toggle('can-comment', canAnnotate());
+  const guestComment = tb.querySelector<HTMLButtonElement>('.readonly-comment');
+  guestComment?.classList.toggle('active', state.tool === 'comment');
+  document.body.classList.toggle('comment-tool', state.tool === 'comment' && canAnnotate());
   for (const b of tb.querySelectorAll<HTMLButtonElement>('.tool[data-tool]')) {
+    if (b.dataset.tool === 'comment') b.disabled = !canAnnotate();
     b.classList.toggle('active', b.dataset.tool === state.tool);
   }
   for (const group of toolbarConfig().items) {

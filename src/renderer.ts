@@ -1488,6 +1488,15 @@ function draw(): void {
     if (state.selection.size === 1) { if (editable) drawHandles(ctx, cam); }
     else if (editable) drawBoxHandles(ctx, cam, contentBBox(selected));
   }
+  if (state.tool === 'comment' && state.commentHoverId) {
+    const target = state.board.elements.find(el => el.id === state.commentHoverId);
+    if (target) {
+      const a = cacheOf(target).aabb;
+      ctx.strokeStyle = selColor;
+      ctx.lineWidth = 2;
+      ctx.strokeRect((a.x0 - cam.x) * cam.zoom - 4, (a.y0 - cam.y) * cam.zoom - 4, (a.x1 - a.x0) * cam.zoom + 8, (a.y1 - a.y0) * cam.zoom + 8);
+    }
+  }
   if (state.guides.length > 0) drawGuides(ctx, cam);
   if (state.marquee) {
     const m = state.marquee;

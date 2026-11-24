@@ -45,6 +45,18 @@ describe('room-comments.cjs совпадает с comments.ts', () => {
     expect(cjs.resolveCommentThread(a, 'нет', true)).toBe(a);
   });
 
+  it('комментарии на холсте и перемещение привязанного комментария', () => {
+    const params = { x: 5, y: 6, authorId: 'u1', authorName: 'Автор', text: 'Текст', id: 't1', messageId: 'm1', now: 1 };
+    const free = ts.createCommentThread(page(), params);
+    expect(free.comments?.[0]).not.toHaveProperty('targetElementId');
+    expect(cjs.createCommentThread(page(), params)).toEqual(free);
+    expect(cjs.moveCommentThread(free, 't1', 17, 18)).toEqual(ts.moveCommentThread(free, 't1', 17, 18));
+    expect(cjs.deleteCommentThread(free, 't1')).toEqual(ts.deleteCommentThread(free, 't1'));
+    const attached = ts.createCommentThread(page(), { ...params, targetElementId: 'a' });
+    expect(cjs.moveCommentThread(attached, 't1', 4, 5, { x: 4, y: 5 }))
+      .toEqual(ts.moveCommentThread(attached, 't1', 4, 5, { x: 4, y: 5 }));
+  });
+
   it('идентификатор автора', () => {
     expect(cjs.cleanUserId('masha')).toBe('masha');
     expect(cjs.cleanUserId('  a\u0000b ')).toBe('ab');

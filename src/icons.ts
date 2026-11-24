@@ -87,8 +87,11 @@ export const ERASER_PATHS = ['M20 20H8.5L3.6 15.1a2 2 0 0 1 0-2.8l8.6-8.6a2 2 0 
 export const ERASER_TIP = { x: 6, y: 18 };
 
 
+export const COMMENT_TOOL_PATHS = '<path d="M4 20v-4a2 2 0 0 1-1-1.7V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H9z"/><path d="M8 10h8m-4-4v8"/>';
+
 /** Иконки инструментов панели (кроме «select»: там курсор пользователя). */
 export const TOOL_ICONS = {
+  comment: svg(COMMENT_TOOL_PATHS),
   pan: svg('<path d="M12 3v18M3 12h18"/><path d="M9.5 5.5L12 3l2.5 2.5M9.5 18.5L12 21l2.5-2.5M5.5 9.5L3 12l2.5 2.5M18.5 9.5L21 12l-2.5 2.5"/>'),
   pen: svg('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>'),
   highlighter: svg('<path d="M9 11l-6 6v3h3l6-6"/><path d="M17.5 2.5l4 4L11 17l-4-4z"/>'),

@@ -43,10 +43,11 @@ const withComments = (page, comments) => ({ ...page, comments });
 function createCommentThread(page, params) {
   const text = cleanCommentText(params.text);
   if (!text || !Number.isFinite(params.x) || !Number.isFinite(params.y) || !isUserId(params.authorId)) return page;
-  if (!params.targetElementId || !page.elements.some(e => e.id === params.targetElementId)) return page;
+  if (params.targetElementId !== undefined && !page.elements.some(e => e.id === params.targetElementId)) return page;
   const thread = {
     id: params.id ?? newId(), x: params.x, y: params.y,
-    targetElementId: params.targetElementId,
+    ...(params.targetElementId === undefined ? {} : { targetElementId: params.targetElementId }),
+    ...(params.targetElementId && validCommentOffset(params.offset) ? { offset: params.offset } : {}),
     messages: [{
       id: params.messageId ?? newId(), authorId: params.authorId, authorName: cleanAuthorName(params.authorName), text,
       createdAt: params.now ?? Date.now(),
@@ -74,6 +75,24 @@ function resolveCommentThread(page, threadId, resolved = true) {
   }));
 }
 
+const validCommentOffset = offset => !!offset && Number.isFinite(offset.x) && Number.isFinite(offset.y);
+
+function moveCommentThread(page, id, x, y, offset) {
+  const thread = page.comments?.find(t => t.id === id);
+  if (!thread || !Number.isFinite(x) || !Number.isFinite(y)) return page;
+  const next = { ...thread, x, y };
+  if (thread.targetElementId && validCommentOffset(offset)) next.offset = offset;
+  if (thread.x === x && thread.y === y && thread.offset?.x === next.offset?.x && thread.offset?.y === next.offset?.y) return page;
+  return withComments(page, page.comments.map(t => t === thread ? next : t));
+}
+
+function deleteCommentThread(page, id) {
+  const comments = page.comments?.filter(t => t.id !== id);
+  if (!comments || comments.length === page.comments.length) return page;
+  return withComments(page, comments);
+}
+
 module.exports = {
+  moveCommentThread, deleteCommentThread,
   MAX_USER_ID, cleanUserId, toggleElementReaction, createCommentThread, addCommentReply, resolveCommentThread,
 };
