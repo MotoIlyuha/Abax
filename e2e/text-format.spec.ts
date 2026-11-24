@@ -23,20 +23,21 @@ test.describe('ввод текста', () => {
     await startText(board, 'abc');
     const editor = page.locator('#overlay [contenteditable].inplace-edit');
     const qm = board.quickMenu;
+    const panel = page.getByRole('group', { name: 'Форматирование текста' });
     await expect(qm).toBeVisible();
     await qm.getByRole('button', { name: 'Форматирование', exact: true }).click();
-    await expect(qm.locator('.qm-text-b')).toBeVisible();
+    await expect(panel.locator('.qm-text-b')).toBeVisible();
     await expect(qm.locator('.qm-font-val')).toHaveValue('24');
 
     await page.keyboard.press('Control+b');
-    await expect(qm.locator('.qm-text-b')).toHaveClass(/active/);
+    await expect(panel.locator('.qm-text-b')).toHaveClass(/active/);
     await expect(editor).toHaveCSS('font-weight', '700');
     // кнопка меню фокус у редактора не забирает
-    await qm.locator('.qm-text-i').click();
+    await panel.locator('.qm-text-i').click();
     await expect(editor).toBeFocused();
     await expect(editor).toHaveCSS('font-style', 'italic');
     await page.keyboard.press('Control+i');
-    await expect(qm.locator('.qm-text-i')).not.toHaveClass(/active/);
+    await expect(panel.locator('.qm-text-i')).not.toHaveClass(/active/);
 
     // буфер обмена и отмена — у поля ввода, доска не меняется
     await page.keyboard.press('Control+a');
@@ -178,10 +179,11 @@ test.describe('форматирование фрагмента', () => {
     const qm = board.quickMenu;
     for (let i = 0; i < 'важный'.length; i++) await editor.press('Shift+ArrowLeft');
 
-    await expect(qm.getByRole('button', { name: 'Подчёркнутый' })).toHaveCount(0);
+    const panel = page.getByRole('group', { name: 'Форматирование текста' });
+    await expect(panel).toHaveCount(0);
     await qm.getByRole('button', { name: 'Форматирование', exact: true }).click();
     for (const name of ['Полужирный', 'Курсив', 'Подчёркнутый', 'Зачёркнутый']) {
-      await qm.getByRole('button', { name }).click();
+      await panel.getByRole('button', { name }).click();
     }
     await qm.locator('.qm-style').click();
     await page.locator('.ctx-swatches [data-c="#bd0a0a"]').click();

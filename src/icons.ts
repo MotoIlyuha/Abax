@@ -61,6 +61,7 @@ export const ICONS = {
   copyImage: svg('<rect x="3" y="3" width="14" height="14" rx="2"/><path d="m5 14 4-4 3 3 2-2 3 3M14 7h.01M7 21h12a2 2 0 0 0 2-2V7"/>'),
   sendChat: svg('<path d="M20 12.5a7.5 7.5 0 0 1-11 6.6L4 20.5l1.4-4.6A7.5 7.5 0 1 1 20 12.5z"/><path d="M12.5 15.5v-6M9.8 12l2.7-2.7 2.7 2.7"/>'),
   pen: svg('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>'),
+  textFormat: svg('<path d="m3 17 6-13 6 13M5.5 12h7M3 21h18M17 8h4M17 13h4"/>'),
   crop: svg('<path d="M6 3v13a2 2 0 0 0 2 2h13M3 6h13a2 2 0 0 1 2 2v13"/>'),
   link: svg('<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>'),
   homeBack: svg('<path d="M19 12H5M11 6l-6 6 6 6"/>'),

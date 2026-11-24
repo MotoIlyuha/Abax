@@ -1170,9 +1170,7 @@ body:not(.no-motion) .ctx-panel[data-kind="shapes"] { animation: none; }
 .ctx-frame-off:hover { text-decoration: underline; }
 .ctx-frame-off[hidden] { display: none; }
 
-/* Форматирование раскрывается в строке рядом с кнопкой. */
-.qm-format, .qm-format-options { display: flex; align-items: center; gap: 2px; }
-.qm-format .qm-format-toggle { width: auto; padding: 0 7px; font-size: 12px; }
+.ctx-panel[data-kind="format"] { flex-direction: row; gap: 2px; width: max-content; padding: 4px; }
 .qm-text-u { text-decoration: underline; }
 .qm-text-s { text-decoration: line-through; }
 .qm-text-u, .qm-text-s { font-weight: 600; }
@@ -1192,7 +1190,6 @@ body:not(.no-motion) .ctx-panel[data-kind="shapes"] { animation: none; }
   padding: 4px;
   z-index: 9;
 }
-#quick-menu.format-expanded { box-sizing: border-box; max-width: calc(100% - 16px); flex-wrap: wrap; }
 .qm-btn {
   width: 30px;
   height: 30px;
@@ -2587,6 +2584,7 @@ body:not(.no-motion) #avatar-menu .avatar-menu-page > :is(.avatar-menu-item, .av
 .ctx-panel, #settings-popover, #grid-menu, .sd-window {
   animation: ui-pop 0.18s cubic-bezier(0.22, 0.8, 0.24, 1);
 }
+.ctx-panel[data-kind="format"]:not(.mm-in, .mm-out) { animation: none; }
 #settings-dialog { animation: ui-fade 0.18s ease-out; }
 /* панель выплывает со стороны своей кнопки-вызова */
 .ctx-panel[data-from="left"] { --pop-x: -8px; transform-origin: left center; }

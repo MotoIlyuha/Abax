@@ -10,7 +10,7 @@ import { resolveAnimationMode } from './motion';
 import { setZoomCounter } from './zoom-counter';
 import { createValueCounter } from './value-counter';
 import { initZoomChevron } from './zoom-chevron';
-import { claimMenu, closeMenu, drillMenu, menuShown, openMenu, releaseMenu } from './menu-motion';
+import { claimMenu, closeMenu, drillMenu, menuShown, openMenu, releaseMenu, settleMenu } from './menu-motion';
 import { attachOverlayScroll } from './overlay-scroll';
 import {
   state, update, onChange, undo, redo, canUndo, canRedo, setTool, setGrid, setCoordLabels, setStyleColor,
@@ -689,7 +689,7 @@ function textTargets(): (TextEl | ShapeEl)[] {
     state.selection.has(e.id) && (e.type === 'text' || (shapeHoldsText(e) && (!!e.text || editing?.el?.id === e.id))));
 }
 
-interface TextProps extends Record<TextFlag, boolean> {
+interface TextProps {
   size: number;
   /** Кегль надписи подбирается под фигуру. */
   auto: boolean;
@@ -702,7 +702,7 @@ interface TextProps extends Record<TextFlag, boolean> {
 /** Оформление того, что сейчас правят (новый текст — по черновику) или выделено. null — текста нет. */
 function textProps(): TextProps | null {
   const e = editing;
-  if (e && editingNewText()) return { size: e.size, ...activeTextFlags(), auto: false, shapes: false, align: 'center', valign: 'middle' };
+  if (e && editingNewText()) return { size: e.size, auto: false, shapes: false, align: 'center', valign: 'middle' };
   const els = textTargets();
   if (els.length === 0) return null;
   const first = els[0];
@@ -711,7 +711,7 @@ function textProps(): TextProps | null {
   const size = first.type === 'text' ? first.size
     : shapeCaption(e?.el?.id === first.id && e.rich ? draftText(first, e.rich) : first).size;
   return {
-    size, ...activeTextFlags(els),
+    size,
     auto: first.type === 'shape' && !first.textSize, shapes: !!shape,
     align: shape?.align ?? 'center', valign: shape?.valign ?? 'middle',
   };
@@ -787,9 +787,18 @@ function closePanel(cp: CtxPanel): void {
   if (i < 0) return;
   ctxPanels.splice(i, 1);
   if (cp.kind === 'font') qmFrozen = null;
-  // группа с панели инструментов втягивается в кнопку (src/stretch.ts); остальные панели и откреплённые — как раньше
-  if (isGroupPanel(cp) && !cp.detached) stretchClose(cp.el, ctxAnchor(cp));
-  cp.el.remove();
+  if (cp.kind === 'format') {
+    const anchor = ctxAnchor(cp);
+    // Меню выделения пересобирается при обновлениях доски: втягиваемся в актуальную кнопку.
+    if (menuShown(cp.el)) {
+      if (anchor) animateFormatPanel(cp, anchor);
+      cp.el.inert = true;
+      closeMenu(cp.el, !anchor);
+    } else cp.el.remove();
+  } else {
+    if (isGroupPanel(cp) && !cp.detached) stretchClose(cp.el, ctxAnchor(cp));
+    cp.el.remove();
+  }
   syncCtxButtons();
 }
 
@@ -805,6 +814,10 @@ function openCtxPanel(kind: CtxKind, source: CtxSource): void {
   closeCtxPanel();
   const same = panelOf(kind);
   if (same) closePanel(same);
+  if (kind === 'format') {
+    const closing = ctxLayerEl().querySelector<HTMLElement>('#text-format-panel.mm-closing');
+    if (closing) settleMenu(closing);
+  }
   // пока открыта панель кегля, меню выделения стоит на месте: текст меняет размер, а меню под ним — не должно «дрожать»
   if (kind === 'font' && source === 'quick') freezeQuickMenu();
   const el = document.createElement('div');
@@ -817,10 +830,25 @@ function openCtxPanel(kind: CtxKind, source: CtxSource): void {
   el.addEventListener('pointerdown', () => { el.style.zIndex = String(++ctxZ); }, { capture: true });
   ctxLayerEl().appendChild(el);
   buildPanelBody(cp);
-  el.appendChild(buildCtxBar(cp));
-  positionCtxPanel(cp);
+  if (kind === 'format') {
+    const anchor = ctxAnchor(cp);
+    if (anchor) animateFormatPanel(cp, anchor);
+    else closePanel(cp);
+  } else {
+    el.appendChild(buildCtxBar(cp));
+    positionCtxPanel(cp);
+  }
   syncCtxButtons();
   if (isGroupPanel(cp)) stretchOpen(el, ctxAnchor(cp));
+}
+
+function animateFormatPanel(cp: CtxPanel, anchor: HTMLElement): void {
+  openMenu(cp.el, {
+    from: anchor,
+    place: () => positionCtxPanel(cp),
+    remove: true,
+    onSettled: () => { if (menuShown(cp.el)) positionCtxPanel(cp); },
+  });
 }
 
 /** Клик по кнопке-вызову: открытую ею (или откреплённую) панель закрывает, иначе открывает. */
@@ -915,6 +943,10 @@ function syncCtxButtons(): void {
     b.classList.toggle('active', b.hasAttribute('data-ctx') && ctxOpenFrom('style', 'toolbar'));
   }
   quickMenuEl().querySelector('[data-ctx="style"]')?.classList.toggle('active', ctxOpenFrom('style', 'quick'));
+  const format = quickMenuEl().querySelector('[data-ctx="format"]');
+  const expanded = ctxOpenFrom('format', 'quick');
+  format?.classList.toggle('active', expanded);
+  format?.setAttribute('aria-expanded', String(expanded));
 }
 
 /** Элемент, вызвавший панель (кнопка тулбара или плавающего меню). */
@@ -940,6 +972,7 @@ function positionCtxPanel(cp: CtxPanel): void {
   if (cp.detached) { placeDetached(cp, p.offsetLeft, p.offsetTop); return; }
   const ar = ctxAnchor(cp)?.getBoundingClientRect();
   if (!ar || ar.width === 0) { closePanel(cp); return; }
+  if (cp.kind === 'format' && p.classList.contains('mm-morph')) return;
   const wr = document.getElementById('canvas-wrap')!.getBoundingClientRect();
   const gap = 10;
   const margin = 8;
@@ -959,7 +992,7 @@ function positionCtxPanel(cp: CtxPanel): void {
     const below = wr.bottom - qr.bottom - gap - margin;
     const above = qr.top - wr.top - gap - margin;
     // небольшие панели оформления текста — над меню, если влезают: не закрывают набираемый текст
-    const preferAbove = (cp.kind === 'font' || cp.kind === 'align') && above >= natural;
+    const preferAbove = (cp.kind === 'font' || cp.kind === 'align' || cp.kind === 'format') && above >= natural;
     if (!preferAbove && (below >= Math.min(natural, 260) || below >= above)) {
       maxH = below;
       top = qr.bottom - wr.top + gap;
@@ -1482,13 +1515,14 @@ function buildNotePanel(cp: CtxPanel): void {
 // ----- Панели кегля и выравнивания текста (из меню выделения) -----
 
 /** Панели, которые не группы инструментов (у групп свои id, с этими не совпадают — см. toolbar.ts). */
-const PANEL_KINDS = new Set(['style', 'note', 'font', 'align']);
+const PANEL_KINDS = new Set(['style', 'note', 'font', 'align', 'format']);
 
 function buildPanelBody(cp: CtxPanel): void {
   if (cp.kind === 'style') buildStylePanel(cp);
   else if (cp.kind === 'note') buildNotePanel(cp);
   else if (cp.kind === 'font') buildFontPanel(cp);
   else if (cp.kind === 'align') buildAlignPanel(cp);
+  else if (cp.kind === 'format') buildFormatPanel(cp);
   else buildToolGroupPanel(cp, cp.kind);
 }
 
@@ -1864,76 +1898,58 @@ const FORMAT_BUTTONS = [
   ['underline', 'u', 'U', 'Подчёркнутый (Ctrl+U)'],
   ['strike', 's', 'S', 'Зачёркнутый'],
 ] as const;
-let formatOpen = false;
-let formatSelection = '';
 
-function closeTextFormatting(): void {
-  if (!formatOpen) return;
-  formatOpen = false;
-  quickMenuEl().classList.remove('format-expanded');
-  const toggle = quickMenuEl().querySelector('.qm-format-toggle');
-  toggle?.classList.remove('active');
-  toggle?.setAttribute('aria-expanded', 'false');
-  quickMenuEl().querySelector('.qm-format-options')?.remove();
-  if (!quickMenuEl().hidden) positionQuickMenu();
+function buildFormatButton(): HTMLButtonElement {
+  const toggle = document.createElement('button');
+  const expanded = ctxOpenFrom('format', 'quick');
+  toggle.className = 'qm-btn qm-format-toggle' + (expanded ? ' active' : '');
+  toggle.dataset.ctx = 'format';
+  toggle.title = 'Форматирование';
+  toggle.setAttribute('aria-label', toggle.title);
+  toggle.setAttribute('aria-expanded', String(expanded));
+  toggle.setAttribute('aria-controls', 'text-format-panel');
+  toggle.innerHTML = ICONS.textFormat;
+  toggle.addEventListener('click', event => {
+    toggleCtxPanel('format', 'quick');
+    if (event.detail === 0) panelOf('format')?.el.querySelector('button')?.focus();
+  });
+  return toggle;
 }
 
-function buildTextFormatting(props: TextProps): HTMLElement {
-  const control = document.createElement('div');
-  control.className = 'qm-format';
-  const toggle = document.createElement('button');
-  toggle.className = 'qm-btn qm-format-toggle' + (formatOpen ? ' active' : '');
-  toggle.textContent = 'Форматирование';
-  toggle.setAttribute('aria-expanded', String(formatOpen));
-  toggle.addEventListener('click', event => {
-    formatOpen = !formatOpen;
-    updateQuickMenu();
-    if (event.detail === 0) quickMenuEl().querySelector<HTMLButtonElement>('.qm-format-toggle')?.focus();
-  });
-  control.appendChild(toggle);
-  if (!formatOpen) return control;
-  const options = document.createElement('div');
-  options.className = 'qm-format-options';
-  options.setAttribute('role', 'group');
-  options.setAttribute('aria-label', 'Форматирование текста');
+function buildFormatPanel(cp: CtxPanel): void {
+  const p = cp.el;
+  p.classList.add('popup-menu');
+  p.id = 'text-format-panel';
+  p.dataset.kind = 'format';
+  p.setAttribute('role', 'group');
+  p.setAttribute('aria-label', 'Форматирование текста');
   for (const [flag, suffix, glyph, label] of FORMAT_BUTTONS) {
     const button = document.createElement('button');
-    button.className = 'qm-btn qm-text-' + suffix + (props[flag] ? ' active' : '');
+    button.className = 'qm-btn qm-text-' + suffix;
     button.dataset.textFlag = flag;
     button.textContent = glyph;
     button.title = macKeys(label);
     button.setAttribute('aria-label', label.split(' (')[0]);
-    button.setAttribute('aria-pressed', String(props[flag]));
-    button.addEventListener('click', event => {
-      toggleTextFlag(flag);
-      if (event.detail === 0) quickMenuEl().querySelector<HTMLButtonElement>('[data-text-flag="' + flag + '"]')?.focus();
-    });
-    options.appendChild(button);
+    button.addEventListener('click', () => toggleTextFlag(flag));
+    p.appendChild(button);
   }
-  control.appendChild(options);
-  return control;
+  syncFormatPanel(cp);
 }
 
-document.addEventListener('pointerdown', e => {
-  if (e.target instanceof Node && !insideTextMenus(e.target) && !editing?.field.contains(e.target)) closeTextFormatting();
-});
-document.addEventListener('keydown', e => {
-  if (e.key !== 'Escape' || !formatOpen || dockedPanel()) return;
-  e.preventDefault();
-  e.stopPropagation();
-  closeTextFormatting();
-}, { capture: true });
+function syncFormatPanel(cp: CtxPanel): void {
+  const flags = activeTextFlags();
+  for (const button of cp.el.querySelectorAll<HTMLButtonElement>('[data-text-flag]')) {
+    const active = flags[button.dataset.textFlag as TextFlag];
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  }
+}
+
 document.addEventListener('selectionchange', () => {
   if (!editing?.rich) return;
   editing.rich.rememberSelection();
-  if (formatOpen) {
-    const flags = activeTextFlags();
-    for (const button of quickMenuEl().querySelectorAll<HTMLButtonElement>('[data-text-flag]')) {
-      const active = flags[button.dataset.textFlag as TextFlag];
-      button.classList.toggle('active', active);
-      button.setAttribute('aria-pressed', String(active));
-    }
-  }
+  const format = panelOf('format');
+  if (format) syncFormatPanel(format);
   const panel = panelOf('style');
   if (panel) updateSwatchActive(panel.el, currentPanelColor());
   const indicator = quickMenuEl().querySelector<HTMLElement>('.qm-style .style-ind');
@@ -1948,15 +1964,12 @@ function updateQuickMenu(): void {
   const selEls = state.board.elements.filter(e => state.selection.has(e.id));
   // при вводе текста меню остаётся (у нового текста — над редактором); у стикера — нет: оформлять нечего
   if (state.view !== 'board' || (selEls.length === 0 && !editingNewText()) || editing?.target === 'note') {
-    formatOpen = false;
     qm.hidden = true;
     return;
   }
   const selectionKey = selEls.map(e => e.id).sort().join(',');
-  if (formatSelection !== selectionKey) { formatOpen = false; formatSelection = selectionKey; }
   if (selectionKey !== layerPanelSelection) { layerPanelOpen = false; layerPanelSelection = selectionKey; }
   qm.hidden = false;
-  qm.classList.toggle('format-expanded', formatOpen);
   qm.textContent = '';
   // читатель (править доску не может): если автор разрешил — копия картинкой и в чат; реакции и комментарии —
   // кнопками под объектом (src/annot-layer.ts)
@@ -2004,7 +2017,9 @@ function updateQuickMenu(): void {
   // жирность, курсив и кегль — у текста и надписей фигур, выравнивание — у надписей
   const tp = textProps();
   if (tp) {
-    qm.append(buildTextFormatting(tp), fontSizeControl(tp));
+    qm.append(buildFormatButton(), fontSizeControl(tp));
+    const format = panelOf('format');
+    if (format) syncFormatPanel(format);
     if (tp.shapes) {
       const aBtn = document.createElement('button');
       aBtn.className = 'qm-btn qm-align' + (ctxOpenFrom('align', 'quick') ? ' active' : '');
@@ -5507,7 +5522,9 @@ function wireTopbar(): void {
     const t = e.target as HTMLElement;
     const d = dockedPanel();
     // кнопки-вызовы сами переключают панель по click; откреплённые панели кликом мимо не закрываются
-    if (d && !d.el.contains(t) && !t.closest('[data-ctx]')) closePanel(d);
+    if (!d || d.el.contains(t) || t.closest('[data-ctx]')) return;
+    if (d.kind === 'format' && editing?.field.contains(t)) return;
+    closePanel(d);
   }, { capture: true });
   window.addEventListener('resize', () => positionCtxPanels(true));
   // холст сменил размер (окно, боковая панель) — откреплённая панель остаётся в его пределах
@@ -5522,7 +5539,13 @@ function wireTopbar(): void {
       if (!gridMenu().hidden) { e.stopPropagation(); closeGridMenu(); gridButton().focus(); return; }
       if (!settingsPopover().hidden) { e.stopPropagation(); closeSettings(); return; }
       // поле кегля закрывает свою панель само (Esc там — отмена ввода)
-      if (dockedPanel() && !fontEdit) { e.stopPropagation(); closeCtxPanel(); return; }
+      const panel = dockedPanel();
+      if (panel && !fontEdit) {
+        e.stopPropagation();
+        const anchor = panel.kind === 'format' && panel.el.contains(document.activeElement) ? ctxAnchor(panel) : null;
+        closePanel(panel);
+        anchor?.focus();
+      }
     }
   }, { capture: true });
 }

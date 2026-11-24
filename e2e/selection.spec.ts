@@ -127,6 +127,7 @@ test.describe('выделение и перемещение', () => {
   });
 
   test('текст: полужирный и курсив из быстрого меню', async ({ board, page }) => {
+    await page.setViewportSize({ width: 645, height: 881 });
     await board.tool('t');
     await board.click({ x: 400, y: 300 });
     await page.keyboard.type('Теорема');
@@ -134,13 +135,40 @@ test.describe('выделение и перемещение', () => {
     // вставленный текст сразу выделен, включено выделение
     expect((await board.state()).tool).toBe('select');
     expect((await board.state()).selection).toHaveLength(1);
-    await board.quickMenu.getByRole('button', { name: 'Форматирование', exact: true }).click();
-    await board.quickMenu.locator('.qm-text-b').click();
-    await expect(board.quickMenu.locator('.qm-text-b')).toHaveClass(/active/);
-    await board.quickMenu.locator('.qm-text-i').click();
+    const button = board.quickMenu.getByRole('button', { name: 'Форматирование', exact: true });
+    const panel = page.getByRole('group', { name: 'Форматирование текста' });
+    const panelNode = page.locator('#text-format-panel');
+    await expect(button).toHaveText('');
+    const menuBefore = await board.quickMenu.boundingBox();
+    const openingMorph = await button.evaluate((el: HTMLButtonElement) => {
+      el.click();
+      return document.getElementById('text-format-panel')?.classList.contains('mm-morph');
+    });
+    expect(openingMorph).toBe(true);
+    await expect(button).toHaveAttribute('aria-expanded', 'true');
+    await expect(panel).toBeVisible();
+    await expect(board.quickMenu.locator('.qm-text-b')).toHaveCount(0);
+    expect(await board.quickMenu.boundingBox()).toEqual(menuBefore);
+    await panel.locator('.qm-text-b').click();
+    await expect(panel.locator('.qm-text-b')).toHaveClass(/active/);
+    await panel.locator('.qm-text-i').click();
     expect((await board.elements())[0]).toMatchObject({ bold: true, italic: true });
-    await board.quickMenu.locator('.qm-text-b').click();
+    await panel.locator('.qm-text-b').click();
     expect((await board.elements())[0].bold).toBe(false);
+    const closingMorph = await panelNode.evaluate(el => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+      return el.matches('.mm-morph.mm-closing');
+    });
+    expect(closingMorph).toBe(true);
+    await expect(button).toHaveAttribute('aria-expanded', 'false');
+    await expect(panelNode).toHaveCount(0);
+
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await button.click();
+    await expect(panel).toBeVisible();
+    await expect(panelNode).not.toHaveClass(/mm-morph|mm-in/);
+    await page.keyboard.press('Escape');
+    await expect(panelNode).toHaveCount(0);
   });
 });
 
