@@ -84,9 +84,24 @@ export function mountTelegram(root: HTMLElement, back: () => void) {
         scheme === 'dark' || scheme === 'light' ? scheme : ((n >> 16) * 299 + ((n >> 8) & 255) * 587 + (n & 255) * 114 < 128000 ? 'dark' : 'light');
     }
   };
+  let initialTheme: Record<string, string> | undefined;
+  if (app || telegramData()) {
+    const url = new URL(location.href);
+    const raw = new URLSearchParams(url.hash.slice(1)).get('tgWebAppThemeParams') ??
+      url.searchParams.get('tgWebAppThemeParams');
+    if (raw) {
+      try {
+        const parsed: unknown = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) initialTheme = parsed as Record<string, string>;
+      } catch {
+        /* Некорректные параметры темы не должны мешать запуску. */
+      }
+    }
+    if (initialTheme) theme(initialTheme);
+  }
   if (app) {
     const apply = () => {
-      theme(app.themeParams, app.colorScheme);
+      theme(app.themeParams ?? initialTheme, app.colorScheme);
       applyInsets(app.safeAreaInset, 'safe');
       applyInsets(app.contentSafeAreaInset, 'content');
     };
@@ -107,7 +122,7 @@ export function mountTelegram(root: HTMLElement, back: () => void) {
     const data =
       payload && typeof payload === 'object' ? (payload as Insets & { theme_params?: Record<string, string> }) : {};
     if (type === 'back_button_pressed') back();
-    if (type === 'theme_changed') theme(data.theme_params);
+    if (type === 'theme_changed' && data.theme_params && typeof data.theme_params === 'object') theme(data.theme_params);
     if (type === 'safe_area_changed') applyInsets(data, 'safe');
     if (type === 'content_safe_area_changed') applyInsets(data, 'content');
   };

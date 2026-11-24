@@ -40,3 +40,30 @@ it('применяет цвета Telegram и обновляет их при с�
     expect(root.style.getPropertyValue('--tu-tg-button-color')).toBe('');
   } finally { vi.unstubAllGlobals(); }
 });
+
+it('читает начальные цвета из адреса Telegram Desktop и принимает новую тему', () => {
+  const root = document.createElement('div');
+  const original = location.href;
+  const params = new URLSearchParams({
+    tgWebAppData: 'signed',
+    tgWebAppThemeParams: JSON.stringify({ bg_color: '#17212b', text_color: '#f5f5f5', button_color: '#5288c1' }),
+  });
+  history.replaceState(null, '', '#' + params);
+  vi.stubGlobal('TelegramWebviewProxy', { postEvent: vi.fn() });
+  try {
+    mountTelegram(root, () => {});
+    expect(root.style.getPropertyValue('--tu-tg-bg-color')).toBe('#17212b');
+    expect(root.style.getPropertyValue('--tu-tg-text-color')).toBe('#f5f5f5');
+    expect(root.dataset.scheme).toBe('dark');
+    const bridge = window as Window & { TelegramGameProxy_receiveEvent?: (type: string, data: unknown) => void };
+    bridge.TelegramGameProxy_receiveEvent?.('theme_changed', { theme_params: { bg_color: '#ffffff' } });
+    expect(root.style.getPropertyValue('--tu-tg-bg-color')).toBe('#ffffff');
+    expect(root.style.getPropertyValue('--tu-tg-text-color')).toBe('');
+    expect(root.dataset.scheme).toBe('light');
+  } finally {
+    history.replaceState(null, '', original);
+    delete (window as Window & { Telegram?: unknown }).Telegram;
+    delete (window as Window & { TelegramGameProxy_receiveEvent?: unknown }).TelegramGameProxy_receiveEvent;
+    vi.unstubAllGlobals();
+  }
+});
