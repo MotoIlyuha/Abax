@@ -216,6 +216,7 @@ function restoreSettings(): void {
         newPageKey: DEFAULT_NEW_PAGE_KEY,
         animationMode: resolveAnimationMode(v),
         hideUndoRedo: typeof v.hideUndoRedo === 'boolean' ? v.hideUndoRedo : false,
+        showPresentInMenu: typeof v.showPresentInMenu === 'boolean' ? v.showPresentInMenu : true,
         keepImageAspect: typeof v.keepImageAspect === 'boolean' ? v.keepImageAspect : true,
         smoothPan: typeof v.smoothPan === 'boolean' ? v.smoothPan : true,
         alignGuides: typeof v.alignGuides === 'boolean' ? v.alignGuides : true,
@@ -2323,7 +2324,7 @@ export function openAllSettings(section?: string): void {
   ], section ?? (lastSettingsSection() || 'general'));
 }
 
-/** Раздел «Дополнительные»: редкие настройки, которые по умолчанию выключены. */
+/** Раздел «Дополнительные»: редкие настройки. */
 function renderAdvancedSettings(host: HTMLElement): void {
   const box = document.createElement('div');
   box.className = 'sd-general';
@@ -2340,6 +2341,10 @@ function renderAdvancedSettings(host: HTMLElement): void {
       applyToolbarPos();
     }));
   box.append(boardSettingsLabel('Список страниц'), settingCheck('closePagesOnPick', 'Закрывать после выбора страницы'));
+  box.append(boardSettingsLabel('Главное меню'), settingCheck('showPresentInMenu', 'Показывать в главном меню кнопку «Демонстрация экрана»', undefined, () => {
+    const item = document.querySelector<HTMLElement>('#main-menu [data-action="present"]');
+    if (item) item.hidden = !state.settings.showPresentInMenu;
+  }));
   host.appendChild(box);
 }
 
@@ -2384,7 +2389,7 @@ function boardSwitchGroup(title: string, switches: HTMLLabelElement[]): HTMLElem
   return section;
 }
 
-type BoolSetting = 'toolbarDetachable' | 'alignGuides' | 'closePagesOnPick' | 'thumbViewport' | 'pageLinks' | 'recursionEnabled';
+type BoolSetting = 'showPresentInMenu' | 'toolbarDetachable' | 'alignGuides' | 'closePagesOnPick' | 'thumbViewport' | 'pageLinks' | 'recursionEnabled';
 
 /** Флажок настройки доски: меняет и сразу сохраняет. */
 function settingCheck(key: BoolSetting, text: string, hint?: string, after?: () => void): HTMLElement {
@@ -5215,8 +5220,11 @@ function wireTopbar(): void {
     ${section('interactions', 'Взаимодействия', INTERACTIONS_ICON, '')}
     ${new URLSearchParams(location.search).get('route') === 'board' && isTeacher() ? menuItem('task', 'Добавить задание', ICONS.task) : ''}
     ${menuItem('settings', 'Настройки', ICONS.settings)}<hr>
+    ${!isNativeApp() ? menuItem('present', 'Демонстрация экрана', ICONS.present) : ''}
     ${!doskaApi && !isNativeApp() ? menuItem('app', 'Открыть в приложении', ICONS.openApp) : ''}`;
   document.body.append(menu);
+  const presentMenuItem = menu.querySelector<HTMLElement>('[data-action="present"]');
+  if (presentMenuItem) presentMenuItem.hidden = !state.settings.showPresentInMenu;
   // «Скрыть»: переключатели на пружинах (src/toggle-switch.ts), меню при щелчке не закрывается
   const { undo: hideUndoSwitch, imports: hideImportsSwitch, exportButton: hideExportSwitch, tier: hideTierSwitch } = hideSwitches('main-switch');
   // data-action — на самом переключателе: по нему пункт находят тесты и проверяют доступность
@@ -5289,6 +5297,7 @@ function wireTopbar(): void {
     if (action === 'settings') openAllSettings();
     if (action === 'project') void downloadProjectFile();
     if (action === 'pdf') showToast('Экспорт в PDF пока недоступен');
+    if (action === 'present' && !openPresent()) alert('Не удалось открыть окно демонстрации: разрешите всплывающие окна для этой страницы');
     if (action === 'app') openInDesktopApp();
   });
   document.addEventListener('pointerdown', e => { if (menuShown(menu) && !menu.contains(e.target as Node) && !menuButton.contains(e.target as Node)) setMenuOpen(false); });

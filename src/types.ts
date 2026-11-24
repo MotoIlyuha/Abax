@@ -379,6 +379,8 @@ export interface BoardSettings {
   animationMode: AnimationMode;
   /** Скрыть кнопки «Отменить» и «Повторить» в шапке (Ctrl+Z / Ctrl+Y работают). */
   hideUndoRedo: boolean;
+  /** Показывать пункт открытия окна демонстрации в главном меню. */
+  showPresentInMenu: boolean;
   /** Изображения (и страницы PDF) меняют размер только пропорционально — без Shift и Ctrl. */
   keepImageAspect: boolean;
   /** Плавное перемещение: небольшая инерция камеры после перетаскивания холста. */

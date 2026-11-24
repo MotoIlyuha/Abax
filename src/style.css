@@ -2610,6 +2610,7 @@ body.no-ui-anim :is(.ctx-panel, #settings-popover, #grid-menu, #settings-dialog,
 .popup-menu[hidden] { display: none !important; }
 .menu-list { padding: var(--menu-pad); }
 .menu-list button { width: 100%; display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 0; border-radius: 7px; background: transparent; color: var(--fg); font: inherit; text-align: left; cursor: pointer; }
+.menu-list button[hidden] { display: none; }
 .menu-list button:hover, .menu-list button:focus-visible { background: var(--accent-soft); outline: none; }
 .menu-list :is(.main-menu-icon, .view-icon) { width: 18px; height: 18px; flex: none; display: inline-flex; align-items: center; justify-content: center; color: var(--icon-menu); }
 .menu-list :is(.main-menu-icon, .view-icon) svg { width: 18px; height: 18px; }
