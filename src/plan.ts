@@ -130,15 +130,16 @@ export function devPlanStep(code: string, current: PlanTier): PlanTier | null {
 /** Лимиты тарифа действуют (иначе доска ведёт себя как раньше — без ограничений). */
 export function limitsEnforced(): boolean {
   try {
-    if (localStorage.getItem(ENFORCE_LIMITS_KEY) === '1') return true;
+    const saved = localStorage.getItem(ENFORCE_LIMITS_KEY);
+    if (saved === '1') return true;
+    if (saved === '0') return false;
   } catch { /* хранилище недоступно */ }
-  return serverInfo()?.limitsEnforced === true;
+  return serverInfo()?.limitsEnforced ?? true;
 }
 
 export function setLimitsEnforced(on: boolean): void {
   try {
-    if (on) localStorage.setItem(ENFORCE_LIMITS_KEY, '1');
-    else localStorage.removeItem(ENFORCE_LIMITS_KEY);
+    localStorage.setItem(ENFORCE_LIMITS_KEY, on ? '1' : '0');
   } catch { /* хранилище недоступно */ }
   notifyPlanChange();
 }

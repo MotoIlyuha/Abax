@@ -16,7 +16,7 @@ afterEach(() => { vi.unstubAllEnvs(); });
 describe('тариф и включение лимитов', () => {
   it('по умолчанию free и лимиты выключены; значения запоминаются', () => {
     expect(userPlan()).toBe('free');
-    expect(limitsEnforced()).toBe(false);
+    expect(limitsEnforced()).toBe(true);
     setUserPlan('pro');
     setLimitsEnforced(true);
     expect(localStorage.getItem(PLAN_KEY)).toBe('pro');
@@ -24,7 +24,7 @@ describe('тариф и включение лимитов', () => {
     expect(userPlan()).toBe('pro');
     expect(limitsEnforced()).toBe(true);
     setLimitsEnforced(false);
-    expect(localStorage.getItem(ENFORCE_LIMITS_KEY)).toBeNull();
+    expect(localStorage.getItem(ENFORCE_LIMITS_KEY)).toBe('0');
   });
 
   it('мусор в хранилище - free', () => {
@@ -76,7 +76,7 @@ describe('источник тарифа пользователя', () => {
     expect(JSON.parse(localStorage.getItem(SERVER_PLAN_KEY)!)).toEqual({ plan: 'pro', limitsEnforced: true });
     clearServerPlan();
     expect(userPlan()).toBe('free');
-    expect(limitsEnforced()).toBe(false);
+    expect(limitsEnforced()).toBe(true);
   });
 
   it('локальный переключатель сильнее серверного только в dev-режиме', () => {
@@ -107,7 +107,7 @@ describe('источник тарифа пользователя', () => {
   });
 
   it('лимиты действуют, если их включили локально или сервер', () => {
-    expect(limitsEnforced()).toBe(false);
+    expect(limitsEnforced()).toBe(true);
     applyServerPlan({ plan: 'free', limitsEnforced: true });
     expect(limitsEnforced()).toBe(true);
     applyServerPlan({ plan: 'free', limitsEnforced: false });
