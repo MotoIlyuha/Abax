@@ -6215,8 +6215,9 @@ body.tutor-mode > :not(#tutor-root):not(#startup) { display:none !important; }
 @media(max-width:720px) { .tu-charts,.tu-summary{grid-template-columns:1fr;} .tu-kpi,.tu-chart,.tu-ranking{padding:14px;} .tu-rank{font-size:13px;} }
 
 
-#tutor-return { pointer-events:auto; app-region:no-drag; white-space:nowrap; }
-@media(max-width:640px){#tutor-return:not([hidden]){position:fixed;right:12px;top:62px;z-index:4;box-shadow:0 2px 8px #0002;}}
+#tutor-return { position:fixed; z-index:11; top:72px; display:inline-flex; align-items:center; gap:7px; border:1px solid var(--border); background:var(--panel); color:var(--fg); pointer-events:auto; app-region:no-drag; white-space:nowrap; box-shadow:var(--shadow); }
+#tutor-return[hidden] { display:none; }
+#tutor-return svg { flex:none; }
 
 
 /* Настройки профиля и подписки в кабинете репетитора. */

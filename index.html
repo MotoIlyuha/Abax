@@ -60,7 +60,6 @@
         <input id="page-name" aria-label="Название страницы" spellcheck="false" autocomplete="off" />
         <button id="sync-indicator" type="button" hidden></button>
       </div>
-      <a id="tutor-return" href="?route=tutor" hidden>← В кабинет Tutor</a>
       <button id="btn-home" class="topbar-logo" title="Проекты (домашняя страница)" aria-label="Проекты (домашняя страница)"><img src="logo.svg" alt="Abax" /></button>
     </div>
     <div class="topbar-side topbar-left">
@@ -77,6 +76,10 @@
     </div>
     <button id="grid-mode" title="Фон страницы" aria-haspopup="listbox" aria-expanded="false" hidden></button>
   </div>
+  <a id="tutor-return" href="?route=tutor" aria-label="В кабинет Tutor" title="В кабинет Tutor" hidden>
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6"/></svg>
+    <span>В кабинет Tutor</span>
+  </a>
   <button id="btn-tasks" class="topbar-logo tasks-button" type="button" title="Задания" aria-label="Задания" aria-expanded="false" aria-controls="side-panel">
     <span class="tasks-button-book" aria-hidden="true"></span>
     <span class="tasks-button-collapse" aria-hidden="true"></span>

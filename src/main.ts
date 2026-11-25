@@ -138,6 +138,13 @@ async function boot(): Promise<void> {
     if (q.get('route') === 'board') {
       const back = document.getElementById('tutor-return') as HTMLAnchorElement;
       back.hidden = false; back.href = appHref('tutor');
+      const projectGroup = document.querySelector('.project-group');
+      const positionReturn = () => {
+        if (projectGroup) back.style.left = `${Math.round(projectGroup.getBoundingClientRect().left)}px`;
+      };
+      positionReturn();
+      window.addEventListener('resize', positionReturn);
+      if (projectGroup && typeof ResizeObserver !== 'undefined') new ResizeObserver(positionReturn).observe(projectGroup);
       if (tutorPid) last = { pid: tutorPid, pageId: q.get('tutorPage') ?? undefined };
     }
     let project = last.pid ? await openFresh(last.pid) : null;
