@@ -6,7 +6,7 @@ const errors: string[] = [];
 test.afterEach(() => { expect(errors.splice(0), 'ошибки JS на странице').toEqual([]); });
 
 /** Новое «устройство» без профиля: окно первого входа должно появиться. */
-async function fresh(browser: Browser, opts: { reducedMotion?: 'reduce' } = {}): Promise<Page> {
+async function fresh(browser: Browser, opts: { reducedMotion?: 'reduce'; viewport?: { width: number; height: number } } = {}): Promise<Page> {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: 'ru-RU', ...opts });
   await ctx.route(/^https:\/\/(api\.)?github\.com\//, r => r.abort());
   const page = await ctx.newPage();
@@ -20,6 +20,33 @@ const step = (page: Page) => page.locator('#onboarding');
 const profile = (page: Page) => page.evaluate(() => JSON.parse(localStorage.getItem('doska.profile') ?? 'null'));
 
 test.describe('окно первого входа', () => {
+  test('способы входа появляются после перемещения приветствия на место', async ({ browser }) => {
+    const page = await fresh(browser);
+    await expect(step(page)).toHaveClass(/ob-intro-card/);
+    await expect(page.locator('.ob-providers')).toHaveCSS('visibility', 'hidden');
+
+    await expect(page.locator('.ob-window')).toBeFocused();
+    const title = page.locator('.ob-step1 .ob-title');
+    const logo = page.locator('.ob-logo');
+    expect(await title.evaluate(e => getComputedStyle(e).transform)).toBe('none');
+    expect(await logo.evaluate(e => getComputedStyle(e).transform)).toBe('none');
+    await expect(page.locator('.ob-providers')).toHaveCSS('opacity', '1');
+    await page.context().close();
+  });
+
+  test('в низком окне все элементы первого шага доступны прокруткой внутри карточки', async ({ browser }) => {
+    const page = await fresh(browser, { viewport: { width: 564, height: 426 } });
+    const dialog = page.locator('.ob-window');
+    await expect(dialog).toHaveCSS('overflow-y', 'auto');
+    expect(await dialog.evaluate(e => e.scrollHeight > e.clientHeight)).toBe(true);
+    const note = page.locator('.ob-note');
+    await note.scrollIntoViewIfNeeded();
+    await expect(note).toBeInViewport({ ratio: 1 });
+    await page.locator('.ob-skip').click();
+    await expect(step(page)).toHaveAttribute('data-step', '2');
+    await page.context().close();
+  });
+
   test('шаг 1: способы входа, «Продолжить без входа» с пояснением; без облака - сообщение в окне', async ({ browser }) => {
     const page = await fresh(browser);
     await expect(step(page)).toBeVisible();

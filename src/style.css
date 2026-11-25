@@ -3193,10 +3193,10 @@ body.no-ui-anim .grid-switch :is(.switch-track, .switch-knob) { transition: none
 #onboarding.ob-intro { animation: none; }
 #onboarding.ob-intro-card .ob-window { background: transparent; box-shadow: none; animation: none; overflow: visible; }
 #onboarding.ob-intro-card .ob-logo, #onboarding.ob-intro-card .ob-title { position: relative; z-index: 1; animation: ui-fade 0.6s ease-out 0.1s both; }
-#onboarding.ob-intro .ob-rest {
+#onboarding.ob-intro:not(.ob-intro-card) .ob-rest {
   transition: opacity 0.5s ease calc(var(--ob-i, 0) * 60ms), transform 0.7s cubic-bezier(0.16, 1, 0.3, 1) calc(var(--ob-i, 0) * 60ms);
 }
-#onboarding.ob-intro:not(.ob-revealed) .ob-rest { opacity: 0; transform: translateY(8px); pointer-events: none; }
+#onboarding.ob-intro-card .ob-rest { visibility: hidden; opacity: 0; transform: translateY(8px); }
 /* clip, а не hidden: фокус и scrollIntoView не должны прокручивать ленту шагов */
 .ob-viewport { overflow: hidden; overflow: clip; transition: height 0.3s cubic-bezier(0.22, 0.8, 0.24, 1); }
 .ob-track {

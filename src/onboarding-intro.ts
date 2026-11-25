@@ -7,17 +7,16 @@
 // карточка (.ob-card) — её прямоугольник едет от рамки вокруг крупного заголовка к рамке окна.
 // Пружина --intro-reveal (почти критическая — плавно и без перелёта); один прогресс p ведёт всё синхронно.
 
-import { S, atRest, motionEnabled, reduceMotion, register, snap, spring, step, wake, type Spring } from './motion';
+import { S, atRest, motionEnabled, reduceMotion, register, snap, spring, step, wake } from './motion';
 
 /** Сколько секунд держится заставка. */
 export const INTRO_HOLD = 1.8;
 const SCALE = 1.6;       // во сколько раз крупнее логотип и заголовок на заставке
 const PAD_X = 40;        // поля карточки заставки по бокам от крупных логотипа и заголовка
 const PAD_Y = 72;        // и сверху/снизу — карточка заметно выше надписи
-const REVEAL_AT = 0.5;   // с какого прогресса проявляются остальные элементы
 
 interface Box { x: number; y: number; w: number; h: number }
-interface Intro { root: HTMLElement; p: Spring; frame(dt: number): void; render(): void; settled(): boolean }
+interface Intro { root: HTMLElement; frame(dt: number): void; render(): void; settled(): boolean }
 
 const intros = new Set<Intro>();
 let ready = false;
@@ -71,8 +70,8 @@ export interface IntroParts {
 }
 
 /**
- * Запустить заставку. Окно уже в документе и разложено. Возвращает «пропустить»:
- * щелчок по заставке сразу переходит к раскрытию.
+ * Запустить заставку. Окно уже в документе и разложено. Щелчок по заставке запускает раскрытие,
+ * а возвращённая функция завершает заставку сразу при изменении размеров окна или его закрытии.
  */
 export function playIntro(parts: IntroParts): () => void {
   ensureLoop();
@@ -99,7 +98,7 @@ export function playIntro(parts: IntroParts): () => void {
   });
   const oL = off(L);
   const oT = off(T);
-  const sw = groupW * k + 2 * PAD_X;
+  const sw = Math.min(W.w, groupW * k + 2 * PAD_X);
   const sh = (bottom - top) * k + 2 * PAD_Y;
   const from: Box = { x: sc.x - sw / 2, y: sc.y - sh / 2, w: sw, h: sh };
 
@@ -108,16 +107,9 @@ export function playIntro(parts: IntroParts): () => void {
   root.insertBefore(card, win);
 
   const p = S(0, ...REVEAL);
-  let revealed = false;
   let started = false;
   let timer = 0;
 
-  function reveal(): void {
-    if (revealed) return;
-    revealed = true;
-    root.classList.add('ob-revealed');
-    parts.onReveal();
-  }
   function start(): void {
     if (started) return;
     started = true;
@@ -128,10 +120,8 @@ export function playIntro(parts: IntroParts): () => void {
 
   const it: Intro = {
     root: card,
-    p,
     frame(dt) {
       if (!motionEnabled()) snap(p); else step(p, dt);
-      if (started && p.x >= REVEAL_AT) reveal();
     },
     render() {
       const t = p.x;
@@ -149,13 +139,16 @@ export function playIntro(parts: IntroParts): () => void {
 
   function finish(): void {
     intros.delete(it);
+    clearTimeout(timer);
+    win.removeEventListener('pointerdown', start);
     logo.style.transform = '';
     title.style.transform = '';
     // без этого снятие класса заново запустило бы CSS-появление окна (ui-pop) — то самое моргание в конце
     win.style.animation = 'none';
     card.remove();
     root.classList.remove('ob-intro-card');
-    reveal();
+    if (!root.isConnected) return;
+    parts.onReveal();
     // переходы проявления (с задержками по очереди) доигрывают, затем правила заставки снимаются
     window.setTimeout(() => root.classList.remove('ob-intro'), 1400);
   }
@@ -167,5 +160,5 @@ export function playIntro(parts: IntroParts): () => void {
   timer = window.setTimeout(start, INTRO_HOLD * 1000);
   card.addEventListener('pointerdown', start);
   win.addEventListener('pointerdown', start);
-  return start;
+  return finish;
 }

@@ -224,6 +224,7 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
   let avatarChanged = false;
   let avatarLoading = false;
   let finished = false;
+  let finishIntro: (() => void) | undefined;
   /** Что запомнить перед переходом к провайдеру входа. */
   const resumeNow = (): AuthResume => ({ where: 'onboarding', name: nameInput.value, cursorId: choice.saved, placeholder, avatar: avatarValue });
   let step: Step = 1;
@@ -487,6 +488,11 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
     viewport.style.height = `${active.scrollHeight}px`;
   }
 
+  function onResize(): void {
+    finishIntro?.();
+    fitHeight();
+  }
+
   function go(next: Step): void {
     if (next === 2 && step !== 3) enterStep2();
     if (next === 3) {
@@ -558,13 +564,16 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
     picker.dispose();
     avatarEditor.dispose();
     window.removeEventListener('keydown', onOutsideKey, true);
+    window.removeEventListener('resize', onResize);
     root.remove();
+    finishIntro?.();
     opts.onDone?.();
   }
 
   closeBtn.addEventListener('click', finish);
   root.addEventListener('keydown', onKey);
   window.addEventListener('keydown', onOutsideKey, true);
+  window.addEventListener('resize', onResize);
   document.body.appendChild(root);
   current = { root, close, step: () => step, go };
   // первый шаг всегда — способы входа; после возврата от провайдера — сразу второй
@@ -583,11 +592,14 @@ export function openOnboarding(opts: OnboardingOptions = {}): void {
     fitHeight();
     // фокус на само окно, а не на кнопку «Почта»: без синей рамки на старте; Tab — по кнопкам как обычно
     const focusWin = () => win.focus({ preventScroll: true });
-    if (introEnabled()) {
-      // заставка: крупные логотип и заголовок, затем окно раскрывается; фокус — когда всё видно
+    if (introEnabled() && win.scrollHeight <= win.clientHeight) {
+      // Заставка рассчитана на окно без прокрутки. В низком окне сразу показываем форму.
       const rest = [closeBtn, sub, providers, msg1, or, skip, note];
       for (const e of rest) e.classList.add('ob-rest');
-      playIntro({ root, win, logo, title: h1, rest, onReveal: focusWin });
+      finishIntro = playIntro({ root, win, logo, title: h1, rest, onReveal: () => {
+        finishIntro = undefined;
+        focusWin();
+      } });
     } else focusWin();
   }
 }
