@@ -6241,7 +6241,7 @@ body.tutor-mode > :not(#tutor-root):not(#startup) { display:none !important; }
 .task-bank-exams .tp-tab { flex: 1 1 auto; min-width: 0; min-height: 28px; padding-inline: 4px; font-size: 12px; }
 .task-bank-search-row {
   display: flex; align-items: center; min-width: 0; padding-inline: 3px;
-  border: 1px solid var(--border); border-radius: 999px; background: var(--surface-sunken);
+  border: 0; border-radius: 999px; background: var(--surface-sunken);
 }
 .task-bank-search-button {
   flex: none; display: grid; place-items: center; width: 30px; height: 30px;
