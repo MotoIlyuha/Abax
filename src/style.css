@@ -2748,8 +2748,8 @@ body.main-menu-open #toolbar[data-pos="left"] { transform: translateX(calc(-100%
 .topbar-logo { position: relative; }
 .logo-mark, .logo-menu-mark { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; transition: opacity .2s ease, transform .2s ease; }
 .logo-menu-mark { opacity: 0; transform: scale(.75) rotate(-15deg); }
-.main-menu-open .logo-mark { opacity: 0; transform: scale(.75) rotate(15deg); }
-.main-menu-open .logo-menu-mark { opacity: 1; transform: scale(1) rotate(0); }
+.main-menu-open .logo-mark, #btn-home:is(:hover, :focus-visible) .logo-mark { opacity: 0; transform: scale(.75) rotate(15deg); }
+.main-menu-open .logo-menu-mark, #btn-home:is(:hover, :focus-visible) .logo-menu-mark { opacity: 1; transform: scale(1) rotate(0); }
 body.no-ui-anim :is(.logo-mark, .logo-menu-mark) { transition: none; }
 @media (prefers-reduced-motion: reduce) { .logo-mark, .logo-menu-mark { transition: none; } }
 
