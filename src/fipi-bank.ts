@@ -1,15 +1,14 @@
 import { EGE, OGE, VPR, type ExerciseGroup } from './fipi-practice';
 import imported from './fipi-imported.json';
-import type { TaskExamType } from './types';
 
-export const BANK_EXAMS = { vpr: 'ВПР', oge: 'ОГЭ', ege: 'ЕГЭ' } as const;
+export const BANK_EXAMS = { vpr: 'ВПР', oge: 'ОГЭ', ege_base: 'ЕГЭ | База', ege_prof: 'ЕГЭ | Профиль' } as const;
 export type BankExam = keyof typeof BANK_EXAMS;
 export type BankSubject = 'math' | 'informatics' | 'physics' | 'russian';
 
 export interface BankTask {
   id: string;
   exam: BankExam;
-  examType: TaskExamType;
+  examType: BankExam;
   subject: BankSubject;
   number: number;
   topic: string;
@@ -19,26 +18,26 @@ export interface BankTask {
   code?: string;
 }
 
-const PRACTICE: Record<BankExam, readonly ExerciseGroup[]> = { vpr: VPR, oge: OGE, ege: EGE };
+const PRACTICE: Record<BankExam, readonly ExerciseGroup[]> = { vpr: VPR, oge: OGE, ege_base: [], ege_prof: EGE };
 
 export function bankNumbers(exam: BankExam): number[] {
-  return PRACTICE[exam].map((_, i) => i + 1);
+  const count = exam === 'ege_base' ? 21 : PRACTICE[exam].length;
+  return Array.from({ length: count }, (_, i) => i + 1);
 }
 
 const TEAM_TASKS = (Object.keys(PRACTICE) as BankExam[]).flatMap(exam =>
   PRACTICE[exam].flatMap(([topic, ...items], i) => items.map(([statementMd, answer, solutionMd], variant): BankTask => ({
-    id: 'abax:' + exam + ':' + (i + 1) + ':' + (variant + 1),
-    exam, examType: exam === 'ege' ? 'ege_prof' : exam, subject: 'math', number: i + 1,
+    id: 'abax:' + (exam === 'ege_prof' ? 'ege' : exam) + ':' + (i + 1) + ':' + (variant + 1),
+    exam, examType: exam, subject: 'math', number: i + 1,
     topic, statementMd, answer, solutionMd,
   }))),
 );
 
 const SOURCE_TASKS = imported.flatMap((data): BankTask[] => {
-  const { exam: examType, id, number, topic, statementMd, answer, solutionMd, code } = data;
-  if (examType !== 'oge' && examType !== 'ege_prof' && examType !== 'ege_base') return [];
-  const exam = examType === 'oge' ? 'oge' : 'ege';
+  const { exam, id, number, topic, statementMd, answer, solutionMd, code } = data;
+  if (exam !== 'oge' && exam !== 'ege_prof' && exam !== 'ege_base') return [];
   if (!bankNumbers(exam).includes(number) || !/^[0-9A-F]{6}$/.test(code)) return [];
-  return [{ id, exam, examType, subject: 'math', number, topic, statementMd, answer, solutionMd, code }];
+  return [{ id, exam, examType: exam, subject: 'math', number, topic, statementMd, answer, solutionMd, code }];
 });
 
 const BANK = [...SOURCE_TASKS, ...TEAM_TASKS].sort((a, b) => a.number - b.number);

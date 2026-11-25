@@ -105,7 +105,10 @@ test('банк: предметы, экзамены, номера, поиск и 
   await expect(exams.getByRole('tab', { name: 'ОГЭ' })).toHaveAttribute('aria-selected', 'true');
   const numbers = page.getByRole('group', { name: 'Номер задания' });
   const cards = page.locator('.task-bank-card');
-  for (const [exam, last, count] of [['ВПР', 17, 2], ['ЕГЭ', 19, 2], ['ОГЭ', 25, 2]] as const) {
+  await exams.getByRole('tab', { name: 'ЕГЭ | База', exact: true }).click();
+  await expect(numbers.getByRole('button', { name: '№ 21', exact: true })).toBeVisible();
+  await expect(cards.filter({ hasText: 'ЕГЭ | Профиль' })).toHaveCount(0);
+  for (const [exam, last, count] of [['ВПР', 17, 2], ['ЕГЭ | Профиль', 19, 2], ['ОГЭ', 25, 2]] as const) {
     await exams.getByRole('tab', { name: exam }).click();
     await expect(numbers.getByRole('button', { name: 'Все' })).toHaveAttribute('aria-pressed', 'true');
     const pill = numbers.getByRole('button', { name: '№ ' + last, exact: true });

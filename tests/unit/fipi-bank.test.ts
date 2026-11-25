@@ -4,7 +4,7 @@ import { createTaskElement, projectTaskForRole } from '../../src/task-element';
 import { bankNumbers, filterBankTasks, type BankExam } from '../../src/fipi-bank';
 
 describe('Банк заданий', () => {
-  it.each([['vpr', 17], ['oge', 25], ['ege', 19]] as const)(
+  it.each([['vpr', 17], ['oge', 25], ['ege_prof', 19]] as const)(
     'даёт не менее двух полных карточек на каждый номер (%s)', (exam: BankExam, count: number) => {
       expect(bankNumbers(exam)).toEqual(Array.from({ length: count }, (_, i) => i + 1));
       const all = filterBankTasks({ exam, subject: 'math' });
@@ -22,6 +22,14 @@ describe('Банк заданий', () => {
     },
   );
 
+  it('отделяет профильные задания от базового ЕГЭ и сохраняет номера базовой части', () => {
+    expect(bankNumbers('ege_base')).toEqual(Array.from({ length: 21 }, (_, i) => i + 1));
+    expect(filterBankTasks({ exam: 'ege_prof', subject: 'math', query: '#75244F' })).toEqual([
+      expect.objectContaining({ examType: 'ege_prof' }),
+    ]);
+    expect(filterBankTasks({ exam: 'ege_base', subject: 'math', query: '#75244F' })).toEqual([]);
+  });
+
   it('фильтрует одновременно по предмету, экзамену, номеру и условию или теме', () => {
     const params = { exam: 'oge', subject: 'math', number: 8 } as const;
     expect(filterBankTasks({ ...params, subject: 'physics' })).toEqual([]);
@@ -35,7 +43,7 @@ describe('Банк заданий', () => {
     expect(filterBankTasks({ exam: 'oge', subject: 'math', query: 'фипи #45b944' })).toEqual([
       expect.objectContaining({ code: '45B944', number: 19, answer: '1' }),
     ]);
-    expect(filterBankTasks({ exam: 'ege', subject: 'math', query: '45b944' })).toEqual([]);
+    expect(filterBankTasks({ exam: 'ege_prof', subject: 'math', query: '45b944' })).toEqual([]);
     expect(filterBankTasks({ exam: 'oge', subject: 'math', number: 18, query: '45b944' })).toEqual([]);
   });
 

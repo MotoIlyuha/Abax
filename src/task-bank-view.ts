@@ -73,7 +73,7 @@ function card(task: BankTask, add: (task: BankTask) => void, drag: DragTask): HT
   el.addEventListener('dragend', () => drag(null));
 
   const head = make('header', 'task-bank-card-head');
-  const label = task.examType === 'ege_base' ? 'ЕГЭ (база)' : BANK_EXAMS[task.exam];
+  const label = BANK_EXAMS[task.exam];
   head.append(
     make('span', 'task-bank-number', label + ' · № ' + task.number),
     make('span', 'task-bank-source', task.code ? 'ФИПИ #' + task.code : 'Тренировка'),
