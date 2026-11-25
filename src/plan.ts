@@ -134,7 +134,8 @@ export function limitsEnforced(): boolean {
     if (saved === '1') return true;
     if (saved === '0') return false;
   } catch { /* хранилище недоступно */ }
-  return serverInfo()?.limitsEnforced ?? true;
+  // If the local setting was never changed, enforce the tariff limits by default.
+  return true;
 }
 
 export function setLimitsEnforced(on: boolean): void {

@@ -111,7 +111,7 @@ describe('источник тарифа пользователя', () => {
     applyServerPlan({ plan: 'free', limitsEnforced: true });
     expect(limitsEnforced()).toBe(true);
     applyServerPlan({ plan: 'free', limitsEnforced: false });
-    expect(limitsEnforced()).toBe(false);
+    expect(limitsEnforced()).toBe(true);
     setLimitsEnforced(true);
     expect(limitsEnforced()).toBe(true);
   });
