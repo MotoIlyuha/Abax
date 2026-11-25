@@ -14,7 +14,7 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllEnvs(); });
 
 describe('тариф и включение лимитов', () => {
-  it('по умолчанию free и лимиты выключены; значения запоминаются', () => {
+  it('по умолчанию free и лимиты включены; значения запоминаются', () => {
     expect(userPlan()).toBe('free');
     expect(limitsEnforced()).toBe(true);
     setUserPlan('pro');
@@ -119,6 +119,7 @@ describe('источник тарифа пользователя', () => {
 
 describe('страницы', () => {
   it('пока лимиты выключены, страниц сколько угодно', () => {
+    setLimitsEnforced(false);
     for (let i = 0; i < 6; i++) expect(addPage()).not.toBeNull();
     expect(state.project.pages).toHaveLength(7);
   });

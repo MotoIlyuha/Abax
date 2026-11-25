@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ApiError, setApiForTests, type ApiClient } from '../../src/api-client';
 import { closeShareDialog, openShareDialog, shareDialogOpen, type ShareApi, type ShareStatus } from '../../src/share-dialog';
 import { PRESENCE_EVENT } from '../../src/collab';
-import { clearServerPlan } from '../../src/plan';
+import { clearServerPlan, setUserPlan } from '../../src/plan';
 import { openProject, state } from '../../src/state';
 import { setSyncedRev } from '../../src/sync-state';
 import type { Project } from '../../src/types';
@@ -385,6 +385,7 @@ describe('страница «Настройки доступа»', () => {
   });
 
   it('максимум гостей - счётчик: стрелки и кнопки идут по списку, «∞» - без ограничений', async () => {
+    setUserPlan('pro');
     await openShareDialog(deps());
     toSettings();
     const stepper = field<HTMLElement>('maxGuests');
@@ -425,6 +426,7 @@ describe('страница «Настройки доступа»', () => {
   });
 
   it('именной адрес: свободные похожие - сразу при вводе, без «Сохранить»; ответ на устаревший ввод не показывается', async () => {
+    setUserPlan('pro');
     setSyncedRev('p1', 3);
     const api = fakeApi((m, p) => {
       if (m === 'GET' && p.startsWith('/api/invites?')) return { invite: null };
@@ -474,6 +476,7 @@ describe('страница «Настройки доступа»', () => {
   });
 
   it('именной адрес: подсказка на лету, сохранение, занятый адрес, бывшие адреса и освобождение с подтверждением', async () => {
+    setUserPlan('pro');
     setSyncedRev('p1', 3);
     let alias: string | null = null;
     let former: string[] = [];

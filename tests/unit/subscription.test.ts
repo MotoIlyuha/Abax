@@ -103,7 +103,9 @@ describe('смена тарифа', () => {
     applyServerPlan({ plan: 'pro', limitsEnforced: true });
     applyServerPlan({ plan: 'pro', limitsEnforced: true });
     clearServerPlan();
-    expect(seen).toEqual(['free>pro:true', 'pro>free:false']);
+    setLimitsEnforced(false);
+    setLimitsEnforced(false);
+    expect(seen).toEqual(['free>pro:true', 'pro>free:true', 'free>free:false']);
   });
 
   it('«+» и «−» в режиме разработки идут по лестнице Free → Pro → Tutor', () => {
@@ -119,6 +121,7 @@ describe('смена тарифа', () => {
 
 describe('бейдж Pro', () => {
   it('один вид везде; виден, только пока возможность закрыта; нажатие - окно подписки', () => {
+    setLimitsEnforced(false);
     const upgrade = vi.fn();
     setUpgradeHandler(upgrade);
     const b = proBadge('history');

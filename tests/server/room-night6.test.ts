@@ -107,10 +107,14 @@ describe.each(kinds)('$name', kind => {
       expect(host.last('patch')!.ops[0].el.attempts).toHaveLength(1);
       const comment = { t: 'comment', op: 'create', pageId: 'pg1', x: 1, y: 1, text: 'вопрос' };
       g.s.recv(comment);
+      const onCanvas = host.last('comments')!.comments;
+      expect(onCanvas).toMatchObject([{ x: 1, y: 1, messages: [{ text: 'вопрос' }] }]);
+      expect(onCanvas[0]).not.toHaveProperty('targetElementId');
+      const broadcasts = host.all('comments').length;
       g.s.recv({ ...comment, targetElementId: 'нет' });
-      expect(host.last('comments')).toBeUndefined();
+      expect(host.all('comments')).toHaveLength(broadcasts);
       g.s.recv({ ...comment, targetElementId: 't1' });
-      expect(host.last('comments')!.comments).toMatchObject([{ targetElementId: 't1' }]);
+      expect(host.last('comments')!.comments).toMatchObject([onCanvas[0], { targetElementId: 't1' }]);
     });
 
     it('редактор новой роли - edit на страницах без права; patch принимается', () => {
