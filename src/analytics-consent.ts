@@ -1,5 +1,6 @@
 // Личный выбор аналитики хранится на устройстве, отдельно от настроек доски.
-import { atRest, clamp, motionEnabled, reduceMotion, S, snap, step, uiAnimOff } from './motion';
+import { motionEnabled, reduceMotion, uiAnimOff } from './motion';
+import { createAnalyticsCookie, animateAnalyticsChoice } from './analytics-cookie';
 import { createToggleSwitch, setToggleChecked } from './toggle-switch';
 
 const KEY = 'abax.analytics-consent';
@@ -30,6 +31,10 @@ export function showAnalyticsBanner(): void {
   const card = document.createElement('section');
   card.id = 'analytics-banner';
   card.setAttribute('aria-label', 'Настройки аналитики');
+  const top = document.createElement('div');
+  top.className = 'analytics-top';
+  const cookie = createAnalyticsCookie();
+  const copy = document.createElement('div');
   const title = document.createElement('strong');
   title.textContent = 'Помогите улучшить Abax';
   const text = document.createElement('p');
@@ -47,38 +52,26 @@ export function showAnalyticsBanner(): void {
     button.addEventListener('click', () => {
       if (!setAnalyticsChoice(accepted)) { error.textContent = 'Не удалось сохранить выбор. Проверьте настройки браузера.'; return; }
       document.getElementById('btn-help')?.focus({ preventScroll: true });
-      card.setAttribute('inert', '');
-      closeBanner(card);
+      buttons.querySelectorAll('button').forEach(control => { control.disabled = true; });
+      closeBanner(card, cookie, accepted);
     });
     buttons.appendChild(button);
   }
-  card.append(title, text, buttons, error);
+  copy.append(title, text);
+  top.append(cookie, copy);
+  card.append(top, buttons, error);
   anchor.appendChild(card);
 }
 
-function closeBanner(card: HTMLElement): void {
+function closeBanner(card: HTMLElement, cookie: HTMLElement, accepted: boolean): void {
   if (uiAnimOff() || reduceMotion()) { card.remove(); return; }
   card.classList.add('analytics-closing');
-  if (!motionEnabled()) {
+  if (motionEnabled()) {
+    animateAnalyticsChoice(card, cookie, accepted);
+  } else {
     card.addEventListener('animationend', () => card.remove(), { once: true });
     window.setTimeout(() => card.remove(), 300);
-    return;
   }
-  const spring = S(1, 260, 25);
-  spring.t = 0;
-  let last = 0;
-  const frame = (now: number) => {
-    if (!card.isConnected) return;
-    const dt = last ? Math.min((now - last) / 1000, 1 / 30) : 1 / 60;
-    last = now;
-    for (let i = 0; i < 4; i++) step(spring, dt / 4);
-    const progress = clamp(spring.x, 0, 1);
-    card.style.transform = `scale(${progress})`;
-    card.style.opacity = String(progress);
-    if (atRest(spring, 0.01)) { snap(spring); card.remove(); }
-    else requestAnimationFrame(frame);
-  };
-  requestAnimationFrame(frame);
 }
 
 export function renderAnalyticsSettings(host: HTMLElement): void {

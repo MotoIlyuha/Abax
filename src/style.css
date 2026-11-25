@@ -6318,3 +6318,19 @@ body.tutor-mode > :not(#tutor-root):not(#startup) { display:none !important; }
 }
 .task-bank-add:hover, .task-bank-answer summary:hover { background: var(--accent-soft); }
 .task-bank-empty { padding: 12px; color: var(--muted); text-align: center; }
+
+/* Баннер аналитики: иллюстрация и анимация выбора. */
+.analytics-top { display:flex; align-items:center; gap:14px; }
+.analytics-top > div:last-child { min-width:0; }
+#analytics-banner .analytics-top p { margin:6px 0 0; }
+#analytics-banner .analytics-actions { margin-top:16px; }
+.analytics-actions button { flex:1; min-height:42px; font-weight:600; }
+ .analytics-cookie-plate { position:relative; flex:none; width:64px; height:64px; }
+.analytics-cookie-svg { display:block; width:64px; height:64px; overflow:visible; will-change:transform; }
+.analytics-crumb { position:absolute; left:0; top:0; width:5px; height:5px; margin:-2.5px; border-radius:2px; background:#dfa63c; opacity:0; pointer-events:none; }
+.analytics-crumb:nth-child(3n) { background:#82501f; }
+.analytics-done { position:absolute; left:50%; top:50%; display:flex; align-items:center; gap:8px; white-space:nowrap; opacity:0; transform:translate(-50%,-50%); font-weight:600; pointer-events:none; }
+.analytics-done svg { flex:none; width:20px; height:20px; border-radius:50%; background:var(--accent); }
+.analytics-done path { fill:none; stroke:white; stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round; stroke-dasharray:1; stroke-dashoffset:1; }
+
+.help-group.analytics-arriving #btn-help { position: relative; z-index: 1; }
