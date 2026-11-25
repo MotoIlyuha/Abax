@@ -6274,7 +6274,7 @@ body.tutor-mode > :not(#tutor-root):not(#startup) { display:none !important; }
   body:not(.no-ui-anim) .task-bank-numbers { transition: opacity 150ms ease-out; }
 }
 .task-bank-search-button:focus-visible,
-.task-bank-search:focus-visible, .task-bank-pill:focus-visible, .task-bank-add:focus-visible,
+.task-bank-pill:focus-visible, .task-bank-add:focus-visible,
 .task-bank-answer summary:focus-visible, .task-bank-results:focus-visible {
   outline: 2px solid var(--accent); outline-offset: -2px;
 }
