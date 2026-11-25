@@ -6273,6 +6273,7 @@ body.tutor-mode > :not(#tutor-root):not(#startup) { display:none !important; }
   body:not(.no-ui-anim) .task-bank-search { transition: flex-basis 180ms ease-out; }
   body:not(.no-ui-anim) .task-bank-numbers { transition: opacity 150ms ease-out; }
 }
+#tutor-root .task-bank-search:focus-visible { outline: none; }
 .task-bank-search-button:focus-visible,
 .task-bank-pill:focus-visible, .task-bank-add:focus-visible,
 .task-bank-answer summary:focus-visible, .task-bank-results:focus-visible {
