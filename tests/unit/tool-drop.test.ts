@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { canDropTool, toolDropElement } from '../../src/tool-drop';
-import type { NoteEl, ShapeEl, SolidEl } from '../../src/types';
+import type { StikyNoteEl, ShapeEl, SolidEl } from '../../src/types';
 
 const style = { color: '#123456', width: 3 };
 const at = { x: 200, y: 150 };
 
 describe('перетаскивание инструментов на холст', () => {
-  it('бросать можно фигуры, тела и стикер; рисующие инструменты - нет', () => {
-    for (const id of ['rect', 'ellipse', 'triangle', 'line', 'arrow', 'poly', 'cube', 'box', 'prism', 'pyramid', 'truncPyramid', 'cylinder', 'cone', 'truncCone', 'sphere', 'note'] as const) {
+  it('бросать можно фигуры, тела и липкий стикер; рисующие инструменты - нет', () => {
+    for (const id of ['rect', 'ellipse', 'triangle', 'line', 'arrow', 'poly', 'cube', 'box', 'prism', 'pyramid', 'truncPyramid', 'cylinder', 'cone', 'truncCone', 'sphere', 'stikyNote'] as const) {
       expect(canDropTool(id)).toBe(true);
     }
     for (const id of ['select', 'pen', 'highlighter', 'eraser', 'text', 'spread', 'laser'] as const) {
@@ -15,9 +15,9 @@ describe('перетаскивание инструментов на холст'
     }
   });
 
-  it('стикер встаёт центром в точку броска со своим цветом', () => {
-    const el = toolDropElement('note', 'n1', at, 1, style, '#ffe066') as NoteEl;
-    expect(el).toMatchObject({ id: 'n1', type: 'note', color: '#ffe066', text: '' });
+  it('липкий стикер встаёт центром в точку броска со своим цветом', () => {
+    const el = toolDropElement('stikyNote', 'n1', at, 1, style, '#ffe066') as StikyNoteEl;
+    expect(el).toMatchObject({ id: 'n1', type: 'stikyNote', color: '#ffe066', text: '' });
     expect(el.x).toBeLessThan(at.x);
     expect(el.y).toBeLessThan(at.y);
     expect(el.x + el.w / 2).toBeCloseTo(at.x);

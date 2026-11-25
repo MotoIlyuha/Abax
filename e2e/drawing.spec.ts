@@ -90,7 +90,7 @@ test.describe('перо и маркер', () => {
   test('горячие клавиши инструментов', async ({ board }) => {
     const map: Record<string, string> = {
       v: 'select', p: 'pen', m: 'highlighter', e: 'eraser', x: 'partEraser', h: 'pan', t: 'text', r: 'rect', o: 'ellipse',
-      y: 'triangle', l: 'line', a: 'arrow', i: 'laser', k: 'poly', n: 'note', s: 'spread',
+      y: 'triangle', l: 'line', a: 'arrow', i: 'laser', k: 'poly', n: 'stikyNote', s: 'spread',
     };
     for (const [key, tool] of Object.entries(map)) {
       await board.tool(key);
@@ -355,7 +355,7 @@ test.describe('ластик', () => {
   });
 });
 
-test.describe('текст и стикеры', () => {
+test.describe('текст и липкие стикеры', () => {
   test('текст: ввод, Enter - сохранить; Shift+Enter - новая строка', async ({ board, page }) => {
     await board.tool('t');
     await board.click({ x: 400, y: 300 });
@@ -412,27 +412,61 @@ test.describe('текст и стикеры', () => {
     expect((await board.elements())[0]?.text).toBe('blur');
   });
 
-  test('стикер: панель цвета, ввод текста, переход на выделение', async ({ board, page }) => {
+  test('липкий стикер: взять из стопки, поставить и написать прямо на листе', async ({ board, page }) => {
     await board.tool('n');
-    const panel = page.locator('.ctx-panel[data-kind="note"]');
+    const panel = page.locator('.ctx-panel[data-kind="stikyNote"]');
     await expect(panel).toBeVisible();
-    await panel.locator('.ctx-swatch[data-c="#a9def9"]').click();
-    await expect(panel.locator('.ctx-swatch[data-c="#a9def9"]')).toHaveClass(/active/);
+    const grip = (await panel.locator('.ctx-grip').boundingBox())!;
+    await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(grip.x + 640, grip.y + 180, { steps: 8 });
+    await page.mouse.up();
+    await expect(panel).toHaveClass(/detached/);
+    await board.tool('v');
+    const stack = panel.getByRole('button', { name: 'Голубой' });
+    await stack.click();
+    await expect(stack).not.toHaveAttribute('aria-pressed');
+    const ghost = page.locator('.stiky-note-ghost');
+    await expect(ghost).toBeVisible();
+    expect(await board.count()).toBe(0);
+    await board.move({ x: 500, y: 400 });
+    const preview = (await ghost.boundingBox())!;
+    const center = await board.screen({ x: 500, y: 400 });
+    expect(preview).toEqual({ x: center.x - 108, y: center.y - 84, width: 216, height: 168 });
     await board.click({ x: 500, y: 400 });
+    await expect(ghost).toHaveCount(0);
     expect((await board.state()).tool).toBe('select');
+    expect((await board.state()).selection).toEqual([]);
+    expect(await board.count('stikyNote')).toBe(1);
+    const editor = page.locator('textarea.inplace-edit.stikyNote');
+    await expect(editor).toBeFocused();
+    await expect(editor).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+    await expect(editor).toHaveCSS('box-shadow', 'none');
     await page.keyboard.type('Домашка: №5');
     await page.keyboard.press('Enter');
     const [n] = await board.elements();
-    expect(n).toMatchObject({ type: 'note', text: 'Домашка: №5', color: '#a9def9', w: 216, h: 168, x: 500 - 108, y: 400 - 84 });
+    expect(n).toMatchObject({ type: 'stikyNote', text: 'Домашка: №5', color: '#a9def9', w: 216, h: 168, x: 500 - 108, y: 400 - 84 });
   });
 
-  test('двойной клик по стикеру - редактирование', async ({ board, page }) => {
+  test('Esc убирает превью взятого липкого стикера', async ({ board, page }) => {
+    await board.tool('n');
+    await page.getByRole('button', { name: 'Розовый' }).click();
+    const ghost = page.locator('.stiky-note-ghost');
+    await expect(ghost).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(ghost).toHaveCount(0);
+    await board.click({ x: 500, y: 400 });
+    expect(await board.count()).toBe(0);
+    await expect(page.locator('textarea.inplace-edit.stikyNote')).toHaveCount(0);
+  });
+
+  test('двойной клик по липкому стикеру - редактирование', async ({ board, page }) => {
     await board.tool('n');
     await board.click({ x: 500, y: 400 });
     await page.keyboard.type('1');
     await page.keyboard.press('Enter');
     await board.dblclick({ x: 500, y: 400 });
-    const ta = page.locator('textarea.inplace-edit.note');
+    const ta = page.locator('textarea.inplace-edit.stikyNote');
     await expect(ta).toHaveValue('1');
     await ta.fill('2');
     await ta.press('Enter');

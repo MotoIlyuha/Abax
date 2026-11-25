@@ -51,7 +51,7 @@ const HIGHLIGHT = noun('штрих маркера', 'штриха маркера
 const POLYLINE = noun('ломаная', 'ломаные', 'ломаных', 'f');
 const POLYGON = noun('многоугольник', 'многоугольника', 'многоугольников', 'm');
 const TEXT = noun('текст', 'текста', 'текстов', 'm');
-const NOTE = noun('стикер', 'стикера', 'стикеров', 'm');
+const STIKY_NOTE = noun('липкий стикер', 'липких стикера', 'липких стикеров', 'm');
 const IMAGE = noun('изображение', 'изображения', 'изображений', 'n');
 const PAGE_LINK = noun('страница на холсте', 'страницы на холсте', 'страниц на холсте', 'f');
 const SOLID = noun('тело', 'тела', 'тел', 'n');
@@ -64,7 +64,7 @@ function nounOf(el: Element): Noun {
     case 'shape': return SHAPE_NOUNS[el.shape] ?? OBJECT;
     case 'poly': return el.closed ? POLYGON : POLYLINE;
     case 'text': return TEXT;
-    case 'note': return NOTE;
+    case 'stikyNote': return STIKY_NOTE;
     case 'image': return el.page ? PAGE_LINK : IMAGE;
     case 'solid': return SOLID_NOUNS[el.solid] ?? SOLID;
     case 'task': return TASK;

@@ -92,13 +92,13 @@ export function addedComments(prev: readonly CommentThread[] | undefined, next: 
 // ----- Подпись объекта -----
 
 const TYPE_LABEL: Record<Element['type'], string> = {
-  stroke: 'Рисунок', shape: 'Фигура', text: 'Текст', note: 'Стикер', image: 'Изображение', poly: 'Многоугольник',
+  stroke: 'Рисунок', shape: 'Фигура', text: 'Текст', stikyNote: 'Липкий стикер', image: 'Изображение', poly: 'Многоугольник',
   solid: 'Объёмная фигура', task: 'Задание',
 } as Record<Element['type'], string>;
 
-/** Короткий текст объекта (текст, стикер, надпись фигуры, условие задания), без переносов; пусто — нет текста. */
+/** Короткий текст объекта (текст, липкий стикер, надпись фигуры, условие задания), без переносов; пусто — нет текста. */
 function elementText(el: Element): string {
-  const raw = el.type === 'text' || el.type === 'note' ? el.text
+  const raw = el.type === 'text' || el.type === 'stikyNote' ? el.text
     : el.type === 'shape' ? el.text ?? ''
       : el.type === 'task' ? el.statementMd
         : '';

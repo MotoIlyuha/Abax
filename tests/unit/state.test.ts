@@ -3,7 +3,7 @@ import {
   addElement, addPage, applyStyleToSelection, beginStroke, blankPage, blankProject, bringForward, canRedo, canUndo,
   commitPoly, deletePage, deleteSelected, endStroke, expandSelectionWithGroups, extendStroke, groupSelected,
   moveItem, movePage, moveSelectionLayer, selectionLayerOrder, pinSelectionLayer, onChange, openProject, projectMeta, pushHistory, redo, renamePage, replaceElements, sendBackward, setGrid,
-  presetKind, selectAll, selectPreset, setNoteColor, setSelection, setSettings, setSolidSides, setStyleColor, setStyleWidth, setTool, setView, state,
+  presetKind, selectAll, selectPreset, setStikyNoteColor, setSelection, setSettings, setSolidSides, setStyleColor, setStyleWidth, setTool, setView, state,
   switchPage, uid, undo, ungroupSelected, update, clampOpacity, opacityField, parseZoomPercent, removeImageFrames, setStyleOpacity,
   pickTool, zoomAtPoint, ZOOM_MAX, ZOOM_MIN, addDraft, deleteDraft, isDraftId, onDraft, realPageId,
 } from '../../src/state';
@@ -234,8 +234,8 @@ describe('выделение и стиль', () => {
     expect(state.style.color).toBe('#1f2329');
   });
 
-  it('стикер без цвета пера - стиль не трогаем', () => {
-    replaceElements([{ id: 'n', type: 'note', x: 0, y: 0, w: 10, h: 10, text: 'x', color: '#ffe066' }]);
+  it('липкий стикер без цвета пера - стиль не трогаем', () => {
+    replaceElements([{ id: 'n', type: 'stikyNote', x: 0, y: 0, w: 10, h: 10, text: 'x', color: '#ffe066' }]);
     setSelection(['n']);
     expect(state.style.color).toBe('#1f2329');
   });
@@ -246,11 +246,11 @@ describe('выделение и стиль', () => {
     expect(state.style).toEqual({ color: '#abcdef', width: 4 });
   });
 
-  it('applyStyleToSelection красит линии, текст и рамку картинок, но не стикеры', () => {
+  it('applyStyleToSelection красит линии, текст и рамку картинок, но не липкие стикеры', () => {
     replaceElements([
       rect('a'),
       { id: 't', type: 'text', x: 0, y: 0, text: 'x', size: 20, color: '#000000' },
-      { id: 'n', type: 'note', x: 0, y: 0, w: 10, h: 10, text: 'x', color: '#ffe066' },
+      { id: 'n', type: 'stikyNote', x: 0, y: 0, w: 10, h: 10, text: 'x', color: '#ffe066' },
       { id: 'i', type: 'image', x: 0, y: 0, w: 10, h: 10, src: 'data:' },
     ]);
     setSelection(['a', 't', 'n', 'i']);
@@ -328,8 +328,8 @@ describe('выделение и стиль', () => {
     expect(state.board.elements[0]).toMatchObject({ opacity: 0.8, fillOpacity: 0.4 });
   });
 
-  it('прозрачность: 1 не хранится, у стикеров её нет', () => {
-    replaceElements([rect('a'), { id: 'n', type: 'note', x: 0, y: 0, w: 10, h: 10, text: 'x', color: '#ffe066' }]);
+  it('прозрачность: 1 не хранится, у липких стикеров её нет', () => {
+    replaceElements([rect('a'), { id: 'n', type: 'stikyNote', x: 0, y: 0, w: 10, h: 10, text: 'x', color: '#ffe066' }]);
     setSelection(['a', 'n']);
     applyStyleToSelection({ opacity: 0.4 });
     expect(state.board.elements[0]).toMatchObject({ opacity: 0.4 });
@@ -401,7 +401,7 @@ describe('выделение и стиль', () => {
   });
 
   it('applyStyleToSelection без подходящих элементов - без записи в историю', () => {
-    replaceElements([{ id: 'n', type: 'note', x: 0, y: 0, w: 10, h: 10, text: 'x', color: '#ffe066' }]);
+    replaceElements([{ id: 'n', type: 'stikyNote', x: 0, y: 0, w: 10, h: 10, text: 'x', color: '#ffe066' }]);
     setSelection(['n']);
     applyStyleToSelection({ color: '#ff0000' });
     expect(canUndo()).toBe(false);
@@ -421,10 +421,10 @@ describe('выделение и стиль', () => {
   it('сеттеры стиля и настроек', () => {
     setStyleColor('#111111');
     setStyleWidth(7);
-    setNoteColor('#a9def9');
+    setStikyNoteColor('#a9def9');
     setSettings({ snapToGrid: true });
     expect(state.style).toEqual({ color: '#111111', width: 7 });
-    expect(state.noteColor).toBe('#a9def9');
+    expect(state.stikyNoteColor).toBe('#a9def9');
     expect(state.settings).toMatchObject({ snapToGrid: true, toolbarPos: 'left' });
   });
 

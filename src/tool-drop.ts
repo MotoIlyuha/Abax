@@ -1,9 +1,8 @@
-// Постановка объекта перетаскиванием с панели инструментов: фигуры, стереометрического
-// тела или стикера. Размер задаётся в экранных пикселях и переводится в координаты
-// сцены — брошенный объект всегда выглядит одинаково крупным при любом масштабе.
+// Фигуры и стереометрические тела при перетаскивании имеют постоянный экранный размер.
+// Липкий стикер сохраняет свой размер на холсте при любом масштабе.
 
 import type { Element, PolyEl, Pt, ShapeEl, SolidKind, ToolId } from './types';
-import { NOTE_W, NOTE_H } from './geom';
+import { STIKY_NOTE_W, STIKY_NOTE_H } from './geom';
 import { fitSolid, SOLID_CLICK_SIZE } from './solid';
 import { opacityField } from './state';
 
@@ -30,7 +29,7 @@ const SOLID_TOOLS = new Set<ToolId>(['cube', 'box', 'prism', 'pyramid', 'truncPy
 
 /** Инструмент можно «выронить» на холст — на нём появляется соответствующий объект. */
 export function canDropTool(tool: ToolId): boolean {
-  return SHAPE_TOOLS.has(tool) || SOLID_TOOLS.has(tool) || tool === 'note';
+  return SHAPE_TOOLS.has(tool) || SOLID_TOOLS.has(tool) || tool === 'stikyNote';
 }
 
 export interface DropStyle {
@@ -49,14 +48,14 @@ export function toolDropElement(
   at: { x: number; y: number },
   zoom: number,
   style: DropStyle,
-  noteColor: string,
+  stikyNoteColor: string,
 ): Element | null {
   if (!canDropTool(tool)) return null;
-  if (tool === 'note') {
+  if (tool === 'stikyNote') {
     return {
-      id, type: 'note',
-      x: at.x - NOTE_W / 2, y: at.y - NOTE_H / 2, w: NOTE_W, h: NOTE_H,
-      text: '', color: noteColor,
+      id, type: 'stikyNote',
+      x: at.x - STIKY_NOTE_W / 2, y: at.y - STIKY_NOTE_H / 2, w: STIKY_NOTE_W, h: STIKY_NOTE_H,
+      text: '', color: stikyNoteColor,
     };
   }
   if (SOLID_TOOLS.has(tool)) {

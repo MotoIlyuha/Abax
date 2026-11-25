@@ -75,7 +75,7 @@ test.describe('сенсорный экран', () => {
     await expect(page.locator('#page-name')).toHaveValue('Страница 2');
   });
 
-  for (const [tool, key, cls] of [['стикер', 'n', '.inplace-edit.note'], ['текст', 't', '.inplace-edit']] as const) {
+  for (const [tool, key, cls] of [['липкий стикер', 'n', '.inplace-edit.stikyNote'], ['текст', 't', '.inplace-edit']] as const) {
     test(`касание пальцем создаёт ${tool}: поле ввода не пропадает сразу`, async ({ board, page }) => {
       const cdp = await page.context().newCDPSession(page);
       const box = (await board.canvas.boundingBox())!;
@@ -93,7 +93,7 @@ test.describe('сенсорный экран', () => {
       await page.keyboard.type('Задача 1');
       await page.keyboard.press('Enter');
       await expect(editor).toHaveCount(0);
-      expect(await board.count(tool === 'стикер' ? 'note' : 'text')).toBe(1);
+      expect(await board.count(tool === 'липкий стикер' ? 'stikyNote' : 'text')).toBe(1);
     });
   }
 

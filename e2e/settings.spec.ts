@@ -13,7 +13,7 @@ async function useLegacyToolbar(page: Page, board: { ready(): Promise<void> }): 
     const t = (id: string) => ({ type: 'tool', id });
     localStorage.setItem('doska.toolbar', JSON.stringify({
       items: [
-        t('select'), t('pen'), t('highlighter'), t('eraser'), t('partEraser'), t('text'), t('note'), t('spread'), t('task'),
+        t('select'), t('pen'), t('highlighter'), t('eraser'), t('partEraser'), t('text'), t('stikyNote'), t('spread'), t('task'),
         { type: 'group', id: 'shapes', name: 'Фигуры', tools: ['rect', 'ellipse', 'triangle', 'line', 'arrow', 'poly'] },
         { type: 'group', id: 'solids', name: 'Стереометрия', tools: ['cube', 'box', 'prism', 'pyramid', 'truncPyramid', 'cylinder', 'cone', 'truncCone', 'sphere'] },
         { type: 'group', id: 'pointer', name: 'Указка', tools: ['laser', 'fadePen', 'flash'] },

@@ -1,11 +1,11 @@
 import { hitTest } from './geom';
-import type { Element, NoteEl, StrokeEl } from './types';
+import type { Element, StikyNoteEl, StrokeEl } from './types';
 
 /** Элементы, которые могут быть прикреплены к основе. */
-type Attachable = StrokeEl | NoteEl;
+type Attachable = StrokeEl | StikyNoteEl;
 
 function isAttachable(item: Element): item is Attachable {
-  return item.type === 'stroke' || item.type === 'note';
+  return item.type === 'stroke' || item.type === 'stikyNote';
 }
 
 /**
@@ -17,10 +17,10 @@ export function geometricFoundationFor(item: Element, elements: Element[], exclu
   const itemIndex = elements.findIndex(e => e.id === item.id);
   // Only objects below the item in the layer stack can be foundations.
   const candidates = elements.slice(0, itemIndex < 0 ? elements.length : itemIndex).filter(e => !excluded.has(e.id) && e.id !== item.id &&
-    (item.type === 'note' ? e.type === 'image' || e.type === 'task' : e.type === 'image' || e.type === 'note' || e.type === 'task' || (e.type === 'shape' && e.shape !== 'line' && e.shape !== 'arrow')));
+    (item.type === 'stikyNote' ? e.type === 'image' || e.type === 'task' : e.type === 'image' || e.type === 'stikyNote' || e.type === 'task' || (e.type === 'shape' && e.shape !== 'line' && e.shape !== 'arrow')));
   for (const base of candidates.reverse()) {
     let inside = 0, total = 0;
-    if (item.type === 'note') {
+    if (item.type === 'stikyNote') {
       const n = 30;
       for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) {
         total++; if (hitTest(base, item.x + item.w * (x + .5) / n, item.y + item.h * (y + .5) / n, 0)) inside++;
@@ -56,7 +56,7 @@ export function foundationFor(item: Element, elements: Element[], excluded = new
   return geometricFoundationFor(item, elements, excluded);
 }
 
-/** Новый штрих или стикер запоминает основу, на которой он появился (null — вне основы). */
+/** Новый штрих или липкий стикер запоминает основу, на которой он появился (null — вне основы). */
 export function attachNewElement(item: Element, elements: Element[]): Element {
   if (!isAttachable(item)) return item;
   const base = geometricFoundationFor(item, [...elements, item]);

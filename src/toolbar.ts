@@ -24,7 +24,7 @@ export const TOOL_DEFS: ToolDef[] = [
   // стирает часть линии: маленький ластик над разрывом волнистой линии
   { id: 'partEraser', title: 'Ластик для пера и маркера', icon: TOOL_ICONS.partEraser },
   { id: 'text', title: 'Текст', icon: TOOL_ICONS.text },
-  { id: 'note', title: 'Стикер', icon: TOOL_ICONS.note },
+  { id: 'stikyNote', title: 'Липкие стикеры', icon: TOOL_ICONS.stikyNote },
   // раздвинуть: всё, что ниже линии, уезжает вниз
   {
     id: 'spread', title: 'Раздвинуть',
@@ -57,8 +57,8 @@ export const TOOL_DEFS: ToolDef[] = [
 
 const DEF_BY_ID = new Map(TOOL_DEFS.map(t => [t.id, t]));
 
-/** Инструменты без цвета: у стикеров своя палитра, подсветка — фиксированного цвета (у лазерной указки цвет выбирается). */
-const COLORLESS_TOOLS = new Set<ToolId>(['select', 'pan', 'eraser', 'partEraser', 'note', 'task', 'comment', 'spread', 'flash']);
+/** Инструменты без цвета: у липких стикеров своя палитра, подсветка — фиксированного цвета (у лазерной указки цвет выбирается). */
+const COLORLESS_TOOLS = new Set<ToolId>(['select', 'pan', 'eraser', 'partEraser', 'stikyNote', 'task', 'comment', 'spread', 'flash']);
 
 /** Нужен ли инструменту выбор цвета и толщины на панели инструментов. */
 export function toolUsesColor(id: ToolId): boolean {
@@ -69,15 +69,16 @@ export function toolDef(id: ToolId): ToolDef {
   return DEF_BY_ID.get(id)!;
 }
 
-function isTool(v: unknown): v is ToolId {
-  return typeof v === 'string' && DEF_BY_ID.has(v as ToolId);
+function readTool(v: unknown): ToolId | null {
+  if (v === 'note') return 'stikyNote';
+  return typeof v === 'string' && DEF_BY_ID.has(v as ToolId) ? v as ToolId : null;
 }
 
 // ----- Горячие клавиши -----
 
 /** Клавиши по KeyboardEvent.code: работают при любой раскладке. */
 const DEFAULT_KEYS: Partial<Record<ToolId, string>> = {
-  select: 'KeyV', pan: 'KeyH', pen: 'KeyP', highlighter: 'KeyM', eraser: 'KeyE', partEraser: 'KeyX', text: 'KeyT', note: 'KeyN', spread: 'KeyS',
+  select: 'KeyV', pan: 'KeyH', pen: 'KeyP', highlighter: 'KeyM', eraser: 'KeyE', partEraser: 'KeyX', text: 'KeyT', stikyNote: 'KeyN', spread: 'KeyS',
   rect: 'KeyR', ellipse: 'KeyO', triangle: 'KeyY', line: 'KeyL', arrow: 'KeyA', poly: 'KeyK', laser: 'KeyI',
 };
 
@@ -117,7 +118,7 @@ export type EntryRef = { tool: ToolId } | { group: string };
 export const GROUP_NAME_MAX = 40;
 /** id группы попадает в id кнопки и data-ctx тулбара: только безопасные символы. */
 const GROUP_ID_RE = /^[a-z][\w-]{0,39}$/i;
-const CTX_KINDS = new Set(['style', 'note', 'font', 'align']);
+const CTX_KINDS = new Set(['style', 'stikyNote', 'font', 'align']);
 
 export function defaultToolbar(): ToolbarConfig {
   const tool = (id: ToolId): ToolbarItem => ({ type: 'tool', id });
@@ -125,7 +126,7 @@ export function defaultToolbar(): ToolbarConfig {
     items: [
       tool('select'),
       { type: 'group', id: 'draw', name: 'Рисование', tools: ['pen', 'highlighter', 'eraser', 'partEraser'] },
-      tool('text'), tool('note'), tool('spread'), tool('comment'),
+      tool('text'), tool('stikyNote'), tool('spread'), tool('comment'),
       { type: 'group', id: 'shapes', name: 'Фигуры', tools: ['rect', 'ellipse', 'triangle', 'line', 'arrow', 'poly'] },
       { type: 'group', id: 'solids', name: 'Стереометрия', tools: ['cube', 'box', 'prism', 'pyramid', 'truncPyramid', 'cylinder', 'cone', 'truncCone', 'sphere'] },
       { type: 'group', id: 'pointer', name: 'Указка', tools: ['laser', 'fadePen', 'flash'] },
@@ -173,13 +174,14 @@ export function sanitizeToolbar(raw: unknown): ToolbarConfig {
     if (!Array.isArray(v)) return;
     for (const it of v as Record<string, unknown>[]) {
       if (!it || typeof it !== 'object') continue;
-      if (it.type === 'tool' && isTool(it.id) && !seen.has(it.id)) {
-        seen.add(it.id);
-        out.push({ type: 'tool', id: it.id });
+      if (it.type === 'tool') {
+        const id = readTool(it.id);
+        if (id && !seen.has(id)) { seen.add(id); out.push({ type: 'tool', id }); }
       } else if (it.type === 'group') {
         const tools: ToolId[] = [];
-        for (const t of Array.isArray(it.tools) ? it.tools : []) {
-          if (isTool(t) && !seen.has(t)) { seen.add(t); tools.push(t); }
+        for (const rawTool of Array.isArray(it.tools) ? it.tools : []) {
+          const t = readTool(rawTool);
+          if (t && !seen.has(t)) { seen.add(t); tools.push(t); }
         }
         const okId = typeof it.id === 'string' && GROUP_ID_RE.test(it.id) && !CTX_KINDS.has(it.id) && !groupIds.has(it.id);
         // out — это cfg.items или cfg.hidden: уже прочитанные группы newGroupId видит
@@ -218,7 +220,8 @@ export function sanitizeToolbar(raw: unknown): ToolbarConfig {
     }
   }
   // сохранённые клавиши — первыми: клавиша по умолчанию нового инструмента не отнимет уже назначенную
-  const rawKeys = r.keys && typeof r.keys === 'object' ? r.keys as Record<string, unknown> : {};
+  const rawKeys = r.keys && typeof r.keys === 'object' ? { ...r.keys } as Record<string, unknown> : {};
+  if (!Object.hasOwn(rawKeys, 'stikyNote') && Object.hasOwn(rawKeys, 'note')) rawKeys.stikyNote = rawKeys.note;
   const used = new Set<string>();
   for (const { id } of TOOL_DEFS) {
     if (!Object.hasOwn(rawKeys, id)) continue;

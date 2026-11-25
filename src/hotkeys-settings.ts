@@ -309,7 +309,7 @@ export function renderHotkeysSettings(host: HTMLElement, opts: HotkeysOptions): 
       for (const item of items) {
         const row = el('div', 'hk-row');
         row.append(el('div', 'hk-what', item.what), keycapsAny(item.keys));
-        if (!['Изменение размера', 'Текст и стикеры'].includes(g.title) && !['Ctrl+KeyC', 'Ctrl+KeyX', 'Ctrl+KeyV', 'Space', 'ArrowLeft'].includes(item.keys[0])) bindRow(row, `key:${item.keys[0]}`, item.what);
+        if (!['Изменение размера', 'Текст и липкие стикеры'].includes(g.title) && !['Ctrl+KeyC', 'Ctrl+KeyX', 'Ctrl+KeyV', 'Space', 'ArrowLeft'].includes(item.keys[0])) bindRow(row, `key:${item.keys[0]}`, item.what);
         grid.appendChild(row);
       }
       block.appendChild(grid);

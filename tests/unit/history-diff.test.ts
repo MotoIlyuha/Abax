@@ -1,7 +1,7 @@
 // Подписи шагов истории (src/history-diff.ts): склонения и все ветки describeChange.
 import { describe, expect, it } from 'vitest';
 import { describeChange, plural, pluralIndex } from '../../src/history-diff';
-import type { Element, ImageEl, NoteEl, PolyEl, ShapeEl, SolidEl, StrokeEl, TaskEl, TextEl } from '../../src/types';
+import type { Element, ImageEl, StikyNoteEl, PolyEl, ShapeEl, SolidEl, StrokeEl, TaskEl, TextEl } from '../../src/types';
 
 const rect = (id: string, o: Partial<ShapeEl> = {}): ShapeEl =>
   ({ id, type: 'shape', shape: 'rect', x: 0, y: 0, w: 10, h: 10, color: '#000000', width: 2, ...o });
@@ -9,7 +9,7 @@ const stroke = (id: string, o: Partial<StrokeEl> = {}): StrokeEl =>
   ({ id, type: 'stroke', tool: 'pen', color: '#000000', width: 2, pts: [{ x: 0, y: 0, p: 0.5 }, { x: 10, y: 5, p: 0.5 }], ...o });
 const text = (id: string, o: Partial<TextEl> = {}): TextEl =>
   ({ id, type: 'text', x: 0, y: 0, text: 'Привет', size: 20, color: '#000000', ...o });
-const note = (id: string): NoteEl => ({ id, type: 'note', x: 0, y: 0, w: 100, h: 100, text: '', color: '#ffe066' });
+const note = (id: string): StikyNoteEl => ({ id, type: 'stikyNote', x: 0, y: 0, w: 100, h: 100, text: '', color: '#ffe066' });
 const image = (id: string, o: Partial<ImageEl> = {}): ImageEl => ({ id, type: 'image', x: 0, y: 0, w: 50, h: 40, src: 'data:image/png;base64,AA', ...o });
 const poly = (id: string, closed: boolean): PolyEl => ({ id, type: 'poly', closed, color: '#000000', width: 2, pts: [{ x: 0, y: 0, p: 0.5 }, { x: 5, y: 5, p: 0.5 }] });
 const solid = (id: string, kind: SolidEl['solid']): SolidEl => ({ id, type: 'solid', solid: kind, x: 0, y: 0, w: 10, d: 10, h: 10, color: '#000000', width: 2 });
@@ -39,7 +39,7 @@ describe('describeChange: добавление и удаление', () => {
     expect(describeChange([task('a')], [])).toBe('Удалено задание');
   });
 
-  it('названия всех типов: маркер, фигуры, ломаная, многоугольник, стикер, страница на холсте, тела, задание', () => {
+  it('названия всех типов: маркер, фигуры, ломаная, многоугольник, липкий стикер, страница на холсте, тела, задание', () => {
     const one = (el: Element) => describeChange([], [el]);
     expect(one(stroke('a', { tool: 'highlighter' }))).toBe('Добавлен штрих маркера');
     expect(one(rect('a'))).toBe('Добавлен прямоугольник');
@@ -47,7 +47,7 @@ describe('describeChange: добавление и удаление', () => {
     expect(one(rect('a', { shape: 'triangle' }))).toBe('Добавлен треугольник');
     expect(one(poly('a', false))).toBe('Добавлена ломаная');
     expect(one(poly('a', true))).toBe('Добавлен многоугольник');
-    expect(one(note('a'))).toBe('Добавлен стикер');
+    expect(one(note('a'))).toBe('Добавлен липкий стикер');
     expect(one(image('a', { page: 'p2', src: '' }))).toBe('Добавлена страница на холсте');
     expect(one(solid('a', 'cube'))).toBe('Добавлен куб');
     expect(one(solid('a', 'prism'))).toBe('Добавлена призма');
@@ -98,7 +98,7 @@ describe('describeChange: изменённые элементы', () => {
     const shapes = many(3, id => rect(id));
     expect(describeChange(shapes, shapes.map(e => ({ ...e, color: '#00ff00', width: 4 })))).toBe('Изменён стиль: 3 прямоугольника');
     const notes = [note('n1'), note('n2')];
-    expect(describeChange(notes, notes.map(e => ({ ...e, text: 'х' })))).toBe('Изменён текст: 2 стикера');
+    expect(describeChange(notes, notes.map(e => ({ ...e, text: 'х' })))).toBe('Изменён текст: 2 липких стикера');
     const a = rect('a');
     expect(describeChange([a], [{ ...a, rot: 0.5 }])).toBe('Повёрнут прямоугольник');
     const img = image('i');

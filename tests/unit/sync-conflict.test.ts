@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { contentSignature, cyrb53 } from '../../src/sync-conflict';
-import { parseProject, serializeProject } from '../../src/file';
+import { migrateStikyNotes, parseProject, serializeProject } from '../../src/file';
 import type { Project } from '../../src/types';
 
 const task = { id: 't', type: 'task', x: 0, y: 0, w: 360, h: 220, taskId: 't1', examType: 'oge', topic: '', statementMd: 'Сколько?', answer: '4' };
@@ -65,6 +65,17 @@ describe('подпись содержимого', () => {
     const round = parseProject(JSON.parse(serializeProject(a)))!;
     expect(round.pages[0].elements).toHaveLength(2);
     expect(contentSignature(round)).toBe(contentSignature(a));
+  });
+
+  it('переименовывает тип липкого стикера в сохранённом проекте, сохраняя поля', () => {
+    const a = project();
+    const legacy = { id: 'n', type: 'note', x: 10, y: 20, w: 216, h: 168, text: 'Текст', color: '#ffe066', baseId: 'image1' };
+    const saved = { ...a, pages: [{ ...a.pages[0], elements: [...a.pages[0].elements, legacy] }] };
+    const migrated = { ...legacy, type: 'stikyNote' };
+    expect(parseProject(saved)?.pages[0].elements.at(-1)).toEqual(migrated);
+    expect(migrateStikyNotes(saved as Project).pages[0].elements.at(-1)).toEqual(migrated);
+    expect(legacy.type).toBe('note');
+    expect(migrateStikyNotes(a)).toBe(a);
   });
 });
 

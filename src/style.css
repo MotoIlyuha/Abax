@@ -665,6 +665,26 @@ body.reordering, body.reordering * { cursor: grabbing !important; user-select: n
   opacity: 0.94;
 }
 .tool-ghost svg { width: 21px; height: 21px; }
+.stiky-note-ghost {
+  z-index: 4;
+  transform: translate(-50%, -50%);
+  filter: drop-shadow(0 var(--stiky-note-shadow-y) var(--stiky-note-shadow-blur) rgba(32, 24, 16, 0.21));
+  opacity: 0.65;
+}
+.stiky-note-ghost::before, .stiky-note-ghost::after { content: ''; position: absolute; }
+.stiky-note-ghost::before {
+  inset: 0;
+  background: var(--stiky-note-color);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--stiky-note-fold)), calc(100% - var(--stiky-note-fold)) 100%, 0 100%);
+}
+.stiky-note-ghost::after {
+  right: 0;
+  bottom: 0;
+  width: var(--stiky-note-fold);
+  height: var(--stiky-note-fold);
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+  background: linear-gradient(135deg, rgba(40, 28, 16, 0.18), rgba(255, 255, 255, 0.36) 65%);
+}
 #toolbar .tool-drop, .ctx-shapes .tool-drop { touch-action: none; }
 body.tool-dragging, body.tool-dragging * { cursor: grabbing !important; }
 .page-ghost canvas {
@@ -998,6 +1018,80 @@ body:not(.no-motion) .ctx-panel[data-kind="shapes"] { animation: none; }
   padding: 4px 0;
 }
 .ctx-swatches[hidden] { display: none; }
+.ctx-panel[data-kind="stikyNote"] { width: 228px; }
+.ctx-panel[data-kind="stikyNote"] .ctx-section { font-weight: 600; }
+.stiky-note-stacks {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.stiky-note-stack {
+  position: relative;
+  height: 41px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  cursor: grab;
+  touch-action: none;
+}
+.stiky-note-stack:hover { background: var(--accent-soft); }
+.stiky-note-stack:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@property --stiky-note-fold {
+  syntax: '<length>';
+  inherits: true;
+  initial-value: 0px;
+}
+.stiky-note-sheet {
+  position: absolute;
+  inset: 5px 5px 9px;
+  border-radius: 2px;
+  pointer-events: none;
+  filter: drop-shadow(0 0 0.5px rgba(49, 42, 34, 0.55)) drop-shadow(0 1px 1px rgba(49, 42, 34, 0.18));
+}
+.stiky-note-sheet::before, .stiky-note-sheet::after { content: ''; position: absolute; }
+.stiky-note-sheet::before {
+  inset: 0;
+  border-radius: inherit;
+  background: var(--stiky-note-paper, var(--stiky-note-color));
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--stiky-note-fold)), calc(100% - var(--stiky-note-fold)) 100%, 0 100%);
+}
+.stiky-note-sheet::after {
+  right: 0;
+  bottom: 0;
+  width: var(--stiky-note-fold);
+  height: var(--stiky-note-fold);
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--stiky-note-color), #443123 26%), color-mix(in srgb, var(--stiky-note-color), white 64%) 75%);
+}
+.stiky-note-sheet--bottom {
+  --stiky-note-paper: color-mix(in srgb, var(--stiky-note-color), #443123 22%);
+  transform: translateY(4px);
+}
+.stiky-note-sheet--next {
+  --stiky-note-paper: color-mix(in srgb, var(--stiky-note-color), #443123 10%);
+  transform: translateY(2px);
+}
+.stiky-note-sheet--top {
+  --stiky-note-fold: 9px;
+  transform-origin: 12% 18%;
+}
+body:not(.no-motion) .stiky-note-stack.peeling .stiky-note-sheet--top {
+  animation: stiky-note-peel 340ms ease-out;
+}
+body:not(.no-motion) .stiky-note-stack.peeling .stiky-note-sheet--next {
+  animation: stiky-note-fold 340ms ease-out;
+}
+@keyframes stiky-note-peel {
+  0% { transform: none; opacity: 1; }
+  46% { transform: translate(11px, -10px) rotate(-17deg) scale(1.09); opacity: 0; }
+  47%, 99% { transform: none; opacity: 0; }
+  100% { transform: none; opacity: 1; }
+}
+@keyframes stiky-note-fold {
+  0%, 20% { --stiky-note-fold: 0px; transform: translateY(2px); }
+  75%, 100% { --stiky-note-fold: 9px; transform: none; --stiky-note-paper: var(--stiky-note-color); }
+}
 .ctx-swatch {
   width: 34px;
   height: 34px;
@@ -2469,8 +2563,14 @@ body.collab-guest.readonly-mode #toolbar.can-comment > :not(.tool-group:first-ch
 body.collab-guest.readonly-mode #toolbar.can-comment .tool-group:first-child > :not(.readonly-comment) { display: none; }
 body.collab-guest.readonly-mode #toolbar.can-comment .readonly-comment { display: grid; }
 body.comment-tool #task-overlay .task-foot { pointer-events: none; }
-#overlay textarea.inplace-edit.note { background: transparent; box-shadow: none; }
-#overlay .inplace-edit:not(.note):not(.shape) { background: rgba(255, 255, 255, 0.85); box-shadow: 0 0 0 1.5px rgba(50, 115, 245, 0.35); border-radius: 3px; }
+#overlay textarea.inplace-edit.stikyNote {
+  background: transparent;
+  box-shadow: none;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+#overlay .inplace-edit:not(.stikyNote, .shape) { background: rgba(255, 255, 255, 0.85); box-shadow: 0 0 0 1.5px rgba(50, 115, 245, 0.35); border-radius: 3px; }
 
 /* ----- Подсказки (tooltip) ----- */
 #tooltip {

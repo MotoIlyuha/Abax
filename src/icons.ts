@@ -100,7 +100,7 @@ export const TOOL_ICONS = {
   eraser: svg(ERASER_PATHS.map(d => `<path d="${d}"/>`).join('')),
   partEraser: svg('<path d="M10 12.5l5.6-5.6a1.6 1.6 0 0 1 2.3 0l1.6 1.6a1.6 1.6 0 0 1 0 2.3L14.5 15.8H11.6l-1.6-1.6a1.2 1.2 0 0 1 0-1.7z"/><path d="M2.5 19.5c1.5-1.5 2.8-1.5 4.2 0"/><path d="M16.8 19.5c1.5 1.5 3 1.5 4.7 0"/>'),
   text: svg('<path d="M5 7V5h14v2"/><path d="M12 5v14"/><path d="M9 19h6"/>'),
-  note: svg('<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M8 9.5h8"/><path d="M8 13h5"/>'),
+  stikyNote: svg('<rect x="4" y="5" width="16" height="14" rx="2"/><path d="M8 9.5h8"/><path d="M8 13h5"/>'),
   task: svg('<rect x="4" y="3.5" width="16" height="17" rx="2"/><path d="M8 8.5h8M8 12h8"/><path d="M8 16l1.8 1.8L13 14.5"/>'),
   spread: svg('<path d="M3 4h18"/><path d="M3 20h18" stroke-dasharray="2.5 2.5"/><path d="M12 7.5v9"/><path d="M8.5 13L12 16.5 15.5 13"/>'),
   rect: svg('<rect x="4" y="6" width="16" height="12" rx="1.5"/>'),

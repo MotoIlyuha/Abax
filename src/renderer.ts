@@ -8,7 +8,7 @@ import { showComments, showReactions } from './annot-prefs';
 import { notePerson } from './note-people';
 import {
   type AABB, type Caption, boxHandles, cornerRadius, elementAABB, elementHandles, imageFrame, pageLinkView, presentCamera, shapeCaption,
-  shapeHoldsText, wrapText, textSpans, TEXT_FONT, NOTE_PAD, NOTE_FONT, NOTE_TEXT_COLOR,
+  shapeHoldsText, wrapText, textSpans, TEXT_FONT, STIKY_NOTE_PAD, STIKY_NOTE_FONT, STIKY_NOTE_FOLD, STIKY_NOTE_TEXT_COLOR,
 } from './geom';
 import { ribbonPath, trimStrokeStart } from './stroke';
 import { styledSegments, type TextStyle } from './text-runs';
@@ -69,7 +69,7 @@ function cacheOf(el: Element): ElCacheEntry {
   if (!c) {
     c = { aabb: elementAABB(el), path: null, lines: null, fit: null };
     if (el.type === 'stroke') c.path = ribbonPath(el.pts, el.width);
-    if (el.type === 'note') c.lines = wrapText(el.text, NOTE_FONT, el.w - NOTE_PAD * 2);
+    if (el.type === 'stikyNote') c.lines = wrapText(el.text, STIKY_NOTE_FONT, el.w - STIKY_NOTE_PAD * 2);
     if (el.type === 'task') c.lines = wrapText(el.statementMd, TASK_FONT, Math.max(1, el.w - TASK_PAD * 2));
     if (shapeHoldsText(el) && el.text) c.fit = shapeCaption(el);
     elCache.set(el, c);
@@ -391,7 +391,7 @@ function drawElement(
   const c = cacheOf(el);
   if (c.aabb.x1 < vx0 || c.aabb.x0 > vx1 || c.aabb.y1 < vy0 || c.aabb.y0 > vy1) return;
   // у картинки прозрачна только рамка — её непрозрачность выставляется при рисовании рамки
-  const alpha = el.type !== 'image' && el.type !== 'note' && el.type !== 'task' ? el.opacity ?? 1 : 1;
+  const alpha = el.type !== 'image' && el.type !== 'stikyNote' && el.type !== 'task' ? el.opacity ?? 1 : 1;
   if (alpha < 1) ctx.globalAlpha = alpha;
   drawElementBody(ctx, el, c);
   if (alpha < 1) ctx.globalAlpha = 1;
@@ -403,6 +403,41 @@ function drawElementBody(ctx: CanvasRenderingContext2D, el: Element, c: ElCacheE
       ctx.fillStyle = el.tool === 'highlighter' ? hexA(el.color, HIGHLIGHTER_ALPHA) : el.color;
       ctx.fill(c.path!);
       break;
+function drawStikyNotePaper(ctx: CanvasRenderingContext2D, note: { x: number; y: number; w: number; h: number; color: string }): void {
+  const { x, y, w, h, color } = note;
+  const right = x + w, bottom = y + h;
+  const fold = Math.max(0, Math.min(STIKY_NOTE_FOLD, w / 6, h / 6));
+  const transform = ctx.getTransform();
+  const scale = Math.hypot(transform.a, transform.b);
+  ctx.save();
+  ctx.shadowColor = 'rgba(32, 24, 16, 0.21)';
+  ctx.shadowBlur = 5 * scale;
+  ctx.shadowOffsetY = 2 * scale;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(right, y);
+  ctx.lineTo(right, bottom - fold);
+  ctx.lineTo(right - fold, bottom);
+  ctx.lineTo(x, bottom);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  if (fold > 0) {
+    const crease = ctx.createLinearGradient(right - fold, bottom - fold, right, bottom);
+    crease.addColorStop(0, 'rgba(40, 28, 16, 0.18)');
+    crease.addColorStop(0.65, 'rgba(255, 255, 255, 0.36)');
+    ctx.fillStyle = crease;
+    ctx.beginPath();
+    ctx.moveTo(right - fold, bottom - fold);
+    ctx.lineTo(right, bottom - fold);
+    ctx.lineTo(right - fold, bottom);
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
     case 'shape':
       // надпись, которую правят на месте, показывает редактор
       drawShapeEl(ctx, el, el.id === state.hideTextId ? null : c.fit);
@@ -420,24 +455,18 @@ function drawElementBody(ctx: CanvasRenderingContext2D, el: Element, c: ElCacheE
       }
       break;
     }
-    case 'note': {
-      ctx.fillStyle = el.color;
-      ctx.beginPath();
-      ctx.roundRect(el.x, el.y, el.w, el.h, 6);
-      ctx.fill();
-      ctx.strokeStyle = hexA('#4a4633', 0.18);
-      ctx.lineWidth = 1;
-      ctx.stroke();
+    case 'stikyNote': {
+      drawStikyNotePaper(ctx, el);
       ctx.save();
       ctx.beginPath();
       ctx.rect(el.x, el.y, el.w, el.h);
       ctx.clip();
-      ctx.font = TEXT_FONT(NOTE_FONT);
-      ctx.fillStyle = NOTE_TEXT_COLOR;
-      const lh = NOTE_FONT * 1.35;
+      ctx.font = TEXT_FONT(STIKY_NOTE_FONT);
+      ctx.fillStyle = STIKY_NOTE_TEXT_COLOR;
+      const lh = STIKY_NOTE_FONT * 1.35;
       const lines = c.lines ?? [];
       for (let i = 0; i < lines.length; i++) {
-        ctx.fillText(lines[i], el.x + NOTE_PAD, el.y + NOTE_PAD + NOTE_FONT + i * lh);
+        ctx.fillText(lines[i], el.x + STIKY_NOTE_PAD, el.y + STIKY_NOTE_PAD + STIKY_NOTE_FONT + i * lh);
       }
       ctx.restore();
       break;
@@ -1363,16 +1392,7 @@ function drawContent(ctx: CanvasRenderingContext2D, cache: SceneCache, cam: Came
   // превью живых объектов — поверх blit, в координатах сцены
   const zx = dpr * cam.zoom;
   ctx.setTransform(zx, 0, 0, zx, -cam.x * zx, -cam.y * zx);
-  if (state.liveNote) {
-    const n = state.liveNote;
-    ctx.fillStyle = n.color;
-    ctx.beginPath();
-    ctx.roundRect(n.x, n.y, n.w, n.h, 6);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(74, 70, 51, 0.18)';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-  }
+  if (state.liveStikyNote) drawStikyNotePaper(ctx, state.liveStikyNote);
   if (state.liveStroke && state.board.elements.some(el => el.layerPin === 'top')) {
     // Живой штрих тоже должен находиться под закреплёнными верхними объектами.
     const ls = state.liveStroke;

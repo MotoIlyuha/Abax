@@ -15,6 +15,7 @@ const isObj = (v: unknown): v is Rec => v !== null && typeof v === 'object' && !
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const isStr = (v: unknown): v is string => typeof v === 'string';
 const isBool = (v: unknown): v is boolean => typeof v === 'boolean';
+const isLegacyStikyNote = (type: unknown): boolean => type === 'note';
 
 type Check = (v: unknown) => boolean;
 
@@ -68,7 +69,7 @@ const SPECS: Record<string, { req: Record<string, Check>; opt: Record<string, Ch
     req: { x: isNum, y: isNum, text: isStr, size: isNum, color: isStr },
     opt: { w: isNum, opacity: isNum, bold: isBool, italic: isBool, underline: isBool, strike: isBool, runs: Array.isArray },
   },
-  note: {
+  stikyNote: {
     req: { x: isNum, y: isNum, w: isNum, h: isNum, text: isStr, color: isStr },
     opt: { baseId: baseIdCheck },
   },
@@ -117,7 +118,7 @@ function sanitizeAttempts(raw: unknown): TaskAttempt[] {
 /** Элемент доски из непроверенных данных; null — элемент негодный (неизвестный тип, нет обязательных полей). */
 export function sanitizeElement(rawInput: unknown): Element | null {
   if (!isObj(rawInput) || !isStr(rawInput.id) || rawInput.id === '' || !isStr(rawInput.type)) return null;
-  let raw: Rec = rawInput;
+  let raw: Rec = isLegacyStikyNote(rawInput.type) ? { ...rawInput, type: 'stikyNote' } : rawInput;
   if (raw.type === 'task') {
     // у задания из старой или чужой версии тип экзамена и тема восстанавливаются, а не отбрасывают задание
     raw = { ...raw };
@@ -277,4 +278,13 @@ export function parseProject(raw: unknown): Project | null {
 /** Проект как текст JSON (без служебных полей: undefined в JSON не попадает). */
 export function serializeProject(project: Project, pretty = false): string {
   return JSON.stringify(project, null, pretty ? 2 : undefined);
+}
+
+/** Из базы или комнаты проект может прийти уже проверенным, но со старым типом липких стикеров. */
+export function migrateStikyNotes(project: Project): Project {
+  const pages = project.pages.map(page => page.elements.some(el => isLegacyStikyNote(el.type)) ? {
+    ...page,
+    elements: page.elements.map(el => isLegacyStikyNote(el.type) ? { ...el, type: 'stikyNote' } as Element : el),
+  } : page);
+  return pages.some((page, i) => page !== project.pages[i]) ? { ...project, pages } : project;
 }

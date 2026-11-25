@@ -855,11 +855,11 @@ test.describe('подсказки', () => {
     await page.locator('.tool[data-tool="text"]').hover();
     await expect(page.locator('#morph-tip .mt-lab.cur')).toContainText('Текст');
     const before = (await page.locator('#morph-tip .mt-tip').boundingBox())!;
-    await page.locator('.tool[data-tool="note"]').hover();
-    await expect(page.locator('#morph-tip .mt-lab.cur')).toContainText('Стикер');
+    await page.locator('.tool[data-tool="stikyNote"]').hover();
+    await expect(page.locator('#morph-tip .mt-lab.cur')).toContainText('Липкие стикеры');
     await expect(page.locator('#morph-tip .mt-tip')).toBeVisible();
     // пузырь поехал вдоль панели вниз, и стоит напротив новой кнопки
-    const btn = (await page.locator('.tool[data-tool="note"]').boundingBox())!;
+    const btn = (await page.locator('.tool[data-tool="stikyNote"]').boundingBox())!;
     await expect.poll(async () => {
       const b = (await page.locator('#morph-tip .mt-tip').boundingBox())!;
       return Math.abs(b.y + b.height / 2 - (btn.y + btn.height / 2));

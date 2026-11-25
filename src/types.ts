@@ -5,7 +5,7 @@ export type SolidKind =
 
 export type ToolId =
   | 'select' | 'pen' | 'highlighter' | 'eraser' | 'partEraser' | 'pan'
-  | 'text' | 'note' | 'task' | 'comment' | 'spread' | 'rect' | 'ellipse' | 'triangle' | 'line' | 'arrow' | 'poly'
+  | 'text' | 'stikyNote' | 'task' | 'comment' | 'spread' | 'rect' | 'ellipse' | 'triangle' | 'line' | 'arrow' | 'poly'
   | PointerKind
   | SolidKind;
 
@@ -39,7 +39,7 @@ export interface StrokeEl extends BaseEl {
   opacity?: number;
   pts: Pt[];
   /**
-   * Основа, на которой нарисован штрих: id картинки, стикера или фигуры; null — вне основы.
+   * Основа, на которой нарисован штрих: id картинки, липкого стикера или фигуры; null — вне основы.
    * Нет поля у старых проектов — привязка фиксируется при открытии (см. attachment.ts).
    */
   baseId?: string | null;
@@ -116,13 +116,13 @@ export interface TextEl extends BaseEl {
   /** Смешанное форматирование: фрагменты идут подряд по `text`; символы после последнего — в стиле блока. */
   runs?: TextRun[];
 }
-export interface NoteEl extends BaseEl {
-  type: 'note';
+export interface StikyNoteEl extends BaseEl {
+  type: 'stikyNote';
   x: number; y: number; w: number; h: number;
   text: string;
   color: string;
   /**
-   * Основа, на которой поставлен стикер: id картинки; null — вне основы.
+   * Основа, на которой поставлен липкий стикер: id картинки; null — вне основы.
    * Нет поля у старых проектов — привязка фиксируется при открытии (см. attachment.ts).
    */
   baseId?: string | null;
@@ -217,7 +217,7 @@ export interface TaskEl extends BaseEl {
   codeSnippet?: { lang: 'python' | 'cpp' | 'text'; code: string };
 }
 
-export type Element = (StrokeEl | ShapeEl | PolyEl | TextEl | NoteEl | ImageEl | SolidEl | TaskEl) & {
+export type Element = (StrokeEl | ShapeEl | PolyEl | TextEl | StikyNoteEl | ImageEl | SolidEl | TaskEl) & {
   /** Закрепление относительно обычных слоёв. */
   layerPin?: 'top' | 'bottom';
 };

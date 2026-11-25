@@ -5,7 +5,7 @@ import {
   shapeHoldsText, shapeTextBox, snapValue, stepTextSize, SHAPE_TEXT_LH, SHAPE_TEXT_MAX, SHAPE_TEXT_MIN, TEXT_FONT, TEXT_SIZES,
   textSize, wrapText,
 } from '../../src/geom';
-import type { Handle, ImageEl, NoteEl, PolyEl, ShapeEl, SolidEl, StrokeEl, TextEl } from '../../src/types';
+import type { Handle, ImageEl, StikyNoteEl, PolyEl, ShapeEl, SolidEl, StrokeEl, TextEl } from '../../src/types';
 
 const pt = (x: number, y: number) => ({ x, y, p: 0.5 });
 
@@ -17,8 +17,8 @@ const poly = (closed: boolean, pts = [pt(0, 0), pt(100, 0), pt(100, 100), pt(0, 
   ({ id: 'p', type: 'poly', closed, color: '#000', width: 2, pts });
 const text = (o: Partial<TextEl> = {}): TextEl =>
   ({ id: 't', type: 'text', x: 10, y: 20, text: 'abcd', size: 20, color: '#000', ...o });
-const note = (o: Partial<NoteEl> = {}): NoteEl =>
-  ({ id: 'n', type: 'note', x: 0, y: 0, w: 200, h: 150, text: '', color: '#ffe066', ...o });
+const note = (o: Partial<StikyNoteEl> = {}): StikyNoteEl =>
+  ({ id: 'n', type: 'stikyNote', x: 0, y: 0, w: 200, h: 150, text: '', color: '#ffe066', ...o });
 const image = (o: Partial<ImageEl> = {}): ImageEl =>
   ({ id: 'i', type: 'image', x: 0, y: 0, w: 100, h: 50, src: 'data:', ...o });
 const cube: SolidEl = { id: 'c', type: 'solid', solid: 'cube', x: 0, y: 100, w: 100, d: 100, h: 100, color: '#000', width: 2 };
@@ -199,7 +199,7 @@ describe('elementAABB', () => {
     expect(elementAABB(poly(false, [pt(0, 0), pt(10, 10)]))).toEqual({ x0: -2, y0: -2, x1: 12, y1: 12 });
   });
 
-  it('текст, стикер, картинка', () => {
+  it('текст, липкий стикер, картинка', () => {
     expect(elementAABB(text({ text: 'ab', size: 20 }))).toEqual({ x0: 10, y0: 20, x1: 30, y1: 45 });
     expect(elementAABB(note({ x: 5, y: 6, w: 10, h: 20 }))).toEqual({ x0: 5, y0: 6, x1: 15, y1: 26 });
     expect(elementAABB(image())).toEqual({ x0: 0, y0: 0, x1: 100, y1: 50 });
@@ -310,7 +310,7 @@ describe('hitTest', () => {
     expect(hitTest(poly(false, [pt(0, 0)]), 1, 0, 1)).toBe(true);
   });
 
-  it('текст, стикер, картинка', () => {
+  it('текст, липкий стикер, картинка', () => {
     expect(hitTest(text(), 15, 30, 0)).toBe(true);
     expect(hitTest(text(), 0, 0, 0)).toBe(false);
     expect(hitTest(note(), 100, 100, 0)).toBe(true);
@@ -349,7 +349,7 @@ describe('elementHandles', () => {
     expect(elementHandles(poly(true), 1).filter(h => h.h.kind === 'insert')).toHaveLength(4);
   });
 
-  it('стикер - 8 ручек без поворота, картинка - с поворотом', () => {
+  it('липкий стикер - 8 ручек без поворота, картинка - с поворотом', () => {
     expect(elementHandles(note(), 1)).toHaveLength(8);
     expect(elementHandles(image(), 1).some(h => h.h.kind === 'rotate')).toBe(true);
   });
@@ -480,12 +480,12 @@ describe('applyHandle', () => {
     expect((applyHandle(image(), { kind: 'rotate' }, pt(0, 0), undefined, -6.5) as ImageEl).rot).toBeCloseTo(-6.5 + 2 * Math.PI);
   });
 
-  it('стикер: ресайз с минимальным размером', () => {
+  it('липкий стикер: ресайз с минимальным размером', () => {
     expect(applyHandle(note(), resize(1, 1), pt(300, 200))).toMatchObject({ x: 0, y: 0, w: 300, h: 200 });
-    const tiny = applyHandle(note(), resize(1, 1), pt(1, 1)) as NoteEl;
+    const tiny = applyHandle(note(), resize(1, 1), pt(1, 1)) as StikyNoteEl;
     expect(tiny.w).toBe(80);
     expect(tiny.h).toBe(60);
-    const left = applyHandle(note(), resize(-1, -1), pt(-50, -50)) as NoteEl;
+    const left = applyHandle(note(), resize(-1, -1), pt(-50, -50)) as StikyNoteEl;
     expect(left).toMatchObject({ x: -50, y: -50, w: 250, h: 200 });
   });
 

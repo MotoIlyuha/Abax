@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   attachNewElement, foundationFor, freezeAttachments, geometricFoundationFor, rebindAttachment, reattachMoved, withAttached,
 } from '../../src/attachment';
-import type { Element, ImageEl, NoteEl, StrokeEl } from '../../src/types';
+import type { Element, ImageEl, StikyNoteEl, StrokeEl } from '../../src/types';
 
 const image: ImageEl = { id: 'image', type: 'image', x: 0, y: 0, w: 100, h: 100, src: '' };
-const note: NoteEl = { id: 'note', type: 'note', x: 0, y: 0, w: 60, h: 60, text: '', color: '#fff' };
+const note: StikyNoteEl = { id: 'note', type: 'stikyNote', x: 0, y: 0, w: 60, h: 60, text: '', color: '#fff' };
 const stroke = (end: number, id = 'ink'): StrokeEl =>
   ({ id, type: 'stroke', tool: 'pen', color: '#000', width: 1, pts: [{ x: 0, y: 30, p: .5 }, { x: end, y: 30, p: .5 }] });
 const shifted = (id: string, dx: number): StrokeEl =>

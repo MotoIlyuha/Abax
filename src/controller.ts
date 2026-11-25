@@ -32,7 +32,7 @@ import { fitSolid, SOLID_CLICK_SIZE, solidKeepsAspect } from './solid';
 import { spreadElements, spreadTargets } from './spread';
 import {
   addDraftFromKey, addPageFromKey, beginTextEdit, canEditBoard, closeEditor, copySelectionAsImage, duplicateSelection, editTaskElement, exportPng, fitContent, openAllSettings, openPageLink,
-  saveNow, selectedTextShape, switchToPage, switchPageForDrag, toggleTextFlag, togglePages,
+  placeStikyNote, saveNow, selectedTextShape, switchToPage, switchPageForDrag, toggleTextFlag, togglePages,
 } from './app';
 import { DRAFT_KEY, comboFromEvent, pageNumberFromEvent } from './hotkeys';
 import { devModeEnabled, devPlanStep, limitsEnforced, setLimitsEnforced, setUserPlan, userPlan } from './plan';
@@ -64,7 +64,7 @@ const COMMENT_CURSOR = (() => {
 const CURSORS: Record<ToolId, string> = {
   comment: COMMENT_CURSOR,
   select: 'default', pen: 'crosshair', highlighter: 'crosshair', eraser: ERASER_CURSOR, partEraser: 'none',
-  pan: 'grab', text: 'text', note: 'crosshair', task: 'default', spread: 'row-resize', rect: 'crosshair',
+  pan: 'grab', text: 'text', stikyNote: 'crosshair', task: 'default', spread: 'row-resize', rect: 'crosshair',
   ellipse: 'crosshair', triangle: 'crosshair', line: 'crosshair', arrow: 'crosshair', poly: 'crosshair',
   laser: 'none', fadePen: 'crosshair', flash: 'default',
   cube: 'crosshair', box: 'crosshair', prism: 'crosshair', pyramid: 'crosshair', truncPyramid: 'crosshair',
@@ -117,7 +117,8 @@ type Action = { pid: number } & (
   | { kind: 'pan'; sx: number; sy: number; cam: Camera }
   /** Раздвигание: ids сдвигаются вниз на dy от линии y (координаты сцены). */
   | { kind: 'spread'; pre: Element[]; ids: Set<string>; y: number; dy: number }
-  | { kind: 'click'; x: number; y: number; target: 'text' | 'note' }
+  | { kind: 'click'; x: number; y: number }
+  | { kind: 'stikyNote' }
 );
 
 interface Ptr { x: number; y: number; type: string }
@@ -669,7 +670,7 @@ export function initController(canvas: HTMLCanvasElement): void {
         sendFadeStroke(a.sid, a.stroke, [], true);
         update();
         break;
-      case 'click': beginTextEdit({ at: { x: a.x, y: a.y }, target: a.target }); break;
+      case 'click': beginTextEdit({ at: { x: a.x, y: a.y } }); break;
       case 'spread':
         state.spread = null;
         if (a.dy > 0 && a.ids.size) pushHistory(a.pre);
@@ -699,7 +700,7 @@ export function initController(canvas: HTMLCanvasElement): void {
     canvas.setPointerCapture(e.pointerId);
     if (e.pointerType !== 'mouse') {
       // палец и перо: после pointerup браузер шлёт эмулированный mousedown, и он снимал фокус
-      // с только что открытого редактора стикера (касание — в центре стикера, мимо поля ввода).
+      // с только что открытого редактора липкого стикера (касание — в центре липкого стикера, мимо поля ввода).
       // Отменённый pointerdown гасит эмулированные события мыши; фокус с полей, который раньше
       // снимал тот mousedown, снимаем сами — как при клике мышью
       e.preventDefault();
@@ -906,10 +907,10 @@ export function initController(canvas: HTMLCanvasElement): void {
         update();
         break;
       case 'text':
-        action = { pid: e.pointerId, kind: 'click', x: s.x, y: s.y, target: 'text' };
+        action = { pid: e.pointerId, kind: 'click', x: s.x, y: s.y };
         break;
-      case 'note':
-        action = { pid: e.pointerId, kind: 'click', x: s.x, y: s.y, target: 'note' };
+      case 'stikyNote':
+        action = { pid: e.pointerId, kind: 'stikyNote' };
         break;
       case 'poly': {
         // клик-клик: добавление вершин; клик по первой точке замыкает контур
@@ -1242,7 +1243,7 @@ export function initController(canvas: HTMLCanvasElement): void {
         const previews: { item: string; base: string }[] = [];
         for (const el of moved) {
           if (!state.selection.has(el.id)) continue;
-          if ((el.type !== 'stroke' && el.type !== 'note') || (el.baseId && movingIds.has(el.baseId))) continue;
+          if ((el.type !== 'stroke' && el.type !== 'stikyNote') || (el.baseId && movingIds.has(el.baseId))) continue;
           const base = geometricFoundationFor(el, moved, movingIds);
           if (base) previews.push({ item: el.id, base: base.id });
         }
@@ -1285,6 +1286,11 @@ export function initController(canvas: HTMLCanvasElement): void {
     if (touchBlocked && touchPtrs().length === 0) touchBlocked = false;
     if (action && action.pid !== e.pointerId) return;
     const a = action;
+    if (a?.kind === 'stikyNote') {
+      action = null;
+      if (e.type === 'pointerup' && activeTool() === 'stikyNote') placeStikyNote(e);
+      return;
+    }
     if (a?.kind === 'comment') {
       action = null;
       const lp = localPos(e);
@@ -1366,7 +1372,7 @@ export function initController(canvas: HTMLCanvasElement): void {
     if (any && any.type === 'task') { editTaskElement(any); return; }
     // чужую надпись при защите не открыть на правку (SPEC_NIGHT6 §4.6)
     const hit = topHit(s.x, s.y, true);
-    if (hit && (hit.type === 'text' || hit.type === 'note')) beginTextEdit({ el: hit });
+    if (hit && (hit.type === 'text' || hit.type === 'stikyNote')) beginTextEdit({ el: hit });
     // надпись фигуры: двойной клик (на планшете — двойное касание) сразу открывает редактор и клавиатуру
     else if (shapeHoldsText(hit) && canEditBoard()) {
       if (!state.selection.has(hit.id) || state.selection.size !== 1) setSelection([hit.id]);
@@ -1666,7 +1672,7 @@ export function initController(canvas: HTMLCanvasElement): void {
     state.liveShape = null;
     state.liveSolid = null;
     state.livePoly = null;
-    state.liveNote = null;
+    state.liveStikyNote = null;
     state.liveEdit = false;
     state.marquee = null;
     state.spread = null;
@@ -1684,7 +1690,7 @@ export function initController(canvas: HTMLCanvasElement): void {
   canvas.addEventListener('pointerup', onPointerUp);
   canvas.addEventListener('pointercancel', onPointerUp);
   canvas.addEventListener('lostpointercapture', e => {
-    if ((action?.kind === 'draw' || action?.kind === 'comment') && action.pid === e.pointerId) onPointerUp(e);
+    if ((action?.kind === 'draw' || action?.kind === 'comment' || action?.kind === 'stikyNote') && action.pid === e.pointerId) onPointerUp(e);
   });
   canvas.addEventListener('pointerleave', onPointerLeave);
   canvas.addEventListener('dblclick', onDblClick);

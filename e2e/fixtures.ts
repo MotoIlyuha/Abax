@@ -9,7 +9,7 @@ export interface Snapshot {
   selection: string[];
   camera: { x: number; y: number; zoom: number };
   style: { color: string; width: number; opacity?: number };
-  noteColor: string;
+  stikyNoteColor: string;
   pageId: string;
   view: string;
   dirty: boolean;
@@ -105,7 +105,7 @@ export class Board {
         selection: [...s.selection],
         camera: { ...s.camera },
         style: { ...s.style },
-        noteColor: s.noteColor,
+        stikyNoteColor: s.stikyNoteColor,
         pageId: s.pageId,
         view: s.view,
         dirty: s.dirty,

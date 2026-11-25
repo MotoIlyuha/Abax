@@ -84,7 +84,7 @@ describe('сочетания клавиш', () => {
     const image = resize.items.find(s => s.what === 'Сохранить пропорции изображения')!;
     expect(image).toMatchObject({ keys: ['Shift', 'Ctrl'], hiddenBy: 'keepImageAspect' });
     // фигуры такой настройки не имеют — их строка видна всегда
-    expect(resize.items.filter(s => !s.hiddenBy).map(s => s.what)).toContain('Сохранить пропорции фигуры или стикера');
+    expect(resize.items.filter(s => !s.hiddenBy).map(s => s.what)).toContain('Сохранить пропорции фигуры или липкого стикера');
   });
 });
 

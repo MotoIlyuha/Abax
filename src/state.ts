@@ -2,7 +2,7 @@ import { clearStickyTool, stickyTool } from './sticky-tool';
 import { clearRunField, TEXT_FLAGS } from './text-runs';
 import { clearStarter, starterId } from './sync-state';
 import type {
-  BoardSettings, Camera, Element, PlanTier, FadeStroke, Flash, GridMode, Guide, LaserPt, RemoteLaser, NoteEl, Page, Project, ProjectMeta, Pt, ShapeEl, SolidKind,
+  BoardSettings, Camera, Element, PlanTier, FadeStroke, Flash, GridMode, Guide, LaserPt, RemoteLaser, StikyNoteEl, Page, Project, ProjectMeta, Pt, ShapeEl, SolidKind,
   TextAlign, TextEl, TextVAlign, ToolId,
 } from './types';
 import { hasBaseSides, SIDES_MAX, SIDES_MIN, solidSides } from './solid';
@@ -43,8 +43,8 @@ export interface LiveSolid {
   opacity?: number;
 }
 
-/** Стикер в процессе ввода текста — рисуется на холсте, элемент создаётся при подтверждении. */
-export interface LiveNote {
+/** Подложка липкого стикера, которую холст рисует под полем ввода. */
+export interface LiveStikyNote {
   x: number; y: number; w: number; h: number;
   color: string;
 }
@@ -89,8 +89,8 @@ export interface AppState {
   style: StyleValue;
   /** Пресеты «цвет + толщина»: у пера и маркера — по три, у остальных инструментов — один. */
   presets: Record<PresetKind, PresetSet>;
-  /** Цвет новых стикеров. */
-  noteColor: string;
+  /** Цвет новых липких стикеров. */
+  stikyNoteColor: string;
   settings: BoardSettings;
   selection: Set<string>;
   attachmentPreview: { item: string; base: string }[] | null;
@@ -100,9 +100,9 @@ export interface AppState {
   liveShape: LiveShape | null;
   liveSolid: LiveSolid | null;
   livePoly: { pts: Pt[]; cursor: Pt | null } | null;
-  liveNote: LiveNote | null;
-  /** Текст, стикер или надпись фигуры в процессе ввода (для окна демонстрации: в основном окне его показывает редактор). */
-  liveText: TextEl | NoteEl | ShapeEl | null;
+  liveStikyNote: LiveStikyNote | null;
+  /** Текст, липкий стикер или надпись фигуры в процессе ввода (для окна демонстрации: в основном окне его показывает редактор). */
+  liveText: TextEl | StikyNoteEl | ShapeEl | null;
   /** id элемента, скрытого на время редактирования текста. */
   hideElId: string | null;
   /** Объекты, временно скрытые на исходной странице при переносе. */
@@ -178,7 +178,7 @@ export const state: AppState = {
     laser: { list: [{ color: '#ff2d2d', width: 4 }], active: 0 },
     other: { list: [{ color: '#1f2329', width: 4 }], active: 0 },
   },
-  noteColor: '#ffe066',
+  stikyNoteColor: '#ffe066',
   settings: {
     toolbarPos: 'left', toolbarDetachable: false, toolbarFloat: null, snapToGrid: false, wheelMode: 'zoom', pageTransition: 'slide',
     pageKeyMod: 'alt', mouseMode: 'pages', mouseBindings: { '1': null, '3': null, '4': null }, newPageKey: DEFAULT_NEW_PAGE_KEY, animationMode: 'enhanced', hideUndoRedo: false, showPresentInMenu: true,
@@ -191,7 +191,7 @@ export const state: AppState = {
   liveShape: null,
   liveSolid: null,
   livePoly: null,
-  liveNote: null,
+  liveStikyNote: null,
   liveText: null,
   hideElId: null,
   dragHidden: null,
@@ -567,9 +567,9 @@ export function setSelection(ids: string[]): void {
   update();
 }
 
-/** Элементы с цветом: всё, кроме стикеров и картинок без рамки. */
+/** Элементы с цветом: всё, кроме липких стикеров и картинок без рамки. */
 function inkOf(e: Element): { color: string; width?: number; opacity?: number } | null {
-  if (e.type === 'note' || e.type === 'task') return null;
+  if (e.type === 'stikyNote' || e.type === 'task') return null;
   if (e.type === 'image') return imageFrame(e) ? { color: e.color!, width: e.width, opacity: e.opacity } : null;
   return e;
 }
@@ -638,7 +638,7 @@ export interface StylePatch {
 
 /** Элемент с применённым стилем; тот же объект — если к нему ничего не относится. */
 function styledElement(el: Element, p: StylePatch): Element {
-  if (el.type === 'note' || el.type === 'task') return el;
+  if (el.type === 'stikyNote' || el.type === 'task') return el;
   const set: Record<string, unknown> = {};
   if (el.type === 'image') {
     // цвет, толщина и прозрачность у картинки — это её рамка: недостающее берём из текущего стиля
@@ -710,7 +710,7 @@ export function colorElement(id: string, color: string, fill: boolean): void {
   const prev = state.board.elements;
   const next = prev.map(el => {
     if (el.id !== id) return el;
-    if (el.type === 'note') return { ...el, color };
+    if (el.type === 'stikyNote') return { ...el, color };
     if (el.type === 'task') return el;
     const useFill = fill && el.type === 'shape' && el.shape !== 'line' && el.shape !== 'arrow';
     return styledElement(el, useFill ? { fill: color } : { color });
@@ -763,7 +763,7 @@ export function selectPreset(i: number): void {
 export function setStyleColor(color: string): void { state.style.color = color; activePreset().color = color; update(); }
 export function setStyleWidth(width: number): void { state.style.width = width; activePreset().width = width; update(); }
 export function setStyleOpacity(v: number): void { setOpacityOf(state.style, v); setOpacityOf(activePreset(), v); update(); }
-export function setNoteColor(color: string): void { state.noteColor = color; update(); }
+export function setStikyNoteColor(color: string): void { state.stikyNoteColor = color; update(); }
 
 export function setGrid(grid: GridMode): void {
   state.board.grid = grid;
@@ -864,7 +864,7 @@ export function openProject(project: Project, pageId?: string, view: 'home' | 'b
   const sameProject = project.id === state.project.id;
   // черновики принадлежат открытому проекту: в другом их нет
   if (!sameProject) { state.drafts = []; state.hold = null; }
-  // Старые проекты не хранили привязку штрихов и стикеров — фиксируем её по текущему положению.
+  // Старые проекты не хранили привязку штрихов и липких стикеров — фиксируем её по текущему положению.
   for (const page of project.pages) page.elements = freezeAttachments(page.elements);
   state.project = project;
   const draft = sameProject && pageId ? state.drafts.find(d => d.id === pageId) : undefined;
@@ -881,7 +881,7 @@ export function openProject(project: Project, pageId?: string, view: 'home' | 'b
   state.liveShape = null;
   state.liveSolid = null;
   state.livePoly = null;
-  state.liveNote = null;
+  state.liveStikyNote = null;
   state.liveEdit = false;
   state.marquee = null;
   state.spread = null;
@@ -913,7 +913,7 @@ export function switchPage(pageId: string): void {
   state.liveShape = null;
   state.liveSolid = null;
   state.livePoly = null;
-  state.liveNote = null;
+  state.liveStikyNote = null;
   state.liveEdit = false;
   state.marquee = null;
   state.spread = null;

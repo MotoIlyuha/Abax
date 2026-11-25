@@ -35,9 +35,9 @@ describe('настройка по умолчанию', () => {
     expect(cfg.keys.cube).toBeUndefined();
   });
 
-  it('«Раздвинуть» - за стикером, с клавишей S', () => {
+  it('«Раздвинуть» - за липким стикером, с клавишей S', () => {
     const cfg = defaultToolbar();
-    expect(layout(cfg).indexOf('spread')).toBe(layout(cfg).indexOf('note') + 1);
+    expect(layout(cfg).indexOf('spread')).toBe(layout(cfg).indexOf('stikyNote') + 1);
     expect(cfg.keys.spread).toBe('KeyS');
   });
 });
@@ -59,17 +59,29 @@ describe('панорама по умолчанию', () => {
 });
 
 describe('toolUsesColor', () => {
-  it('цвет нужен рисующим инструментам и лазерной указке, но не выделению, ластикам и стикеру', () => {
+  it('цвет нужен рисующим инструментам и лазерной указке, но не выделению, ластикам и липкому стикеру', () => {
     for (const id of ['pen', 'highlighter', 'text', 'rect', 'line', 'poly', 'cube', 'fadePen', 'laser'] as ToolId[]) {
       expect(toolUsesColor(id), id).toBe(true);
     }
-    for (const id of ['select', 'pan', 'eraser', 'partEraser', 'note', 'spread', 'flash'] as ToolId[]) {
+    for (const id of ['select', 'pan', 'eraser', 'partEraser', 'stikyNote', 'spread', 'flash'] as ToolId[]) {
       expect(toolUsesColor(id), id).toBe(false);
     }
   });
 });
 
 describe('sanitizeToolbar', () => {
+  it('сохраняет группу, положение и клавишу липких стикеров из прежней настройки', () => {
+    const cfg = sanitizeToolbar({
+      items: [{ type: 'group', id: 'custom', name: 'Мои', tools: ['note', 'text'] }],
+      keys: { note: 'Digit1' },
+    });
+    expect(layout(cfg)).toContain('custom[stikyNote,text]');
+    expect(cfg.keys.stikyNote).toBe('Digit1');
+    const hidden = sanitizeToolbar({ hidden: [{ type: 'tool', id: 'note' }], keys: { note: null } });
+    expect(layout(hidden, 'hidden')).toContain('stikyNote');
+    expect(hidden.keys.stikyNote).toBeUndefined();
+  });
+
   it('удаляет задание из сохранённой панели, групп и горячих клавиш', () => {
     const cfg = sanitizeToolbar({
       items: [{ type: 'tool', id: 'task' }, { type: 'group', id: 'custom', name: 'Мои', tools: ['task', 'text'] }],
@@ -130,13 +142,13 @@ describe('sanitizeToolbar', () => {
   it('клавиши: снятая остаётся снятой, повтор и запрещённые отбрасываются, новые получают умолчание', () => {
     const cfg = sanitizeToolbar({
       items: [],
-      keys: { pen: null, eraser: 'KeyP', text: 'KeyP', select: 'KeyB', note: 'Space', cube: 'Digit1' },
+      keys: { pen: null, eraser: 'KeyP', text: 'KeyP', select: 'KeyB', stikyNote: 'Space', cube: 'Digit1' },
     });
     expect(cfg.keys.pen).toBeUndefined();
     expect(cfg.keys.eraser).toBe('KeyP');
     expect(cfg.keys.text).toBeUndefined(); // KeyP уже у ластика
     expect(cfg.keys.select).toBeUndefined(); // B — список страниц
-    expect(cfg.keys.note).toBeUndefined();
+    expect(cfg.keys.stikyNote).toBeUndefined();
     expect(cfg.keys.cube).toBe('Digit1');
     // инструментов нет в сохранённых клавишах — у них клавиши по умолчанию
     expect(cfg.keys.rect).toBe('KeyR');
@@ -212,7 +224,7 @@ describe('операции', () => {
     const base = defaultToolbar();
     const r = combineTools(base, 'text', 'spread', 'Макет');
     expect(r.group).toBeTruthy();
-    expect(layout(r.cfg).slice(0, 4)).toEqual(['select', 'draw[pen,highlighter,eraser,partEraser]', `${r.group}[text,spread]`, 'note']);
+    expect(layout(r.cfg).slice(0, 4)).toEqual(['select', 'draw[pen,highlighter,eraser,partEraser]', `${r.group}[text,spread]`, 'stikyNote']);
     expect(r.cfg.items.find(it => it.type === 'group' && it.id === r.group)).toMatchObject({ name: 'Макет' });
     // из группы тоже можно
     const r2 = combineTools(base, 'select', 'ellipse', 'Г');

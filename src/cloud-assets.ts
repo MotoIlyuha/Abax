@@ -1,6 +1,7 @@
 import type { Project } from './types';
 import type { ApiClient } from './api-client';
 import { AssetStore, fetchMissingAssets } from './asset-store';
+import { migrateStikyNotes } from './file';
 
 // Картинки проектов, пришедших с сервера: общее хранилище вкладки (память + IndexedDB) и подстановка data URL
 // на место ссылок asset://… до того, как проект попадёт на холст.
@@ -13,5 +14,5 @@ export const assetStore = new AssetStore();
  */
 export async function hydrateFromCloud(project: Project, api: ApiClient | null, store: AssetStore = assetStore): Promise<Project> {
   if (api) await fetchMissingAssets(project, store, api).catch(() => []);
-  return store.hydrateProjectAssets(project);
+  return migrateStikyNotes(await store.hydrateProjectAssets(project));
 }

@@ -2,7 +2,7 @@ import { initTopbarFit, topbarFit } from './topbar-fit';
 import { analyticsAvailable, renderAnalyticsSettings } from './analytics-consent';
 import { startCrop } from './crop';
 import type {
-  BoardSettings, Camera, Element, GridMode, ImageEl, NoteEl, Page, Project, ProjectMeta, ShapeEl, TaskEl, TextAlign, TextEl, TextVAlign,
+  BoardSettings, Camera, Element, GridMode, ImageEl, StikyNoteEl, Page, Project, ProjectMeta, ShapeEl, TaskEl, TextAlign, TextEl, TextVAlign,
   ToolId, ToolbarPos,
 } from './types';
 import { setStickyTool, stickyTool } from './sticky-tool';
@@ -14,7 +14,7 @@ import { claimMenu, closeMenu, drillMenu, menuShown, openMenu, releaseMenu, sett
 import { attachOverlayScroll } from './overlay-scroll';
 import {
   state, update, onChange, undo, redo, canUndo, canRedo, setTool, setGrid, setCoordLabels, setStyleColor,
-  setStyleWidth, setStyleOpacity, pickTool, setNoteColor, selectPreset, presetKind, addElement, replaceElements, pushHistory, uid,
+  setStyleWidth, setStyleOpacity, pickTool, setStikyNoteColor, selectPreset, presetKind, addElement, replaceElements, pushHistory, uid,
   applyStyleToSelection, colorElement, setSettings, setView, switchPage, addPage, deletePage, renamePage, setSelection,
   openProject, blankProject, blankPage, projectMeta, groupSelected, ungroupSelected, movePage,
   bringForward, sendBackward, moveSelectionLayer, selectionLayerOrder, pinSelectionLayer, deleteSelected, setSolidSides, removeImageFrames, selectInserted,
@@ -29,7 +29,7 @@ import type { PresetKind, StylePatch, StyleValue } from './state';
 import { doskaApi, storage } from './storage';
 import { isNativeApp, sharePng } from './native';
 import { RELEASES_URL, openDesktopApp } from './desktop-app';
-import { bankTaskHeight, renderScene, contentBBox, imageEpoch, imagesLoaded, linkView, presentCanvas, renderNow, requestRender, advanceRecursion } from './renderer';
+import { bankTaskHeight, renderScene, contentBBox, imageEpoch, imagesLoaded, linkView, presentCanvas, renderNow, requestRender, advanceRecursion, onBoardFrame } from './renderer';
 import { easeInOut, linkCameras, lockInput, newPageLink, zoomDuration, zoomPath } from './page-links';
 import { makeSortable, reordering } from './reorder';
 import { capturePageTransition } from './page-transition';
@@ -37,7 +37,7 @@ import { PAGE_TRANSITIONS, boardSettingsLabel, renderBoardMotionSettings } from 
 import { hasBaseSides, SIDES_MAX, SIDES_MIN, solidSides } from './solid';
 import {
   type AABB, aabbUnion, elementAABB, hitTest, imageFrame, parseTextSize, shapeCaption, shapeHoldsText, stepTextSize,
-  NOTE_W, NOTE_H, NOTE_PAD, NOTE_FONT, NOTE_TEXT_COLOR, SHAPE_TEXT_LH, TEXT_SIZE, TEXT_SIZE_MAX, TEXT_SIZE_MIN, TEXT_SIZES,
+  STIKY_NOTE_W, STIKY_NOTE_H, STIKY_NOTE_PAD, STIKY_NOTE_FONT, STIKY_NOTE_FOLD, STIKY_NOTE_TEXT_COLOR, SHAPE_TEXT_LH, TEXT_SIZE, TEXT_SIZE_MAX, TEXT_SIZE_MIN, TEXT_SIZES,
 } from './geom';
 import * as pdfjsLib from 'pdfjs-dist';
 // ?worker&inline: воркер инлайнится в бандл и работает из file:// (Electron)
@@ -142,7 +142,10 @@ const PALETTE = [
   '#dedaff', '#8f7fee', '#6631d7', '#316f45',
   '#d3f0a2', '#5b4100', '#e4f9c1', '#fddaff',
 ];
-const NOTE_PASTELS = ['#ffe066', '#ffd6a5', '#ffd5d5', '#d3f9d8', '#a9def9', '#e4c1f9', '#fde4cf', '#d8f3dc'];
+const STIKY_NOTE_PASTELS = [
+  ['#ffe066', 'Жёлтый'], ['#ffd6a5', 'Оранжевый'], ['#ffd5d5', 'Розовый'], ['#d3f9d8', 'Салатовый'],
+  ['#a9def9', 'Голубой'], ['#e4c1f9', 'Сиреневый'], ['#fde4cf', 'Персиковый'], ['#d8f3dc', 'Мятный'],
+] as const;
 const CUSTOM_MAX = 8;
 
 let canvas: HTMLCanvasElement;
@@ -171,7 +174,7 @@ function saveCustomColors(list: string[]): void {
 }
 
 function persistStyle(): void {
-  localStorage.setItem(STYLE_KEY, JSON.stringify({ ...state.style, noteColor: state.noteColor, presets: state.presets }));
+  localStorage.setItem(STYLE_KEY, JSON.stringify({ ...state.style, stikyNoteColor: state.stikyNoteColor, presets: state.presets }));
 }
 
 function restoreStyle(): void {
@@ -195,8 +198,9 @@ function restoreStyle(): void {
     if (legacy) state.presets.other.list[0] = legacy;
     const set = state.presets[presetKind(state.tool)];
     state.style = { ...set.list[set.active] };
-    if (v && typeof v.noteColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(v.noteColor)) {
-      state.noteColor = v.noteColor;
+    const savedColor = v?.stikyNoteColor ?? v?.noteColor;
+    if (typeof savedColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(savedColor)) {
+      state.stikyNoteColor = savedColor;
     }
   } catch { /* нет сохранённого стиля — дефолт */ }
 }
@@ -361,15 +365,15 @@ function chooseRadius(v: number, first: boolean): void {
   applyStyleToSelection({ radius: v }, first);
 }
 
-// ----- Редактор текста/стикеров (in-place) -----
+// ----- Редактор текста и липких стикеров (in-place) -----
 
 interface Editing {
-  el: TextEl | NoteEl | ShapeEl | null;
+  el: TextEl | StikyNoteEl | ShapeEl | null;
   at: { x: number; y: number } | null;
   /** shape — надпись внутри прямоугольника, эллипса или треугольника. */
-  target: 'text' | 'note' | 'shape';
+  target: 'text' | 'stikyNote' | 'shape';
   field: HTMLElement;
-  note: HTMLTextAreaElement | null;
+  textarea: HTMLTextAreaElement | null;
   rich: RichTextEditor | null;
   size: number;
 }
@@ -389,51 +393,54 @@ function insideTextMenus(t: EventTarget | null): boolean {
  * append — набранный символ, с которого начали ввод надписи выделенной фигуры;
  * backspace — ввод начали с Backspace: последний символ надписи стирается.
  */
-export function beginTextEdit(opts: { el?: TextEl | NoteEl | ShapeEl; at?: { x: number; y: number }; target?: 'text' | 'note'; append?: string; backspace?: boolean }): void {
+export function beginTextEdit(opts: { el?: TextEl | StikyNoteEl | ShapeEl; at?: { x: number; y: number }; target?: 'text' | 'stikyNote'; append?: string; backspace?: boolean }): void {
   closeEditor(true);
   const el = opts.el ?? null;
-  const target: Editing['target'] = el ? (el.type === 'note' ? 'note' : el.type === 'shape' ? 'shape' : 'text') : (opts.target ?? 'text');
+  const target: Editing['target'] = el ? (el.type === 'stikyNote' ? 'stikyNote' : el.type === 'shape' ? 'shape' : 'text') : (opts.target ?? 'text');
   const before = el?.text ?? '';
   const text = opts.backspace ? Array.from(before).slice(0, -1).join('') : before + (opts.append ?? '');
   const source = el?.type === 'text' || el?.type === 'shape' ? el : null;
   const changed = () => { syncLiveText(); update(); };
-  const rich = target === 'note' ? null : new RichTextEditor(text, remapRuns(source?.runs, before, text), () => {
+  const rich = target === 'stikyNote' ? null : new RichTextEditor(text, remapRuns(source?.runs, before, text), () => {
     const current = source && state.board.elements.find(el => el.id === source.id);
     return current?.type === 'text' || current?.type === 'shape' ? current : source ?? { color: state.style.color };
   }, changed);
-  const note = target === 'note' ? document.createElement('textarea') : null;
-  if (note) {
-    note.rows = 1;
-    note.value = text;
-    note.addEventListener('input', changed);
+  const textarea = target === 'stikyNote' ? document.createElement('textarea') : null;
+  if (textarea) {
+    textarea.rows = 1;
+    textarea.value = text;
+    textarea.setAttribute('aria-label', 'Текст липкого стикера');
+    textarea.addEventListener('input', changed);
   }
-  const field: HTMLElement = rich?.el ?? note!;
+  const field: HTMLElement = rich?.el ?? textarea!;
   if (target === 'shape') field.setAttribute('aria-label', 'Надпись фигуры');
   field.spellcheck = false;
   field.className = target === 'text' ? 'inplace-edit' : 'inplace-edit ' + target;
   if (target === 'shape' && el) state.hideTextId = el.id;
   else if (el) state.hideElId = el.id;
-  if (target === 'note' && !el && opts.at) {
-    state.liveNote = { x: opts.at.x - NOTE_W / 2, y: opts.at.y - NOTE_H / 2, w: NOTE_W, h: NOTE_H, color: state.noteColor };
-    // сразу возвращаем выделение, чтобы случайные клики не плодили стикеры
-    if (state.tool === 'note') setTool('select');
+  if (el?.type === 'stikyNote') {
+    state.liveStikyNote = { x: el.x, y: el.y, w: el.w, h: el.h, color: el.color };
+  } else if (target === 'stikyNote' && opts.at) {
+    state.liveStikyNote = { x: opts.at.x - STIKY_NOTE_W / 2, y: opts.at.y - STIKY_NOTE_H / 2, w: STIKY_NOTE_W, h: STIKY_NOTE_H, color: state.stikyNoteColor };
+    // сразу возвращаем выделение, чтобы случайные клики не плодили липкие стикеры
+    if (state.tool === 'stikyNote') setTool('select');
   }
   if (target === 'text' && !el) {
     // новый текст сразу настраивают в меню выделения: оно — для него; инструмент — снова выделение
     if (state.selection.size > 0) setSelection([]);
     if (state.tool === 'text') setTool('select');
-  } else if (el && target !== 'note' && !(state.selection.size === 1 && state.selection.has(el.id))) {
+  } else if (el && target !== 'stikyNote' && !(state.selection.size === 1 && state.selection.has(el.id))) {
     // меню выделения при вводе — у правящегося элемента
     setSelection([el.id]);
   }
   document.getElementById('overlay')!.appendChild(field);
-  editing = { el, at: opts.at ?? null, target, field, note, rich, size: TEXT_SIZE };
+  editing = { el, at: opts.at ?? null, target, field, textarea, rich, size: TEXT_SIZE };
   positionEditor();
   changed();
   if (rich) rich.focus();
-  if (note) {
-    note.focus();
-    note.setSelectionRange(text.length, text.length);
+  if (textarea) {
+    textarea.focus();
+    textarea.setSelectionRange(text.length, text.length);
   }
   field.addEventListener('keydown', e => {
     e.stopPropagation();
@@ -463,7 +470,7 @@ export function beginTextEdit(opts: { el?: TextEl | NoteEl | ShapeEl; at?: { x: 
 }
 
 /** Правящийся элемент — актуальная версия с доски (её могли передвинуть, перекрасить, сменить кегль). */
-function editedEl<T extends TextEl | NoteEl | ShapeEl>(e: Editing): T {
+function editedEl<T extends TextEl | StikyNoteEl | ShapeEl>(e: Editing): T {
   const cur = state.board.elements.find(x => x.id === e.el!.id);
   return (cur?.type === e.el!.type ? cur : e.el) as T;
 }
@@ -513,10 +520,10 @@ function syncLiveText(): void {
   } else if (e.target === 'text') {
     state.liveText = draftTextBlock(e);
   } else if (e.el) {
-    state.liveText = { ...editedEl<NoteEl>(e), text: e.note!.value };
+    state.liveText = { ...editedEl<StikyNoteEl>(e), text: e.textarea!.value };
   } else {
-    const n = state.liveNote;
-    state.liveText = n ? { id: '', type: 'note', ...n, text: e.note!.value } : null;
+    const n = state.liveStikyNote;
+    state.liveText = n ? { id: '', type: 'stikyNote', ...n, text: e.textarea!.value } : null;
   }
 }
 
@@ -530,16 +537,16 @@ function positionEditor(): void {
     positionShapeEditor(ta, draftText(editedEl<ShapeEl>(e), e.rich!));
     return;
   }
-  if (e.target === 'note') {
-    const n = (e.el as NoteEl | null) ?? state.liveNote;
+  if (e.target === 'stikyNote') {
+    const n = (e.el as StikyNoteEl | null) ?? state.liveStikyNote;
     if (!n) return;
-    ta.style.left = `${(n.x + NOTE_PAD - cam.x) * z}px`;
-    ta.style.top = `${(n.y + NOTE_PAD - cam.y) * z}px`;
-    ta.style.width = `${(n.w - NOTE_PAD * 2) * z}px`;
-    ta.style.fontSize = `${NOTE_FONT * z}px`;
+    ta.style.left = `${(n.x + STIKY_NOTE_PAD - cam.x) * z}px`;
+    ta.style.top = `${(n.y + STIKY_NOTE_PAD - cam.y) * z}px`;
+    ta.style.width = `${(n.w - STIKY_NOTE_PAD * 2) * z}px`;
+    ta.style.fontSize = `${STIKY_NOTE_FONT * z}px`;
     ta.style.lineHeight = '1.35';
-    ta.style.color = NOTE_TEXT_COLOR;
-    ta.style.maxHeight = `${(n.h - NOTE_PAD * 2) * z}px`;
+    ta.style.color = STIKY_NOTE_TEXT_COLOR;
+    ta.style.maxHeight = `${(n.h - STIKY_NOTE_PAD * 2) * z}px`;
   } else {
     const t = draftTextBlock(e);
     ta.style.left = `${(t.x - cam.x) * z}px`;
@@ -596,8 +603,8 @@ export function closeEditor(commit: boolean): void {
   state.hideElId = null;
   state.hideTextId = null;
   state.liveText = null;
-  const liveNote = state.liveNote;
-  state.liveNote = null;
+  const liveStikyNote = state.liveStikyNote;
+  state.liveStikyNote = null;
   const cur = e.el && state.board.elements.find(x => x.id === e.el!.id);
   if (!commit || (e.el && cur?.type !== e.el.type)) { update(); return; }
   if (cur?.type === 'shape') {
@@ -614,15 +621,15 @@ export function closeEditor(commit: boolean): void {
     } else update();
     return;
   }
-  const text = e.note!.value.replace(/[ \t]+$/gm, '').replace(/\s+$/, '');
-  if (cur?.type === 'note') commitEditorChange(cur, text ? { ...cur, text } : null);
-  else if (liveNote && text) addElement({ id: uid(), type: 'note', ...liveNote, text });
+  const text = e.textarea!.value.replace(/[ \t]+$/gm, '').replace(/\s+$/, '');
+  if (cur?.type === 'stikyNote') commitEditorChange(cur, text || cur.text === '' ? { ...cur, text } : null);
+  else if (liveStikyNote && text) addElement({ id: uid(), type: 'stikyNote', ...liveStikyNote, text });
   else update();
 }
 
-function commitEditorChange(cur: TextEl | ShapeEl | NoteEl, next: TextEl | ShapeEl | NoteEl | null): void {
+function commitEditorChange(cur: TextEl | ShapeEl | StikyNoteEl, next: TextEl | ShapeEl | StikyNoteEl | null): void {
   if (next && cur.text === next.text && (
-    cur.type === 'note' || (next.type !== 'note' && cur.color === next.color
+    cur.type === 'stikyNote' || (next.type !== 'stikyNote' && cur.color === next.color
       && TEXT_FLAGS.every(key => !!cur[key] === !!next[key])
       && JSON.stringify(cur.runs) === JSON.stringify(next.runs))
   )) { update(); return; }
@@ -747,9 +754,9 @@ export function toggleTextFlag(key: TextFlag): void {
   else if (textTargets().length) setTextProps({ [key]: !activeTextFlags()[key] });
 }
 
-// ----- Контекстная панель (цвет и толщина / стикеры) -----
+// ----- Контекстная панель (цвет и толщина / липкие стикеры) -----
 
-/** 'style', 'note' или id группы инструментов (у групп свои id, с этими двумя не совпадают). */
+/** 'style', 'stikyNote' или id группы инструментов (у групп свои id, с этими двумя не совпадают). */
 type CtxKind = string;
 /** Откуда вызвана панель: с тулбара — встаёт сбоку по центру кнопки, из плавающего меню — под ним. */
 type CtxSource = 'toolbar' | 'quick';
@@ -958,8 +965,8 @@ function ctxAnchor(cp: CtxPanel): HTMLElement | null {
   const host = cp.source === 'quick' ? quickMenuEl() : document.getElementById('toolbar')!;
   if (host.hidden) return null;
   const own = host.querySelector<HTMLElement>(`[data-ctx="${cp.kind}"]`);
-  // стикер, убранный в группу, показывает цвета у кнопки этой группы
-  if (!own && cp.kind === 'note' && cp.source === 'toolbar') return host.querySelector<HTMLElement>('[data-tools~="note"]');
+  // липкий стикер, убранный в группу, показывает цвета у кнопки этой группы
+  if (!own && cp.kind === 'stikyNote' && cp.source === 'toolbar') return host.querySelector<HTMLElement>('[data-tools~="stikyNote"]');
   return own;
 }
 
@@ -1050,7 +1057,7 @@ function buildToolGroupPanel(cp: CtxPanel, groupId: string): void {
       b.classList.add('tool-drop');
       b.addEventListener('pointerdown', e => {
         if (e.button === 0 && e.isPrimary) {
-          startToolDrop(id, e, () => { if (!cp.detached) closePanel(cp); });
+          startToolDrop(id, e, { onStart: () => { if (!cp.detached) closePanel(cp); } });
         }
       });
     }
@@ -1163,17 +1170,17 @@ function selectedForStyle(): Element[] {
   return state.board.elements.filter(e => state.selection.has(e.id));
 }
 
-/** Толщина нужна с тулбара и для выделенных линий/фигур и рамок картинок (у текста и стикеров её нет). */
+/** Толщина нужна с тулбара и для выделенных линий/фигур и рамок картинок (у текста и липких стикеров её нет). */
 function styleNeedsWidth(source: CtxSource): boolean {
   if (source === 'toolbar') return state.tool !== 'laser'; // у указки только цвет
   return selectedForStyle().some(e =>
     e.type === 'stroke' || e.type === 'shape' || e.type === 'poly' || e.type === 'solid' || e.type === 'image');
 }
 
-/** Прозрачность — у всего, кроме стикеров. */
+/** Прозрачность — у всего, кроме липких стикеров. */
 function styleNeedsOpacity(source: CtxSource): boolean {
   if (source === 'toolbar' && state.tool === 'laser') return false;
-  return source === 'toolbar' || selectedForStyle().some(e => e.type !== 'note');
+  return source === 'toolbar' || selectedForStyle().some(e => e.type !== 'stikyNote');
 }
 
 /** Скругляются прямоугольники и картинки, выделенные на доске. */
@@ -1500,18 +1507,37 @@ function paintStyleIndicator(ring: HTMLElement, withWidth: boolean, style: Style
   dot.style.opacity = String(style.opacity ?? 1);
 }
 
-function buildNotePanel(cp: CtxPanel): void {
+function buildStikyNotePanel(cp: CtxPanel): void {
   const p = cp.el;
-  p.dataset.kind = 'note';
-  p.appendChild(sectionHead('Цвет стикера'));
+  p.dataset.kind = 'stikyNote';
+  p.appendChild(sectionHead('Липкие стикеры'));
   const grid = document.createElement('div');
-  grid.className = 'ctx-swatches';
-  for (const c of NOTE_PASTELS) {
-    grid.appendChild(makeSwatch(c, c === state.noteColor, () => {
-      setNoteColor(c);
-      persistStyle();
-      updateSwatchActive(p, c);
-    }));
+  grid.className = 'stiky-note-stacks';
+  for (const [color, label] of STIKY_NOTE_PASTELS) {
+    const stack = document.createElement('button');
+    stack.type = 'button';
+    stack.className = 'stiky-note-stack';
+    stack.dataset.color = color;
+    stack.title = label;
+    stack.style.setProperty('--stiky-note-color', color);
+    stack.setAttribute('aria-label', label);
+    for (const layer of ['bottom', 'next', 'top']) {
+      const sheet = document.createElement('span');
+      sheet.className = `stiky-note-sheet stiky-note-sheet--${layer}`;
+      sheet.setAttribute('aria-hidden', 'true');
+      stack.append(sheet);
+    }
+    stack.addEventListener('pointerdown', e => {
+      if (e.isPrimary && e.button === 0) startToolDrop('stikyNote', e, { stack });
+    });
+    stack.addEventListener('click', e => {
+      if (e.detail && dropClickBlocked()) return;
+      pickUpStikyNote(stack, color, e);
+    });
+    stack.addEventListener('animationend', e => {
+      if (e.animationName === 'stiky-note-peel') stack.classList.remove('peeling');
+    });
+    grid.append(stack);
   }
   p.appendChild(grid);
 }
@@ -1519,11 +1545,11 @@ function buildNotePanel(cp: CtxPanel): void {
 // ----- Панели кегля и выравнивания текста (из меню выделения) -----
 
 /** Панели, которые не группы инструментов (у групп свои id, с этими не совпадают — см. toolbar.ts). */
-const PANEL_KINDS = new Set(['style', 'note', 'font', 'align', 'format']);
+const PANEL_KINDS = new Set(['style', 'stikyNote', 'font', 'align', 'format']);
 
 function buildPanelBody(cp: CtxPanel): void {
   if (cp.kind === 'style') buildStylePanel(cp);
-  else if (cp.kind === 'note') buildNotePanel(cp);
+  else if (cp.kind === 'stikyNote') buildStikyNotePanel(cp);
   else if (cp.kind === 'font') buildFontPanel(cp);
   else if (cp.kind === 'align') buildAlignPanel(cp);
   else if (cp.kind === 'format') buildFormatPanel(cp);
@@ -1966,8 +1992,8 @@ function updateQuickMenu(): void {
   // кегль набирают в поле меню — меню не пересобираем, иначе поле пропадёт из-под курсора
   if (fontEdit && !qm.hidden) { positionQuickMenu(); return; }
   const selEls = state.board.elements.filter(e => state.selection.has(e.id));
-  // при вводе текста меню остаётся (у нового текста — над редактором); у стикера — нет: оформлять нечего
-  if (state.view !== 'board' || (selEls.length === 0 && !editingNewText()) || editing?.target === 'note') {
+  // при вводе текста меню остаётся (у нового текста — над редактором); у липкого стикера — нет: оформлять нечего
+  if (state.view !== 'board' || (selEls.length === 0 && !editingNewText()) || editing?.target === 'stikyNote') {
     qm.hidden = true;
     return;
   }
@@ -4944,103 +4970,187 @@ function startCarouselRename(nameEl: HTMLElement, projectId: string, pageId: str
 // ----- Перетаскивание инструмента с панели на холст -----
 
 /** Указатель над холстом и можно менять доску — только туда бросают инструмент. */
-function overCanvas(e: PointerEvent): boolean {
+function overCanvas(e: MouseEvent): boolean {
   if (state.view !== 'board' || !canEditBoard()) return false;
   return document.elementFromPoint(e.clientX, e.clientY) === canvas;
 }
 
-interface ToolDrop {
-  tool: ToolId;
-  pointerId: number;
-  x0: number;
-  y0: number;
-  ghost: HTMLElement | null;
+interface ToolDropOptions {
+  activate?: boolean;
   onStart?: () => void;
 }
+  stack?: HTMLButtonElement;
 
-let toolDrop: ToolDrop | null = null;
+let toolDropActive = false;
 /** После броска клик по кнопке инструмента уже не нужен: он выбрал бы инструмент вместо создания. */
 let dropClickGuard = 0;
 
 function blockDropClick(): void { dropClickGuard = performance.now() + 300; }
 function dropClickBlocked(): boolean { return performance.now() < dropClickGuard; }
 
-function toolGhost(tool: ToolId): HTMLElement {
+function toolGhost(tool: ToolId, stikyNoteColor: string): { el: HTMLElement; remove: () => void } {
   const ghost = document.createElement('div');
-  ghost.className = 'tool-ghost drag-ghost';
-  ghost.innerHTML = toolDef(tool).icon;
+  let stopSizing: (() => void) | undefined;
+  ghost.setAttribute('aria-hidden', 'true');
+  if (tool === 'stikyNote') {
+    ghost.className = 'stiky-note-ghost drag-ghost';
+    ghost.style.setProperty('--stiky-note-color', stikyNoteColor);
+    let prevZoom = 0;
+    const sizePreview = ({ zoom }: Camera) => {
+      if (zoom === prevZoom) return;
+      prevZoom = zoom;
+      ghost.style.width = `${STIKY_NOTE_W * zoom}px`;
+      ghost.style.height = `${STIKY_NOTE_H * zoom}px`;
+      ghost.style.setProperty('--stiky-note-fold', `${STIKY_NOTE_FOLD * zoom}px`);
+      ghost.style.setProperty('--stiky-note-shadow-y', `${2 * zoom}px`);
+      ghost.style.setProperty('--stiky-note-shadow-blur', `${3 * zoom}px`);
+    };
+    sizePreview(state.camera);
+    stopSizing = onBoardFrame(sizePreview);
+  } else {
+    ghost.className = 'tool-ghost drag-ghost';
+    ghost.innerHTML = toolDef(tool).icon;
+  }
   document.body.appendChild(ghost);
-  return ghost;
+  return { el: ghost, remove: () => { stopSizing?.(); ghost.remove(); } };
 }
 
-function moveToolGhost(ghost: HTMLElement, e: PointerEvent): void {
-  ghost.style.left = `${e.clientX}px`;
-  ghost.style.top = `${e.clientY}px`;
+function moveToolGhost(ghost: HTMLElement, x: number, y: number): void {
+  ghost.style.left = `${x}px`;
+  ghost.style.top = `${y}px`;
+}
+
+function peelStikyNote(stack: HTMLButtonElement): void {
+  if (state.settings.animationMode !== 'enhanced') return;
+  stack.classList.remove('peeling');
+  void stack.offsetWidth;
+  stack.classList.add('peeling');
+}
+
+let stikyNotePickup: { color: string; projectId: string; pageId: string; remove: () => void } | null = null;
+
+/** Убирает лист, взятый из стопки до размещения на холсте. */
+function cancelStikyNotePickup(): boolean {
+  if (!stikyNotePickup) return false;
+  stikyNotePickup.remove();
+  stikyNotePickup = null;
+  return true;
+}
+
+function pickUpStikyNote(stack: HTMLButtonElement, color: string, e: MouseEvent): void {
+  if (!canEditBoard() || state.view !== 'board') return;
+  closeEditor(true);
+  cancelStikyNotePickup();
+  setSelection([]);
+  setTool('stikyNote');
+  const ghost = toolGhost('stikyNote', color);
+  if (e.detail) moveToolGhost(ghost.el, e.clientX, e.clientY);
+  else {
+    const rect = stack.getBoundingClientRect();
+    moveToolGhost(ghost.el, rect.left + rect.width / 2, rect.top + rect.height / 2);
+  }
+  const events = new AbortController();
+  window.addEventListener('pointermove', ev => {
+    if (ev.isPrimary) moveToolGhost(ghost.el, ev.clientX, ev.clientY);
+  }, { signal: events.signal });
+  stikyNotePickup = {
+    color, projectId: state.project.id, pageId: state.pageId,
+    remove: () => { events.abort(); ghost.remove(); },
+  };
+  peelStikyNote(stack);
 }
 
 /**
- * Возможное перетаскивание инструмента: объект «срывается» с кнопки, только когда указатель
- * ушёл на холст (жест выбора из группы этим не ломается). activate — указатель уже на холсте.
+ * Перетаскивание со стопки начинается внутри панели. Остальные инструменты ждут,
+ * пока указатель попадёт на холст, чтобы сохранить жест выбора из группы.
  */
-function startToolDrop(tool: ToolId, e: PointerEvent, onStart?: () => void, activate = false): void {
-  if (toolDrop || !canDropTool(tool)) return;
-  const d: ToolDrop = { tool, pointerId: e.pointerId, x0: e.clientX, y0: e.clientY, ghost: null, onStart };
-  toolDrop = d;
+function startToolDrop(tool: ToolId, e: PointerEvent, { onStart, activate, stack }: ToolDropOptions = {}): void {
+  if (toolDropActive || !canDropTool(tool) || !canEditBoard() || state.view !== 'board') return;
+  toolDropActive = true;
+  const events = new AbortController();
+  const { signal } = events;
+  const color = stack?.dataset.color ?? state.stikyNoteColor;
+  let ghost: ReturnType<typeof toolGhost> | null = null;
   const begin = (ev: PointerEvent) => {
-    d.ghost = toolGhost(d.tool);
+    cancelStikyNotePickup();
+    ghost = toolGhost(tool, color);
     document.body.classList.add('tool-dragging');
-    moveToolGhost(d.ghost, ev);
-    d.onStart?.();
+    moveToolGhost(ghost.el, ev.clientX, ev.clientY);
+    if (stack) peelStikyNote(stack);
+    onStart?.();
   };
-  if (activate && overCanvas(e)) begin(e);
+  const cleanup = () => {
+    events.abort();
+    toolDropActive = false;
+    ghost?.remove();
+    document.body.classList.remove('tool-dragging');
+  };
   const move = (ev: PointerEvent) => {
-    if (ev.pointerId !== d.pointerId || toolDrop !== d) return;
-    if (!d.ghost) {
-      if (Math.hypot(ev.clientX - d.x0, ev.clientY - d.y0) < 6 || !overCanvas(ev)) return;
+    if (ev.pointerId !== e.pointerId) return;
+    if (!ghost) {
+      if (Math.hypot(ev.clientX - e.clientX, ev.clientY - e.clientY) < 6 || (!stack && !overCanvas(ev))) return;
       begin(ev);
-    }
-    moveToolGhost(d.ghost!, ev);
+    } else moveToolGhost(ghost.el, ev.clientX, ev.clientY);
   };
   const finish = (ev: PointerEvent) => {
-    if (ev.pointerId !== d.pointerId) return;
-    window.removeEventListener('pointermove', move);
-    window.removeEventListener('pointerup', finish);
-    window.removeEventListener('pointercancel', finish);
-    if (toolDrop === d) toolDrop = null;
-    if (!d.ghost) return;
-    d.ghost.remove();
-    document.body.classList.remove('tool-dragging');
-    if (ev.type === 'pointerup' && overCanvas(ev)) {
-      dropToolOnCanvas(d.tool, ev.clientX, ev.clientY);
-      blockDropClick();
-    }
+    if (ev.pointerId !== e.pointerId) return;
+    cleanup();
+    if (!ghost || ev.type !== 'pointerup') return;
+    const drop = overCanvas(ev);
+    if (stack || drop) blockDropClick();
+    if (drop) dropToolOnCanvas(tool, ev.clientX, ev.clientY, color);
   };
-  window.addEventListener('pointermove', move);
-  window.addEventListener('pointerup', finish);
-  window.addEventListener('pointercancel', finish);
+  if (stack) {
+    try { stack.setPointerCapture(e.pointerId); } catch { /* синтетический pointer */ }
+    stack.addEventListener('lostpointercapture', finish, { signal });
+  }
+  if (activate && overCanvas(e)) begin(e);
+  window.addEventListener('pointermove', move, { signal });
+  window.addEventListener('pointerup', finish, { signal });
+  window.addEventListener('pointercancel', finish, { signal });
+  window.addEventListener('blur', cleanup, { signal });
 }
 
-/** Создаёт объект в точке экрана; он сразу выделен, а стикер — открыт для ввода. */
-function dropToolOnCanvas(tool: ToolId, x: number, y: number): void {
-  if (state.view !== 'board' || !canEditBoard()) return;
+function dropScenePoint(x: number, y: number): { x: number; y: number } {
   const r = canvas.getBoundingClientRect();
   const cam = state.camera;
   const el = toolDropElement(
-    tool, uid(),
-    { x: (x - r.left) / cam.zoom + cam.x, y: (y - r.top) / cam.zoom + cam.y },
-    cam.zoom,
+  return { x: (x - r.left) / cam.zoom + cam.x, y: (y - r.top) / cam.zoom + cam.y };
+}
+
+/** Клик ставит взятый из стопки лист, а при работе с инструментом открывает черновик. */
+export function placeStikyNote(e: PointerEvent): void {
+  if (!overCanvas(e)) return;
+  const color = stikyNotePickup?.color;
+  if (color) {
+    cancelStikyNotePickup();
+    dropToolOnCanvas('stikyNote', e.clientX, e.clientY, color);
+    if (color !== state.stikyNoteColor) {
+      setStikyNoteColor(color);
+      persistStyle();
+    }
+  } else beginTextEdit({ at: dropScenePoint(e.clientX, e.clientY), target: 'stikyNote' });
+}
+
+/** Создаёт объект в точке экрана. Липкий стикер сразу открыт для ввода. */
+function dropToolOnCanvas(tool: ToolId, x: number, y: number, stikyNoteColor: string): void {
+  if (state.view !== 'board' || !canEditBoard()) return;
+    tool, uid(), dropScenePoint(x, y), state.camera.zoom,
     { color: state.style.color, width: state.style.width, opacity: state.style.opacity },
-    state.noteColor,
+    stikyNoteColor,
   );
   if (!el) return;
-  addElement(el);
-  selectInserted(el.id);
-  if (el.type === 'note') {
-    // фон стикера рисуем поверх скрытого холстом элемента, пока идёт ввод
-    state.liveNote = { x: el.x, y: el.y, w: el.w, h: el.h, color: el.color };
+  if (el.type === 'stikyNote') {
+    closeEditor(true);
+    addElement(el);
+    setSelection([]);
+    setTool('select');
     beginTextEdit({ el });
   }
+    return;
 }
+  addElement(el);
+  selectInserted(el.id);
 
 // ----- Тулбар -----
 
@@ -5106,7 +5216,7 @@ function buildToolbar(): void {
           if (Math.hypot(event.clientX - startX, event.clientY - startY) > 5) moved = true;
           // потянули за кнопку группы на холст — это уже не выбор инструмента, а перенос объекта
           const shape = b.dataset.shape as ToolId | undefined;
-          if (moved && shape) startToolDrop(shape, event, () => closePanel(panel), true);
+          if (moved && shape) startToolDrop(shape, event, { onStart: () => closePanel(panel), activate: true });
           highlight(hitTool(event));
         };
         const finish = (event: PointerEvent) => {
@@ -5152,8 +5262,8 @@ function buildToolbar(): void {
       b.dataset.tool = id;
       b.title = toolTip(id);
       b.innerHTML = toolDef(id).icon;
-      // панель стикеров открывается с этим инструментом и встаёт по центру его кнопки
-      if (id === 'note') b.dataset.ctx = 'note';
+      // панель липких стикеров открывается с этим инструментом и встаёт по центру его кнопки
+      if (id === 'stikyNote') b.dataset.ctx = 'stikyNote';
       if (canDropTool(id)) {
         b.classList.add('tool-drop');
         b.addEventListener('pointerdown', e => {
@@ -5216,7 +5326,7 @@ let shownPresetKey = '';
 
 /** Кнопки пресетов: видимость, подсветка текущего, якорь панели стиля (data-ctx) — у текущего. */
 function syncPresetButtons(tb: HTMLElement): void {
-  // инструментам без цвета (выделение, ластики, стикер…) пресеты не нужны — прячем вместе с разделителем
+  // инструментам без цвета (выделение, ластики, липкий стикер…) пресеты не нужны — прячем вместе с разделителем
   const withStyle = toolUsesColor(state.tool);
   for (const e of tb.querySelectorAll<HTMLElement>('.style-group, .style-sep')) e.hidden = !withStyle;
   const kind = presetKind(state.tool);
@@ -5582,6 +5692,12 @@ function wireTopbar(): void {
       if (!gridMenu().hidden) { e.stopPropagation(); closeGridMenu(); gridButton().focus(); return; }
       if (!settingsPopover().hidden) { e.stopPropagation(); closeSettings(); return; }
       // поле кегля закрывает свою панель само (Esc там — отмена ввода)
+      if (cancelStikyNotePickup()) {
+        e.preventDefault();
+        e.stopPropagation();
+        setTool('select');
+        return;
+      }
       const panel = dockedPanel();
       if (panel && !fontEdit) {
         e.stopPropagation();
@@ -5994,6 +6110,8 @@ let toolBeforeReader: ToolId | null = null;
 
 function refresh(): void {
   // совместный режим: скрываем тулбар на страницах без права edit
+  if (stikyNotePickup && (state.view !== 'board' || state.tool !== 'stikyNote' || !canEditBoard()
+    || state.project.id !== stikyNotePickup.projectId || state.pageId !== stikyNotePickup.pageId)) cancelStikyNotePickup();
   if (collabActive() && !isHost()) {
     document.body.classList.toggle('readonly-mode', readOnly());
     // читателю панели нет: инструмент — «Выделение» (реакции, копирование), а если копировать нельзя — «Панорама»;
@@ -6039,11 +6157,11 @@ function refresh(): void {
     }
   }
   syncPresetButtons(tb);
-  // панель стикеров открывается автоматически с инструментом (если стикер не скрыт с панели)
-  const noteOnToolbar = !!tb.querySelector('[data-ctx="note"], [data-tools~="note"]');
-  if (state.tool === 'note' && noteOnToolbar && !dockedPanel() && !panelOf('note') && state.view === 'board') openCtxPanel('note', 'toolbar');
-  const notePanel = panelOf('note');
-  if (state.tool !== 'note' && notePanel && !notePanel.detached) closePanel(notePanel);
+  // панель липких стикеров открывается автоматически с инструментом (если липкий стикер не скрыт с панели)
+  const stikyNoteOnToolbar = !!tb.querySelector('[data-ctx="stikyNote"], [data-tools~="stikyNote"]');
+  if (state.tool === 'stikyNote' && stikyNoteOnToolbar && !dockedPanel() && !panelOf('stikyNote') && state.view === 'board') openCtxPanel('stikyNote', 'toolbar');
+  const stikyNotePanel = panelOf('stikyNote');
+  if (state.tool !== 'stikyNote' && stikyNotePanel && !stikyNotePanel.detached) closePanel(stikyNotePanel);
   // откреплённые палитры инструментов подсвечивают текущий инструмент
   for (const b of ctxLayerEl().querySelectorAll<HTMLElement>('[data-shape]')) {
     b.classList.toggle('active', b.dataset.shape === state.tool);
@@ -6138,7 +6256,10 @@ function initSubscriptionUi(): void {
 
 export function initApp(c: HTMLCanvasElement): void {
   // страницу скрыли под гостем: открытый редактор текста закрывается без сохранения (SPEC_NIGHT5 §7)
-  onCancelInteraction(() => closeEditor(false));
+  onCancelInteraction(() => {
+    cancelStikyNotePickup();
+    closeEditor(false);
+  });
   // пришли приглашения по почте — домашний экран показывает их сразу
   onIncomingInvites(() => { if (state.view === 'home') renderHome(); });
   // облако нашло проекты, которых нет на устройстве: показываем их на главном экране

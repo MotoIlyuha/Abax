@@ -94,11 +94,12 @@ export function wrapText(text: string, size: number, maxW: number, bold = false,
   return out;
 }
 
-export const NOTE_W = 216;
-export const NOTE_H = 168;
-export const NOTE_PAD = 14;
-export const NOTE_FONT = 15;
-export const NOTE_TEXT_COLOR = '#4a4633';
+export const STIKY_NOTE_W = 216;
+export const STIKY_NOTE_H = 168;
+export const STIKY_NOTE_PAD = 14;
+export const STIKY_NOTE_FONT = 15;
+export const STIKY_NOTE_FOLD = 14;
+export const STIKY_NOTE_TEXT_COLOR = '#4a4633';
 export const TEXT_SIZE = 24;
 
 /** Ширина строки текста шрифтом size. */
@@ -273,7 +274,7 @@ export function elementAABB(el: Element): AABB {
       const t = textSize(el as TextEl);
       return { x0: el.x, y0: el.y, x1: el.x + t.w, y1: el.y + t.h };
     }
-    case 'note':
+    case 'stikyNote':
     case 'task':
       return { x0: el.x, y0: el.y, x1: el.x + el.w, y1: el.y + el.h };
     case 'image': {
@@ -414,7 +415,7 @@ export function hitTest(el: Element, x: number, y: number, tol: number): boolean
       const a = elementAABB(el);
       return x >= a.x0 - tol && x <= a.x1 + tol && y >= a.y0 - tol && y <= a.y1 + tol;
     }
-    case 'note':
+    case 'stikyNote':
     case 'task':
       return x >= el.x - tol && x <= el.x + el.w + tol && y >= el.y - tol && y <= el.y + el.h + tol;
     case 'image': {
@@ -454,8 +455,8 @@ export function pointInPoly(x: number, y: number, pts: { x: number; y: number }[
 const ROT_HANDLE_OFF_PX = 13; // отступ ручки поворота от левого верхнего угла по каждой оси, px экрана
 const MIN_SHAPE_SIZE = 4;
 const MIN_TEXT_SIZE = 6; // наименьший кегль при масштабировании текста за угол
-const MIN_NOTE_W = 80;
-const MIN_NOTE_H = 60;
+const MIN_STIKY_NOTE_W = 80;
+const MIN_STIKY_NOTE_H = 60;
 const MIN_TASK_W = 220;
 const MIN_TASK_H = 140;
 const ROT_SNAP = Math.PI / 45; // ~4°: примагничивание к кратным 45°
@@ -536,9 +537,9 @@ export function elementHandles(el: Element, zoom: number): HandlePos[] {
       }
       return out;
     }
-    case 'note':
+    case 'stikyNote':
     case 'task': {
-      // стикер и задание масштабируются за края и углы, без поворота
+      // липкий стикер и задание масштабируются за края и углы, без поворота
       const out: HandlePos[] = [];
       const dirs: [number, number][] = [[-1, -1], [0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0]];
       for (const [dx, dy] of dirs) {
@@ -710,9 +711,9 @@ export function applyHandle(el: Element, h: Handle, pt: Pt, mods?: ResizeMods, r
     if (h.dx < 0) { const x = Math.min(pt.x, right - 24); return { ...el, x, w: right - x }; }
     return { ...el, w: Math.max(24, pt.x - el.x) };
   }
-  if ((el.type === 'note' || el.type === 'task') && h.kind === 'resize') {
+  if ((el.type === 'stikyNote' || el.type === 'task') && h.kind === 'resize') {
     // приводим к центровой системе, чтобы модификаторы работали единообразно
-    const minW = el.type === 'task' ? MIN_TASK_W : MIN_NOTE_W, minH = el.type === 'task' ? MIN_TASK_H : MIN_NOTE_H;
+    const minW = el.type === 'task' ? MIN_TASK_W : MIN_STIKY_NOTE_W, minH = el.type === 'task' ? MIN_TASK_H : MIN_STIKY_NOTE_H;
     const ncx = el.x + el.w / 2, ncy = el.y + el.h / 2;
     const plx = pt.x - ncx, ply = pt.y - ncy;
     const box = { left: -el.w / 2, right: el.w / 2, top: -el.h / 2, bottom: el.h / 2 };
@@ -796,7 +797,7 @@ export function scaleElement(el: Element, from: AABB, to: AABB): Element {
       if (el.w !== undefined) next.w = el.w * sx;
       return next;
     }
-    case 'note':
+    case 'stikyNote':
     case 'task': {
       const nw = el.w * sx, nh = el.h * sy;
       const ncx = mx(el.x + el.w / 2), ncy = my(el.y + el.h / 2);

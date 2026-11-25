@@ -133,13 +133,13 @@ export const FIXED_SHORTCUTS: ShortcutGroup[] = [
     title: 'Изменение размера',
     note: 'Клавишу держат, пока тянут ручку выделенного элемента.',
     items: [
-      { keys: ['Shift', 'Ctrl'], what: 'Сохранить пропорции фигуры или стикера' },
+      { keys: ['Shift', 'Ctrl'], what: 'Сохранить пропорции фигуры или липкого стикера' },
       { keys: ['Shift', 'Ctrl'], what: 'Сохранить пропорции изображения', hiddenBy: 'keepImageAspect' },
       { keys: ['Alt'], what: 'Менять размер от центра' },
     ],
   },
   {
-    title: 'Текст и стикеры',
+    title: 'Текст и липкие стикеры',
     items: [
       { keys: ['Enter'], what: 'Готово' },
       { keys: ['Shift+Enter'], what: 'Новая строка' },
@@ -151,7 +151,7 @@ export const FIXED_SHORTCUTS: ShortcutGroup[] = [
 /** Чем занято сочетание в самой доске; null — свободно. */
 function appUse(combo: string): string | null {
   for (const g of FIXED_SHORTCUTS) {
-    if (g.title === 'Текст и стикеры') continue; // действуют только в редакторе текста
+    if (g.title === 'Текст и липкие стикеры') continue; // действуют только в редакторе текста
     for (const s of g.items) if (s.keys.includes(combo)) return s.what.toLowerCase();
   }
   return null;

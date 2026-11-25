@@ -43,7 +43,7 @@ test('открывающиеся края появляются в первом �
     const sample = (x: number, y: number) => Array.from(ctx.getImageData(
       Math.floor(x * canvas.width / w), Math.floor(y * canvas.height / h), 1, 1).data);
     const note = (id: string, x: number, y: number) => ({
-      id, type: 'note', x, y, w: 80, h: 80, color: '#ff0000', text: '',
+      id, type: 'stikyNote', x, y, w: 80, h: 80, color: '#ff0000', text: '',
     });
     app.state.board.grid = 'none';
     app.state.board.elements = [

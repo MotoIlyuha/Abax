@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { contentSignature } from '../src/sync-conflict';
 import { applyBoardPatch, isBoardPatch, type BoardPatch, type ElementOp } from '../src/delta';
-import { parseProject, sanitizeElement, serializeProject } from '../src/file';
+import { migrateStikyNotes, parseProject, sanitizeElement, serializeProject } from '../src/file';
 import { assetHashOf } from '../src/asset-store';
 import { preserveElementReactions } from '../src/comments';
 import { canCreateProject, isOverPageLimit, sanitizePermissionsForPlan } from '../src/limits';
@@ -37,7 +37,7 @@ export function getActiveProject(app: AppContext, id: string): ProjectRow | null
   return row && row.is_deleted === 0 ? row : null;
 }
 
-export const projectOf = (row: ProjectRow): Project => JSON.parse(row.data_json) as Project;
+export const projectOf = (row: ProjectRow): Project => migrateStikyNotes(JSON.parse(row.data_json) as Project);
 
 /** Действующий тариф владельца проекта. */
 export function ownerPlanOf(app: AppContext, ownerId: string): PlanTier {

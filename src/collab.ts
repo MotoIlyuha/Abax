@@ -3,7 +3,7 @@ import { roleLabel, type AccessRole, type ParticipantCaps } from './access';
 import { state, openProject, setSelection, setCopyGuard, setTouchGuard, isDraftId, onDraft, onChange, touchProject, update, setFadeStrokeEnd } from './state';
 import { MAX_PATCH_OPS, applyBoardPatch, diffElements, isBoardPatch, type BoardPatch } from './delta';
 import { gestureActive } from './gesture';
-import { sanitizeComments } from './file';
+import { migrateStikyNotes, sanitizeComments } from './file';
 import { clientId } from './identity';
 import { DEFAULT_CURSOR_ID, cursorPreset, cursorSvg, isCursorId } from './cursors';
 import { fxForget, fxMove } from './cursor-fx';
@@ -602,7 +602,7 @@ function applyRemoteProject(project: Project): void {
     keepPageId = nearestAvailablePage(prevOrder, prevPage, project.pages.map(p => p.id)) ?? project.pages[0].id;
   }
   const keepCam = { ...state.camera };
-  openProject(project, keepPageId);
+  openProject(migrateStikyNotes(project), keepPageId);
   state.camera = keepCam;
   setSelection(lost ? [] : [...state.selection]);
   // содержимое теперь общее: следующие правки считаются от него
