@@ -84,6 +84,36 @@ test('верхняя панель помещается между открыто
   await expect(panel).toHaveClass(/sp-left/);
 });
 
+test('Поиск в строке номеров заданий', async ({ page }) => {
+  await page.locator('#btn-tasks').click();
+  const search = page.getByRole('searchbox', { name: 'Поиск заданий' });
+  const reveal = page.getByRole('button', { name: 'Показать поле поиска' });
+  const clear = page.getByRole('button', { name: 'Очистить ввод' });
+  const numbers = page.getByRole('group', { name: 'Номер задания' });
+  const strip = page.locator('.task-bank-strip');
+  const cards = page.locator('.task-bank-card');
+  await expect(search).toBeInViewport();
+  const initialCount = await cards.count();
+  await strip.hover();
+  await page.mouse.wheel(0, 350);
+  await expect.poll(() => search.evaluate(el =>
+    el.getBoundingClientRect().right <= el.parentElement!.getBoundingClientRect().left)).toBe(true);
+  await expect(reveal).toBeInViewport();
+  await reveal.click();
+  await expect(search).toBeInViewport();
+  await expect(numbers).toBeVisible();
+  await search.click();
+  await expect(numbers).toHaveCount(0);
+  await expect(clear).toBeVisible();
+  await search.fill('#45B944');
+  await expect(cards).toHaveCount(1);
+  await clear.click();
+  await expect(search).toHaveValue('');
+  await expect(numbers).toBeVisible();
+  await expect(clear).toBeHidden();
+  await expect(cards).toHaveCount(initialCount);
+});
+
 test('банк: предметы, экзамены, номера, поиск и добавление на доску', async ({ board, page }) => {
   await page.locator('#btn-tasks').click();
   const subject = page.getByRole('button', { name: 'Предмет: Математика' });

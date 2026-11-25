@@ -1,5 +1,6 @@
 import { BANK_EXAMS, bankNumbers, filterBankTasks, type BankExam, type BankTask } from './fipi-bank';
-import { reduceMotion } from './motion';
+import { attachOverlayScroll } from './overlay-scroll';
+import { CLOSE_ICON_BOLD, svg } from './icons';
 import { createTabPill } from './tab-pill';
 
 function make<K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: string): HTMLElementTagNameMap[K] {
@@ -98,17 +99,19 @@ export function mountTaskBank(host: HTMLElement, add: (task: BankTask) => void, 
   const numbers = make('div', 'task-bank-numbers');
   numbers.setAttribute('role', 'group');
   numbers.setAttribute('aria-label', 'Номер задания');
-  numbers.addEventListener('wheel', e => {
-    if (e.ctrlKey || Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return;
-    const remaining = e.deltaY > 0 ? numbers.scrollWidth - numbers.clientWidth - numbers.scrollLeft : numbers.scrollLeft;
-    if (remaining < 1) return;
-    e.preventDefault();
-    const factor = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? numbers.clientWidth : 1;
-    numbers.scrollBy({ left: e.deltaY * factor, behavior: reduceMotion() || document.body.classList.contains('no-motion') ? 'instant' : 'smooth' });
-  }, { passive: false });
+  const row = make('div', 'task-bank-search-row');
+  const reveal = button('task-bank-search-button', '');
+  reveal.setAttribute('aria-label', 'Показать поле поиска');
+  reveal.innerHTML = svg('<circle cx="10" cy="10" r="6.5"/><path d="m15 15 5 5"/>');
+  const scroller = make('div', 'task-bank-strip');
+  const clear = button('task-bank-search-button', '');
+  clear.innerHTML = CLOSE_ICON_BOLD;
+  clear.setAttribute('aria-label', 'Очистить ввод');
+  clear.hidden = true;
   const search = make('input', 'task-bank-search');
   search.type = 'search';
-  search.placeholder = 'Поиск по условию, теме или коду';
+  search.placeholder = 'Поиск';
+  search.title = 'Поиск по условию, теме или коду';
   search.setAttribute('aria-label', 'Поиск заданий');
   search.autocomplete = 'off';
   const results = make('div', 'task-bank-results');
@@ -134,7 +137,8 @@ export function mountTaskBank(host: HTMLElement, add: (task: BankTask) => void, 
       });
       return pill;
     }));
-    numbers.scrollLeft = 0;
+    scroller.scrollLeft = 0;
+    scroll.sync();
   };
   const exams = createTabPill({
     tabs: Object.entries(BANK_EXAMS).map(([value, label]) => ({ value, label })),
@@ -149,7 +153,42 @@ export function mountTaskBank(host: HTMLElement, add: (task: BankTask) => void, 
     },
   });
   search.addEventListener('input', renderResults);
-  filters.append(exams.el, numbers, search);
+  scroller.append(search, numbers);
+  row.append(reveal, scroller, clear);
+  const scroll = attachOverlayScroll(scroller, { axis: 'x', wheel: true });
+  const setEditing = (editing: boolean): void => {
+    row.classList.toggle('editing', editing);
+    numbers.inert = editing;
+    numbers.setAttribute('aria-hidden', String(editing));
+    clear.hidden = !editing;
+    scroller.scrollLeft = 0;
+    scroll.sync();
+  };
+  reveal.addEventListener('click', () => {
+    scroller.scrollLeft = 0;
+    if (row.classList.contains('editing')) search.focus();
+  });
+  search.addEventListener('focus', () => setEditing(true));
+  row.addEventListener('focusout', event => {
+    if (row.classList.contains('editing') && !search.value && !row.contains(event.relatedTarget as Node | null)) {
+      setEditing(false);
+    }
+  });
+  const resetSearch = (): void => {
+    search.value = '';
+    renderResults();
+    reveal.focus();
+    setEditing(false);
+  };
+  clear.addEventListener('click', resetSearch);
+  row.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && row.classList.contains('editing')) {
+      event.preventDefault();
+      event.stopPropagation();
+      resetSearch();
+    }
+  });
+  filters.append(exams.el, row);
   host.replaceChildren(filters, results);
   renderNumbers();
   renderResults();
