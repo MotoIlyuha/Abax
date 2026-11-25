@@ -77,7 +77,7 @@ import { initMorphPages, morphPagesOpen, morphPagesReset, morphPagesSync } from 
 import { hideHeldTooltip, showHeldTooltip } from './tooltip';
 import { copyBoardLink, currentBoardLink, registerLinkViewHooks } from './link-view-ui';
 import { canCreateProject, isOverPageLimit, isOverProjectLimit, PLAN_LIMITS } from './limits';
-import { limitsEnforced, onPlanChange, userPlan } from './plan';
+import { devModeEnabled, limitsEnforced, onPlanChange, userPlan } from './plan';
 import { proBadge, refreshProBadges, requestUpgrade, setProBadgeNeeded, setUpgradeHandler, startProBadges } from './pro-badge';
 import { openPlansDialog, setPlansDialogHooks } from './plans-dialog';
 import { renderSubscriptionSettings } from './subscription-settings';
@@ -2459,7 +2459,7 @@ export function openAllSettings(section?: string): void {
       id: 'privacy', title: 'Конфиденциальность', icon: ICONS.privacy, render: renderAnalyticsSettings,
     }] : []),
     { id: 'about', title: 'О проекте', icon: ICONS.info, render: host => renderAbout(host, showExperiments) },
-    ...(experimentsShown() ? [EXPERIMENTAL] : []),
+    ...(devModeEnabled() || experimentsShown() ? [EXPERIMENTAL] : []),
     // «Профиль» — первым в списке, но окно без явного раздела по-прежнему открывается на «Доске» (или на последнем)
   ], section ?? (lastSettingsSection() || 'general'));
 }
