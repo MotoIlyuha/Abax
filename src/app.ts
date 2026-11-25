@@ -5683,6 +5683,7 @@ function wireZoomInput(): void {
   document.body.append(menu);
   let level: ViewLevel = 'root';
   let page: HTMLElement | null = null;
+  let dismissZoomInput: (() => void) | undefined;
 
   const row = (attrs: string, icon: string, text: string, sub = false) =>
     `<button ${attrs}><span class="view-icon">${icon}</span><span class="view-text">${text}</span>${sub ? '<span class="view-arrow" aria-hidden="true">›</span>' : ''}</button>`;
@@ -5764,6 +5765,7 @@ function wireZoomInput(): void {
   const close = () => {
     label.setAttribute('aria-expanded', 'false');
     document.getElementById('zoom-input')?.blur();
+    dismissZoomInput = undefined;
     if (!menuShown(menu)) return;
     closeMenu(menu);
     releaseMenu('view');
@@ -5773,6 +5775,9 @@ function wireZoomInput(): void {
     page = pageFor(lvl);
     menu.replaceChildren(page);
     claimMenu('view', close);
+    label.setAttribute('aria-expanded', 'true');
+    // Поле ввода меняет ширину группы, поэтому добавляем его до замера для анимации.
+    if (lvl === 'root') dismissZoomInput = openZoomInput(label, close);
     openMenu(menu, {
       from: group,
       whole: true,
@@ -5781,9 +5786,6 @@ function wireZoomInput(): void {
       items: () => (page ? [...page.children].filter((c): c is HTMLElement => c instanceof HTMLElement) : []),
       onSettled: () => { if (menuShown(menu)) positionMenu(); },
     });
-    label.setAttribute('aria-expanded', 'true');
-    // корневое меню сразу открывает поле масштаба — как раньше пункт «Другой…»
-    if (lvl === 'root') openZoomInput(label, close);
   };
   /** Переход внутри открытого меню: в подменю, назад или из одного подменю в другое. */
   const go = (target: ViewLevel) => {
@@ -5836,7 +5838,12 @@ function wireZoomInput(): void {
     }
     if (view === 'fullscreen') { if (document.fullscreenElement) void document.exitFullscreen(); else void document.documentElement.requestFullscreen(); }
     if (view === 'fit') { stopFollowByUser(); fitContent(true); }
-    if (b.dataset.zoom) zoomCenterSmooth(Number(b.dataset.zoom) / 100);
+    if (b.dataset.zoom) {
+      dismissZoomInput?.();
+      close();
+      zoomCenterSmooth(Number(b.dataset.zoom) / 100);
+      return;
+    }
     close();
   });
   // щелчок по пункту не отнимает фокус у поля масштаба: иначе поле закрылось бы и закрыло меню вместе с собой
@@ -5850,7 +5857,7 @@ function wireZoomInput(): void {
 }
 
 /** Поле вместо подписи масштаба: Enter применяет (ошибку объясняет подсказка), Esc и уход из поля с ошибкой — отмена. */
-function openZoomInput(label: HTMLElement, onDone?: () => void): void {
+function openZoomInput(label: HTMLElement, onDone: () => void): () => void {
   const box = document.createElement('span');
   box.className = 'zoom-edit';
   const input = document.createElement('input');
@@ -5884,12 +5891,16 @@ function openZoomInput(label: HTMLElement, onDone?: () => void): void {
     return 'zoom' in r ? r.zoom : null;
   };
   let done = false;
-  const close = (zoom: number | null) => {
+  const dismiss = () => {
     if (done) return;
     done = true;
     box.remove();
     label.hidden = false;
-    onDone?.();
+  };
+  const close = (zoom: number | null) => {
+    if (done) return;
+    dismiss();
+    onDone();
     if (zoom === null) return;
     // относительно центра холста, как кнопки + и −
     zoomCenterSmooth(zoom);
@@ -5909,14 +5920,12 @@ function openZoomInput(label: HTMLElement, onDone?: () => void): void {
   input.addEventListener('blur', e => {
     // фокус ушёл на пункт меню «Масштаб и вид»: поле просто закрывается, меню остаётся — пункт сам решит, что делать
     if ((e.relatedTarget as HTMLElement | null)?.closest('#view-menu')) {
-      if (done) return;
-      done = true;
-      box.remove();
-      label.hidden = false;
+      dismiss();
       return;
     }
     close(check(true));
   });
+  return dismiss;
 }
 
 /** Окно демонстрации: открыть или закрыть. */

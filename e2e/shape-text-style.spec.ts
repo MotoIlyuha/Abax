@@ -15,6 +15,41 @@ async function makePng(page: Page, w: number, h: number): Promise<Buffer> {
 }
 
 test.describe('масштаб в шапке', () => {
+  test('ширина меню при открытии совпадает с панелью с полем ввода', async ({ board, page }) => {
+    expect((await board.state()).settings.animationMode).toBe('enhanced');
+    const opening = await page.locator('#zoom-label').evaluate(label => {
+      (label as HTMLButtonElement).click();
+      const menu = document.getElementById('view-menu')!;
+      const group = label.closest('.view-group')!;
+      const menuRect = menu.getBoundingClientRect();
+      const groupRect = group.getBoundingClientRect();
+      return {
+        animating: menu.classList.contains('mm-morph'),
+        widthDiff: Math.abs(menuRect.width - groupRect.width),
+        leftDiff: Math.abs(menuRect.left - groupRect.left),
+      };
+    });
+    expect(opening.animating).toBe(true);
+    expect(opening.widthDiff).toBeLessThan(1);
+    expect(opening.leftDiff).toBeLessThan(1);
+  });
+
+  test('кнопки масштаба применяют выбранный процент при открытом поле ввода', async ({ board, page }) => {
+    const menu = page.locator('#view-menu');
+    const label = page.locator('#zoom-label');
+    const input = page.locator('#zoom-input');
+
+    for (const percent of [50, 800]) {
+      await label.click();
+      await expect(input).toBeFocused();
+      await input.fill('125');
+      await menu.getByRole('button', { name: `${percent}%`, exact: true }).click();
+      await expect(menu).toBeHidden();
+      await expect(input).toHaveCount(0);
+      await expect.poll(async () => (await board.state()).camera.zoom).toBeCloseTo(percent / 100, 4);
+    }
+  });
+
   test('открытие меню подписи сразу включает ввод - ввод точного значения с проверкой', async ({ board, page }) => {
     const label = page.locator('#zoom-label');
     const input = page.locator('#zoom-input');
