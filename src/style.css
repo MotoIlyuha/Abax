@@ -5200,6 +5200,7 @@ body:not(.collab-guest, .link-view) #toolbar[data-pos="left"]:not(.floating) {
 #side-panel.sp-left .sp-heading { display: flex; }
 #side-panel.sp-left .sp-mode { display: none; }
 #side-panel.sp-left.sp-css:not(.sp-open) { transform: translateX(-24px); }
+body:has(#side-panel.sp-left:not([hidden])) .tasks-button { z-index: 62; }
 .sp-backdrop { display: none; }
 @media (max-width: 759.98px) {
   #side-panel.sp-left { right: 12px; }

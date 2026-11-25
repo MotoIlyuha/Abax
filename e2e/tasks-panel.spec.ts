@@ -1,6 +1,40 @@
 import { expect, test } from './fixtures';
 import { test as collaboration } from './host';
 
+for (const width of [390, 935]) {
+  test(`панель сворачивается под кнопку заданий на экране ${width} px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    const button = page.locator('#btn-tasks');
+    const panel = page.locator('#side-panel');
+    const target = (await button.boundingBox())!;
+    await button.click();
+    await expect.poll(() => panel.evaluate(el => (el as HTMLElement).style.clipPath)).toBe('');
+    const frames = await button.evaluate(async el => {
+      const panel = document.getElementById('side-panel')!;
+      const frames: { top: number; bottom: number; above: boolean }[] = [];
+      (el as HTMLButtonElement).click();
+      while (!panel.hidden) {
+        const bounds = panel.getBoundingClientRect();
+        const insets = panel.style.clipPath.match(/^inset\(([^)]+) round/);
+        if (insets) {
+          const [top, , bottom] = insets[1].split(' ').map(parseFloat);
+          frames.push({
+            top: bounds.top + top,
+            bottom: bounds.bottom - bottom,
+            above: Number(getComputedStyle(el).zIndex) > Number(getComputedStyle(panel).zIndex),
+          });
+        }
+        await new Promise(requestAnimationFrame);
+      }
+      return frames;
+    });
+    expect(frames.length).toBeGreaterThan(0);
+    expect(frames.every(frame => frame.above)).toBe(true);
+    expect(Math.abs(frames.at(-1)!.top - target.y)).toBeLessThan(2);
+    expect(Math.abs(frames.at(-1)!.bottom - target.y - target.height)).toBeLessThan(2);
+  });
+}
+
 test('кнопка под меню и взаимоисключение панелей', async ({ board, page }) => {
   const button = page.locator('#btn-tasks');
   const menu = page.locator('#btn-home');

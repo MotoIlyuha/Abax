@@ -385,11 +385,26 @@ function render(): void {
   if (!busy) settle();
 }
 
+function triggerClip(panel: HTMLElement, progress: number, shift: number): string | undefined {
+  const trigger = dedicatedTrigger()?.getBoundingClientRect();
+  if (!trigger?.width || !trigger.height) return;
+  const bounds = panel.getBoundingClientRect();
+  // Кнопка сдвигается вместе с панелью. Конечная точка - её положение после закрытия.
+  const insets = [
+    trigger.top - bounds.top,
+    bounds.right - trigger.right + shift,
+    bounds.bottom - trigger.bottom,
+    trigger.left - bounds.left - shift,
+  ];
+  return `inset(${insets.map(inset => `${(inset * (1 - progress)).toFixed(2)}px`).join(' ')} round ${12 + 4 * progress}px)`;
+}
+
 /** Кадр пружин в DOM. */
 function paint(u: Ui): void {
   const root = document.documentElement.style;
   const leftSide = leftPanel();
-  root.setProperty('--left-panel-shift', `${(leftSide ? SH.x : 0).toFixed(2)}px`);
+  const leftShift = leftSide ? SH.x : 0;
+  root.setProperty('--left-panel-shift', `${leftShift.toFixed(2)}px`);
   root.setProperty('--side-panel-shift', `${(leftSide ? 0 : SH.x).toFixed(2)}px`);
   root.setProperty('--side-panel-shift-b', `${(leftSide ? 0 : SH.x * BOTTOM_K).toFixed(2)}px`);
   root.setProperty('--side-panel-tuck', `${TK.x.toFixed(2)}px`);
@@ -420,7 +435,7 @@ function paint(u: Ui): void {
   const h = u.panel.offsetHeight || 600;
   const ins = (v: number) => `${v.toFixed(2)}px`;
   u.panel.style.clipPath = leftSide
-    ? `inset(0 ${ins((w - BTN) * (1 - g))} ${ins((h - BTN) * (1 - g))} 0 round ${ins(12 + 4 * g)})`
+    ? triggerClip(u.panel, g, leftShift) ?? ''
     : `inset(0 0 ${ins((h - BTN) * (1 - g))} ${ins((w - BTN) * (1 - g))} round ${ins(12 + 4 * g)})`;
   u.inner.style.opacity = clamp(F.x, 0, 1).toFixed(3);
   u.inner.style.translate = `0 ${((1 - clamp(F.x, 0, 1)) * -6).toFixed(2)}px`;
@@ -545,7 +560,7 @@ function animateTo(anim: MenuMotion, opening: boolean, closing: boolean): void {
     time = 0;
     fadeAt = opening ? FADE_DELAY : 0;
     if (!isOpen) F.t = 0;
-    if (closing) absorbed = false;
+    if (closing) absorbed = leftPanel();
     if (isOpen && J.t === 1 && J.x < 0.9) caught = false;
     document.body.classList.toggle('side-panel-open', isOpen);
     document.body.classList.toggle('side-panel-left', isOpen && leftPanel());
@@ -572,7 +587,7 @@ function animateTo(anim: MenuMotion, opening: boolean, closing: boolean): void {
     cssTimer = window.setTimeout(() => { cssTimer = 0; applyStatic(); }, CSS_MS);
   }
   applyStatic();
-  if (closing && anim === 'normal') document.dispatchEvent(new CustomEvent('doska:side-panel-absorb'));
+  if (closing && css && !leftPanel()) document.dispatchEvent(new CustomEvent('doska:side-panel-absorb'));
 }
 
 /** «Улучшенные»: счётчик кнопки ЧУ перелетает в переключатель режимов. */
