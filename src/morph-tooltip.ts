@@ -136,8 +136,8 @@ function remeasure(): void {
 
 /** Подменю «Взаимодействия» в МВВ: переключатели подсвечиваются и подсказываются так же, как кнопки панели. */
 export const MORPH_MENU = '#view-menu .view-page[data-level="interactions"]';
-/** Где живёт подсказка: панель инструментов, раскрытая панель её группы, подменю «Взаимодействия», меню аватара и «Поделиться». */
-export const MORPH_SCOPE = `#toolbar, #quick-menu, .ctx-panel[data-kind="shapes"], .ctx-panel[data-kind="font"], ${MORPH_MENU}, #avatar-menu, #share-dialog`;
+/** Где живёт подсказка: панели инструментов и выделения, подменю «Взаимодействия», меню аватара и «Поделиться». */
+export const MORPH_SCOPE = `#toolbar, #quick-menu, #text-format-panel, .ctx-panel[data-kind="shapes"], .ctx-panel[data-kind="font"], ${MORPH_MENU}, #avatar-menu, #share-dialog`;
 /**
  * Строки, которые подсвечиваются и подсказывают так же, как кнопки панели: пункты меню аватара первого уровня
  * и строки «Поделиться» → «Настройки доступа». Остальное в этих окнах — обычные подсказки.

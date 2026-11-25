@@ -196,11 +196,23 @@ test.describe('выделение и перемещение', () => {
     await expect(panel).toBeVisible();
     await expect(board.quickMenu.locator('.qm-text-b')).toHaveCount(0);
     expect(await board.quickMenu.boundingBox()).toEqual(menuBefore);
-    await panel.locator('.qm-text-b').click();
-    await expect(panel.locator('.qm-text-b')).toHaveClass(/active/);
-    await panel.locator('.qm-text-i').click();
+    const bold = panel.locator('.qm-text-b');
+    const italic = panel.locator('.qm-text-i');
+    const highlight = panel.locator(':scope > .mt-hl');
+    const tip = page.locator('#morph-tip .mt-lab.cur');
+    await bold.hover();
+    await expect(tip).toContainText('Полужирный');
+    await expect(highlight).toHaveCSS('opacity', '1');
+    const firstTransform = await highlight.evaluate(el => (el as HTMLElement).style.transform);
+    await italic.hover();
+    await expect(tip).toContainText('Курсив');
+    await expect.poll(() => highlight.evaluate(el => (el as HTMLElement).style.transform)).not.toBe(firstTransform);
+    await expect(highlight).toHaveCount(1);
+    await bold.click();
+    await expect(bold).toHaveClass(/active/);
+    await italic.click();
     expect((await board.elements())[0]).toMatchObject({ bold: true, italic: true });
-    await panel.locator('.qm-text-b').click();
+    await bold.click();
     expect((await board.elements())[0].bold).toBe(false);
     const closingMorph = await panelNode.evaluate(el => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
@@ -209,6 +221,7 @@ test.describe('выделение и перемещение', () => {
     expect(closingMorph).toBe(true);
     await expect(button).toHaveAttribute('aria-expanded', 'false');
     await expect(panelNode).toHaveCount(0);
+    await expect(page.locator('#morph-tip .mt-tip')).toBeHidden();
 
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await button.click();

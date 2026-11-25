@@ -791,6 +791,7 @@ function closePanel(cp: CtxPanel): void {
   if (cp.kind === 'font') qmFrozen = null;
   if (cp.kind === 'format') {
     const anchor = ctxAnchor(cp);
+    if (cp.el.querySelector('.mt-hl')) morphLeave(true);
     // Меню выделения пересобирается при обновлениях доски: втягиваемся в актуальную кнопку.
     if (menuShown(cp.el)) {
       if (anchor) animateFormatPanel(cp, anchor);
@@ -847,6 +848,7 @@ function openCtxPanel(kind: CtxKind, source: CtxSource): void {
 function animateFormatPanel(cp: CtxPanel, anchor: HTMLElement): void {
   openMenu(cp.el, {
     from: anchor,
+    items: () => [...cp.el.querySelectorAll<HTMLButtonElement>('.qm-btn')],
     place: () => positionCtxPanel(cp),
     remove: true,
     onSettled: () => { if (menuShown(cp.el)) positionCtxPanel(cp); },

@@ -2559,9 +2559,10 @@ body.comment-tool #task-overlay .task-foot { pointer-events: none; }
   pointer-events: none;
   will-change: transform, width, height, opacity;
 }
-#toolbar .tool, #quick-menu .qm-btn, .ctx-font-chip, .ctx-shapes .tool, #view-menu .view-page[data-level="interactions"] .view-switch { position: relative; z-index: 1; }
+#toolbar .tool, #quick-menu .qm-btn, #text-format-panel .qm-btn, .ctx-font-chip, .ctx-shapes .tool, #view-menu .view-page[data-level="interactions"] .view-switch { position: relative; z-index: 1; }
 .ctx-font-chips, .ctx-shapes, #view-menu .view-page[data-level="interactions"]:not(.mm-leaving) { position: relative; }
 body:not(.no-motion) :is(#toolbar .tool, #quick-menu .qm-btn, .ctx-font-chip, .ctx-shapes .tool):hover:not(.active):not(.gesture-hover) { background: transparent; }
+body:not(.no-motion) #text-format-panel:has(> .mt-hl) .qm-btn:hover { background: transparent; }
 /* подменю «Взаимодействия» в МВВ: при «Улучшенных» анимациях вместо своего фона — подсветка панели инструментов */
 body:not(.no-motion) #view-menu .view-page[data-level="interactions"] .view-switch:hover { background: transparent; }
 body.no-motion .mt-hl { display: none; }
