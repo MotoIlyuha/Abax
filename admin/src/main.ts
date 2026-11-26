@@ -1,5 +1,6 @@
 import { AUDIT_OPERATIONS, type AdminSession } from '../../shared/admin';
 import { api, errorText, RequestError } from './api';
+import { taskCatalog } from './task-catalog';
 import { alertBox, button, el, field, input, link, select } from './dom';
 import { closeAction, list, openPromo, overview, SECTIONS, userDetail, type Section } from './views';
 
@@ -123,7 +124,7 @@ function loading(): HTMLElement {
   return node;
 }
 
-function filter(section: Exclude<Section, 'overview'>, query: URLSearchParams): HTMLFormElement {
+function filter(section: Exclude<Section, 'overview' | 'tasks'>, query: URLSearchParams): HTMLFormElement {
   const term = input('q', 'search', { maxLength: 200, value: query.get('q') ?? '' });
   const operation = section === 'audit'
     ? select('operation', { '': 'Все операции', ...AUDIT_OPERATIONS }, query.get('operation') ?? '') : null;
@@ -176,12 +177,13 @@ async function render(focus: boolean): Promise<void> {
   };
   if (section === 'promos') lead.append(button('Создать промокод', () => openPromo(done), 'primary'));
   const layout: HTMLElement[] = id ? [link('К пользователям', href('users', query), 'back'), lead, pane] : [lead, pane];
-  if (!id && section !== 'overview') layout.splice(1, 0, filter(section, query));
+  if (!id && section !== 'overview' && section !== 'tasks') layout.splice(1, 0, filter(section, query));
   main.replaceChildren(...layout);
   if (focus) heading.focus();
   try {
     if (id) pane.replaceChildren(await userDetail(id, current.signal, done));
     else if (section === 'overview') pane.replaceChildren(await overview(current.signal));
+    else if (section === 'tasks') pane.replaceChildren(await taskCatalog(query, current.signal, done));
     else {
       const data = await list(section, query, current.signal, done);
       pane.replaceChildren(data.content, pagination(section, query, data.page, data.hasMore));

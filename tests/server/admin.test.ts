@@ -295,7 +295,7 @@ it('миграция V9 сохраняет старые тарифы, платё
     } finally { old.close(); }
     const migrated = openDb(path);
     try {
-      expect(migrated.pragma('user_version', { simple: true })).toBe(12);
+      expect(migrated.pragma('user_version', { simple: true })).toBe(13);
       expect(migrated.pragma('integrity_check', { simple: true })).toBe('ok');
       expect(migrated.prepare('SELECT plan, plan_expires_at FROM users').get()).toEqual({ plan: 'pro', plan_expires_at: null });
       expect(migrated.prepare('SELECT status, resolved_at FROM payments').get()).toEqual({ status: 'paid', resolved_at: null });
@@ -304,4 +304,55 @@ it('миграция V9 сохраняет старые тарифы, платё
       expect(migrated.prepare('SELECT code, redeemed_at FROM promo_redemptions').get()).toEqual({ code: 'OLD-PROMO', redeemed_at: 4 });
     } finally { migrated.close(); }
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+describe('Каталог заданий', () => {
+  it('публикует только проверенные карточки по предмету, экзамену и номеру и сохраняет рисунки', async () => {
+    const app = await setup();
+    const cookie = await session(app);
+    const root = '/api/admin/task-catalog';
+    const catalog = '/api/task-catalog';
+    const demo = await call(app, 'GET', catalog + '/tasks/demo%3Aoge%3A2026%3A15');
+    expect(demo).toMatchObject({ status: 200, body: { number: 15, imageCount: 1 } });
+    const [image] = demo.body.illustrations;
+    expect((await adminCall(app, 'POST', root + '/subjects', { name: 'Физика', boardSubject: 'physics' })).status).toBe(401);
+    const subject = await adminCall(app, 'POST', root + '/subjects', { name: 'Физика', boardSubject: 'physics' }, cookie);
+    expect(subject.status).toBe(201);
+    const subjectId = subject.body.id;
+    const body = { subjectId, exam: 'oge', number: 15, topic: 'Равномерное движение', statementMd: 'Найдите скорость',
+      answer: '9', solutionMd: '', code: '', sourceUrl: '', illustrations: [image], published: false };
+    const created = await adminCall(app, 'POST', root + '/tasks', body, cookie);
+    expect(created.status).toBe(201);
+    const id = created.body.id;
+    const path = '/tasks/' + id;
+    expect((await call(app, 'GET', catalog + path)).status).toBe(404);
+    expect((await adminCall(app, 'PUT', root + path, { ...body, published: true, number: null }, cookie)).status).toBe(400);
+    expect((await adminCall(app, 'PUT', root + path, { ...body, published: true }, cookie)).status).toBe(200);
+    const query = '/tasks?' + new URLSearchParams({ subject: subjectId, exam: 'oge', number: '15', q: 'равномерное скорость' });
+    const visible = await call(app, 'GET', catalog + query);
+    expect(visible.body).toMatchObject({ items: [{ id, imageCount: 1 }], numbers: [15] });
+    expect(visible.body.items[0]).not.toHaveProperty('illustrations');
+    expect((await call(app, 'GET', catalog + path)).body.illustrations).toEqual([image]);
+    expect((await adminCall(app, 'DELETE', root + '/subjects/' + subjectId, {}, cookie)).status).toBe(409);
+    expect((await adminCall(app, 'DELETE', root + path, {}, cookie)).status).toBe(204);
+    expect((await adminCall(app, 'DELETE', root + '/subjects/' + subjectId, {}, cookie)).status).toBe(204);
+    expect((await call(app, 'GET', catalog + query)).body.items).toEqual([]);
+  });
+
+  it('импортирует черновики с рисунками без дубликатов и откатывает неполную выгрузку', async () => {
+    const app = await setup();
+    const cookie = await session(app);
+    const path = '/api/admin/task-catalog';
+    const demo = await call(app, 'GET', '/api/task-catalog/tasks/demo%3Aoge%3A2026%3A15');
+    const card = { exam: 'oge', code: 'A0A0A0', url: 'https://oge.fipi.ru/bank/?qid=A0A0A0',
+      statementMd: 'Найдите площадь', needsImage: true, illustrations: demo.body.illustrations };
+    const load = (items: unknown[]) => adminCall(app, 'POST', path + '/import', { subjectId: 'math', items }, cookie);
+    expect(await load([card, { ...card, code: 'A0A0A1', illustrations: [] }]))
+      .toMatchObject({ status: 400, body: { error: 'bad-catalog-image', row: 2 } });
+    expect((await load([card])).body).toEqual({ imported: 1, skipped: 0 });
+    expect((await load([card])).body).toEqual({ imported: 0, skipped: 1 });
+    const drafts = await adminCall(app, 'GET', path + '/tasks?published=0&q=A0A0A0', undefined, cookie);
+    expect(drafts.body.items).toMatchObject([{ published: false, number: null, imageCount: 1 }]);
+    expect((await call(app, 'GET', '/api/task-catalog/tasks?q=A0A0A0')).body.items).toEqual([]);
+  });
 });

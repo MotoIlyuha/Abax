@@ -5,6 +5,7 @@ import { MAX_AUTHOR_NAME, MAX_COMMENT_TEXT, MAX_REACTION_LEN } from './comments'
 import { EXAM_TYPES, MAX_ATTEMPTS, MAX_DRAFT, SUBJECTS } from './task-element';
 import { isPageRight, isPlanTier } from './limits';
 import { sanitizeRuns } from './text-runs';
+import { isTaskIllustrations } from './task-illustration';
 
 // Проверка данных на границе: файл, localStorage, сеть. Неизвестные поля сохраняются (проект из
 // более новой версии не теряет данные), поля известных имён с неверным типом отбрасываются.
@@ -84,6 +85,7 @@ const SPECS: Record<string, { req: Record<string, Check>; opt: Record<string, Ch
     },
     opt: {
       title: isStr, solutionMd: isStr, studentDraft: isStr, attempts: Array.isArray, markedHard: isBool, solutionVisibleToStudent: isBool,
+      subjectLabel: v => isStr(v) && v.length <= 240, statementImages: isTaskIllustrations,
       subject: v => SUBJECTS.includes(v as never), answerUnit: isStr, codeSnippet: codeSnippetCheck,
     },
   },

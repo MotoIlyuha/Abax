@@ -7,7 +7,7 @@ import { api, errorText, RequestError } from './api';
 import { alertBox, badge, button, el, field, input, link, pair, select, table } from './dom';
 
 export const SECTIONS = {
-  overview: 'Обзор', users: 'Пользователи', promos: 'Промокоды', payments: 'Платежи', aliases: 'Публичные адреса', audit: 'Журнал действий',
+  overview: 'Обзор', users: 'Пользователи', promos: 'Промокоды', payments: 'Платежи', aliases: 'Публичные адреса', audit: 'Журнал действий', tasks: 'Задания',
 } as const;
 export type Section = keyof typeof SECTIONS;
 
@@ -246,7 +246,7 @@ function audit(items: AdminAudit[]): HTMLElement {
   ]));
 }
 
-export async function list(section: Exclude<Section, 'overview'>, query: URLSearchParams, signal: AbortSignal, done: ActionDone) {
+export async function list(section: Exclude<Section, 'overview' | 'tasks'>, query: URLSearchParams, signal: AbortSignal, done: ActionDone) {
   const path = 'admin/' + section + '?' + query.toString();
   async function render<T>(view: (items: T[]) => HTMLElement) {
     const { items, page, hasMore } = await api<AdminPage<T>>(path, { signal });

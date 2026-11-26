@@ -111,6 +111,17 @@ td small { display: block; }
 .details dt { color: var(--muted); font-size: .83rem; }
 .details dd { margin: 0; overflow-wrap: anywhere; }
 
+.catalog-admin { display: grid; gap: 1rem; }
+.catalog-taxonomy { padding: .8rem 1rem; border: 1px solid var(--line); border-radius: var(--radius); }
+.catalog-taxonomy summary { cursor: pointer; font-weight: 650; }
+.catalog-taxonomy > :not(summary) { margin-top: .65rem; }
+.catalog-illustrations { display: grid; gap: .65rem; }
+.catalog-illustrations:empty { display: none; }
+.catalog-illustrations > div { display: grid; gap: .45rem; justify-items: start; }
+.catalog-illustrations img { display: block; max-width: 100%; max-height: 12rem; object-fit: contain; }
+.catalog-publish { display: flex; align-items: center; gap: .5rem; }
+.catalog-publish input { width: auto; }
+
 .form { display: grid; gap: .9rem; }
 .form .actions { justify-content: end; }
 .login { max-width: 29rem; margin: 1rem auto; padding: clamp(1rem, 4vw, 2rem); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }

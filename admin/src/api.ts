@@ -19,12 +19,19 @@ const MESSAGES: Record<string, string> = {
   'not-found': 'Запись не найдена.',
   'bad-search': 'Поисковый запрос слишком длинный.',
   'bad-page': 'Неверный номер страницы.',
+  'bad-catalog-task': 'Проверьте поля задания, номер и ссылку на источник.',
+  'bad-catalog-subject': 'Выберите существующий предмет.',
+  'bad-catalog-image': 'Рисунок отсутствует или имеет недопустимый формат или размер.',
+  'bad-catalog-import': 'Файл должен содержать от 1 до 50 заданий.',
+  'catalog-duplicate': 'Запись с таким названием или кодом источника уже существует.',
+  'catalog-in-use': 'Сначала перенесите или удалите задания этого предмета.',
+  'payload-too-large': 'Файл слишком большой.',
   'bad-operation': 'Неизвестный вид операции.',
 };
 
 export class RequestError extends Error {
-  constructor(readonly status: number, readonly code: string) {
-    super(MESSAGES[code] ?? 'Не удалось выполнить запрос. Повторите попытку.');
+  constructor(readonly status: number, readonly code: string, row?: number) {
+    super((row ? 'Запись ' + row + '. ' : '') + (MESSAGES[code] ?? 'Не удалось выполнить запрос. Повторите попытку.'));
   }
 }
 
@@ -40,8 +47,8 @@ export async function api<T>(path: string, options?: { method?: string; body?: o
     ...(options?.body ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(options.body) } : {}),
   });
   if (!response.ok) {
-    const data = await response.json().catch(() => null) as { error?: string } | null;
-    throw new RequestError(response.status, data?.error ?? '');
+    const data = await response.json().catch(() => null) as { error?: string; row?: number } | null;
+    throw new RequestError(response.status, data?.error ?? '', data?.row);
   }
   return response.status === 204 ? undefined as T : response.json() as Promise<T>;
 }

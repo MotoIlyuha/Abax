@@ -1,3 +1,5 @@
+import type { TaskIllustration } from './task-illustration';
+
 /** Стереометрические тела (id инструмента совпадает с видом тела). */
 export type SolidKind =
   | 'cube' | 'box' | 'prism' | 'pyramid' | 'truncPyramid'
@@ -199,6 +201,8 @@ export interface TaskEl extends BaseEl {
   /** Заголовок карточки из банка заданий. */
   title?: string;
   statementMd: string;
+  statementImages?: TaskIllustration[];
+  subjectLabel?: string;
   /** Правильный ответ; несколько допустимых — через «|». Ученику не отправляется. */
   answer: string;
   solutionMd?: string;

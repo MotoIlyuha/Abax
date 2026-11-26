@@ -22,6 +22,7 @@ import { serveStatic } from './static';
 import { adminOrigin } from './config';
 import { isAdminHost, requireAdmin } from './admin-auth';
 import { registerAdminRoutes } from './admin';
+import { registerTaskCatalog } from './task-catalog';
 
 export interface AppOptions {
   /** Файл базы или ':memory:'. */
@@ -194,6 +195,7 @@ export function createAppServer(options: AppOptions, extraRoutes: RouteModule[] 
   registerEmailInviteRoutes(router);
   registerBillingRoutes(router);
   registerAdminRoutes(router, app);
+  registerTaskCatalog(router);
   for (const mod of extraRoutes) mod(router, app);
 
   const upgradeHandlers: Parameters<AppServer['onUpgrade']>[0][] = [];

@@ -15,7 +15,8 @@ const PROJECTS = [
 
 export function readFrame() {
   const clean = text => text.replace(/[^\S\n]+/g, ' ').replace(/ *\n */g, '\n').replace(/\n{3,}/g, '\n\n').trim();
-  const skip = 'script, style, form, input, button, select, textarea, iframe, svg, annotation, annotation-xml';
+  const skip = 'script, style, form, input, button, select, textarea, iframe, svg, object, annotation, annotation-xml';
+  const excluded = '[data-answer], [data-solution], .qinfo, .qanswer, .qsolution, .correct-answer';
 
   function plain(node) {
     if (node.nodeType === Node.TEXT_NODE) return node.nodeValue.replace(/\s+/g, ' ');
@@ -44,7 +45,7 @@ export function readFrame() {
     }
   }
 
-  return [...document.querySelectorAll('.qblock')].flatMap(block => {
+  return [...document.querySelectorAll('.qblock')].flatMap((block, blockIndex) => {
     const id = /^q([0-9a-f]{6})$/i.exec(block.id) ??
       /^q([0-9a-f]{6})$/i.exec(block.querySelector('[id^="q"]')?.id ?? '') ??
       /Номер\s*[:№]\s*([0-9a-f]{6})\b/i.exec(block.innerText);
@@ -56,19 +57,43 @@ export function readFrame() {
     const exerciseNumber = Number(block.getAttribute('data-task-number') ??
       /(?:Позиция в КИМ|Номер задания в КИМ)\s*[:№]?\s*(\d{1,2})/i.exec(metadata)?.[1]) || null;
     const prompt = block.querySelector('[data-statement], .qtext, .qcontent') ?? block;
-    const needsImage = !!prompt.querySelector('img, svg, object') ||
+    const pictures = [...block.querySelectorAll('img, svg, object')].flatMap((node, index) => {
+      if (!prompt.contains(node) || node.closest(excluded) || node.parentElement.closest('svg, object')) return [];
+      if (node.getBoundingClientRect().width <= 1 || node.getBoundingClientRect().height <= 1) return [];
+      return [{ index, alt: (node.getAttribute('alt') ?? node.getAttribute('aria-label') ?? '').trim().slice(0, 240) }];
+    });
+    const needsImage = pictures.length > 0 ||
       [...prompt.querySelectorAll('script')].some(script => /ShowPicture|document\.write/i.test(script.textContent ?? ''));
     const copy = prompt.cloneNode(true);
-    copy.querySelectorAll('[data-answer], [data-solution], .qinfo, .qanswer, .qsolution, .correct-answer').forEach(el => el.remove());
+    copy.querySelectorAll(excluded).forEach(el => el.remove());
     const statementMd = clean(plain(copy)).replace(/^(?:Задание\s+\d+\s*\n+)?(?:Впишите правильный ответ\.|Выберите один или несколько правильных ответов\.)\s*/i, '').trim();
     if (!statementMd) return [];
     return [{
-      code, kes, exerciseNumber, statementMd, needsImage,
+      code, kes, exerciseNumber, statementMd, needsImage, pictures, blockIndex,
       answer: block.querySelector('[data-answer]')?.getAttribute('data-answer') ||
         block.querySelector('.correct-answer')?.textContent?.trim() || null,
       solutionMd: block.querySelector('[data-solution], .qsolution')?.textContent?.trim() || null,
     }];
   });
+}
+
+export async function collectIllustrations(scope, { blockIndex, pictures }, timeout) {
+  const illustrations = [];
+  if (pictures.length > 4) return illustrations;
+  for (const { index, alt } of pictures) {
+    const node = scope.locator('.qblock').nth(blockIndex).locator('img, svg, object').nth(index);
+    try {
+      await node.evaluate(element => {
+        if (element.localName === 'img' && !element.naturalWidth) throw new Error('Рисунок не загрузился.');
+      }, undefined, { timeout });
+      const png = await node.screenshot({ scale: 'css', animations: 'disabled', timeout });
+      const width = png.readUInt32BE(16);
+      const height = png.readUInt32BE(20);
+      if (width > 2048 || height > 2048 || png.length > 192 * 1024) continue;
+      illustrations.push({ src: 'data:image/png;base64,' + png.toString('base64'), width, height, alt });
+    } catch { /* неполные карточки помечаются для проверки */ }
+  }
+  return illustrations;
 }
 
 function taskNumber(card, review, byKes, exam, max) {
@@ -93,12 +118,15 @@ async function main() {
     pages: { type: 'string', default: '1' },
     review: { type: 'string' },
     output: { type: 'string' },
+    browser: { type: 'string' },
+    'illustrated-only': { type: 'boolean' },
     help: { type: 'boolean' },
   } });
   if (values.help) {
-    console.log('node scripts/scrape-fipi.mjs [--timeout 5000] [--pages 1] [--output выгрузка.json] [--review проверка.json]');
+    console.log('node scripts/scrape-fipi.mjs --output выгрузка.json [--pages 1] [--illustrated-only] [--browser chrome] [--review проверка.json]');
     console.log('В --review укажите byKes (тип экзамена → КЭС → номер КИМ) и tasks (тип экзамена:код → number, topic, answer, solutionMd).');
-    console.log('Каталог обновляется карточками с известным номером, полным условием, ответом и решением. --output отдельно сохраняет выгрузку для проверки.');
+    console.log('Загрузите выгрузку через «Задания → Импорт JSON» в панели управления.');
+    console.log('Выгрузка включает растровые копии рисунков. Позиций без полного набора рисунков в режиме --illustrated-only нет.');
     return;
   }
   const timeout = Number(values.timeout);
@@ -106,15 +134,16 @@ async function main() {
   if (!Number.isSafeInteger(timeout) || timeout < 1 || !Number.isSafeInteger(pages) || pages < 1) {
     throw new Error('Таймаут и число страниц должны быть положительными целыми числами.');
   }
-  const output = values.output ? resolve(values.output) : null;
+  if (!values.output) throw new Error('Укажите --output для сохранения выгрузки.');
+  const output = resolve(values.output);
   if (output === CATALOG) throw new Error('Сохраните выгрузку отдельно от встроенного каталога.');
   const { byKes = {}, tasks = {} } = values.review ? JSON.parse(await readFile(values.review, 'utf8')) : {};
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch({ headless: true, ...(values.browser ? { channel: values.browser } : {}) });
   const extracted = new Map();
-  const complete = new Map();
+  const seen = new Set();
   const visited = new Set();
   try {
-    const context = await browser.newContext({ ignoreHTTPSErrors: true });
+    const context = await browser.newContext();
     const page = await context.newPage();
     for (const [exam, host, proj, max] of PROJECTS) {
       if (visited.has(exam)) continue;
@@ -141,26 +170,29 @@ async function main() {
           const scope = index === 0 ? frame : page;
           await scope.locator('.qblock').first().waitFor({ state: 'attached', timeout });
           const cards = await scope.locator('body').evaluate(readFrame);
-          const size = extracted.size;
-          for (const card of cards) {
+          const size = seen.size;
+          for (const { blockIndex, pictures, ...card } of cards) {
             const id = exam + ':' + card.code;
+            if (seen.has(id)) continue;
+            seen.add(id);
+            if (values['illustrated-only'] && !card.needsImage) continue;
             const review = Object.hasOwn(tasks, id) ? tasks[id] : undefined;
             const number = taskNumber(card, review, byKes, exam, max);
             const source = new URL(link);
             source.searchParams.set('qid', card.code);
-            extracted.set(id, { ...card, exam, number, url: source.href });
-            const answer = review?.answer ?? card.answer;
-            const solutionMd = review?.solutionMd ?? card.solutionMd;
-            const statementMd = review?.statementMd ?? (card.needsImage ? null : card.statementMd);
-            if (number && answer?.trim() && solutionMd?.trim() && statementMd?.trim()) {
-              complete.set(id, {
-                id, code: card.code, exam, number, answer, solutionMd, statementMd, url: source.href,
-                topic: review?.topic ?? (card.kes ? 'КЭС ' + card.kes : 'Математика'),
-              });
-            }
+            const illustrations = pictures.length ? await collectIllustrations(scope, { blockIndex, pictures }, timeout) : [];
+            const imagesMissing = card.needsImage && (!illustrations.length || illustrations.length !== pictures.length);
+            if (values['illustrated-only'] && imagesMissing) continue;
+            const topic = review?.topic ?? (card.kes ? 'КЭС ' + card.kes : 'ФИПИ #' + card.code);
+            extracted.set(id, {
+              ...card, exam, number, topic, url: source.href, illustrations, imagesMissing,
+              answer: review?.answer ?? card.answer,
+              solutionMd: review?.solutionMd ?? card.solutionMd,
+              statementMd: review?.statementMd ?? card.statementMd,
+            });
           }
-          read += extracted.size - size;
-          if (extracted.size === size) break;
+          read += seen.size - size;
+          if (seen.size === size) break;
         }
         if (read) visited.add(exam);
         console.log(exam + ': извлечено карточек — ' + read);
@@ -171,16 +203,20 @@ async function main() {
   } finally {
     await browser.close();
   }
-  if (output && extracted.size) await saveJson(output, [...extracted.values()]);
-  if (!complete.size) {
-    console.log('Нет новых карточек с полными данными. Встроенный каталог сохранён.');
+  if (!extracted.size) {
+    console.log('Выгрузка пуста.');
+    process.exitCode = 1;
     return;
   }
-  const previous = JSON.parse(await readFile(CATALOG, 'utf8'));
-  const all = new Map(previous.map(card => [card.id, card]));
-  for (const [id, card] of complete) all.set(id, card);
-  await saveJson(CATALOG, [...all.values()]);
-  console.log('Проверено и сохранено карточек: ' + complete.size);
+  const pending = [...extracted.values()].filter(card => !card.imagesMissing);
+  const missing = extracted.size - pending.length;
+  if (missing) console.warn('Пропущено карточек с неполным набором рисунков: ' + missing);
+  if (!pending.length) { process.exitCode = 1; return; }
+  for (let from = 0; from < pending.length; from += 6) {
+    const file = from === 0 ? output : output.replace(/(?:\.json)?$/i, '-' + (from / 6 + 1) + '.json');
+    await saveJson(file, pending.slice(from, from + 6));
+  }
+  console.log('Карточек для импорта: ' + pending.length);
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

@@ -1,8 +1,9 @@
 import { EGE, OGE, VPR, type ExerciseGroup } from './fipi-practice';
 import imported from './fipi-imported.json';
+import { BANK_EXAMS, type CatalogExam } from '../shared/task-catalog';
 
-export const BANK_EXAMS = { vpr: 'ВПР', oge: 'ОГЭ', ege_base: 'ЕГЭ | База', ege_prof: 'ЕГЭ | Профиль' } as const;
-export type BankExam = keyof typeof BANK_EXAMS;
+export { BANK_EXAMS };
+export type BankExam = CatalogExam;
 export type BankSubject = 'math' | 'informatics' | 'physics' | 'russian';
 
 export interface BankTask {

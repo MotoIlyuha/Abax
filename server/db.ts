@@ -1,4 +1,5 @@
 import { tutorSchema } from './tutor-schema';
+import { migrateTaskCatalog } from './task-catalog-schema';
 import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -406,18 +407,21 @@ CREATE INDEX idx_admin_audit_operation ON admin_audit(operation, id);
 CREATE INDEX idx_admin_audit_admin ON admin_audit(admin_id, id);
 `;
 
-const MIGRATIONS: string[] = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10, tutorSchema,
-  'ALTER TABLE tutor_lessons ADD COLUMN removed_at INTEGER'];
+const MIGRATIONS: (string | ((db: Db) => void))[] = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10, tutorSchema,
+  'ALTER TABLE tutor_lessons ADD COLUMN removed_at INTEGER', migrateTaskCatalog];
 
 /** target — до какой версии (по умолчанию — до последней; меньше — только в тестах миграций). */
 export function migrate(db: Db, target = MIGRATIONS.length): void {
-  const current = db.pragma('user_version', { simple: true }) as number;
-  for (let v = current; v < Math.min(target, MIGRATIONS.length); v++) {
-    db.transaction(() => {
-      db.exec(MIGRATIONS[v]);
+  if ((db.pragma('user_version', { simple: true }) as number) >= target) return;
+  db.transaction(() => {
+    const current = db.pragma('user_version', { simple: true }) as number;
+    for (let v = current; v < Math.min(target, MIGRATIONS.length); v++) {
+      const migration = MIGRATIONS[v];
+      if (typeof migration === 'string') db.exec(migration);
+      else migration(db);
       db.pragma(`user_version = ${v + 1}`);
-    })();
-  }
+    }
+  }).immediate();
 }
 
 /** Открывает базу (путь к файлу или ':memory:'), включает WAL и внешние ключи, применяет миграции. */

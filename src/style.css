@@ -6333,6 +6333,7 @@ body.tutor-mode > :not(#tutor-root):not(#startup) { display:none !important; }
   gap: 8px; padding: 0 12px 12px;
 }
 .task-bank-filters { flex: none; display: grid; min-width: 0; gap: 8px; }
+.task-bank-image { display: block; max-width: 100%; height: auto; max-height: 320px; object-fit: contain; margin: 8px auto; }
 @media (max-width: 759.98px) {
   #side-panel.sp-left .sp-head { padding-right: 8px; }
 }

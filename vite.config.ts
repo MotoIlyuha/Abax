@@ -28,12 +28,11 @@ function abaxDevServer(): Plugin {
     name: 'abax-dev-server',
     apply: 'serve',
     configureServer(server) {
-      if (!own) return;
       // сервер поднимается при первом обращении: к моменту запуска dev-сервера загрузчик модулей Vite ещё не готов
       let started: Promise<{ handler: (req: unknown, res: unknown) => void; handleUpgrade: (req: unknown, socket: unknown, head: unknown) => boolean; close: () => Promise<void> }> | null = null;
       const start = () => (started ??= (async () => {
         const { createAppServer } = await server.ssrLoadModule('/server/app.ts') as { createAppServer: (o: Record<string, unknown>) => any };
-        const { loadJwtSecret, truthy, listEnv } = await server.ssrLoadModule('/server/config.ts') as { loadJwtSecret: (e: NodeJS.ProcessEnv, d: string) => string; truthy: (v?: string) => boolean; listEnv: (v?: string) => string[] };
+        const { loadJwtSecret, truthy, listEnv, adminAccountEntries } = await server.ssrLoadModule('/server/config.ts') as { loadJwtSecret: (e: NodeJS.ProcessEnv, d: string) => string; truthy: (v?: string) => boolean; listEnv: (v?: string) => string[]; adminAccountEntries: (v?: string) => [string, string][] };
         const { mailerFromEnv, consoleMailer } = await server.ssrLoadModule('/server/mailer.ts') as { mailerFromEnv: (e: NodeJS.ProcessEnv) => unknown; consoleMailer: (log: (m: string) => void) => unknown };
         const log = (m: string) => server.config.logger.info(`[abax] ${m}`);
         const devAuth = truthy(process.env.ABAX_DEV_AUTH);
@@ -58,6 +57,8 @@ function abaxDevServer(): Plugin {
           googleClientSecret: process.env.GOOGLE_CLIENT_SECRET,
           publicApiUrl: process.env.PUBLIC_API_URL || '',
           allowedOrigins: listEnv(process.env.ALLOWED_ORIGINS),
+          adminOrigin: process.env.ABAX_ADMIN_ORIGIN,
+          adminAccounts: adminAccountEntries(process.env.ABAX_ADMIN_ACCOUNTS),
           log,
         });
         server.config.logger.info(`[abax] сервер Abax подключён к dev-серверу, данные: ${dataDir}`);
@@ -65,10 +66,12 @@ function abaxDevServer(): Plugin {
       })());
       server.middlewares.use((req, res, next) => {
         const url = req.url ?? '';
-        if (!(url.startsWith('/api/') || (url.startsWith('/j/') && String(req.headers.accept ?? '').includes('application/json')))) { next(); return; }
+        const catalog = /^\/api\/task-catalog(?:[/?]|$)/.test(url);
+        const api = url.startsWith('/api/') || (url.startsWith('/j/') && String(req.headers.accept ?? '').includes('application/json'));
+        if (!catalog && !(own && api)) { next(); return; }
         start().then(srv => srv.handler(req, res), next);
       });
-      server.httpServer?.on('upgrade', (req, socket, head) => {
+      if (own) server.httpServer?.on('upgrade', (req, socket, head) => {
         if (!(req.url ?? '').startsWith('/ws/room/')) return;
         start().then(srv => { if (!srv.handleUpgrade(req, socket, head)) socket.destroy(); }, () => socket.destroy());
       });

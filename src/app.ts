@@ -96,7 +96,7 @@ import { attachSelection, selectionAttachBlock } from './chat-attach';
 import { chatAvailable, chatCanWrite, openChat } from './collab-chat';
 import { registerPanelModes } from './panel-modes';
 import { draggedBankTask, initTasksPanel } from './tasks-panel';
-import type { BankTask } from './fipi-bank';
+import { catalogSourceLabel, type CatalogTask } from '../shared/task-catalog';
 import { SIDE_PANEL_NARROW, closeSidePanel, onSidePanel, sidePanelMode, sidePanelOpen, toggleSidePanel } from './side-panel';
 import { initSyncIndicator } from './sync-indicator';
 import { openShareDialog as openShareDialogUi, type ShareApi } from './share-dialog';
@@ -3142,7 +3142,7 @@ let lastBankPage = '';
 let bankOffset = 0;
 
 /** Добавляет карточку через общий механизм истории и выделения объектов. */
-function addBankTask(task: BankTask, at?: { x: number; y: number }): void {
+function addBankTask(task: CatalogTask, at?: { x: number; y: number }): void {
   if (state.view !== 'board' || !canEditBoard() || !isTeacher()) return;
   const r = canvas.getBoundingClientRect();
   const narrow = window.innerWidth < SIDE_PANEL_NARROW;
@@ -3150,7 +3150,7 @@ function addBankTask(task: BankTask, at?: { x: number; y: number }): void {
   const left = !narrow && panel && sidePanelOpen() && sidePanelMode() === 'tasks'
     ? Math.max(r.left, panel.getBoundingClientRect().right + 12) : r.left;
   const cam = state.camera;
-  const h = bankTaskHeight(task.statementMd);
+  const h = bankTaskHeight(task.statementMd, task.illustrations);
   const page = state.project.id + ':' + state.pageId;
   if (lastBankPage !== page) { lastBankPage = page; bankOffset = 0; }
   const visibleWidth = r.right - left;
@@ -3161,9 +3161,10 @@ function addBankTask(task: BankTask, at?: { x: number; y: number }): void {
   const dx = Math.min(offset, room(visibleWidth, TASK_W * cam.zoom));
   const dy = Math.min(offset, room(r.height, h * cam.zoom));
   const point = at ?? { x: left + visibleWidth / 2 + dx, y: r.top + r.height / 2 + dy };
-  const title = EXAM_LABELS[task.examType] + ' № ' + task.number + (task.code ? ' · ФИПИ #' + task.code : '');
+  const title = EXAM_LABELS[task.exam] + ' № ' + task.number + (task.code ? ' · ' + catalogSourceLabel(task) : '');
   const el = createTaskElement({
-    taskId: uid(), title, subject: 'math', examType: task.examType, topic: task.topic, h,
+    taskId: uid(), title, subject: task.boardSubject, subjectLabel: task.subjectName, examType: task.exam, topic: task.topic, h,
+    ...(task.illustrations?.length ? { statementImages: task.illustrations } : {}),
     statementMd: task.statementMd, answer: task.answer, solutionMd: task.solutionMd, solutionVisibleToStudent: false,
     x: cam.x + (point.x - r.left) / cam.zoom - TASK_W / 2,
     y: cam.y + (point.y - r.top) / cam.zoom - h / 2,

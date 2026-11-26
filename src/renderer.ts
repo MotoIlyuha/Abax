@@ -15,6 +15,7 @@ import { styledSegments, type TextStyle } from './text-runs';
 import { fitSolid, solidGeometry, type SolidPrim } from './solid';
 import { FADE_STROKE_DELAY_MS, state } from './state';
 import { assetHashOf } from './asset-store';
+import type { TaskIllustration } from './task-illustration';
 import { ERASER_PATHS, ERASER_TIP } from './icons';
 import { eraserRadius, eraserSettled } from './eraser-size';
 import { SpatialIndex } from './spatial-index';
@@ -29,9 +30,9 @@ export function imageEpoch(): number {
 }
 
 // Кэш загруженных картинок (импортированные PDF-страницы).
-const imgCache = new WeakMap<ImageEl, HTMLImageElement>();
+const imgCache = new WeakMap<ImageEl | TaskIllustration, HTMLImageElement>();
 
-function imageOf(el: ImageEl): HTMLImageElement {
+function imageOf(el: ImageEl | TaskIllustration): HTMLImageElement {
   let img = imgCache.get(el);
   if (!img) {
     img = new Image();
@@ -48,7 +49,12 @@ function imageOf(el: ImageEl): HTMLImageElement {
 
 /** Ждёт картинок среди элементов, которые ещё грузятся; null — все уже готовы. */
 export function imagesLoaded(els: readonly Element[]): Promise<void> | null {
-  const pending = els.filter((e): e is ImageEl => e.type === 'image' && !e.page).map(imageOf).filter(img => !img.complete);
+  const images: (ImageEl | TaskIllustration)[] = [];
+  for (const el of els) {
+    if (el.type === 'image' && !el.page) images.push(el);
+    if (el.type === 'task' && el.statementImages) images.push(...el.statementImages);
+  }
+  const pending = images.map(imageOf).filter(img => !img.complete);
   if (pending.length === 0) return null;
   return Promise.all(pending.map(img => img.decode().catch(() => undefined))).then(() => undefined);
 }
@@ -525,9 +531,15 @@ const TASK_HEAD_H = 34;
 const TASK_FOOT_H = 30;
 const TASK_LH = TASK_FONT * 1.4;
 /** Высота задания из банка с учётом полного текста и отдельной строки заголовка. */
-export function bankTaskHeight(statementMd: string): number {
+function illustrationSize(image: TaskIllustration, available: number): { w: number; h: number } {
+  const scale = Math.min(1, available / image.width, 320 / image.height);
+  return { w: image.width * scale, h: image.height * scale };
+}
+
+export function bankTaskHeight(statementMd: string, images: readonly TaskIllustration[] = []): number {
   const lines = wrapText(statementMd, TASK_FONT, TASK_W - TASK_PAD * 2).length;
-  return Math.max(TASK_H, Math.ceil(TASK_HEAD_H + TASK_FOOT_H + TASK_PAD * 2 + TASK_LH * (lines + 1) + 4));
+  const extra = images.reduce((sum, image) => sum + illustrationSize(image, TASK_W - TASK_PAD * 2).h + 8, 0);
+  return Math.max(TASK_H, Math.ceil(TASK_HEAD_H + TASK_FOOT_H + TASK_PAD * 2 + TASK_LH * (lines + 1) + 4 + extra));
 }
 
 const TASK_STATUS_COLOR = { solved: '#2f9e44', unsolved: '#bd0a0a', none: '#7a8291' } as const;
@@ -570,7 +582,7 @@ function drawTaskEl(ctx: CanvasRenderingContext2D, el: TaskEl, lines: string[]):
     ctx.fillText('Сложное', right - hardW + 8, y + 22);
     right -= hardW + 8;
   }
-  const subject = SUBJECT_LABELS[el.subject ?? 'math'];
+  const subject = el.subjectLabel || SUBJECT_LABELS[el.subject ?? 'math'];
   if (subject && right - (x + TASK_PAD + badgeW + 8) > ctx.measureText(subject).width) {
     ctx.font = TEXT_FONT(12);
     ctx.fillStyle = '#7a8291';
@@ -598,6 +610,13 @@ function drawTaskEl(ctx: CanvasRenderingContext2D, el: TaskEl, lines: string[]):
   ctx.font = TEXT_FONT(TASK_FONT);
   ctx.fillStyle = '#30343b';
   for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], x + TASK_PAD, top + TASK_FONT * 0.8 + i * TASK_LH);
+  top += lines.length * TASK_LH;
+  for (const image of el.statementImages ?? []) {
+    const { w: width, h: height } = illustrationSize(image, Math.max(1, w - TASK_PAD * 2));
+    const img = imageOf(image);
+    if (img.complete && img.naturalWidth) ctx.drawImage(img, x + (w - width) / 2, top + 8, width, height);
+    top += height + 8;
+  }
   ctx.restore();
 
   // подвал: статус и ввод ученика
