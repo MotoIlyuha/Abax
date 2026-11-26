@@ -133,6 +133,12 @@ jobs:
           printf 'version=%s\ncommit=%s\n' "$VERSION" "$COMMIT" > runtime/RELEASE
           expected=$(grep -oE 'assets/(index|board)-[A-Za-z0-9_-]+\.js' runtime/dist/index.html | head -n 1)
           test -n "$expected" || { echo "::error::В dist/index.html не найден основной скрипт"; exit 1; }
+          if [[ "$expected" == assets/board-* ]]; then
+            index_asset=${expected/board-/index-}
+            cp "runtime/dist/$expected" "runtime/dist/$index_asset"
+            sed -i "s|$expected|$index_asset|g" runtime/dist/index.html
+            expected=$index_asset
+          fi
           tar -czf "$RUNNER_TEMP/tutor-runtime.tar.gz" -C runtime dist dist-server RELEASE
           echo "asset=$expected" >> "$GITHUB_OUTPUT"
       - name: Выкатить Tutor на VPS
