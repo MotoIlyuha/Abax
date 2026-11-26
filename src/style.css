@@ -175,7 +175,7 @@ body.hide-undo-redo .undo-group { display: none; }
 #desktop-titlebar:not([hidden]) {
   position: fixed;
   inset: 0 0 auto;
-  height: 6px;
+  height: 8px;
   z-index: 2147483647;
 }
 #desktop-titlebar .desktop-titlebar-content { display: none; }
@@ -183,8 +183,8 @@ body.hide-undo-redo .undo-group { display: none; }
   display: flex;
   align-items: stretch;
   box-sizing: border-box;
-  height: 34px;
-  padding-top: 6px;
+  height: 36px;
+  padding-top: 8px;
   background: var(--panel, #fff);
   color: var(--fg, #20242b);
   box-shadow: var(--shadow);
