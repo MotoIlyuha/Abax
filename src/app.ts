@@ -4979,8 +4979,8 @@ function overCanvas(e: MouseEvent): boolean {
 interface ToolDropOptions {
   activate?: boolean;
   onStart?: () => void;
-}
   stack?: HTMLButtonElement;
+}
 
 let toolDropActive = false;
 /** После броска клик по кнопке инструмента уже не нужен: он выбрал бы инструмент вместо создания. */
@@ -5115,7 +5115,6 @@ function startToolDrop(tool: ToolId, e: PointerEvent, { onStart, activate, stack
 function dropScenePoint(x: number, y: number): { x: number; y: number } {
   const r = canvas.getBoundingClientRect();
   const cam = state.camera;
-  const el = toolDropElement(
   return { x: (x - r.left) / cam.zoom + cam.x, y: (y - r.top) / cam.zoom + cam.y };
 }
 
@@ -5136,6 +5135,7 @@ export function placeStikyNote(e: PointerEvent): void {
 /** Создаёт объект в точке экрана. Липкий стикер сразу открыт для ввода. */
 function dropToolOnCanvas(tool: ToolId, x: number, y: number, stikyNoteColor: string): void {
   if (state.view !== 'board' || !canEditBoard()) return;
+  const el = toolDropElement(
     tool, uid(), dropScenePoint(x, y), state.camera.zoom,
     { color: state.style.color, width: state.style.width, opacity: state.style.opacity },
     stikyNoteColor,
@@ -5147,11 +5147,11 @@ function dropToolOnCanvas(tool: ToolId, x: number, y: number, stikyNoteColor: st
     setSelection([]);
     setTool('select');
     beginTextEdit({ el });
-  }
     return;
-}
+  }
   addElement(el);
   selectInserted(el.id);
+}
 
 // ----- Тулбар -----
 
@@ -5692,13 +5692,13 @@ function wireTopbar(): void {
       // Esc закрывает только верхнее: выделение на доске (см. controller.ts) остаётся до следующего нажатия
       if (!gridMenu().hidden) { e.stopPropagation(); closeGridMenu(); gridButton().focus(); return; }
       if (!settingsPopover().hidden) { e.stopPropagation(); closeSettings(); return; }
-      // поле кегля закрывает свою панель само (Esc там — отмена ввода)
       if (cancelStikyNotePickup()) {
         e.preventDefault();
         e.stopPropagation();
         setTool('select');
         return;
       }
+      // поле кегля закрывает свою панель само (Esc там — отмена ввода)
       const panel = dockedPanel();
       if (panel && !fontEdit) {
         e.stopPropagation();
@@ -6110,9 +6110,9 @@ const POINTER_KINDS = new Set<ToolId>(['laser', 'fadePen', 'flash']);
 let toolBeforeReader: ToolId | null = null;
 
 function refresh(): void {
-  // совместный режим: скрываем тулбар на страницах без права edit
   if (stikyNotePickup && (state.view !== 'board' || state.tool !== 'stikyNote' || !canEditBoard()
     || state.project.id !== stikyNotePickup.projectId || state.pageId !== stikyNotePickup.pageId)) cancelStikyNotePickup();
+  // совместный режим: скрываем тулбар на страницах без права edit
   if (collabActive() && !isHost()) {
     document.body.classList.toggle('readonly-mode', readOnly());
     // читателю панели нет: инструмент — «Выделение» (реакции, копирование), а если копировать нельзя — «Панорама»;

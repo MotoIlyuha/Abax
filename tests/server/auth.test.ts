@@ -315,7 +315,8 @@ describe('секрет сессий и база', () => {
         expect(db.pragma('journal_mode', { simple: true })).toBe('wal');
         expect(db.pragma('foreign_keys', { simple: true })).toBe(1);
         const tables = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'").all() as { name: string }[]).map(t => t.name).sort();
-        expect(tables).toEqual(['admin_audit', 'admin_sessions', 'assets', 'auth_flows', 'email_codes', 'invites', 'member_page_rights',
+        expect(tables).toEqual(['admin_audit', 'admin_sessions', 'assets', 'auth_flows', 'catalog_subjects', 'catalog_tasks',
+          'email_codes', 'invites', 'member_page_rights',
           'payments', 'project_email_invites', 'project_revisions', 'projects', 'promo_codes', 'promo_redemptions', 'public_aliases',
           'tutor_lessons', 'tutor_operations', 'tutor_payments', 'tutor_students', 'users', 'yookassa_checkouts']);
         db.prepare("INSERT INTO users (id, created_at, updated_at) VALUES ('u', 1, 1)").run();

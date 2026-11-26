@@ -403,12 +403,6 @@ function drawElement(
   if (alpha < 1) ctx.globalAlpha = 1;
 }
 
-function drawElementBody(ctx: CanvasRenderingContext2D, el: Element, c: ElCacheEntry): void {
-  switch (el.type) {
-    case 'stroke':
-      ctx.fillStyle = el.tool === 'highlighter' ? hexA(el.color, HIGHLIGHTER_ALPHA) : el.color;
-      ctx.fill(c.path!);
-      break;
 function drawStikyNotePaper(ctx: CanvasRenderingContext2D, note: { x: number; y: number; w: number; h: number; color: string }): void {
   const { x, y, w, h, color } = note;
   const right = x + w, bottom = y + h;
@@ -444,6 +438,12 @@ function drawStikyNotePaper(ctx: CanvasRenderingContext2D, note: { x: number; y:
   }
 }
 
+function drawElementBody(ctx: CanvasRenderingContext2D, el: Element, c: ElCacheEntry): void {
+  switch (el.type) {
+    case 'stroke':
+      ctx.fillStyle = el.tool === 'highlighter' ? hexA(el.color, HIGHLIGHTER_ALPHA) : el.color;
+      ctx.fill(c.path!);
+      break;
     case 'shape':
       // надпись, которую правят на месте, показывает редактор
       drawShapeEl(ctx, el, el.id === state.hideTextId ? null : c.fit);

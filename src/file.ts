@@ -15,8 +15,8 @@ type Rec = Record<string, unknown>;
 const isObj = (v: unknown): v is Rec => v !== null && typeof v === 'object' && !Array.isArray(v);
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const isStr = (v: unknown): v is string => typeof v === 'string';
-const isBool = (v: unknown): v is boolean => typeof v === 'boolean';
 const isLegacyStikyNote = (type: unknown): boolean => type === 'note';
+const isBool = (v: unknown): v is boolean => typeof v === 'boolean';
 
 type Check = (v: unknown) => boolean;
 
