@@ -810,7 +810,7 @@ test.describe('адаптивная шапка', () => {
     await page.keyboard.press('Escape');
 
     await page.keyboard.press('Control+Comma');
-    const hide = page.locator('#settings-dialog').getByRole('region', { name: 'Скрыть из верхней панели' });
+    const hide = page.locator('#settings-dialog').getByRole('region', { name: 'Скрыть', exact: true });
     await expect(hide.getByRole('switch', { name: 'Кнопка экспорта' })).toBeDisabled();
     await expect(hide.getByRole('switch', { name: 'Кнопки импорта' })).toBeEnabled();
     await page.keyboard.press('Escape');

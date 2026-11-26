@@ -1,21 +1,23 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { closeSidePanel, openSidePanel, registerPanelMode, resetSidePanelForTests, sidePanelMode, sidePanelOpen } from '../../src/side-panel';
+import { openSidePanel, registerPanelMode, resetSidePanelForTests, sidePanelMode, sidePanelOpen } from '../../src/side-panel';
 import { initTasksPanel, tasksPanelBody } from '../../src/tasks-panel';
+import { applyServerPlan, clearServerPlan } from '../../src/plan';
+import boardHtml from '../../index.html?raw';
 
 describe('Панель заданий', () => {
-  afterEach(() => { resetSidePanelForTests(); document.body.replaceChildren(); document.body.className = ''; });
+  afterEach(() => { clearServerPlan(); resetSidePanelForTests(); document.body.replaceChildren(); document.body.className = ''; });
 
   it('открывается, переключается с другой панелью и закрывается кнопкой и Escape', () => {
     document.body.className = 'no-motion no-ui-anim';
-    document.body.innerHTML = `
-      <div id="topbar"><button id="btn-notify"></button></div>
-      <button id="btn-tasks"><span class="tasks-button-book"></span><span class="tasks-button-collapse"></span></button>
-    `;
+    applyServerPlan({ plan: 'tutor', limitsEnforced: true });
+    const board = new DOMParser().parseFromString(boardHtml, 'text/html');
+    document.body.append(...board.querySelectorAll('#topbar, #btn-tasks, #tasks-offer'));
     registerPanelMode({ id: 'notify', label: 'Уведомления', icon: '', mount: () => ({}) });
     initTasksPanel(() => {}, () => true);
     const button = document.getElementById('btn-tasks') as HTMLButtonElement;
     expect(button.getAttribute('aria-expanded')).toBe('false');
     expect(button.getAttribute('aria-label')).toBe('Задания');
+    expect(button.querySelector<HTMLElement>('.tutor-badge')!.hidden).toBe(true);
     button.click();
     expect(sidePanelMode()).toBe('tasks');
     expect(sidePanelOpen()).toBe(true);
@@ -43,6 +45,9 @@ describe('Панель заданий', () => {
     expect(sidePanelOpen()).toBe(false);
     expect(document.activeElement).toBe(button);
     expect(button.getAttribute('aria-label')).toBe('Задания');
-    closeSidePanel();
+    button.click();
+    clearServerPlan();
+    expect(sidePanelOpen()).toBe(false);
+    expect(button.querySelector<HTMLElement>('.tutor-badge')!.hidden).toBe(false);
   });
 });

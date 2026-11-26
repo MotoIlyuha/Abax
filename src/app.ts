@@ -95,7 +95,7 @@ import { setChatAttachActions } from './chat-attach-view';
 import { attachSelection, selectionAttachBlock } from './chat-attach';
 import { chatAvailable, chatCanWrite, openChat } from './collab-chat';
 import { registerPanelModes } from './panel-modes';
-import { draggedBankTask, initTasksPanel } from './tasks-panel';
+import { draggedBankTask, initTasksPanel, setTasksButtonHidden, tasksButtonHidden } from './tasks-panel';
 import { catalogSourceLabel, type CatalogTask } from '../shared/task-catalog';
 import { SIDE_PANEL_NARROW, closeSidePanel, onSidePanel, sidePanelMode, sidePanelOpen, toggleSidePanel } from './side-panel';
 import { initSyncIndicator } from './sync-indicator';
@@ -2454,7 +2454,7 @@ export function openAllSettings(section?: string): void {
         syncFit();
         document.addEventListener('topbar-fit', syncFit);
         const unsubTier = onTierHiddenChange(on => setToggleChecked(switchInput(hide.tier), on, false));
-        box.append(boardSwitchGroup('Скрыть из верхней панели', Object.values(hide)),
+        box.append(boardSwitchGroup('Скрыть', Object.values(hide)),
           boardSwitchGroup('Взаимодействия', interactionSwitches('board-setting-switch')));
         return {
           onKey: view.onKey,
@@ -3143,7 +3143,7 @@ let bankOffset = 0;
 
 /** Добавляет карточку через общий механизм истории и выделения объектов. */
 function addBankTask(task: CatalogTask, at?: { x: number; y: number }): void {
-  if (state.view !== 'board' || !canEditBoard() || !isTeacher()) return;
+  if (state.view !== 'board' || !canEditBoard() || !isTeacher() || userPlan() !== 'tutor') return;
   const r = canvas.getBoundingClientRect();
   const narrow = window.innerWidth < SIDE_PANEL_NARROW;
   const panel = document.getElementById('side-panel');
@@ -5433,7 +5433,11 @@ function hideSwitches(rowClass: 'main-switch' | 'board-setting-switch') {
     checked: tierHidden(),
     onChange: on => setTierHidden(on),
   });
-  return { undo: hideUndoSwitch, imports: hideImportsSwitch, exportButton: hideExportSwitch, tier: hideTierSwitch };
+  const tasks = createToggleSwitch({
+    className, label: 'Кнопка «Задания»', icon: ICONS.bookOpen,
+    checked: tasksButtonHidden(), onChange: setTasksButtonHidden,
+  });
+  return { undo: hideUndoSwitch, imports: hideImportsSwitch, exportButton: hideExportSwitch, tier: hideTierSwitch, tasks };
 }
 
 function syncHideSwitchFit(imports: HTMLLabelElement, exportButton: HTMLLabelElement): void {
@@ -5516,13 +5520,13 @@ function wireTopbar(): void {
   const presentMenuItem = menu.querySelector<HTMLElement>('[data-action="present"]');
   if (presentMenuItem) presentMenuItem.hidden = !state.settings.showPresentInMenu;
   // «Скрыть»: переключатели на пружинах (src/toggle-switch.ts), меню при щелчке не закрывается
-  const { undo: hideUndoSwitch, imports: hideImportsSwitch, exportButton: hideExportSwitch, tier: hideTierSwitch } = hideSwitches('main-switch');
+  const { undo: hideUndoSwitch, imports: hideImportsSwitch, exportButton: hideExportSwitch, tier: hideTierSwitch, tasks: hideTasksSwitch } = hideSwitches('main-switch');
   // data-action — на самом переключателе: по нему пункт находят тесты и проверяют доступность
   switchInput(hideUndoSwitch).dataset.action = 'undo';
   switchInput(hideImportsSwitch).dataset.action = 'imports';
   switchInput(hideExportSwitch).dataset.action = 'hide-export';
   switchInput(hideTierSwitch).dataset.action = 'hide-tier';
-  menu.querySelector<HTMLElement>('#menu-hide')!.append(hideUndoSwitch, hideImportsSwitch, hideExportSwitch, hideTierSwitch);
+  menu.querySelector<HTMLElement>('#menu-hide')!.append(hideUndoSwitch, hideImportsSwitch, hideExportSwitch, hideTierSwitch, hideTasksSwitch);
   // крестик на самом тарифе тоже прячет его — переключатель меню показывает это
   onTierHiddenChange(on => setToggleChecked(switchInput(hideTierSwitch), on, false));
   const submenus = () => [...menu.querySelectorAll<HTMLButtonElement>('[data-section]')]
@@ -5534,6 +5538,7 @@ function wireTopbar(): void {
     setToggleChecked(switchInput(hideImportsSwitch), localStorage.getItem('abax.hideImports') === 'true', false);
     setToggleChecked(switchInput(hideExportSwitch), localStorage.getItem('abax.hideExport') === 'true', false);
     setToggleChecked(switchInput(hideTierSwitch), tierHidden(), false);
+    setToggleChecked(switchInput(hideTasksSwitch), tasksButtonHidden(), false);
     syncHideSwitchFit(hideImportsSwitch, hideExportSwitch);
   };
   const setMenuOpen = (open: boolean) => {

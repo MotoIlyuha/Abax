@@ -11,7 +11,7 @@ import {
   LOCKED_KEY, PENDING_KEY, breakPending, featureLocked, proBadge, resetProBadgesForTests, setProBadgeNeeded, setUpgradeHandler, startProBadges, syncProLocks,
 } from '../../src/pro-badge';
 import { closePlansDialog, openPlansDialog, plansDialogOpen, setPlansDialogHooks } from '../../src/plans-dialog';
-import { resetBillingForTests } from '../../src/subscription';
+import { refreshBilling, resetBillingForTests, tutorTrialOffered } from '../../src/subscription';
 import { renderSubscriptionSettings, tierSummary } from '../../src/subscription-settings';
 import { resetProfileSyncForTests, setAccount } from '../../src/profile-sync';
 
@@ -177,6 +177,18 @@ describe('бейдж Pro', () => {
 });
 
 describe('окно подписки', () => {
+  it('показывает предложение 14 дней по доступности пробного периода аккаунта', async () => {
+    setAccount(me('free'));
+    let available = true;
+    setApiForTests(fakeApi(() => billing({ trialAvailable: available })));
+    expect(tutorTrialOffered()).toBe(false);
+    await refreshBilling();
+    expect(tutorTrialOffered()).toBe(true);
+    available = false;
+    await refreshBilling();
+    expect(tutorTrialOffered()).toBe(false);
+  });
+
   it('три тарифа, срок по умолчанию - год; переключение срока меняет цену и строку оплаты', () => {
     openPlansDialog('history');
     expect(plansDialogOpen()).toBe(true);

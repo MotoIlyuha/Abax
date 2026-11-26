@@ -1,6 +1,50 @@
 import { expect, test } from './fixtures';
 import { test as collaboration } from './host';
 
+function storageForPlan(origin: string, plan: 'free' | 'pro' | 'tutor') {
+  return { cookies: [], origins: [{ origin, localStorage: [
+    { name: 'doska.devMode', value: '1' }, { name: 'doska.plan', value: plan },
+  ] }] };
+}
+
+test.use({ storageState: async ({ baseURL }, use) => { await use(storageForPlan(baseURL!, 'tutor')); } });
+
+for (const plan of ['free', 'pro'] as const) {
+  test.describe(`Задания на тарифе ${plan}`, () => {
+    test.use({ storageState: async ({ baseURL }, use) => { await use(storageForPlan(baseURL!, plan)); } });
+    test('подсказка, предложение подписки и скрытие кнопки', async ({ page }) => {
+      const tasks = page.locator('#btn-tasks');
+      await expect(tasks.locator('.tutor-badge')).toBeVisible();
+      await tasks.hover();
+      await expect(page.getByRole('tooltip')).toHaveAttribute('data-side', 'right');
+      await tasks.click();
+      const offer = page.getByRole('dialog', { name: 'Задания в Tutor' });
+      await expect(offer).toBeVisible();
+      await expect(offer.getByText('Попробуйте пробную подписку Tutor на 14 дней')).toBeVisible({ visible: plan === 'free' });
+      await offer.getByRole('button', { name: 'Подписка Tutor' }).click();
+      await expect(page.locator('.pl-card-tutor .pl-cta')).toBeFocused();
+      await page.keyboard.press('Escape');
+      await tasks.click();
+      await offer.getByRole('button', { name: 'Скрыть кнопку «Задания»' }).click();
+      await expect(tasks).toBeHidden();
+      await page.reload();
+      await expect(tasks).toBeHidden();
+      await page.locator('#btn-home').click();
+      await page.locator('#main-menu [data-section="hide"]').click();
+      const toggle = page.locator('#menu-hide').getByRole('switch', { name: 'Кнопка «Задания»' });
+      await expect(toggle).toBeChecked();
+      await toggle.uncheck();
+      await expect(tasks).toBeVisible();
+      await page.keyboard.press('Escape');
+      await page.keyboard.press('Control+Comma');
+      const setting = page.locator('#settings-dialog').getByRole('switch', { name: 'Кнопка «Задания»' });
+      await expect(setting).not.toBeChecked();
+      await setting.check();
+      await expect(tasks).toBeHidden();
+    });
+  });
+}
+
 for (const width of [390, 935]) {
   test(`панель сворачивается под кнопку заданий на экране ${width} px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 844 });
@@ -40,6 +84,7 @@ test('кнопка под меню и взаимоисключение пане�
   const menu = page.locator('#btn-home');
   const panel = page.locator('#side-panel');
   await expect(button).toBeVisible();
+  await expect(button.locator('.tutor-badge')).toBeHidden();
   const a = (await menu.boundingBox())!;
   const b = (await button.boundingBox())!;
   expect(Math.abs(a.x - b.x)).toBeLessThan(1);

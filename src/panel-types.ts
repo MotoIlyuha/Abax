@@ -19,6 +19,4 @@ export interface PanelModeDef {
   side?: 'left';
   /** Кнопка отдельной панели; получает фокус при закрытии. */
   trigger?: HTMLButtonElement;
-  /** Подпись рядом с названием отдельной панели. */
-  badge?: string;
 }

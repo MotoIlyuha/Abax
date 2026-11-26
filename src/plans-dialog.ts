@@ -22,7 +22,7 @@ import { CLOSE_ICON, ICONS } from './icons';
 import { S, atRest, clamp, motionEnabled, register, snap, spring, step, tune, uiAnimOff, unregister, wake, type MotionComponent, type Spring } from './motion';
 import { userPlan } from './plan';
 import type { ProFeature } from './pro-badge';
-import { billingBlocker, billingErrorText, billingState, checkout, onBillingChange, refreshBilling, startTrial } from './subscription';
+import { billingBlocker, billingErrorText, billingState, checkout, onBillingChange, refreshBilling, startTrial, tutorTrialOffered } from './subscription';
 import type { PlanTier } from './types';
 
 export interface PlansDialogHooks {
@@ -199,7 +199,7 @@ export function onPlansDialogClose(fn: () => void): () => void {
 }
 
 /** Открыть окно подписки; feature — из-за какой недоступной возможности (подсветить её). */
-export function openPlansDialog(feature: ProFeature | null = null): void {
+export function openPlansDialog(feature: ProFeature | null = null, focusPlan?: PaidPlan): void {
   if (current) return;
   const T = tokens();
   const timers: { t: number; fn: () => void }[] = [];
@@ -396,17 +396,11 @@ export function openPlansDialog(feature: ProFeature | null = null): void {
   });
 
   // ----- кнопка -----
-  const trialOffered = (): boolean => {
-    const b = billingState();
-    // без сведений (не вошли) пробный период предлагается: у нового аккаунта он есть
-    return userPlan() === 'free' && (b ? b.trialAvailable : true);
-  };
-
   function idleLabel(c: PaidCard): { key: string; text: string; disabled: boolean } {
     const now = userPlan();
     if (planRank(now) > planRank(c.plan)) return { key: 'included', text: `Входит в ${PLAN_TITLES[now]}`, disabled: true };
     if (now === c.plan) return { key: `renew-${period}`, text: `Продлить ${PERIOD_FOR[period ?? 'month']}`, disabled: false };
-    if (c.plan === 'tutor' && trialOffered()) return { key: 'trial', text: '14 дней бесплатно', disabled: false };
+    if (c.plan === 'tutor' && tutorTrialOffered()) return { key: 'trial', text: '14 дней бесплатно', disabled: false };
     return { key: `buy-${c.plan}`, text: `Оформить ${PLAN_TITLES[c.plan]}`, disabled: false };
   }
 
@@ -452,7 +446,7 @@ export function openPlansDialog(feature: ProFeature | null = null): void {
     c.el.classList.toggle('is-current', isCur);
     let note = '';
     if (isCur && b?.planExpiresAt) note = `${b.trial ? 'Пробный период' : 'Действует'} до ${dateText(b.planExpiresAt)}`;
-    else if (c.plan === 'tutor' && trialOffered()) note = 'Один раз на аккаунт, оплата не нужна';
+    else if (c.plan === 'tutor' && tutorTrialOffered()) note = 'Один раз на аккаунт, оплата не нужна';
     c.note.textContent = note;
     c.note.hidden = !note;
   }
@@ -601,6 +595,9 @@ export function openPlansDialog(feature: ProFeature | null = null): void {
   for (const c of paid) setBtn(c, 'idle');
   pick('year');
   syncAll();
-  segBtns.get(period ?? 'year')!.focus({ preventScroll: true });
+  // По переходу из рекламы заданий сразу фокусируем действие для тарифа Tutor.
+  const target = paid.find(c => c.plan === focusPlan);
+  if (target) target.cta.focus();
+  else segBtns.get(period ?? 'year')!.focus({ preventScroll: true });
   void refreshBilling();
 }

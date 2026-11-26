@@ -87,9 +87,9 @@ test.describe('окно «Все настройки»', () => {
     const general = dialog(page).locator('.sd-general');
     await expect(general.getByText('Панель инструментов', { exact: true })).toHaveCount(0);
     await expect(general.getByText('Список страниц', { exact: true })).toHaveCount(0);
-    await expect(general.getByRole('region', { name: 'Скрыть из верхней панели' }).getByRole('switch')).toHaveCount(4);
+    await expect(general.getByRole('region', { name: 'Скрыть', exact: true }).getByRole('switch')).toHaveCount(5);
     await expect(general.getByRole('region', { name: 'Взаимодействия' }).getByRole('switch')).toHaveCount(4);
-    for (const section of ['Скрыть из верхней панели', 'Взаимодействия']) {
+    for (const section of ['Скрыть', 'Взаимодействия']) {
       await expect(general.getByRole('region', { name: section }).locator('.board-setting-switch').first())
         .toHaveCSS('border-top-width', '0px');
     }

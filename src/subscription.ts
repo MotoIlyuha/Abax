@@ -5,6 +5,7 @@
 import { ApiError, getApi, type MeResponse } from './api-client';
 import type { BillingInfo, BillingPeriod, PaidPlan, PromoEffect } from './billing';
 import { account, setAccount, signedIn } from './profile-sync';
+import { userPlan } from './plan';
 
 let billing: BillingInfo | null = null;
 let revision = 0;
@@ -13,6 +14,12 @@ const listeners = new Set<(b: BillingInfo | null) => void>();
 /** Последние сведения о подписке (null — облака нет или ещё не спрашивали). */
 export function billingState(): BillingInfo | null {
   return billing;
+}
+
+/** Общая проверка для карточки Tutor и предложения у кнопки «Задания». */
+export function tutorTrialOffered(): boolean {
+  // Не показываем пробный период, пока тариф уже действует или сервер сообщил, что попытка использована.
+  return userPlan() === 'free' && (billing?.trialAvailable ?? !signedIn());
 }
 
 export function onBillingChange(fn: (b: BillingInfo | null) => void): () => void {

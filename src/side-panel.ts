@@ -181,9 +181,7 @@ function build(): Ui {
   const leftTitle = document.createElement('div');
   leftTitle.className = 'sp-heading';
   const title = document.createElement('strong');
-  const badge = document.createElement('span');
-  badge.className = 'tutor-badge';
-  leftTitle.append(title, badge);
+  leftTitle.append(title);
   head.append(select.el, leftTitle, actions);
   const body = document.createElement('div');
   body.className = 'sp-body';
@@ -669,9 +667,6 @@ export function openSidePanel(mode?: PanelMode, opts: { focus?: boolean } = {}):
   u.panel.setAttribute('aria-label', left ? def?.label ?? '' : 'Боковая панель');
   if (left) {
     u.head.querySelector<HTMLElement>('.sp-heading strong')!.textContent = def?.label ?? '';
-    const badge = u.head.querySelector<HTMLElement>('.sp-heading .tutor-badge')!;
-    badge.textContent = def?.badge ?? '';
-    badge.hidden = !def?.badge;
   }
   if (!left) setSidePanelPref({ mode: next });
   if (!left && u.select.value !== optionValue(next)) u.select.setValue(optionValue(next), opening);
