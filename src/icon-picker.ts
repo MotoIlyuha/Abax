@@ -2,7 +2,7 @@
 // и загрузка своей картинки. Эмодзи (src/emoji-data.json, см. scripts/emoji.mjs) грузятся
 // отдельным куском при первом открытии окна.
 
-import { claimMenu, closeMenu, openMenu, releaseMenu, settleMenu } from './menu-motion';
+import { claimMenu, closeMenu, menuMotion, openMenu, releaseMenu, settleMenu } from './menu-motion';
 import { CATEGORY_ICONS, UPLOAD_ICON } from './icons';
 
 /** Категория → [эмодзи, «название и теги» в нижнем регистре]. */
@@ -33,7 +33,8 @@ function loadEmoji(): Promise<EmojiData> {
 const HIDE_COUNTRY_FLAGS = typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent);
 const COUNTRY_FLAG = /[\u{1F1E6}-\u{1F1FF}\u{E0061}-\u{E007A}]/u;
 
-let open: { el: HTMLElement; anchor: HTMLElement; off: () => void } | null = null;
+let open: { el: HTMLElement; anchor: HTMLElement; off: () => void; mobile: boolean; backdrop: HTMLElement | null } | null = null;
+let finishDrawerClose: (() => void) | null = null;
 
 export function iconPickerOpen(): boolean {
   return open !== null;
@@ -42,11 +43,24 @@ export function iconPickerOpen(): boolean {
 /** Закрыть окно; instant — без анимации (окно сменяется другим или меняется размер окна). */
 export function closeIconPicker(instant = false): void {
   if (!open) return;
-  const { el, off } = open;
+  const { el, off, mobile, backdrop } = open;
   open = null;
   off();
   releaseMenu('icon');
-  closeMenu(el, instant);
+  if (mobile) {
+    if (instant || menuMotion() === 'off') { el.remove(); backdrop?.remove(); return; }
+    el.inert = true;
+    el.classList.add('ip-drawer-closing');
+    const finish = () => {
+      clearTimeout(timer);
+      el.remove();
+      backdrop?.remove();
+      if (finishDrawerClose === finish) finishDrawerClose = null;
+    };
+    const timer = window.setTimeout(finish, 250);
+    el.addEventListener('animationend', e => { if (e.target === el && e.animationName === 'ip-drawer-out') finish(); });
+    finishDrawerClose = finish;
+  } else closeMenu(el, instant);
 }
 
 /** Картинка → квадрат UPLOAD_PX (обрезка по центру) в PNG; null — не прочиталась. */
@@ -87,11 +101,14 @@ export interface IconPickerOptions {
 export function openIconPicker(anchor: HTMLElement, current: string | null, onPick: (icon: string | null) => void, opts: IconPickerOptions = {}): void {
   if (open?.anchor === anchor) { closeIconPicker(); return; }
   closeIconPicker(true);
+  finishDrawerClose?.();
   // прошлое окно ещё втягивается в свою кнопку — убираем его, чтобы id не повторялся
   for (const old of document.querySelectorAll<HTMLElement>('#icon-picker')) settleMenu(old);
+  const mobile = window.innerWidth <= 640;
   const el = document.createElement('div');
   el.id = 'icon-picker';
   el.className = opts.overDialog ? 'popup-menu ip-over-dialog' : 'popup-menu';
+  if (mobile) el.classList.add('ip-drawer');
   el.setAttribute('role', 'dialog');
   el.setAttribute('aria-label', opts.label ?? 'Иконка проекта');
   // клавиши поля поиска — окну, а не модальному окну под ним (src/settings-dialog.ts, src/onboarding.ts)
@@ -149,9 +166,63 @@ export function openIconPicker(anchor: HTMLElement, current: string | null, onPi
   foot.append(upload, file);
   const withUpload = opts.upload !== false;
   el.append(head, tabs, body, ...(withUpload ? [foot] : []));
+  const backdrop = mobile ? document.createElement('div') : null;
+  if (backdrop) {
+    backdrop.className = 'ip-backdrop';
+    backdrop.addEventListener('pointerdown', e => e.stopPropagation());
+    backdrop.addEventListener('click', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      closeIconPicker();
+    });
+    document.body.appendChild(backdrop);
+    el.setAttribute('aria-modal', 'true');
+  }
   document.body.appendChild(el);
   claimMenu('icon', () => closeIconPicker());
-  openMenu(el, { from: anchor, place: () => place(el, anchor), remove: true, items: () => (withUpload ? [head, tabs, body, foot] : [head, tabs, body]) });
+  if (!mobile) openMenu(el, { from: anchor, place: () => place(el, anchor), remove: true, items: () => (withUpload ? [head, tabs, body, foot] : [head, tabs, body]) });
+
+  if (mobile) {
+    let startX = 0, startY = 0, distance = 0;
+    let tracking = false, dragging = false;
+    const reset = () => {
+      tracking = false;
+      dragging = false;
+      distance = 0;
+      el.style.removeProperty('translate');
+    };
+    body.addEventListener('touchstart', e => {
+      if (e.touches.length !== 1) { reset(); return; }
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      tracking = true;
+      dragging = false;
+      distance = 0;
+    }, { passive: true });
+    body.addEventListener('touchmove', e => {
+      if (!tracking || e.touches.length !== 1) { reset(); return; }
+      const touch = e.touches[0];
+      if (!dragging && body.scrollTop > 0) {
+        startX = touch.clientX;
+        startY = touch.clientY;
+        return;
+      }
+      const dy = touch.clientY - startY;
+      const dx = touch.clientX - startX;
+      if (!dragging && (dy <= 8 || dy <= Math.abs(dx))) return;
+      dragging = true;
+      distance = Math.max(0, dy);
+      if (e.cancelable) e.preventDefault();
+      el.style.translate = `0 ${distance}px`;
+    }, { passive: false });
+    body.addEventListener('touchend', () => {
+      const dismiss = dragging && distance >= 90;
+      if (dismiss) el.style.setProperty('--ip-close-start', `${distance}px`);
+      reset();
+      if (dismiss) closeIconPicker();
+    });
+    body.addEventListener('touchcancel', reset);
+  }
 
   const pick = (emoji: string) => { closeIconPicker(); onPick(emoji); };
   const emojiButton = ([emoji, words]: [string, string]): HTMLButtonElement => {
@@ -299,22 +370,25 @@ export function openIconPicker(anchor: HTMLElement, current: string | null, onPi
   // клик мимо, Esc, прокрутка домашней или смена размера окна — закрыть
   const onDown = (e: PointerEvent) => {
     const t = e.target as Node;
+    if (mobile && t === backdrop) return;
     if (!el.contains(t) && !anchor.contains(t)) closeIconPicker();
   };
   const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') closeIconPicker(); };
-  const onResize = () => closeIconPicker(true);
+  const onResize = () => {
+    if (!mobile || window.innerWidth > 640) closeIconPicker(true);
+  };
   document.addEventListener('pointerdown', onDown, true);
   document.addEventListener('keydown', onKey, true);
   window.addEventListener('resize', onResize);
   open = {
-    el, anchor,
+    el, anchor, mobile, backdrop,
     off: () => {
       document.removeEventListener('pointerdown', onDown, true);
       document.removeEventListener('keydown', onKey, true);
       window.removeEventListener('resize', onResize);
     },
   };
-  search.focus();
+  if (!mobile) search.focus();
 }
 
 /** Под кнопкой-вызовом (не влезает — над ней), в пределах окна. */

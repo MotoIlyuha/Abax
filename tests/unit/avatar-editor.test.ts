@@ -35,6 +35,85 @@ afterEach(() => {
   closeOnboardingForTests();
 });
 
+it('общий выбор эмодзи на мобильном экране открывает нижнюю панель и закрывается по фону', async () => {
+  const width = window.innerWidth;
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: 412 });
+  try {
+    const seen: (string | null)[] = [];
+    const btn = createIconButton({ value: null, title: () => 'Иконка', onPick: v => seen.push(v) });
+    document.body.appendChild(btn.el);
+    btn.el.click();
+    expect(document.querySelector('#icon-picker.ip-drawer')?.getAttribute('aria-modal')).toBe('true');
+    expect(document.querySelector('.ip-backdrop')).not.toBeNull();
+    const first = await until(() => document.querySelector<HTMLButtonElement>('#icon-picker .ip-emoji'));
+    first.click();
+    expect(seen).toHaveLength(1);
+    await until(() => !document.querySelector('.ip-backdrop'));
+    btn.el.click();
+    const backdrop = document.querySelector<HTMLElement>('.ip-backdrop')!;
+    const drawer = document.querySelector<HTMLElement>('#icon-picker')!;
+    let bubbled = 0;
+    const onClick = () => { bubbled++; };
+    document.body.addEventListener('click', onClick);
+    backdrop.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    expect(iconPickerOpen()).toBe(true);
+    backdrop.click();
+    expect(iconPickerOpen()).toBe(false);
+    expect(bubbled).toBe(0);
+    expect(drawer.classList.contains('ip-drawer-closing')).toBe(true);
+    expect(backdrop.isConnected).toBe(true);
+    const end = new Event('animationend', { bubbles: true });
+    Object.defineProperty(end, 'animationName', { value: 'ip-drawer-out' });
+    drawer.dispatchEvent(end);
+    expect(backdrop.isConnected).toBe(false);
+    expect(drawer.isConnected).toBe(false);
+    document.body.removeEventListener('click', onClick);
+  } finally {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
+  }
+});
+
+it('свайп вниз закрывает мобильную панель только после достижения начала списка', async () => {
+  const width = window.innerWidth;
+  Object.defineProperty(window, 'innerWidth', { configurable: true, value: 412 });
+  try {
+    const btn = createIconButton({ value: null, title: () => 'Иконка', onPick: () => {} });
+    document.body.appendChild(btn.el);
+    const touch = (target: Element, type: string, x: number, y: number) => {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'touches', { value: type === 'touchend' || type === 'touchcancel' ? [] : [{ clientX: x, clientY: y }] });
+      target.dispatchEvent(event);
+      return event;
+    };
+    btn.el.click();
+    const body = document.querySelector<HTMLElement>('#icon-picker .ip-body')!;
+    body.scrollTop = 100;
+    touch(body, 'touchstart', 10, 100);
+    touch(body, 'touchmove', 10, 220);
+    touch(body, 'touchend', 10, 220);
+    expect(iconPickerOpen()).toBe(true);
+    body.scrollTop = 0;
+    touch(body, 'touchstart', 10, 100);
+    touch(body, 'touchmove', 10, 140);
+    touch(body, 'touchend', 10, 140);
+    expect(iconPickerOpen()).toBe(true);
+    touch(body, 'touchstart', 10, 100);
+    touch(body, 'touchmove', 120, 110);
+    touch(body, 'touchend', 120, 110);
+    expect(iconPickerOpen()).toBe(true);
+    body.scrollTop = 50;
+    touch(body, 'touchstart', 10, 100);
+    touch(body, 'touchmove', 10, 150);
+    body.scrollTop = 0;
+    expect(touch(body, 'touchmove', 10, 260).defaultPrevented).toBe(true);
+    touch(body, 'touchend', 10, 260);
+    expect(iconPickerOpen()).toBe(false);
+    await until(() => !document.querySelector('.ip-backdrop'));
+  } finally {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: width });
+  }
+});
+
 describe('круг аватара', () => {
   it('буквы, смайл и фото; узлы круга не пересоздаются без изменений', () => {
     const b = createUserAvatar({ name: 'Анна Петрова', bg: '#000', fg: '#fff', status: 'online' });

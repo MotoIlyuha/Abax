@@ -33,6 +33,31 @@ async function countTransitions(page: Page): Promise<() => Promise<number>> {
 }
 
 test.describe('страницы проекта', () => {
+  test('на мобильном экране выбор иконки открывается снизу', async ({ board, page }) => {
+    await page.setViewportSize({ width: 412, height: 915 });
+    await board.home();
+    const badge = page.locator('#home .project-card .project-icon.badge').first();
+    await badge.click();
+    const picker = page.locator('#icon-picker');
+    const backdrop = page.locator('.ip-backdrop');
+    await expect(picker).toHaveClass(/ip-drawer/);
+    await expect(backdrop).toBeVisible();
+    await expect(picker).toHaveAttribute('aria-modal', 'true');
+    await expect.poll(async () => { const b = await picker.boundingBox(); return b && Math.round(b.y + b.height); }).toBe(915);
+    const bounds = await picker.boundingBox();
+    expect(bounds!.x).toBe(0);
+    expect(bounds!.width).toBe(412);
+    await picker.locator('.ip-search').fill('ракета');
+    await expect(picker.locator('.ip-results .ip-emoji').first()).toHaveText('🚀');
+    await picker.locator('.ip-results .ip-emoji').first().click();
+    await expect(badge).toHaveText('🚀');
+    await expect(backdrop).toHaveCount(0);
+    await badge.click();
+    await backdrop.click({ position: { x: 10, y: 10 } });
+    await expect(picker).toHaveCount(0);
+    await expect(backdrop).toHaveCount(0);
+  });
+
   test('плавающая кнопка: «Страница +» добавляет страницу, «Страницы» поднимается над списком', async ({ board, page }) => {
     const btn = page.locator('#btn-pages');
     const tray = page.locator('#pages-tray');
