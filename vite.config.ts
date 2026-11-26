@@ -87,7 +87,10 @@ export default defineConfig(({ command }) => ({
     transformIndexHtml: html => (apiOrigin ? html.replace("connect-src 'self'", `connect-src 'self' ${apiOrigin}`) : html),
   }],
   base: './',
-  build: { target: 'es2022', outDir: 'dist' },
+  build: {
+    target: 'es2022', outDir: 'dist',
+    rollupOptions: { input: { board: resolve(__dirname, 'index.html'), contacts: resolve(__dirname, 'contacts/index.html') } },
+  },
   // через https-туннель (PUBLIC_API_URL=https://….ngrok-free.app) dev-сервер должен принимать его имя хоста
   server: { port: 5173, strictPort: true, allowedHosts: tunnelHost ? [tunnelHost] : [] },
   define: {

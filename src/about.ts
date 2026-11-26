@@ -119,6 +119,7 @@ export function renderAbout(host: HTMLElement, onLogoHold?: () => void): void {
 
   const links = el('div', 'sd-about-links');
   links.append(link(REPO_URL, 'Исходный код на GitHub'), link(`${REPO_URL}/issues`, 'Сообщить о проблеме'));
+  links.appendChild(link(new URL('contacts/index.html', document.baseURI).href, 'Контакты и реквизиты'));
   box.appendChild(links);
   host.appendChild(box);
 }

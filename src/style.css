@@ -6470,3 +6470,35 @@ body.tutor-mode > :not(#tutor-root):not(#startup) { display:none !important; }
 .analytics-done path { fill:none; stroke:white; stroke-width:2.2; stroke-linecap:round; stroke-linejoin:round; stroke-dasharray:1; stroke-dashoffset:1; }
 
 .help-group.analytics-arriving #btn-help { position: relative; z-index: 1; }
+
+/* Публичная страница контактов доступна без запуска приложения и входа в аккаунт. */
+html:has(body.contacts-page) { height: auto; min-height: 100%; overflow: auto; }
+body.contacts-page {
+  display: block; height: auto; min-height: 100vh; overflow: auto;
+  background: #f4f5f7; color: #20242b; font: 16px/1.6 system-ui, sans-serif;
+  user-select: text; -webkit-user-select: text; touch-action: auto;
+}
+.contacts-content { width: min(100% - 48px, 820px); margin: 0 auto; padding: 32px 0 40px; }
+.contacts-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-bottom: 64px; }
+.contacts-brand { display: inline-flex; align-items: center; gap: 12px; color: #20242b; font-size: 24px; font-weight: 700; text-decoration: none; }
+.contacts-brand img { display: block; }
+.contacts-back { font-size: 14px; }
+.contacts-content h1 { margin: 0 0 16px; font-size: clamp(28px, 5vw, 42px); line-height: 1.15; letter-spacing: -.035em; }
+.contacts-intro { max-width: 580px; margin: 0 0 36px; color: #596272; }
+.contacts-section { margin-top: 24px; padding: 28px 32px; background: #fff; border: 1px solid #e1e4ea; border-radius: 16px; }
+.contacts-section h2 { margin: 0 0 20px; font-size: 20px; line-height: 1.3; }
+.contacts-details { margin: 0; }
+.contacts-details > div { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 24px; padding: 14px 0; }
+.contacts-details > div + div { border-top: 1px solid #eef0f3; }
+.contacts-details dt { color: #596272; font-size: 14px; }
+.contacts-details dd { margin: 0; overflow-wrap: anywhere; }
+.contacts-content a:not(.contacts-brand) { color: #245dcb; text-underline-offset: 4px; }
+.contacts-content a:hover { text-decoration: underline; }
+.contacts-content a:focus-visible { outline: 2px solid #3273f5; outline-offset: 5px; border-radius: 3px; }
+.contacts-footer { margin-top: 32px; color: #596272; font-size: 13px; }
+@media (max-width: 600px) {
+  .contacts-content { width: calc(100% - 32px); padding-top: 20px; }
+  .contacts-header { margin-bottom: 44px; }
+  .contacts-section { padding: 24px 20px; }
+  .contacts-details > div { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+}
