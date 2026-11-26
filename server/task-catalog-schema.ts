@@ -3,20 +3,32 @@ import imported from '../src/fipi-imported.json';
 import { catalogSearchText } from '../shared/task-catalog';
 import type { Db } from './db';
 
-export function migrateTaskCatalog(db: Db): void {
+function createCatalogTasks(db: Db, table: 'catalog_tasks' | 'catalog_tasks_v14'): void {
   db.exec(`
-    CREATE TABLE catalog_subjects (
-      id TEXT PRIMARY KEY, name TEXT NOT NULL, board_subject TEXT NOT NULL, name_key TEXT NOT NULL UNIQUE
-    );
-    CREATE TABLE catalog_tasks (
+    CREATE TABLE ${table} (
       id TEXT PRIMARY KEY, subject_id TEXT NOT NULL REFERENCES catalog_subjects(id) ON DELETE RESTRICT,
       exam TEXT NOT NULL, number INTEGER CHECK (number BETWEEN 1 AND 999), topic TEXT NOT NULL, statement TEXT NOT NULL, answer TEXT NOT NULL,
       solution TEXT NOT NULL, code TEXT NOT NULL, source_url TEXT NOT NULL, published INTEGER NOT NULL,
       illustrations TEXT NOT NULL, search_text TEXT NOT NULL
     );
+  `);
+}
+
+function indexCatalogTasks(db: Db): void {
+  db.exec(`
     CREATE INDEX idx_catalog_task_filters ON catalog_tasks(subject_id, exam, published, number);
     CREATE UNIQUE INDEX idx_catalog_task_source ON catalog_tasks(exam, source_url, code) WHERE code <> '' AND source_url <> '';
   `);
+}
+
+export function migrateTaskCatalog(db: Db): void {
+  db.exec(`
+    CREATE TABLE catalog_subjects (
+      id TEXT PRIMARY KEY, name TEXT NOT NULL, board_subject TEXT NOT NULL, name_key TEXT NOT NULL UNIQUE
+    );
+  `);
+  createCatalogTasks(db, 'catalog_tasks');
+  indexCatalogTasks(db);
   db.prepare("INSERT INTO catalog_subjects VALUES ('math', 'Математика', 'math', 'математика')").run();
   const insertTask = db.prepare(`INSERT INTO catalog_tasks
     (id, subject_id, exam, number, topic, statement, answer, solution, code, source_url, published, illustrations, search_text)
@@ -37,4 +49,24 @@ export function migrateTaskCatalog(db: Db): void {
     'demo:oge:2026:15', 'oge', 15, topic, statement, '9',
     'Синус угла B равен AC / AB. Значит, AC = 21 × 3/7 = 9.', 'ОГЭ-2026-15', source,
     JSON.stringify(images), catalogSearchText('ОГЭ-2026-15 демоверсия ФИПИ ' + topic + ' ' + statement));
+}
+
+/** В ранней схеме V13 задание ссылалось на раздел, а в выпущенной V13 — на предмет. */
+export function migrateCatalogTaskSubjects(db: Db): void {
+  const columns = db.pragma('table_info(catalog_tasks)') as { name: string }[];
+  if (!columns.some(column => column.name === 'section_id')) return;
+
+  createCatalogTasks(db, 'catalog_tasks_v14');
+  db.exec(`
+    INSERT INTO catalog_tasks_v14
+      (id, subject_id, exam, number, topic, statement, answer, solution, code, source_url, published, illustrations, search_text)
+    SELECT t.id, s.subject_id, t.exam, t.number, t.topic, t.statement, t.answer, t.solution, t.code, t.source_url,
+      t.published, t.illustrations, t.search_text
+    FROM catalog_tasks t LEFT JOIN catalog_sections s ON s.id = t.section_id;
+
+    DROP TABLE catalog_tasks;
+    ALTER TABLE catalog_tasks_v14 RENAME TO catalog_tasks;
+    DROP TABLE catalog_sections;
+  `);
+  indexCatalogTasks(db);
 }

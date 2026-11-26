@@ -295,7 +295,7 @@ it('миграция V9 сохраняет старые тарифы, платё
     } finally { old.close(); }
     const migrated = openDb(path);
     try {
-      expect(migrated.pragma('user_version', { simple: true })).toBe(13);
+      expect(migrated.pragma('user_version', { simple: true })).toBe(14);
       expect(migrated.pragma('integrity_check', { simple: true })).toBe('ok');
       expect(migrated.prepare('SELECT plan, plan_expires_at FROM users').get()).toEqual({ plan: 'pro', plan_expires_at: null });
       expect(migrated.prepare('SELECT status, resolved_at FROM payments').get()).toEqual({ status: 'paid', resolved_at: null });
@@ -307,6 +307,47 @@ it('миграция V9 сохраняет старые тарифы, платё
 });
 
 describe('Каталог заданий', () => {
+  it('переносит опубликованные задания и черновики из разделов ранней схемы V13', () => {
+    const db = new Database(':memory:');
+    try {
+      db.pragma('foreign_keys = ON');
+      migrate(db, 12);
+      db.exec(`
+        CREATE TABLE catalog_subjects (
+          id TEXT PRIMARY KEY, name TEXT NOT NULL, board_subject TEXT NOT NULL, name_key TEXT NOT NULL UNIQUE
+        );
+        CREATE TABLE catalog_sections (
+          id TEXT PRIMARY KEY, subject_id TEXT NOT NULL REFERENCES catalog_subjects(id) ON DELETE RESTRICT,
+          name TEXT NOT NULL, name_key TEXT NOT NULL, UNIQUE(subject_id, name_key)
+        );
+        CREATE TABLE catalog_tasks (
+          id TEXT PRIMARY KEY, section_id TEXT NOT NULL REFERENCES catalog_sections(id) ON DELETE RESTRICT,
+          exam TEXT NOT NULL, number INTEGER, topic TEXT NOT NULL, statement TEXT NOT NULL, answer TEXT NOT NULL,
+          solution TEXT NOT NULL, code TEXT NOT NULL, source_url TEXT NOT NULL, published INTEGER NOT NULL,
+          illustrations TEXT NOT NULL, search_text TEXT NOT NULL
+        );
+        CREATE INDEX idx_catalog_task_filters ON catalog_tasks(exam, published, number);
+        CREATE INDEX idx_catalog_task_section ON catalog_tasks(section_id);
+        CREATE UNIQUE INDEX idx_catalog_task_source ON catalog_tasks(exam, source_url, code) WHERE code <> '' AND source_url <> '';
+        INSERT INTO catalog_subjects VALUES ('math', 'Математика', 'math', 'математика'), ('physics', 'Физика', 'physics', 'физика');
+        INSERT INTO catalog_sections VALUES ('movement', 'physics', 'Движение', 'движение');
+        INSERT INTO catalog_tasks VALUES
+          ('published', 'movement', 'oge', 15, 'Скорость', 'Найдите скорость', '9', 'Решение', 'CODE', 'https://example.test/task', 1, '[]', 'скорость'),
+          ('draft', 'movement', 'oge', NULL, 'Движение', 'Черновик', '', '', '', '', 0, '[]', 'черновик');
+        PRAGMA user_version = 13;
+      `);
+
+      migrate(db);
+      migrate(db);
+      expect(db.pragma('user_version', { simple: true })).toBe(14);
+      expect(db.pragma('foreign_key_check')).toEqual([]);
+      expect(db.prepare('SELECT id, subject_id, number, answer, published FROM catalog_tasks ORDER BY id').all()).toEqual([
+        { id: 'draft', subject_id: 'physics', number: null, answer: '', published: 0 },
+        { id: 'published', subject_id: 'physics', number: 15, answer: '9', published: 1 },
+      ]);
+    } finally { db.close(); }
+  });
+
   it('публикует только проверенные карточки по предмету, экзамену и номеру и сохраняет рисунки', async () => {
     const app = await setup();
     const cookie = await session(app);

@@ -1,5 +1,5 @@
 import { tutorSchema } from './tutor-schema';
-import { migrateTaskCatalog } from './task-catalog-schema';
+import { migrateCatalogTaskSubjects, migrateTaskCatalog } from './task-catalog-schema';
 import Database from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
@@ -408,7 +408,7 @@ CREATE INDEX idx_admin_audit_admin ON admin_audit(admin_id, id);
 `;
 
 const MIGRATIONS: (string | ((db: Db) => void))[] = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, SCHEMA_V6, SCHEMA_V7, SCHEMA_V8, SCHEMA_V9, SCHEMA_V10, tutorSchema,
-  'ALTER TABLE tutor_lessons ADD COLUMN removed_at INTEGER', migrateTaskCatalog];
+  'ALTER TABLE tutor_lessons ADD COLUMN removed_at INTEGER', migrateTaskCatalog, migrateCatalogTaskSubjects];
 
 /** target — до какой версии (по умолчанию — до последней; меньше — только в тестах миграций). */
 export function migrate(db: Db, target = MIGRATIONS.length): void {
