@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <!-- script-src без 'unsafe-inline': даже если чужие данные попадут в разметку, скрипт не выполнится.
+       worker-src blob: - воркер pdf.js встроен в сборку (?worker&inline); ws: - сервер совместной работы
+       (автор в Electron открыт с file://); abaxboard.ru - проверка обновлений;
+       'unsafe-inline' в style-src - стили через style и <style> окна демонстрации. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://mc.yandex.ru; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://mc.yandex.ru; font-src 'self' data:; connect-src 'self' ws: wss: https://abaxboard.ru https://mc.yandex.ru; frame-src https://mc.yandex.ru; object-src 'none'; base-uri 'none'; form-action 'none'" />
+  <script src="metrika.js"></script>
+  <title>Abax</title>
+  <link rel="icon" type="image/svg+xml" href="logo.svg" />
+  <style>
+    html, body { margin: 0; background: #f4f5f7; }
+    #startup { position: fixed; inset: 0; z-index: 2147483647; display: grid; place-items: center; background: #f4f5f7; color: #596272; font: 14px/1.5 system-ui, sans-serif; }
+    #startup[hidden] { display: none; }
+    #startup-status { text-align: center; opacity: 0; animation: startup-show .2s 600ms forwards; }
+    #startup-status img { display: block; width: 56px; height: 56px; margin: 0 auto 14px; }
+    #startup-retry { margin-top: 12px; padding: 8px 14px; border: 1px solid #cbd1da; border-radius: 6px; background: white; color: #20242b; font: inherit; cursor: pointer; }
+    #startup-retry[hidden] { display: none; }
+    @keyframes startup-show { to { opacity: 1; } }
+    @media (prefers-reduced-motion: reduce) { #startup-status { animation-duration: 1ms; } }
+  </style>
+  <script type="module" crossorigin src="./assets/index-DOCfAAof.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-C_vAbnqx.css">
+</head>
+<body>
+  <div id="tutor-root" hidden></div>
+  <div id="startup" role="status" aria-live="polite">
+    <div id="startup-status">
+      <img src="logo.svg" alt="" />
+      <div id="startup-message">Загрузка…</div>
+      <button id="startup-retry" type="button" hidden>Перезагрузить</button>
+    </div>
+  </div>
+  <div id="desktop-titlebar" hidden>
+    <div class="desktop-titlebar-content">
+      <span class="desktop-titlebar-caption">Abax</span>
+      <button type="button" data-window-action="minimize" aria-label="Свернуть окно" title="Свернуть окно"></button>
+      <button type="button" data-window-action="maximize" aria-label="Развернуть окно" title="Развернуть окно"></button>
+      <button type="button" data-window-action="close" aria-label="Закрыть окно" title="Закрыть окно"></button>
+    </div>
+  </div>
+  <script src="startup.js"></script>
+  <div id="topbar">
+    <div class="topbar-side topbar-right">
+      <!-- flex-direction: row-reverse - первый в разметке стоит правее всех: экспорт справа от импорта -->
+      <div class="topbar-group export-group"><button id="btn-export" class="icon" title="Экспорт в PNG (Ctrl+E)"></button></div>
+      <div class="topbar-group import-group">
+        <button id="btn-import" class="icon" title="Импорт документа"></button>
+        <button id="btn-image" class="icon" title="Вставить изображение (или Ctrl+V / перетащить файл)"></button>
+      </div>
+      <div class="topbar-group undo-group">
+        <button id="btn-undo" class="icon" title="Отменить (Ctrl+Z)"></button>
+        <button id="btn-redo" class="icon" title="Повторить (Ctrl+Y)"></button>
+      </div>
+      <div class="topbar-group project-group">
+        <button id="project-icon" class="project-icon top" title="Иконка проекта"></button>
+        <input id="project-name" aria-label="Название проекта" spellcheck="false" autocomplete="off" />
+        <span class="crumb-sep" aria-hidden="true">/</span>
+        <input id="page-name" aria-label="Название страницы" spellcheck="false" autocomplete="off" />
+        <button id="sync-indicator" type="button" hidden></button>
+      </div>
+      <button id="btn-home" class="topbar-logo" title="Проекты (домашняя страница)" aria-label="Проекты (домашняя страница)"><img src="logo.svg" alt="Abax" /></button>
+    </div>
+    <div class="topbar-side topbar-left">
+      <!-- «Чат, комментарии и уведомления» (src/notify-button.ts): row-reverse - крайняя справа, видна всегда; подсказка снизу -->
+      <button id="btn-notify" class="notify-btn" type="button" title="Чат, комментарии и уведомления" aria-label="Чат, комментарии и уведомления" aria-expanded="false" data-tip-side="bottom"></button>
+      <button id="btn-share" class="share-btn" type="button" title="Поделиться доской" aria-label="Поделиться доской"><span class="share-icon" aria-hidden="true"></span><span class="share-text">Поделиться</span></button>
+      <!-- row-reverse: группа аватаров - слева от «Поделиться», сама по себе, без плашки (src/collab-presence.ts) -->
+      <div id="collab-presence" aria-label="Участники" hidden></div>
+      <div class="topbar-group collab-group">
+        <!-- скрыты из шапки; обработчики остаются (окно демонстрации и быстрые настройки) -->
+        <button id="btn-present" class="icon" title="Окно для демонстрации экрана: только холст, без интерфейса" hidden></button>
+        <button id="btn-settings" class="icon" title="Настройки доски" hidden></button>
+      </div>
+    </div>
+    <button id="grid-mode" title="Фон страницы" aria-haspopup="listbox" aria-expanded="false" hidden></button>
+  </div>
+  <a id="tutor-return" href="?route=tutor" aria-label="В кабинет Tutor" title="В кабинет Tutor" hidden>
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M12 3h6a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-6"/></svg>
+    <span>В кабинет Tutor</span>
+  </a>
+  <button id="btn-tasks" class="topbar-logo tasks-button" type="button" title="Задания" aria-label="Задания" aria-expanded="false" aria-controls="side-panel">
+    <span class="tasks-button-book" aria-hidden="true"></span>
+    <span class="tasks-button-collapse" aria-hidden="true"></span>
+    <span class="tutor-badge" aria-hidden="true">Tutor</span>
+  </button>
+  <!-- правый нижний угол: вид и масштаб, справа - помощь -->
+  <div id="bottombar">
+    <div class="topbar-group view-group"><button id="view-grid-icon" class="icon" title="Тип сетки" aria-label="Тип сетки" aria-expanded="false"></button><button id="zoom-out" class="icon" title="Уменьшить масштаб" aria-label="Уменьшить масштаб"></button><button id="zoom-label" title="Масштаб, вид и взаимодействия" aria-haspopup="true" aria-expanded="false"><span id="zoom-value">100%</span><svg class="zoom-chevron" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg></button><button id="zoom-in" class="icon" title="Увеличить масштаб" aria-label="Увеличить масштаб"></button><button id="btn-fit" class="icon" title="Показать всё" aria-label="Показать всё"></button></div>
+    <div class="topbar-group help-group"><button id="btn-help" class="icon" title="Справка (F1)" aria-label="Справка" aria-controls="side-panel" aria-expanded="false"></button></div>
+  </div>
+  <svg class="goo-defs" width="0" height="0" aria-hidden="true" focusable="false">
+    <filter id="goo" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="7" result="b"/>
+      <feColorMatrix in="b" mode="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 22 -10" result="g"/>
+      <feComposite in="SourceGraphic" in2="g" operator="atop"/>
+    </filter>
+  </svg>
+  <div id="main">
+    <div id="canvas-wrap">
+      <!-- капли Goo-эффекта групп панели инструментов (src/goo.ts): под панелью, выплывают из-за неё -->
+      <div id="goo-layer" aria-hidden="true"></div>
+      <div id="toolbar"></div>
+      <canvas id="board"></canvas>
+      <div id="overlay"></div>
+      <div id="task-overlay"></div>
+      <!-- плашки объектов: реакции, «Комментировать» (src/annot-layer.ts) -->
+      <div id="annot-layer"></div>
+      <div id="follow-banner" role="status" hidden></div>
+      <div id="follow-hidden-badge" role="status" hidden>Эта страница скрыта - участники остались на предыдущей странице</div>
+      <div id="all-pages-hidden-banner" role="status" hidden>Автор временно скрыл все страницы доски. Доступ откроется автоматически, когда автор включит страницу.</div>
+      <div id="draft-badge" role="status" hidden><span>Черновик</span> · виден только вам: ни гостям, ни в демонстрации</div>
+      <div id="pages-dock" data-tip-side="top">
+        <div id="pages-tray"><div id="pages-list"></div></div>
+        <button id="btn-pages"></button>
+      </div>
+      <div id="ctx-layer"></div>
+      <div id="quick-menu" hidden></div>
+    </div>
+  </div>
+  <div id="settings-popover" hidden></div>
+  <div id="grid-menu" role="listbox" hidden></div>
+  <div id="home" hidden></div>
+</body>
+</html>
