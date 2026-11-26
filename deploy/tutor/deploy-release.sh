@@ -85,7 +85,7 @@ tar --no-same-owner --no-same-permissions -xzf "$archive_copy" -C "$staging"
 [[ -s "$staging/dist/index.html" && -s "$staging/dist-server/index.mjs" ]]
 tr -d '\r' < "$staging/RELEASE" | grep -Fxq "version=$version"
 tr -d '\r' < "$staging/RELEASE" | grep -Eq '^commit=[0-9a-f]{40}$'
-expected_asset=$(grep -oE 'assets/index-[A-Za-z0-9_-]+\.js' "$staging/dist/index.html" | head -n 1)
+expected_asset=$(grep -oE 'assets/(index|board)-[A-Za-z0-9_-]+\.js' "$staging/dist/index.html" | head -n 1)
 [[ -n "$expected_asset" ]]
 ln -s "$modules" "$staging/node_modules"
 find "$staging" -type d -exec chmod 755 {} +
